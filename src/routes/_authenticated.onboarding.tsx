@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
