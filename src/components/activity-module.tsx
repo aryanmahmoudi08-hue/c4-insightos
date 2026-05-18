@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { TeamMemberPicker } from "@/components/team-member-picker";
+import { TeamMemberFilter, ALL_MEMBERS } from "@/components/team-member-filter";
 
 export type ActivityRole = "dm_setter" | "inbound_dialer";
 
