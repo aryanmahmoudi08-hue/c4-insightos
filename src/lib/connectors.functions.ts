@@ -17,6 +17,13 @@ const connectorRequirements = {
   discord: z.object({
     webhookUrl: z.string().trim().url("Enter a valid Discord webhook URL").max(500),
   }),
+  zapier: z.object({
+    webhookUrl: z.string().trim().url("Paste the Catch Hook URL from your Zap").max(500).refine(
+      (u) => /^https:\/\/hooks\.zapier\.com\/hooks\/catch\//.test(u),
+      "Must be a Zapier Catch Hook URL (https://hooks.zapier.com/hooks/catch/...)",
+    ),
+    label: z.string().trim().max(80).optional(),
+  }),
 } as const;
 
 function validateConnectorConfig(connectorId: string, rawConfig: Record<string, unknown>) {
@@ -51,6 +58,23 @@ async function verifyDiscordWebhook(webhookUrl: string) {
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(`Discord rejected the webhook [${response.status}]: ${body || response.statusText}`);
+  }
+}
+
+async function verifyZapierWebhook(webhookUrl: string) {
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      event_type: "connector.verified",
+      source: "lovable",
+      timestamp: new Date().toISOString(),
+      message: "Test event from Lovable — your Zap is connected.",
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Zapier rejected the webhook [${response.status}]: ${body || response.statusText}`);
   }
 }
 
@@ -112,6 +136,9 @@ export const connectWorkspaceConnector = createServerFn({ method: "POST" })
     if (data.connectorId === "discord") {
       await verifyDiscordWebhook(validatedConfig.webhookUrl);
     }
+    if (data.connectorId === "zapier") {
+      await verifyZapierWebhook(validatedConfig.webhookUrl);
+    }
 
     const { data: existing, error: existingError } = await supabase
       .from("connector_connections")
@@ -169,6 +196,26 @@ export const connectWorkspaceConnector = createServerFn({ method: "POST" })
           name: "Discord event alerts",
           target_url: validatedConfig.webhookUrl,
           channel: "discord",
+          event_types: ["lead.created", "call.booked", "call.closed_won", "payment.collected", "onboarding.submitted", "alert.fired"],
+          active: true,
+        });
+      }
+    }
+
+    if (data.connectorId === "zapier") {
+      const { data: subscription } = await supabase
+        .from("webhook_subscriptions")
+        .select("id")
+        .eq("org_id", orgId)
+        .eq("target_url", validatedConfig.webhookUrl)
+        .limit(1)
+        .maybeSingle();
+      if (!subscription?.id) {
+        await supabase.from("webhook_subscriptions").insert({
+          org_id: orgId,
+          name: validatedConfig.label || "Zapier fan-out",
+          target_url: validatedConfig.webhookUrl,
+          channel: "zapier",
           event_types: ["lead.created", "call.booked", "call.closed_won", "payment.collected", "onboarding.submitted", "alert.fired"],
           active: true,
         });

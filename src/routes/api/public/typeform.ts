@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { dispatchEvent } from "@/lib/dispatch.server";
 
 function answerValue(answer: any) {
   if (answer == null || typeof answer !== "object") return "";
@@ -79,6 +80,13 @@ export const Route = createFileRoute("/api/public/typeform")({
           subject_type: "onboarding_response",
           subject_id: intake?.id ?? null,
           payload: { answers, source: "typeform" },
+        });
+
+        await dispatchEvent(connection.org_id, "onboarding.submitted", {
+          answers,
+          source: "typeform",
+          response_id: formResponse.token ?? formResponse.response_id ?? null,
+          submitted_at: new Date().toISOString(),
         });
 
         return Response.json({ ok: true });

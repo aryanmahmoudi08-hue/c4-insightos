@@ -26,6 +26,10 @@ const connectorConfigFields: Record<string, ConfigField[]> = {
     { key: "webhookSecret", label: "Webhook secret", placeholder: "Create a secret in Typeform webhook settings", help: "This is used to verify Typeform submissions before they enter onboarding." },
   ],
   discord: [{ key: "webhookUrl", label: "Discord webhook URL", placeholder: "https://discord.com/api/webhooks/...", help: "This will be verified by sending a real test message to Discord.", type: "url" }],
+  zapier: [
+    { key: "webhookUrl", label: "Zapier Catch Hook URL", placeholder: "https://hooks.zapier.com/hooks/catch/...", help: "In Zapier, create a Zap with trigger 'Webhooks by Zapier → Catch Hook'. Paste the URL it gives you. Every app event will POST here so your Zap can fan out to Sheets, Discord, Gmail, etc.", type: "url" },
+    { key: "label", label: "Label (optional)", placeholder: "EOD report fan-out", help: "Helpful when you have multiple Zaps." },
+  ],
 };
 
 function fieldsFor(connectorId: string) {
