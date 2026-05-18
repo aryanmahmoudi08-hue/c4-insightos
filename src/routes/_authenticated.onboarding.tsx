@@ -4,17 +4,40 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Brain, MessageSquareQuote, Sparkles } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Plus, Brain, MessageSquareQuote, Sparkles, Cloud } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({ component: Onboarding });
+
+const STOPWORDS = new Set([
+  "the","a","an","and","or","but","if","of","to","in","on","at","for","with","by","from","as","is","are","was","were","be","been","being","this","that","these","those","i","you","we","they","he","she","it","my","our","your","their","his","her","its","me","us","them","do","does","did","have","has","had","will","would","could","should","may","might","can","not","no","yes","so","up","out","about","into","over","than","then","just","like","get","got","make","made","go","going","want","need","know","think","really","very","much","more","most","some","any","all","one","two","also","because","when","while","what","why","how","where","which","who","whom","there","here","still","even","ever","never","yet","now","only","own","off","down","through","after","before","again","too","other","each","such","both","few","many"
+]);
+function topPhrases(texts: string[], n = 2, limit = 20): { phrase: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const t of texts) {
+    if (!t) continue;
+    const words = t.toLowerCase().replace(/[^a-z0-9\s']/g, " ").split(/\s+/).filter(Boolean);
+    for (let i = 0; i <= words.length - n; i++) {
+      const slice = words.slice(i, i + n);
+      if (slice.some(w => STOPWORDS.has(w) || w.length < 3)) continue;
+      const phrase = slice.join(" ");
+      counts.set(phrase, (counts.get(phrase) ?? 0) + 1);
+    }
+  }
+  return Array.from(counts.entries())
+    .filter(([, c]) => c >= 2)
+    .map(([phrase, count]) => ({ phrase, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit);
+}
 
 const QUESTIONS = [
   { key: "first_touchpoint", q: "What was the first piece of content / touchpoint that made you discover us?" },
