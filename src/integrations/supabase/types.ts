@@ -606,6 +606,7 @@ export type Database = {
           external_id: string | null
           funnel_stage: string | null
           hook: string | null
+          hook_score: number | null
           id: string
           notes: string | null
           org_id: string
@@ -632,6 +633,7 @@ export type Database = {
           external_id?: string | null
           funnel_stage?: string | null
           hook?: string | null
+          hook_score?: number | null
           id?: string
           notes?: string | null
           org_id: string
@@ -658,6 +660,7 @@ export type Database = {
           external_id?: string | null
           funnel_stage?: string | null
           hook?: string | null
+          hook_score?: number | null
           id?: string
           notes?: string | null
           org_id?: string
@@ -1530,6 +1533,7 @@ export type Database = {
           dials: number | null
           downsells: number | null
           id: string
+          lead_source: string | null
           leads_contacted: number | null
           links_sent: number | null
           live_calls: number | null
@@ -1555,6 +1559,7 @@ export type Database = {
           dials?: number | null
           downsells?: number | null
           id?: string
+          lead_source?: string | null
           leads_contacted?: number | null
           links_sent?: number | null
           live_calls?: number | null
@@ -1580,6 +1585,7 @@ export type Database = {
           dials?: number | null
           downsells?: number | null
           id?: string
+          lead_source?: string | null
           leads_contacted?: number | null
           links_sent?: number | null
           live_calls?: number | null
