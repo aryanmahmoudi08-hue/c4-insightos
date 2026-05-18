@@ -1,0 +1,43 @@
+import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
+
+function workspaceSlug(userId: string) {
+  return `workspace-${userId.slice(0, 8)}`;
+}
+
+export const ensureCurrentWorkspace = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { userId, claims } = context;
+    const { data: membership, error: membershipError } = await supabaseAdmin
+      .from("memberships")
+      .select("org_id, role, organizations(id, name, slug)")
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle();
+    if (membershipError) throw new Error(membershipError.message);
+    if (membership) return membership;
+
+    const email = typeof claims?.email === "string" ? claims.email : "";
+    const displayName = typeof claims?.user_metadata === "object" && claims.user_metadata && "display_name" in claims.user_metadata
+      ? String(claims.user_metadata.display_name)
+      : email.split("@")[0] || "Owner";
+
+    await supabaseAdmin.from("profiles").upsert({ id: userId, display_name: displayName });
+
+    const { data: org, error: orgError } = await supabaseAdmin
+      .from("organizations")
+      .insert({ name: "My Workspace", slug: workspaceSlug(userId) })
+      .select("id, name, slug")
+      .maybeSingle();
+    if (orgError) throw new Error(orgError.message);
+    if (!org?.id) throw new Error("Workspace could not be created");
+
+    const { error: memberError } = await supabaseAdmin
+      .from("memberships")
+      .insert({ org_id: org.id, user_id: userId, role: "owner" });
+    if (memberError) throw new Error(memberError.message);
+
+    return { org_id: org.id, role: "owner", organizations: org };
+  });
