@@ -150,24 +150,36 @@ function Closer() {
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
-              <tr><th className="text-left p-3">Lead</th><th className="text-left p-3">Scheduled</th><th className="text-left p-3">Status</th>
-                <th className="text-center p-3">Show</th><th className="text-center p-3">Offer</th><th className="text-center p-3">Close</th>
-                <th className="text-right p-3 font-mono">Contract</th><th className="text-right p-3 font-mono">Cash</th></tr>
+              <tr>
+                <th className="text-left p-3">Closer</th>
+                <th className="text-left p-3">Lead</th>
+                <th className="text-left p-3">Email</th>
+                <th className="text-left p-3">Date</th>
+                <th className="text-left p-3">Status</th>
+                <th className="text-center p-3">Offer</th>
+                <th className="text-right p-3 font-mono">Cash</th>
+                <th className="text-right p-3 font-mono">Revenue</th>
+                <th className="text-left p-3">Recording</th>
+              </tr>
             </thead>
             <tbody>
-              {(calls ?? []).map((c) => (
+              {(calls ?? []).map((c) => {
+                const labelMap: Record<string,string> = { closed:"Closed Won", follow_up:"Follow Up", booked:"Pipeline", disqualified:"DQ" };
+                const colorMap: Record<string,string> = { closed:"bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]", follow_up:"bg-[color:var(--color-warning)]/15 text-[color:var(--color-warning)]", booked:"bg-accent/15 text-accent", disqualified:"bg-destructive/15 text-destructive" };
+                return (
                 <tr key={c.id} className="border-t border-border hover:bg-muted/20">
+                  <td className="p-3 font-medium">{c.closer_name || "—"}</td>
                   <td className="p-3">{c.leads?.full_name || c.leads?.handle || "—"}</td>
-                  <td className="p-3 text-xs text-muted-foreground">{c.scheduled_for ? new Date(c.scheduled_for).toLocaleString() : "—"}</td>
-                  <td className="p-3"><span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] uppercase text-accent">{c.status}</span></td>
-                  <td className="p-3 text-center">{c.showed ? "✓" : "·"}</td>
+                  <td className="p-3 text-xs text-muted-foreground">{c.lead_email || c.leads?.email || "—"}</td>
+                  <td className="p-3 text-xs text-muted-foreground">{c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—"}</td>
+                  <td className="p-3"><span className={`rounded px-1.5 py-0.5 text-[10px] uppercase ${colorMap[c.status] ?? "bg-muted"}`}>{labelMap[c.status] ?? c.status}</span></td>
                   <td className="p-3 text-center">{c.offer_made ? "✓" : "·"}</td>
-                  <td className="p-3 text-center">{c.closed ? "✓" : "·"}</td>
-                  <td className="p-3 text-right font-mono">{c.contract_value_cents ? "$"+Math.round(c.contract_value_cents/100).toLocaleString() : "—"}</td>
                   <td className="p-3 text-right font-mono text-[color:var(--color-success)]">{c.cash_collected_cents ? "$"+Math.round(c.cash_collected_cents/100).toLocaleString() : "—"}</td>
+                  <td className="p-3 text-right font-mono">{c.contract_value_cents ? "$"+Math.round(c.contract_value_cents/100).toLocaleString() : "—"}</td>
+                  <td className="p-3 text-xs">{c.recording_url ? <a className="text-primary hover:underline" href={c.recording_url} target="_blank" rel="noreferrer">link</a> : "—"}</td>
                 </tr>
-              ))}
-              {(!calls || calls.length === 0) && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">No calls logged. Add your first close.</td></tr>}
+              );})}
+              {(!calls || calls.length === 0) && <tr><td colSpan={9} className="p-10 text-center text-sm text-muted-foreground">No calls logged. Add your first close.</td></tr>}
             </tbody>
           </table>
         </div>
