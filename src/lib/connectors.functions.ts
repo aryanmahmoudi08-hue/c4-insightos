@@ -98,7 +98,7 @@ export const connectWorkspaceConnector = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await getOrgId(supabase, userId);
-    const validatedConfig = validateConnectorConfig(data.connectorId, data.config);
+    const validatedConfig = validateConnectorConfig(data.connectorId, data.config) as Record<string, string>;
 
     const { data: connector, error: connectorError } = await supabase
       .from("connector_registry")
