@@ -10,8 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Video } from "lucide-react";
+import { Plus, Video, Layers } from "lucide-react";
 import { toast } from "sonner";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import type { Database } from "@/integrations/supabase/types";
 
 type Platform = Database["public"]["Enums"]["content_platform"];
@@ -24,6 +25,7 @@ function ContentIntel() {
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [slidesFor, setSlidesFor] = useState<string | null>(null);
 
   const { data: pieces } = useQuery({
     queryKey: ["content", orgId],
@@ -80,9 +82,9 @@ function ContentIntel() {
                 <div className="space-y-1.5"><Label>Title</Label><Input name="title" required /></div>
                 <div className="space-y-1.5"><Label>Hook (first 3 sec)</Label><Textarea name="hook" rows={2} /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>Platform</Label>
-                    <Select name="platform" defaultValue="instagram"><SelectTrigger><SelectValue/></SelectTrigger>
-                      <SelectContent>{["instagram","tiktok","youtube","x","linkedin","podcast","email","blog","other"].map(p =>
+                  <div className="space-y-1.5"><Label>Platform / format</Label>
+                    <Select name="platform" defaultValue="reel"><SelectTrigger><SelectValue/></SelectTrigger>
+                      <SelectContent>{["reel","story_sequence","post","carousel","youtube","youtube_short","tiktok","vsl","ad_creative","email","dm","other"].map(p =>
                         <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
                   <div className="space-y-1.5"><Label>Angle</Label>
                     <Select name="angle" defaultValue="authority"><SelectTrigger><SelectValue/></SelectTrigger>
@@ -107,7 +109,7 @@ function ContentIntel() {
               <tr><th className="text-left p-3">Hook / Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
                 <th className="text-right p-3 font-mono">Views</th><th className="text-right p-3 font-mono">Leads</th>
                 <th className="text-right p-3 font-mono">Closes</th><th className="text-right p-3 font-mono">Cash</th>
-                <th className="text-right p-3 font-mono">Retention</th></tr>
+                <th className="text-right p-3 font-mono">Retention</th><th className="text-right p-3"></th></tr>
             </thead>
             <tbody>
               {(pieces ?? []).map((p) => {
@@ -129,16 +131,115 @@ function ContentIntel() {
                     <td className="p-3 text-right font-mono">{m?.closes ?? "—"}</td>
                     <td className="p-3 text-right font-mono">{m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"}</td>
                     <td className="p-3 text-right font-mono">{m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"}</td>
+                    <td className="p-3 text-right">
+                      {p.platform === "story_sequence" && (
+                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSlidesFor(p.id)}>
+                          <Layers className="h-3 w-3" />Slides
+                        </Button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
               {(!pieces || pieces.length === 0) && (
-                <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
+                <tr><td colSpan={9} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+      <SlidesPanel orgId={orgId} contentId={slidesFor} onClose={() => setSlidesFor(null)} />
     </>
+  );
+}
+
+function SlidesPanel({ orgId, contentId, onClose }: { orgId?: string; contentId: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const { data: slides } = useQuery({
+    queryKey: ["slides", contentId],
+    enabled: !!contentId && !!orgId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("story_slides")
+        .select("id, sequence_index, caption, cta, slide_metrics(views, exits, taps_forward, taps_back, replies, link_clicks)")
+        .eq("content_id", contentId!)
+        .order("sequence_index");
+      return data ?? [];
+    },
+  });
+  const add = useMutation({
+    mutationFn: async (f: FormData) => {
+      const seq = Number(f.get("sequence_index") || (slides?.length ?? 0) + 1);
+      const { data: slide, error } = await supabase.from("story_slides").insert({
+        org_id: orgId!, content_id: contentId!, sequence_index: seq,
+        caption: String(f.get("caption") || "") || null, cta: String(f.get("cta") || "") || null,
+      }).select("id").single();
+      if (error) throw error;
+      await supabase.from("slide_metrics").insert({
+        org_id: orgId!, slide_id: slide.id,
+        views: Number(f.get("views") || 0), exits: Number(f.get("exits") || 0),
+        taps_forward: Number(f.get("taps_forward") || 0), taps_back: Number(f.get("taps_back") || 0),
+        replies: Number(f.get("replies") || 0), link_clicks: Number(f.get("link_clicks") || 0),
+      });
+    },
+    onSuccess: () => { toast.success("Slide tracked"); qc.invalidateQueries({ queryKey: ["slides"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  const chartData = (slides ?? []).map(s => {
+    const m = (s.slide_metrics ?? [])[0];
+    return { slide: `#${s.sequence_index}`, views: m?.views ?? 0, exits: m?.exits ?? 0 };
+  });
+
+  return (
+    <Dialog open={!!contentId} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Story sequence · slide drop-off</DialogTitle></DialogHeader>
+        {chartData.length > 0 && (
+          <div className="h-48 rounded border border-border bg-card p-2">
+            <ResponsiveContainer>
+              <LineChart data={chartData}>
+                <XAxis dataKey="slide" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: 12 }} />
+                <Line type="monotone" dataKey="views" stroke="oklch(0.65 0.18 250)" strokeWidth={2} />
+                <Line type="monotone" dataKey="exits" stroke="oklch(0.65 0.22 25)" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+        <div className="space-y-1">
+          {(slides ?? []).map(s => {
+            const m = (s.slide_metrics ?? [])[0];
+            const dropoff = m?.views ? Math.round(((m.exits ?? 0) / m.views) * 100) : 0;
+            return (
+              <div key={s.id} className="flex items-center gap-3 rounded border border-border bg-card/40 p-2 text-xs">
+                <span className="font-mono text-accent w-8">#{s.sequence_index}</span>
+                <span className="flex-1 truncate">{s.caption ?? <span className="text-muted-foreground">—</span>}</span>
+                <span className="font-mono">{m?.views ?? 0}v</span>
+                <span className={`font-mono ${dropoff > 30 ? "text-destructive" : "text-muted-foreground"}`}>{dropoff}% exit</span>
+              </div>
+            );
+          })}
+          {(!slides || slides.length === 0) && <div className="p-6 text-center text-xs text-muted-foreground">No slides yet.</div>}
+        </div>
+        <form className="space-y-2 border-t border-border pt-3" onSubmit={(e) => { e.preventDefault(); add.mutate(new FormData(e.currentTarget)); (e.target as HTMLFormElement).reset(); }}>
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Add slide</div>
+          <div className="grid grid-cols-2 gap-2">
+            <Input name="sequence_index" type="number" placeholder="Seq #" />
+            <Input name="caption" placeholder="Caption" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <Input name="views" type="number" placeholder="Views" />
+            <Input name="exits" type="number" placeholder="Exits" />
+            <Input name="taps_forward" type="number" placeholder="Fwd" />
+            <Input name="taps_back" type="number" placeholder="Back" />
+            <Input name="replies" type="number" placeholder="Replies" />
+            <Input name="link_clicks" type="number" placeholder="Clicks" />
+          </div>
+          <Button type="submit" size="sm" className="w-full" disabled={add.isPending}>Add slide</Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
