@@ -49,6 +49,8 @@ function Connectors() {
   const qc = useQueryClient();
   const connectConnector = useServerFn(connectWorkspaceConnector);
   const disconnectConnector = useServerFn(disconnectWorkspaceConnector);
+  const [setupConnector, setSetupConnector] = useState<ConnectorRow | null>(null);
+  const [setupValues, setSetupValues] = useState<Record<string, string>>({});
 
   const { data: registry } = useQuery({
     queryKey: ["connector-registry"],
@@ -65,7 +67,7 @@ function Connectors() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("connector_connections")
-        .select("id, connector_id, state, display_name")
+        .select("id, connector_id, state, display_name, config")
         .eq("org_id", orgId!);
       if (error) throw error;
       return data as ConnectionRow[];
@@ -73,12 +75,14 @@ function Connectors() {
   });
 
   const connect = useMutation({
-    mutationFn: async (c: ConnectorRow) => {
-      const result = await connectConnector({ data: { connectorId: c.id } });
+    mutationFn: async ({ connector, config }: { connector: ConnectorRow; config: Record<string, string> }) => {
+      const result = await connectConnector({ data: { connectorId: connector.id, config } });
       return result.name;
     },
     onSuccess: (name) => {
       toast.success(`${name} connected`);
+      setSetupConnector(null);
+      setSetupValues({});
       qc.invalidateQueries({ queryKey: ["current-org"] });
       qc.invalidateQueries({ queryKey: ["connector-connections"] });
     },
@@ -94,6 +98,15 @@ function Connectors() {
   });
 
   const stateFor = (cid: string) => (connections ?? []).find(c => c.connector_id === cid);
+  const openSetup = (connector: ConnectorRow, conn?: ConnectionRow) => {
+    const nextValues = Object.fromEntries(fieldsFor(connector.id).map((field) => [field.key, String(conn?.config?.[field.key] ?? "")])) as Record<string, string>;
+    setSetupValues(nextValues);
+    setSetupConnector(connector);
+  };
+  const submitSetup = () => {
+    if (!setupConnector) return;
+    connect.mutate({ connector: setupConnector, config: setupValues });
+  };
 
   return (
     <>
