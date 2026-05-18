@@ -126,6 +126,8 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
         <Button variant="ghost" size="icon" className="h-8 w-8"><Bell className="h-4 w-4" /></Button>
         <Button variant="ghost" size="icon" className="h-8 w-8"><Settings className="h-4 w-4" /></Button>
       </div>
+      </div>
+      <div className="rule-gold mt-4 -mx-6" />
     </div>
   );
 }
