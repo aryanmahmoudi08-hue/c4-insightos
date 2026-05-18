@@ -144,39 +144,96 @@ function Onboarding() {
           </Dialog>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="rounded-lg border border-border bg-card overflow-hidden lg:col-span-1">
-            <div className="bg-muted/40 px-3 py-2 text-[11px] uppercase tracking-wider text-muted-foreground">Recent intakes</div>
-            <div className="divide-y divide-border max-h-[60vh] overflow-y-auto">
-              {(responses ?? []).map(r => (
-                <button key={r.id} onClick={() => setSelected(r.id)} className={`w-full text-left p-3 hover:bg-muted/30 ${selected === r.id ? "bg-muted/40" : ""}`}>
-                  <div className="font-medium text-sm">{r.clients?.full_name ?? "(no client linked)"}</div>
-                  <div className="text-[11px] text-muted-foreground">{new Date(r.created_at).toLocaleString()}</div>
-                </button>
-              ))}
-              {(!responses || responses.length === 0) && <div className="p-6 text-center text-xs text-muted-foreground">No intakes yet.</div>}
-            </div>
-          </div>
-          <div className="rounded-lg border border-border bg-card p-4 lg:col-span-2">
-            {selected ? (() => {
-              const r = responses?.find(x => x.id === selected);
-              if (!r) return null;
-              const ans = (r.responses ?? {}) as Record<string, string>;
-              return (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold"><MessageSquareQuote className="h-4 w-4 text-accent" /> {r.clients?.full_name ?? "Intake"}</div>
-                  {QUESTIONS.map(q => ans[q.key] ? (
-                    <div key={q.key} className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{q.q}</div>
-                      <div className="rounded bg-muted/30 p-3 text-sm whitespace-pre-wrap">{ans[q.key]}</div>
-                    </div>
-                  ) : null)}
+        <Tabs defaultValue="intakes">
+          <TabsList>
+            <TabsTrigger value="intakes">Intakes · {responses?.length ?? 0}</TabsTrigger>
+            <TabsTrigger value="themes"><Cloud className="h-3.5 w-3.5 mr-1" />Themes</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="intakes">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="rounded-lg border border-border bg-card overflow-hidden lg:col-span-1">
+                <div className="bg-muted/40 px-3 py-2 text-[11px] uppercase tracking-wider text-muted-foreground">Recent intakes</div>
+                <div className="divide-y divide-border max-h-[60vh] overflow-y-auto">
+                  {(responses ?? []).map(r => (
+                    <button key={r.id} onClick={() => setSelected(r.id)} className={`w-full text-left p-3 hover:bg-muted/30 ${selected === r.id ? "bg-muted/40" : ""}`}>
+                      <div className="font-medium text-sm">{r.clients?.full_name ?? "(no client linked)"}</div>
+                      <div className="text-[11px] text-muted-foreground">{new Date(r.created_at).toLocaleString()}</div>
+                    </button>
+                  ))}
+                  {(!responses || responses.length === 0) && <div className="p-6 text-center text-xs text-muted-foreground">No intakes yet.</div>}
                 </div>
-              );
-            })() : <div className="text-center text-xs text-muted-foreground py-10">Select an intake to view answers</div>}
-          </div>
-        </div>
+              </div>
+              <div className="rounded-lg border border-border bg-card p-4 lg:col-span-2">
+                {selected ? (() => {
+                  const r = responses?.find(x => x.id === selected);
+                  if (!r) return null;
+                  const ans = (r.responses ?? {}) as Record<string, string>;
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-sm font-semibold"><MessageSquareQuote className="h-4 w-4 text-accent" /> {r.clients?.full_name ?? "Intake"}</div>
+                      {QUESTIONS.map(q => ans[q.key] ? (
+                        <div key={q.key} className="space-y-1">
+                          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{q.q}</div>
+                          <div className="rounded bg-muted/30 p-3 text-sm whitespace-pre-wrap">{ans[q.key]}</div>
+                        </div>
+                      ) : null)}
+                    </div>
+                  );
+                })() : <div className="text-center text-xs text-muted-foreground py-10">Select an intake to view answers</div>}
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="themes">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {THEME_GROUPS.map(group => {
+                const texts = (responses ?? []).flatMap(r => {
+                  const ans = (r.responses ?? {}) as Record<string, string>;
+                  return group.keys.map(k => ans[k]).filter(Boolean);
+                });
+                const phrases = topPhrases(texts, 2, 15);
+                const maxCount = phrases[0]?.count ?? 1;
+                return (
+                  <div key={group.label} className="rounded-lg border border-border bg-card p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <group.icon className="h-4 w-4 text-accent" />
+                      <div className="text-sm font-semibold">{group.label}</div>
+                      <span className="text-[10px] text-muted-foreground">{texts.length} responses</span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground mb-3">{group.hint}</div>
+                    {phrases.length === 0 ? (
+                      <div className="text-xs text-muted-foreground py-6 text-center">Need 2+ intakes with repeated phrases to surface themes.</div>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {phrases.map(p => {
+                          const scale = 0.75 + 0.5 * (p.count / maxCount);
+                          return (
+                            <span key={p.phrase}
+                              className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-accent"
+                              style={{ fontSize: `${scale * 0.85}rem` }}
+                            >
+                              {p.phrase}
+                              <span className="text-[10px] font-mono text-muted-foreground">×{p.count}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </>
   );
 }
+
+const THEME_GROUPS = [
+  { label: "Pain points", keys: ["current_pain", "tried_before"], icon: MessageSquareQuote, hint: "What problems clients say they're trying to solve — feeds hook + offer copy" },
+  { label: "Pivotal moments", keys: ["pivotal_moment", "beliefs_shifted"], icon: Sparkles, hint: "The exact moments + beliefs that converted them — replicate in content" },
+  { label: "Objections that almost killed the sale", keys: ["objections_before", "fear"], icon: Brain, hint: "Pre-emptive content + script targets" },
+  { label: "Desired identity", keys: ["desired_identity", "success_metric"], icon: Cloud, hint: "Aspirational language to mirror in long-form + sales" },
+] as const;
