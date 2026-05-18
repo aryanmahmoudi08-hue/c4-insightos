@@ -202,6 +202,26 @@ export const connectWorkspaceConnector = createServerFn({ method: "POST" })
       }
     }
 
+    if (data.connectorId === "zapier") {
+      const { data: subscription } = await supabase
+        .from("webhook_subscriptions")
+        .select("id")
+        .eq("org_id", orgId)
+        .eq("target_url", validatedConfig.webhookUrl)
+        .limit(1)
+        .maybeSingle();
+      if (!subscription?.id) {
+        await supabase.from("webhook_subscriptions").insert({
+          org_id: orgId,
+          name: validatedConfig.label || "Zapier fan-out",
+          target_url: validatedConfig.webhookUrl,
+          channel: "zapier",
+          event_types: ["lead.created", "call.booked", "call.closed_won", "payment.collected", "onboarding.submitted", "alert.fired"],
+          active: true,
+        });
+      }
+    }
+
     await upsertDefaultSync(supabase, orgId, connectionId, "connected");
     return { name: connector.name as string, config };
   });
