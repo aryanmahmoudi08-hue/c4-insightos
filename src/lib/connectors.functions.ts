@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { ensureWorkspaceForUser } from "./workspace.server";
@@ -9,21 +10,18 @@ const ConnectorInput = z.object({
 });
 
 const connectorRequirements = {
-  typeform: z.object({ formUrl: z.string().trim().url("Enter a valid Typeform URL").max(500) }),
-  instagram: z.object({ accountUrl: z.string().trim().url("Enter a valid Instagram profile URL").max(500) }),
-  tiktok: z.object({ accountUrl: z.string().trim().url("Enter a valid TikTok profile URL").max(500) }),
-  youtube: z.object({ channelUrl: z.string().trim().url("Enter a valid YouTube channel URL").max(500) }),
-  stripe: z.object({ accountLabel: z.string().trim().min(2, "Name this Stripe account").max(80) }),
-  calendly: z.object({ schedulingUrl: z.string().trim().url("Enter a valid Calendly URL").max(500) }),
-  gohighlevel: z.object({ locationId: z.string().trim().min(2, "Enter the GoHighLevel location ID").max(120) }),
-  slack: z.object({ channelName: z.string().trim().min(1, "Enter a Slack channel").max(80) }),
-  discord: z.object({ webhookUrl: z.string().trim().url("Enter a valid Discord webhook URL").max(500) }),
-  meta_ads: z.object({ adAccountId: z.string().trim().min(2, "Enter the Meta ad account ID").max(120) }),
+  typeform: z.object({
+    formUrl: z.string().trim().url("Enter a valid Typeform URL").max(500),
+    webhookSecret: z.string().trim().min(12, "Use a Typeform webhook secret with at least 12 characters").max(160),
+  }),
+  discord: z.object({
+    webhookUrl: z.string().trim().url("Enter a valid Discord webhook URL").max(500),
+  }),
 } as const;
 
 function validateConnectorConfig(connectorId: string, rawConfig: Record<string, unknown>) {
   const schema = connectorRequirements[connectorId as keyof typeof connectorRequirements];
-  if (!schema) return {};
+  if (!schema) throw new Error("This connector needs real provider credentials before it can be connected.");
   try {
     return schema.parse(rawConfig);
   } catch (error) {
@@ -31,6 +29,28 @@ function validateConnectorConfig(connectorId: string, rawConfig: Record<string, 
       throw new Error(error.issues[0]?.message ?? "Connector setup is incomplete");
     }
     throw error;
+  }
+}
+
+function appOrigin() {
+  const request = getRequest();
+  return request ? new URL(request.url).origin : "";
+}
+
+async function verifyDiscordWebhook(webhookUrl: string) {
+  if (!/^https:\/\/(discord(app)?\.com)\/api\/webhooks\//.test(webhookUrl)) {
+    throw new Error("Enter a real Discord webhook URL from Discord channel settings.");
+  }
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: "Connector verified. App event alerts can be sent to this Discord channel." }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Discord rejected the webhook [${response.status}]: ${body || response.statusText}`);
   }
 }
 
@@ -47,21 +67,51 @@ async function getOrgId(supabase: any, userId: string) {
   return workspace.org_id;
 }
 
+async function upsertDefaultSync(supabase: any, orgId: string, connectionId: string, state: "connected" | "error", lastError: string | null = null) {
+  const { data: syncRow, error: syncLookupError } = await supabase
+    .from("connector_sync_status")
+    .select("id")
+    .eq("connection_id", connectionId)
+    .eq("resource", "default")
+    .limit(1)
+    .maybeSingle();
+  if (syncLookupError) throw new Error(syncLookupError.message);
+
+  const payload = { org_id: orgId, state, last_error: lastError, last_sync_at: new Date().toISOString() };
+  if (syncRow?.id) {
+    const { error } = await supabase.from("connector_sync_status").update(payload).eq("id", syncRow.id);
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  const { error } = await supabase.from("connector_sync_status").insert({
+    ...payload,
+    connection_id: connectionId,
+    resource: "default",
+  });
+  if (error) throw new Error(error.message);
+}
+
 export const connectWorkspaceConnector = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => ConnectorInput.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await getOrgId(supabase, userId);
-    const config = validateConnectorConfig(data.connectorId, data.config);
+    const validatedConfig = validateConnectorConfig(data.connectorId, data.config) as Record<string, string>;
 
     const { data: connector, error: connectorError } = await supabase
       .from("connector_registry")
-      .select("id, name")
+      .select("id, name, is_available")
       .eq("id", data.connectorId)
       .maybeSingle();
     if (connectorError) throw new Error(connectorError.message);
     if (!connector) throw new Error("Connector is not in the registry yet");
+    if (!connector.is_available) throw new Error("This connector is not available as a real integration yet.");
+
+    if (data.connectorId === "discord") {
+      await verifyDiscordWebhook(validatedConfig.webhookUrl);
+    }
 
     const { data: existing, error: existingError } = await supabase
       .from("connector_connections")
@@ -73,7 +123,12 @@ export const connectWorkspaceConnector = createServerFn({ method: "POST" })
     if (existingError) throw new Error(existingError.message);
 
     let connectionId = existing?.id as string | undefined;
+    let config: Record<string, string> = { ...validatedConfig, verifiedAt: new Date().toISOString() };
+
     if (connectionId) {
+      if (data.connectorId === "typeform") {
+        config = { ...config, webhookUrl: `${appOrigin()}/api/public/typeform?connection_id=${connectionId}` };
+      }
       const { error } = await supabase
         .from("connector_connections")
         .update({ state: "connected", display_name: connector.name, config })
@@ -89,35 +144,39 @@ export const connectWorkspaceConnector = createServerFn({ method: "POST" })
       if (error) throw new Error(error.message);
       if (!inserted?.id) throw new Error("Connection was not created");
       connectionId = inserted.id;
+      if (data.connectorId === "typeform") {
+        config = { ...config, webhookUrl: `${appOrigin()}/api/public/typeform?connection_id=${connectionId}` };
+        const { error: updateError } = await supabase
+          .from("connector_connections")
+          .update({ config })
+          .eq("id", connectionId)
+          .eq("org_id", orgId);
+        if (updateError) throw new Error(updateError.message);
+      }
     }
 
-    const { data: syncRow, error: syncLookupError } = await supabase
-      .from("connector_sync_status")
-      .select("id")
-      .eq("connection_id", connectionId)
-      .eq("resource", "default")
-      .limit(1)
-      .maybeSingle();
-    if (syncLookupError) throw new Error(syncLookupError.message);
-
-    if (syncRow?.id) {
-      const { error } = await supabase
-        .from("connector_sync_status")
-        .update({ org_id: orgId, state: "connected", last_error: null, last_sync_at: new Date().toISOString() })
-        .eq("id", syncRow.id);
-      if (error) throw new Error(error.message);
-    } else {
-      const { error } = await supabase.from("connector_sync_status").insert({
-        org_id: orgId,
-        connection_id: connectionId,
-        resource: "default",
-        state: "connected",
-        last_sync_at: new Date().toISOString(),
-      });
-      if (error) throw new Error(error.message);
+    if (data.connectorId === "discord") {
+      const { data: subscription } = await supabase
+        .from("webhook_subscriptions")
+        .select("id")
+        .eq("org_id", orgId)
+        .eq("target_url", validatedConfig.webhookUrl)
+        .limit(1)
+        .maybeSingle();
+      if (!subscription?.id) {
+        await supabase.from("webhook_subscriptions").insert({
+          org_id: orgId,
+          name: "Discord event alerts",
+          target_url: validatedConfig.webhookUrl,
+          channel: "discord",
+          event_types: ["lead.created", "call.booked", "call.closed_won", "payment.collected", "onboarding.submitted", "alert.fired"],
+          active: true,
+        });
+      }
     }
 
-    return { name: connector.name as string };
+    await upsertDefaultSync(supabase, orgId, connectionId, "connected");
+    return { name: connector.name as string, config };
   });
 
 export const disconnectWorkspaceConnector = createServerFn({ method: "POST" })

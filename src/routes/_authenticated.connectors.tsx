@@ -21,16 +21,11 @@ interface ConnectionRow { id: string; connector_id: string; state: string; displ
 type ConfigField = { key: string; label: string; placeholder: string; help: string; type?: "text" | "url" };
 
 const connectorConfigFields: Record<string, ConfigField[]> = {
-  typeform: [{ key: "formUrl", label: "Typeform URL", placeholder: "https://form.typeform.com/to/abc123", help: "Paste the exact form URL you want this connector to read.", type: "url" }],
-  instagram: [{ key: "accountUrl", label: "Instagram profile URL", placeholder: "https://instagram.com/yourbrand", help: "Use the account that owns the content and DMs.", type: "url" }],
-  tiktok: [{ key: "accountUrl", label: "TikTok profile URL", placeholder: "https://tiktok.com/@yourbrand", help: "Use the account you want analytics tied to.", type: "url" }],
-  youtube: [{ key: "channelUrl", label: "YouTube channel URL", placeholder: "https://youtube.com/@yourchannel", help: "Use the channel URL for videos and shorts.", type: "url" }],
-  stripe: [{ key: "accountLabel", label: "Stripe account name", placeholder: "Main Stripe account", help: "Name the payment account so reports know where revenue is coming from." }],
-  calendly: [{ key: "schedulingUrl", label: "Calendly URL", placeholder: "https://calendly.com/yourteam/strategy-call", help: "Paste the event or scheduling page used for booked calls.", type: "url" }],
-  gohighlevel: [{ key: "locationId", label: "GoHighLevel location ID", placeholder: "Enter location ID", help: "Use the location connected to contacts, pipelines, and calls." }],
-  slack: [{ key: "channelName", label: "Slack channel", placeholder: "#sales-alerts", help: "Choose where alerts should be routed." }],
-  discord: [{ key: "webhookUrl", label: "Discord webhook URL", placeholder: "https://discord.com/api/webhooks/...", help: "Paste the webhook for the channel receiving alerts.", type: "url" }],
-  meta_ads: [{ key: "adAccountId", label: "Meta ad account ID", placeholder: "act_123456789", help: "Use the ad account that owns spend, CPL, and ROAS data." }],
+  typeform: [
+    { key: "formUrl", label: "Typeform URL", placeholder: "https://form.typeform.com/to/abc123", help: "Paste the exact form URL tied to onboarding.", type: "url" },
+    { key: "webhookSecret", label: "Webhook secret", placeholder: "Create a secret in Typeform webhook settings", help: "This is used to verify Typeform submissions before they enter onboarding." },
+  ],
+  discord: [{ key: "webhookUrl", label: "Discord webhook URL", placeholder: "https://discord.com/api/webhooks/...", help: "This will be verified by sending a real test message to Discord.", type: "url" }],
 };
 
 function fieldsFor(connectorId: string) {
@@ -77,7 +72,7 @@ function Connectors() {
   const connect = useMutation({
     mutationFn: async ({ connector, config }: { connector: ConnectorRow; config: Record<string, string> }) => {
       const result = await connectConnector({ data: { connectorId: connector.id, config } });
-      return result.name;
+      return (result as { name: string }).name;
     },
     onSuccess: (name) => {
       toast.success(`${name} connected`);
@@ -125,6 +120,7 @@ function Connectors() {
             const isConnected = conn?.state === "connected";
             const configured = isConfigured(conn, c.id);
             const hasSetup = fieldsFor(c.id).length > 0;
+            const canConnect = c.is_available && hasSetup;
             const busy = (connect.isPending && connect.variables?.connector.id === c.id) || (disconnect.isPending && disconnect.variables?.id === conn?.id);
             return (
               <div key={c.id} className={`rounded-lg border bg-card p-4 transition-colors ${isConnected ? "border-[color:var(--color-success)]/60" : "border-border hover:border-primary/40"}`}>
@@ -143,13 +139,20 @@ function Connectors() {
                     </span>
                   ) : isConnected ? (
                     <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">setup needed</span>
-                  ) : (
+                  ) : canConnect ? (
                     <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">available</span>
+                  ) : (
+                    <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">credentials needed</span>
                   )}
                 </div>
                 {isConnected && hasSetup && (
                   <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    {configured ? "Setup details saved" : "Add the required setup details to make this connector usable."}
+                    {configured ? String(conn?.config?.webhookUrl ?? "Verified connection saved") : "Add the required setup details to make this connector usable."}
+                  </div>
+                )}
+                {!canConnect && !isConnected && (
+                  <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    This is not a real one-click integration yet. It needs provider credentials or an app connector before it can be activated.
                   </div>
                 )}
                 <div className="mt-3 flex gap-2">
@@ -165,7 +168,7 @@ function Connectors() {
                       </Button>
                     </>
                   ) : (
-                    <Button size="sm" className="w-full" disabled={busy} onClick={() => hasSetup ? openSetup(c, conn) : connect.mutate({ connector: c, config: {} })}>
+                    <Button size="sm" className="w-full" disabled={busy || !canConnect} onClick={() => openSetup(c, conn)}>
                       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Connect"}
                     </Button>
                   )}
