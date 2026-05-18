@@ -1,0 +1,1 @@
+UPDATE public.connector_registry SET is_available = true;
