@@ -86,7 +86,7 @@ export function AppSidebar() {
           )}
         >
           <Briefcase className="h-4 w-4 shrink-0" />
-          <span className="flex-1 text-left truncate">Sales Team</span>
+          <span className="flex-1 text-left truncate">Sales Tracking</span>
           <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", salesOpen && "rotate-180")} />
         </button>
         {salesOpen && (
