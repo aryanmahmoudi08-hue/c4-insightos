@@ -97,7 +97,11 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         <DashboardBar title={isDialer ? "SETTER DASHBOARD (INBOUND DIALER)" : "DM SETTER DASHBOARD"} accent={isDialer ? "accent" : "primary"} />
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <DateRangePicker value={range} onChange={setRange} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <DateRangePicker value={range} onChange={setRange} />
+            <TeamMemberFilter role={role} value={member} onChange={setMember} />
+          </div>
+          <Dialog open={open} onOpenChange={setOpen}>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4" />Log day</Button></DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
