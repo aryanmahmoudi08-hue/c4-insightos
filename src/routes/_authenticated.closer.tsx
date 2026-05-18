@@ -63,7 +63,7 @@ function Closer() {
     },
   });
 
-  const list = calls ?? [];
+  const list = (calls ?? []).filter(c => member === ALL_MEMBERS || c.closer_name === member);
   const onCalendar = list.length;
   const showed = list.filter(c => c.showed).length;
   const offers = list.filter(c => c.offer_made).length;
