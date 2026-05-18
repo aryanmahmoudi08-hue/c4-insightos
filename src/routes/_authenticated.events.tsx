@@ -104,7 +104,7 @@ function EventsBus() {
       <div className="p-6 space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Events (recent)" value={events?.length ?? 0} icon={<Activity className="h-4 w-4" />} accent="primary" />
-          <StatCard label="Active subscriptions" value={(subs ?? []).filter(s => s.is_active).length} icon={<Webhook className="h-4 w-4" />} accent="accent" />
+          <StatCard label="Active subscriptions" value={(subs ?? []).filter(s => s.active).length} icon={<Webhook className="h-4 w-4" />} accent="accent" />
           <StatCard label="Failed deliveries" value={failed} accent={failed ? "destructive" : "success"} icon={<AlertCircle className="h-4 w-4" />} />
           <StatCard label="Sync streams" value={syncs?.length ?? 0} icon={<Radio className="h-4 w-4" />} />
         </div>
@@ -153,7 +153,7 @@ function EventsBus() {
                 {(subs ?? []).map(s => (
                   <div key={s.id} className="p-3 text-xs">
                     <div className="flex justify-between"><span className="font-medium">{s.name}</span>
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${s.is_active ? "bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]" : "bg-muted"}`}>{s.is_active ? "active" : "off"}</span></div>
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${s.active ? "bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]" : "bg-muted"}`}>{s.active ? "active" : "off"}</span></div>
                     <div className="text-muted-foreground truncate mt-0.5 font-mono">{s.target_url}</div>
                     <div className="text-[10px] text-muted-foreground mt-1">{(s.event_types ?? []).length} event types</div>
                   </div>
