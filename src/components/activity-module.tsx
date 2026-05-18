@@ -101,7 +101,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               <DialogHeader><DialogTitle>{isDialer ? "Inbound Dialer" : "DM Setter"} — daily log</DialogTitle></DialogHeader>
               <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); create.mutate(new FormData(e.currentTarget)); }}>
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1.5 col-span-2"><Label>Name</Label><Input name="team_member_name" required /></div>
+                  <div className="space-y-1.5 col-span-2"><Label>Name</Label><TeamMemberPicker role={role} name="team_member_name" required /></div>
                   <div className="space-y-1.5"><Label>Date</Label><Input name="activity_date" type="date" defaultValue={new Date().toISOString().slice(0,10)} /></div>
                 </div>
                 {isDialer ? (
