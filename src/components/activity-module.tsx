@@ -29,9 +29,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [range, setRange] = useState<DateRange>(RANGES.last30());
+  const [member, setMember] = useState<string>(ALL_MEMBERS);
   const isDialer = role === "inbound_dialer";
 
-  const { data: rows } = useQuery({
+  const { data: allRows } = useQuery({
     queryKey: ["activity", role, orgId, range.from, range.to],
     enabled: !!orgId,
     queryFn: async () => {
@@ -43,6 +44,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       return data;
     },
   });
+  const rows = member === ALL_MEMBERS ? allRows : (allRows ?? []).filter(r => r.team_member_name === member);
 
   const sum = (k: string) => (rows ?? []).reduce((s, r) => s + (Number((r as Record<string, unknown>)[k] ?? 0) || 0), 0);
   const dials = sum("dials");
