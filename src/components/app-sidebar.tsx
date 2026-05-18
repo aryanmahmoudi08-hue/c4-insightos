@@ -68,8 +68,9 @@ export function AppSidebar() {
       <div className="flex items-center gap-2 px-4 py-4 border-b border-sidebar-border">
         <img src={c4Logo} alt="C4 Consulting" className="h-9 w-9 object-contain" />
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-sidebar-foreground">InsightOS</div>
-          <div className="truncate text-[11px] text-muted-foreground">{org?.organizations?.name ?? "Workspace"}</div>
+          <div className="eyebrow truncate">C4 · Insight</div>
+          <div className="display-serif truncate text-base text-sidebar-foreground">InsightOS</div>
+          <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground/80">{org?.organizations?.name ?? "Workspace"}</div>
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
