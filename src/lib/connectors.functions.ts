@@ -61,6 +61,23 @@ async function verifyDiscordWebhook(webhookUrl: string) {
   }
 }
 
+async function verifyZapierWebhook(webhookUrl: string) {
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      event_type: "connector.verified",
+      source: "lovable",
+      timestamp: new Date().toISOString(),
+      message: "Test event from Lovable — your Zap is connected.",
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Zapier rejected the webhook [${response.status}]: ${body || response.statusText}`);
+  }
+}
+
 async function getOrgId(supabase: any, userId: string) {
   const { data, error } = await supabase
     .from("memberships")
