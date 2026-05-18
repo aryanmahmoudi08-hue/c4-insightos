@@ -17,6 +17,13 @@ const connectorRequirements = {
   discord: z.object({
     webhookUrl: z.string().trim().url("Enter a valid Discord webhook URL").max(500),
   }),
+  zapier: z.object({
+    webhookUrl: z.string().trim().url("Paste the Catch Hook URL from your Zap").max(500).refine(
+      (u) => /^https:\/\/hooks\.zapier\.com\/hooks\/catch\//.test(u),
+      "Must be a Zapier Catch Hook URL (https://hooks.zapier.com/hooks/catch/...)",
+    ),
+    label: z.string().trim().max(80).optional(),
+  }),
 } as const;
 
 function validateConnectorConfig(connectorId: string, rawConfig: Record<string, unknown>) {
