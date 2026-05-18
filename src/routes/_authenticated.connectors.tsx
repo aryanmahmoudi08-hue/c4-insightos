@@ -72,7 +72,7 @@ function Connectors() {
   const connect = useMutation({
     mutationFn: async ({ connector, config }: { connector: ConnectorRow; config: Record<string, string> }) => {
       const result = await connectConnector({ data: { connectorId: connector.id, config } });
-      return result.name;
+      return (result as { name: string }).name;
     },
     onSuccess: (name) => {
       toast.success(`${name} connected`);
@@ -120,6 +120,7 @@ function Connectors() {
             const isConnected = conn?.state === "connected";
             const configured = isConfigured(conn, c.id);
             const hasSetup = fieldsFor(c.id).length > 0;
+            const canConnect = c.is_available && hasSetup;
             const busy = (connect.isPending && connect.variables?.connector.id === c.id) || (disconnect.isPending && disconnect.variables?.id === conn?.id);
             return (
               <div key={c.id} className={`rounded-lg border bg-card p-4 transition-colors ${isConnected ? "border-[color:var(--color-success)]/60" : "border-border hover:border-primary/40"}`}>
@@ -138,13 +139,20 @@ function Connectors() {
                     </span>
                   ) : isConnected ? (
                     <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">setup needed</span>
-                  ) : (
+                  ) : canConnect ? (
                     <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">available</span>
+                  ) : (
+                    <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">credentials needed</span>
                   )}
                 </div>
                 {isConnected && hasSetup && (
                   <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    {configured ? "Setup details saved" : "Add the required setup details to make this connector usable."}
+                    {configured ? String(conn?.config?.webhookUrl ?? "Verified connection saved") : "Add the required setup details to make this connector usable."}
+                  </div>
+                )}
+                {!canConnect && !isConnected && (
+                  <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    This is not a real one-click integration yet. It needs provider credentials or an app connector before it can be activated.
                   </div>
                 )}
                 <div className="mt-3 flex gap-2">
@@ -160,7 +168,7 @@ function Connectors() {
                       </Button>
                     </>
                   ) : (
-                    <Button size="sm" className="w-full" disabled={busy} onClick={() => hasSetup ? openSetup(c, conn) : connect.mutate({ connector: c, config: {} })}>
+                    <Button size="sm" className="w-full" disabled={busy || !canConnect} onClick={() => openSetup(c, conn)}>
                       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Connect"}
                     </Button>
                   )}
