@@ -8,8 +8,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 
-const NAV = [
-  { to: "/", label: "Executive", icon: LayoutDashboard },
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; soon?: boolean };
+const NAV: NavItem[] = [
+  { to: "/dashboard", label: "Executive", icon: LayoutDashboard },
   { to: "/content", label: "Content Intel", icon: Video },
   { to: "/attribution", label: "Attribution", icon: GitBranch },
   { to: "/dm-setter", label: "DM Setter", icon: MessageSquare },
@@ -18,8 +19,8 @@ const NAV = [
   { to: "/traffic", label: "Traffic", icon: TrendingUp, soon: true },
   { to: "/team", label: "Team", icon: Users, soon: true },
   { to: "/insights", label: "AI Insights", icon: Sparkles },
-  { to: "/connectors", label: "Connectors", icon: Plug, soon: true },
-] as const;
+  { to: "/connectors", label: "Connectors", icon: Plug },
+];
 
 export function AppSidebar() {
   const loc = useLocation();
