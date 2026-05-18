@@ -30,7 +30,6 @@ const BOTTOM_NAV: NavItem[] = [
   { to: "/clients", label: "Clients", icon: BadgeCheck },
   { to: "/onboarding", label: "Onboarding", icon: Brain },
   { to: "/traffic", label: "Traffic", icon: TrendingUp },
-  { to: "/team", label: "Team", icon: Users },
   { to: "/insights", label: "AI Insights", icon: Sparkles },
   { to: "/events", label: "Event Bus", icon: Activity },
   { to: "/connectors", label: "Connectors", icon: Plug },
