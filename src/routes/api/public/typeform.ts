@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { dispatchEvent } from "@/lib/dispatch.server";
 
 function answerValue(answer: any) {
   if (answer == null || typeof answer !== "object") return "";
