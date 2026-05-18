@@ -82,9 +82,9 @@ function ContentIntel() {
                 <div className="space-y-1.5"><Label>Title</Label><Input name="title" required /></div>
                 <div className="space-y-1.5"><Label>Hook (first 3 sec)</Label><Textarea name="hook" rows={2} /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>Platform</Label>
-                    <Select name="platform" defaultValue="instagram"><SelectTrigger><SelectValue/></SelectTrigger>
-                      <SelectContent>{["instagram","tiktok","youtube","x","linkedin","podcast","email","blog","other"].map(p =>
+                  <div className="space-y-1.5"><Label>Platform / format</Label>
+                    <Select name="platform" defaultValue="reel"><SelectTrigger><SelectValue/></SelectTrigger>
+                      <SelectContent>{["reel","story_sequence","post","carousel","youtube","youtube_short","tiktok","vsl","ad_creative","email","dm","other"].map(p =>
                         <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
                   <div className="space-y-1.5"><Label>Angle</Label>
                     <Select name="angle" defaultValue="authority"><SelectTrigger><SelectValue/></SelectTrigger>
@@ -132,7 +132,7 @@ function ContentIntel() {
                     <td className="p-3 text-right font-mono">{m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"}</td>
                     <td className="p-3 text-right font-mono">{m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"}</td>
                     <td className="p-3 text-right">
-                      {p.platform === "instagram" && (
+                      {p.platform === "story_sequence" && (
                         <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSlidesFor(p.id)}>
                           <Layers className="h-3 w-3" />Slides
                         </Button>
