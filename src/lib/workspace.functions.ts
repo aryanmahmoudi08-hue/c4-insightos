@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 export const ensureCurrentWorkspace = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { userId, claims } = context;
+    const { userId } = context;
     const { data: membership, error: membershipError } = await supabaseAdmin
       .from("memberships")
       .select("org_id, role, organizations(id, name, slug)")
@@ -15,12 +15,7 @@ export const ensureCurrentWorkspace = createServerFn({ method: "GET" })
     if (membershipError) throw new Error(membershipError.message);
     if (membership) return membership;
 
-    const email = typeof claims?.email === "string" ? claims.email : "";
-    const displayName = typeof claims?.user_metadata === "object" && claims.user_metadata && "display_name" in claims.user_metadata
-      ? String(claims.user_metadata.display_name)
-      : email.split("@")[0] || "Owner";
-
-    await supabaseAdmin.from("profiles").upsert({ id: userId, display_name: displayName });
+    await supabaseAdmin.from("profiles").upsert({ id: userId, display_name: "Owner" });
 
     const { data: org, error: orgError } = await supabaseAdmin
       .from("organizations")
