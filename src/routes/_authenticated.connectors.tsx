@@ -1,10 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
-import { Plug, CheckCircle2, Loader2 } from "lucide-react";
+import { Plug, CheckCircle2, Loader2, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { connectWorkspaceConnector, disconnectWorkspaceConnector } from "@/lib/connectors.functions";
@@ -12,7 +16,32 @@ import { connectWorkspaceConnector, disconnectWorkspaceConnector } from "@/lib/c
 export const Route = createFileRoute("/_authenticated/connectors")({ component: Connectors });
 
 interface ConnectorRow { id: string; name: string; category: string; description: string | null; is_available: boolean; }
-interface ConnectionRow { id: string; connector_id: string; state: string; display_name: string | null; }
+interface ConnectionRow { id: string; connector_id: string; state: string; display_name: string | null; config: Record<string, unknown> | null; }
+
+type ConfigField = { key: string; label: string; placeholder: string; help: string; type?: "text" | "url" };
+
+const connectorConfigFields: Record<string, ConfigField[]> = {
+  typeform: [{ key: "formUrl", label: "Typeform URL", placeholder: "https://form.typeform.com/to/abc123", help: "Paste the exact form URL you want this connector to read.", type: "url" }],
+  instagram: [{ key: "accountUrl", label: "Instagram profile URL", placeholder: "https://instagram.com/yourbrand", help: "Use the account that owns the content and DMs.", type: "url" }],
+  tiktok: [{ key: "accountUrl", label: "TikTok profile URL", placeholder: "https://tiktok.com/@yourbrand", help: "Use the account you want analytics tied to.", type: "url" }],
+  youtube: [{ key: "channelUrl", label: "YouTube channel URL", placeholder: "https://youtube.com/@yourchannel", help: "Use the channel URL for videos and shorts.", type: "url" }],
+  stripe: [{ key: "accountLabel", label: "Stripe account name", placeholder: "Main Stripe account", help: "Name the payment account so reports know where revenue is coming from." }],
+  calendly: [{ key: "schedulingUrl", label: "Calendly URL", placeholder: "https://calendly.com/yourteam/strategy-call", help: "Paste the event or scheduling page used for booked calls.", type: "url" }],
+  gohighlevel: [{ key: "locationId", label: "GoHighLevel location ID", placeholder: "Enter location ID", help: "Use the location connected to contacts, pipelines, and calls." }],
+  slack: [{ key: "channelName", label: "Slack channel", placeholder: "#sales-alerts", help: "Choose where alerts should be routed." }],
+  discord: [{ key: "webhookUrl", label: "Discord webhook URL", placeholder: "https://discord.com/api/webhooks/...", help: "Paste the webhook for the channel receiving alerts.", type: "url" }],
+  meta_ads: [{ key: "adAccountId", label: "Meta ad account ID", placeholder: "act_123456789", help: "Use the ad account that owns spend, CPL, and ROAS data." }],
+};
+
+function fieldsFor(connectorId: string) {
+  return connectorConfigFields[connectorId] ?? [];
+}
+
+function isConfigured(conn: ConnectionRow | undefined, connectorId: string) {
+  const fields = fieldsFor(connectorId);
+  if (!conn || fields.length === 0) return true;
+  return fields.every((field) => typeof conn.config?.[field.key] === "string" && String(conn.config[field.key]).trim().length > 0);
+}
 
 function Connectors() {
   const { data: org } = useCurrentOrg();
