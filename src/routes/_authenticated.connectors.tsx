@@ -21,16 +21,11 @@ interface ConnectionRow { id: string; connector_id: string; state: string; displ
 type ConfigField = { key: string; label: string; placeholder: string; help: string; type?: "text" | "url" };
 
 const connectorConfigFields: Record<string, ConfigField[]> = {
-  typeform: [{ key: "formUrl", label: "Typeform URL", placeholder: "https://form.typeform.com/to/abc123", help: "Paste the exact form URL you want this connector to read.", type: "url" }],
-  instagram: [{ key: "accountUrl", label: "Instagram profile URL", placeholder: "https://instagram.com/yourbrand", help: "Use the account that owns the content and DMs.", type: "url" }],
-  tiktok: [{ key: "accountUrl", label: "TikTok profile URL", placeholder: "https://tiktok.com/@yourbrand", help: "Use the account you want analytics tied to.", type: "url" }],
-  youtube: [{ key: "channelUrl", label: "YouTube channel URL", placeholder: "https://youtube.com/@yourchannel", help: "Use the channel URL for videos and shorts.", type: "url" }],
-  stripe: [{ key: "accountLabel", label: "Stripe account name", placeholder: "Main Stripe account", help: "Name the payment account so reports know where revenue is coming from." }],
-  calendly: [{ key: "schedulingUrl", label: "Calendly URL", placeholder: "https://calendly.com/yourteam/strategy-call", help: "Paste the event or scheduling page used for booked calls.", type: "url" }],
-  gohighlevel: [{ key: "locationId", label: "GoHighLevel location ID", placeholder: "Enter location ID", help: "Use the location connected to contacts, pipelines, and calls." }],
-  slack: [{ key: "channelName", label: "Slack channel", placeholder: "#sales-alerts", help: "Choose where alerts should be routed." }],
-  discord: [{ key: "webhookUrl", label: "Discord webhook URL", placeholder: "https://discord.com/api/webhooks/...", help: "Paste the webhook for the channel receiving alerts.", type: "url" }],
-  meta_ads: [{ key: "adAccountId", label: "Meta ad account ID", placeholder: "act_123456789", help: "Use the ad account that owns spend, CPL, and ROAS data." }],
+  typeform: [
+    { key: "formUrl", label: "Typeform URL", placeholder: "https://form.typeform.com/to/abc123", help: "Paste the exact form URL tied to onboarding.", type: "url" },
+    { key: "webhookSecret", label: "Webhook secret", placeholder: "Create a secret in Typeform webhook settings", help: "This is used to verify Typeform submissions before they enter onboarding." },
+  ],
+  discord: [{ key: "webhookUrl", label: "Discord webhook URL", placeholder: "https://discord.com/api/webhooks/...", help: "This will be verified by sending a real test message to Discord.", type: "url" }],
 };
 
 function fieldsFor(connectorId: string) {
