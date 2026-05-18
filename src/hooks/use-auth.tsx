@@ -1,7 +1,9 @@
 import { useEffect, useState, createContext, useContext, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import type { Session, User } from "@supabase/supabase-js";
+import { ensureCurrentWorkspace } from "@/lib/workspace.functions";
 
 type AuthCtx = { session: Session | null; user: User | null; loading: boolean };
 const Ctx = createContext<AuthCtx>({ session: null, user: null, loading: true });
@@ -27,18 +29,10 @@ export const useAuth = () => useContext(Ctx);
 
 export function useCurrentOrg() {
   const { user } = useAuth();
+  const ensureWorkspace = useServerFn(ensureCurrentWorkspace);
   return useQuery({
     queryKey: ["current-org", user?.id],
     enabled: !!user,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("memberships")
-        .select("org_id, role, organizations(id, name, slug)")
-        .eq("user_id", user!.id)
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => ensureWorkspace(),
   });
 }
