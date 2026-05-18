@@ -5,9 +5,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
-import { Sparkles, AlertTriangle, TrendingUp, X, Bookmark } from "lucide-react";
-import { generateAiInsights } from "@/lib/insights.functions";
+import { Sparkles, AlertTriangle, TrendingUp, TrendingDown, X, Bookmark, Activity } from "lucide-react";
+import { generateAiInsights, getWeeklyTrend } from "@/lib/insights.functions";
 import { toast } from "sonner";
+import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/insights")({ component: Insights });
 
@@ -16,6 +17,13 @@ function Insights() {
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const generate = useServerFn(generateAiInsights);
+  const fetchTrend = useServerFn(getWeeklyTrend);
+
+  const { data: trend } = useQuery({
+    queryKey: ["weekly-trend", orgId],
+    enabled: !!orgId,
+    queryFn: () => fetchTrend(),
+  });
 
   const { data: ruleAlerts } = useQuery({
     queryKey: ["rule-alerts", orgId],
