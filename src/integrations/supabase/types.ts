@@ -271,6 +271,7 @@ export type Database = {
           payment_plan: boolean | null
           renewal_conv_started: boolean | null
           renewal_date: string | null
+          renewal_stage: string
           start_date: string
           status: string | null
           updated_at: string
@@ -290,6 +291,7 @@ export type Database = {
           payment_plan?: boolean | null
           renewal_conv_started?: boolean | null
           renewal_date?: string | null
+          renewal_stage?: string
           start_date?: string
           status?: string | null
           updated_at?: string
@@ -309,6 +311,7 @@ export type Database = {
           payment_plan?: boolean | null
           renewal_conv_started?: boolean | null
           renewal_date?: string | null
+          renewal_stage?: string
           start_date?: string
           status?: string | null
           updated_at?: string
