@@ -2,10 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-function workspaceSlug(userId: string) {
-  return `workspace-${userId.slice(0, 8)}`;
-}
-
 export const ensureCurrentWorkspace = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -28,7 +24,7 @@ export const ensureCurrentWorkspace = createServerFn({ method: "GET" })
 
     const { data: org, error: orgError } = await supabaseAdmin
       .from("organizations")
-      .insert({ name: "My Workspace", slug: workspaceSlug(userId) })
+      .insert({ name: "My Workspace", slug: `workspace-${userId.slice(0, 8)}` })
       .select("id, name, slug")
       .maybeSingle();
     if (orgError) throw new Error(orgError.message);
