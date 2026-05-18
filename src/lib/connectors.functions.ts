@@ -119,6 +119,9 @@ export const connectWorkspaceConnector = createServerFn({ method: "POST" })
     if (data.connectorId === "discord") {
       await verifyDiscordWebhook(validatedConfig.webhookUrl);
     }
+    if (data.connectorId === "zapier") {
+      await verifyZapierWebhook(validatedConfig.webhookUrl);
+    }
 
     const { data: existing, error: existingError } = await supabase
       .from("connector_connections")
