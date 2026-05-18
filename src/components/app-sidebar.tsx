@@ -68,8 +68,9 @@ export function AppSidebar() {
       <div className="flex items-center gap-2 px-4 py-4 border-b border-sidebar-border">
         <img src={c4Logo} alt="C4 Consulting" className="h-9 w-9 object-contain" />
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-sidebar-foreground">InsightOS</div>
-          <div className="truncate text-[11px] text-muted-foreground">{org?.organizations?.name ?? "Workspace"}</div>
+          <div className="eyebrow truncate">C4 · Insight</div>
+          <div className="display-serif truncate text-base text-sidebar-foreground">InsightOS</div>
+          <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground/80">{org?.organizations?.name ?? "Workspace"}</div>
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
@@ -109,11 +110,13 @@ export function AppSidebar() {
 
 export function TopBar({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <div className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-border bg-background/80 px-6 py-3 backdrop-blur">
-      <div>
-        <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
-        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
-      </div>
+    <div className="sticky top-0 z-20 border-b border-border bg-background/70 px-6 py-4 backdrop-blur-xl">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="eyebrow">— {subtitle ? "Dossier" : "Overview"}</div>
+          <h1 className="display-serif text-2xl md:text-[28px] leading-none mt-1">{title}</h1>
+          {subtitle && <p className="mt-1.5 text-xs text-muted-foreground">{subtitle}</p>}
+        </div>
       <div className="flex items-center gap-2">
         <div className="relative hidden md:block">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -123,6 +126,8 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
         <Button variant="ghost" size="icon" className="h-8 w-8"><Bell className="h-4 w-4" /></Button>
         <Button variant="ghost" size="icon" className="h-8 w-8"><Settings className="h-4 w-4" /></Button>
       </div>
+      </div>
+      <div className="rule-gold mt-4 -mx-6" />
     </div>
   );
 }
