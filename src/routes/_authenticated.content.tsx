@@ -10,8 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Video } from "lucide-react";
+import { Plus, Video, Layers } from "lucide-react";
 import { toast } from "sonner";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import type { Database } from "@/integrations/supabase/types";
 
 type Platform = Database["public"]["Enums"]["content_platform"];
@@ -24,6 +25,7 @@ function ContentIntel() {
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [slidesFor, setSlidesFor] = useState<string | null>(null);
 
   const { data: pieces } = useQuery({
     queryKey: ["content", orgId],
@@ -107,7 +109,7 @@ function ContentIntel() {
               <tr><th className="text-left p-3">Hook / Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
                 <th className="text-right p-3 font-mono">Views</th><th className="text-right p-3 font-mono">Leads</th>
                 <th className="text-right p-3 font-mono">Closes</th><th className="text-right p-3 font-mono">Cash</th>
-                <th className="text-right p-3 font-mono">Retention</th></tr>
+                <th className="text-right p-3 font-mono">Retention</th><th className="text-right p-3"></th></tr>
             </thead>
             <tbody>
               {(pieces ?? []).map((p) => {
@@ -129,11 +131,18 @@ function ContentIntel() {
                     <td className="p-3 text-right font-mono">{m?.closes ?? "—"}</td>
                     <td className="p-3 text-right font-mono">{m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"}</td>
                     <td className="p-3 text-right font-mono">{m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"}</td>
+                    <td className="p-3 text-right">
+                      {p.platform === "instagram" && (
+                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSlidesFor(p.id)}>
+                          <Layers className="h-3 w-3" />Slides
+                        </Button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
               {(!pieces || pieces.length === 0) && (
-                <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
+                <tr><td colSpan={9} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
               )}
             </tbody>
           </table>
