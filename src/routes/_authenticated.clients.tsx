@@ -79,7 +79,7 @@ function Clients() {
 
   const updateStage = useMutation({
     mutationFn: async ({ id, stage }: { id: string; stage: Stage }) => {
-      const patch: Record<string, unknown> = { renewal_stage: stage };
+      const patch: { renewal_stage: string; renewal_conv_started?: boolean; status?: string } = { renewal_stage: stage };
       if (stage === "conversation") patch.renewal_conv_started = true;
       if (stage === "churned") patch.status = "churned";
       if (stage === "won") patch.status = "active";
