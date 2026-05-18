@@ -123,10 +123,10 @@ Generate insights now.`;
       body: String(i.body || ""),
       recommendation: i.recommendation ? String(i.recommendation) : null,
       confidence: Math.min(1, Math.max(0, Number(i.confidence) || 0.5)),
-      source_refs: [{ snapshot: metrics }],
+      source_refs: [{ snapshot: metrics as unknown as Record<string, unknown> }] as never,
       generated_by: "gemini-2.5-flash",
     }));
-    const { error } = await supabase.from("ai_insights").insert(rows);
+    const { error } = await supabase.from("ai_insights").insert(rows as never);
     if (error) throw error;
     return { inserted: rows.length };
   });
