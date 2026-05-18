@@ -102,7 +102,6 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             <TeamMemberFilter role={role} value={member} onChange={setMember} />
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
-          <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4" />Log day</Button></DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>{isDialer ? "Inbound Dialer" : "DM Setter"} — daily log</DialogTitle></DialogHeader>
