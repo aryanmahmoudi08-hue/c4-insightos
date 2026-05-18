@@ -13,7 +13,7 @@ interface MetricsSnapshot {
   topCloser?: { name: string; cash: number };
 }
 
-async function gatherMetrics(supabase: ReturnType<typeof requireSupabaseAuth> extends never ? never : any, orgId: string): Promise<MetricsSnapshot> {
+async function gatherMetrics(supabase: any, orgId: string): Promise<MetricsSnapshot> {
   const since = new Date(Date.now() - 30 * 86400e3).toISOString();
   const sinceDate = since.slice(0, 10);
   const [pays, leads, calls, content, activity] = await Promise.all([
