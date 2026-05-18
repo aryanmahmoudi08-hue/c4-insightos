@@ -176,6 +176,35 @@ function Connectors() {
           {(!registry || registry.length === 0) && <div className="text-sm text-muted-foreground">Registry empty.</div>}
         </div>
       </div>
+      <Dialog open={!!setupConnector} onOpenChange={(open) => !open && setSetupConnector(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{setupConnector ? `Set up ${setupConnector.name}` : "Set up connector"}</DialogTitle>
+            <DialogDescription>Enter the required details so this connector knows exactly what software account, form, channel, or URL to use.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {setupConnector && fieldsFor(setupConnector.id).map((field) => (
+              <div key={field.key} className="space-y-2">
+                <Label htmlFor={`connector-${field.key}`}>{field.label}</Label>
+                <Input
+                  id={`connector-${field.key}`}
+                  type={field.type ?? "text"}
+                  value={setupValues[field.key] ?? ""}
+                  placeholder={field.placeholder}
+                  onChange={(event) => setSetupValues((current) => ({ ...current, [field.key]: event.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">{field.help}</p>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSetupConnector(null)}>Cancel</Button>
+            <Button disabled={connect.isPending} onClick={submitSetup}>
+              {connect.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save and connect"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
