@@ -123,7 +123,7 @@ export const connectWorkspaceConnector = createServerFn({ method: "POST" })
     if (existingError) throw new Error(existingError.message);
 
     let connectionId = existing?.id as string | undefined;
-    let config: Record<string, unknown> = { ...validatedConfig, verifiedAt: new Date().toISOString() };
+    let config: Record<string, string> = { ...validatedConfig, verifiedAt: new Date().toISOString() };
 
     if (connectionId) {
       if (data.connectorId === "typeform") {
