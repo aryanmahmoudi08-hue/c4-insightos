@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard, Video, GitBranch, MessageSquare, PhoneCall, Users, BadgeCheck,
-  TrendingUp, Sparkles, Plug, Settings, LogOut, Bell, Search,
+  TrendingUp, Sparkles, Plug, Settings, LogOut, Bell, Search, Brain, Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,11 +14,13 @@ const NAV: NavItem[] = [
   { to: "/content", label: "Content Intel", icon: Video },
   { to: "/attribution", label: "Attribution", icon: GitBranch },
   { to: "/dm-setter", label: "DM Setter", icon: MessageSquare },
-  { to: "/closer", label: "Closer", icon: PhoneCall, soon: true },
-  { to: "/clients", label: "Clients", icon: BadgeCheck, soon: true },
-  { to: "/traffic", label: "Traffic", icon: TrendingUp, soon: true },
-  { to: "/team", label: "Team", icon: Users, soon: true },
+  { to: "/closer", label: "Closer", icon: PhoneCall },
+  { to: "/clients", label: "Clients", icon: BadgeCheck },
+  { to: "/onboarding", label: "Onboarding", icon: Brain },
+  { to: "/traffic", label: "Traffic", icon: TrendingUp },
+  { to: "/team", label: "Team", icon: Users },
   { to: "/insights", label: "AI Insights", icon: Sparkles },
+  { to: "/events", label: "Event Bus", icon: Activity },
   { to: "/connectors", label: "Connectors", icon: Plug },
 ];
 
