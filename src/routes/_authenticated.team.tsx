@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
+import { TeamRosterPanel } from "@/components/team-roster-panel";
 import { Users } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/team")({ component: Team });
@@ -59,6 +60,8 @@ function Team() {
           <StatCard label="Setters" value={(members ?? []).filter(m => m.role === "setter").length} accent="primary" />
           <StatCard label="Closers" value={(members ?? []).filter(m => m.role === "closer").length} accent="success" />
         </div>
+        <TeamRosterPanel />
+
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <table className="w-full text-sm">
