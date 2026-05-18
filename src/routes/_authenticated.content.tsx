@@ -148,6 +148,98 @@ function ContentIntel() {
           </table>
         </div>
       </div>
+      <SlidesPanel orgId={orgId} contentId={slidesFor} onClose={() => setSlidesFor(null)} />
     </>
+  );
+}
+
+function SlidesPanel({ orgId, contentId, onClose }: { orgId?: string; contentId: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const { data: slides } = useQuery({
+    queryKey: ["slides", contentId],
+    enabled: !!contentId && !!orgId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("story_slides")
+        .select("id, sequence_index, caption, cta, slide_metrics(views, exits, taps_forward, taps_back, replies, link_clicks)")
+        .eq("content_id", contentId!)
+        .order("sequence_index");
+      return data ?? [];
+    },
+  });
+  const add = useMutation({
+    mutationFn: async (f: FormData) => {
+      const seq = Number(f.get("sequence_index") || (slides?.length ?? 0) + 1);
+      const { data: slide, error } = await supabase.from("story_slides").insert({
+        org_id: orgId!, content_id: contentId!, sequence_index: seq,
+        caption: String(f.get("caption") || "") || null, cta: String(f.get("cta") || "") || null,
+      }).select("id").single();
+      if (error) throw error;
+      await supabase.from("slide_metrics").insert({
+        org_id: orgId!, slide_id: slide.id,
+        views: Number(f.get("views") || 0), exits: Number(f.get("exits") || 0),
+        taps_forward: Number(f.get("taps_forward") || 0), taps_back: Number(f.get("taps_back") || 0),
+        replies: Number(f.get("replies") || 0), link_clicks: Number(f.get("link_clicks") || 0),
+      });
+    },
+    onSuccess: () => { toast.success("Slide tracked"); qc.invalidateQueries({ queryKey: ["slides"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  const chartData = (slides ?? []).map(s => {
+    const m = (s.slide_metrics ?? [])[0];
+    return { slide: `#${s.sequence_index}`, views: m?.views ?? 0, exits: m?.exits ?? 0 };
+  });
+
+  return (
+    <Dialog open={!!contentId} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Story sequence · slide drop-off</DialogTitle></DialogHeader>
+        {chartData.length > 0 && (
+          <div className="h-48 rounded border border-border bg-card p-2">
+            <ResponsiveContainer>
+              <LineChart data={chartData}>
+                <XAxis dataKey="slide" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: 12 }} />
+                <Line type="monotone" dataKey="views" stroke="oklch(0.65 0.18 250)" strokeWidth={2} />
+                <Line type="monotone" dataKey="exits" stroke="oklch(0.65 0.22 25)" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+        <div className="space-y-1">
+          {(slides ?? []).map(s => {
+            const m = (s.slide_metrics ?? [])[0];
+            const dropoff = m?.views ? Math.round(((m.exits ?? 0) / m.views) * 100) : 0;
+            return (
+              <div key={s.id} className="flex items-center gap-3 rounded border border-border bg-card/40 p-2 text-xs">
+                <span className="font-mono text-accent w-8">#{s.sequence_index}</span>
+                <span className="flex-1 truncate">{s.caption ?? <span className="text-muted-foreground">—</span>}</span>
+                <span className="font-mono">{m?.views ?? 0}v</span>
+                <span className={`font-mono ${dropoff > 30 ? "text-destructive" : "text-muted-foreground"}`}>{dropoff}% exit</span>
+              </div>
+            );
+          })}
+          {(!slides || slides.length === 0) && <div className="p-6 text-center text-xs text-muted-foreground">No slides yet.</div>}
+        </div>
+        <form className="space-y-2 border-t border-border pt-3" onSubmit={(e) => { e.preventDefault(); add.mutate(new FormData(e.currentTarget)); (e.target as HTMLFormElement).reset(); }}>
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Add slide</div>
+          <div className="grid grid-cols-2 gap-2">
+            <Input name="sequence_index" type="number" placeholder="Seq #" />
+            <Input name="caption" placeholder="Caption" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <Input name="views" type="number" placeholder="Views" />
+            <Input name="exits" type="number" placeholder="Exits" />
+            <Input name="taps_forward" type="number" placeholder="Fwd" />
+            <Input name="taps_back" type="number" placeholder="Back" />
+            <Input name="replies" type="number" placeholder="Replies" />
+            <Input name="link_clicks" type="number" placeholder="Clicks" />
+          </div>
+          <Button type="submit" size="sm" className="w-full" disabled={add.isPending}>Add slide</Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
