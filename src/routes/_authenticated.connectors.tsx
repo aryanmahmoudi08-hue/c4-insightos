@@ -123,7 +123,9 @@ function Connectors() {
           {(registry ?? []).map((c) => {
             const conn = stateFor(c.id);
             const isConnected = conn?.state === "connected";
-            const busy = (connect.isPending && connect.variables?.id === c.id) || (disconnect.isPending && disconnect.variables?.id === conn?.id);
+            const configured = isConfigured(conn, c.id);
+            const hasSetup = fieldsFor(c.id).length > 0;
+            const busy = (connect.isPending && connect.variables?.connector.id === c.id) || (disconnect.isPending && disconnect.variables?.id === conn?.id);
             return (
               <div key={c.id} className={`rounded-lg border bg-card p-4 transition-colors ${isConnected ? "border-[color:var(--color-success)]/60" : "border-border hover:border-primary/40"}`}>
                 <div className="flex items-start justify-between gap-3">
@@ -135,21 +137,35 @@ function Connectors() {
                     <div className="mt-1 text-[11px] uppercase tracking-wider text-muted-foreground">{c.category}</div>
                     {c.description && <p className="mt-2 text-xs text-muted-foreground line-clamp-2">{c.description}</p>}
                   </div>
-                  {isConnected ? (
+                  {isConnected && configured ? (
                     <span className="rounded bg-[color:var(--color-success)]/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--color-success)] flex items-center gap-1">
                       <CheckCircle2 className="h-3 w-3" /> connected
                     </span>
+                  ) : isConnected ? (
+                    <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">setup needed</span>
                   ) : (
                     <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">available</span>
                   )}
                 </div>
+                {isConnected && hasSetup && (
+                  <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    {configured ? "Setup details saved" : "Add the required setup details to make this connector usable."}
+                  </div>
+                )}
                 <div className="mt-3 flex gap-2">
                   {isConnected ? (
-                    <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => conn && disconnect.mutate(conn)}>
-                      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Disconnect"}
-                    </Button>
+                    <>
+                      {hasSetup && (
+                        <Button size="sm" className="w-full" disabled={busy} onClick={() => openSetup(c, conn)}>
+                          <Settings2 className="h-3.5 w-3.5" /> Setup
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => conn && disconnect.mutate(conn)}>
+                        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Disconnect"}
+                      </Button>
+                    </>
                   ) : (
-                    <Button size="sm" className="w-full" disabled={busy} onClick={() => connect.mutate(c)}>
+                    <Button size="sm" className="w-full" disabled={busy} onClick={() => hasSetup ? openSetup(c, conn) : connect.mutate({ connector: c, config: {} })}>
                       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Connect"}
                     </Button>
                   )}
