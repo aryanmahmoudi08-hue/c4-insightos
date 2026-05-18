@@ -6,6 +6,8 @@ import { TopBar } from "@/components/app-sidebar";
 import { Plug, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { connectWorkspaceConnector, disconnectWorkspaceConnector } from "@/lib/connectors.functions";
 
 export const Route = createFileRoute("/_authenticated/connectors")({ component: Connectors });
 
@@ -16,6 +18,8 @@ function Connectors() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const qc = useQueryClient();
+  const connectConnector = useServerFn(connectWorkspaceConnector);
+  const disconnectConnector = useServerFn(disconnectWorkspaceConnector);
 
   const { data: registry } = useQuery({
     queryKey: ["connector-registry"],
@@ -41,54 +45,19 @@ function Connectors() {
 
   const connect = useMutation({
     mutationFn: async (c: ConnectorRow) => {
-      if (!orgId) throw new Error("No workspace");
-      const existing = (connections ?? []).find(x => x.connector_id === c.id);
-      let connectionId = existing?.id;
-      if (existing) {
-        const { error } = await supabase
-          .from("connector_connections")
-          .update({ state: "connected" })
-          .eq("id", existing.id);
-        if (error) throw error;
-      } else {
-        const { data: inserted, error } = await supabase
-          .from("connector_connections")
-          .insert({
-            org_id: orgId,
-            connector_id: c.id,
-            state: "connected",
-            display_name: c.name,
-          })
-          .select("id")
-          .single();
-        if (error) throw error;
-        connectionId = inserted.id;
-      }
-      if (connectionId) {
-        await supabase.from("connector_sync_status").insert({
-          org_id: orgId,
-          connection_id: connectionId,
-          resource: "default",
-          state: "connected",
-          last_sync_at: new Date().toISOString(),
-        } as never);
-      }
-      return c.name;
+      const result = await connectConnector({ data: { connectorId: c.id } });
+      return result.name;
     },
     onSuccess: (name) => { toast.success(`${name} connected`); qc.invalidateQueries({ queryKey: ["connector-connections", orgId] }); },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not connect this connector"),
   });
 
   const disconnect = useMutation({
     mutationFn: async (conn: ConnectionRow) => {
-      const { error } = await supabase
-        .from("connector_connections")
-        .update({ state: "not_connected" })
-        .eq("id", conn.id);
-      if (error) throw error;
+      await disconnectConnector({ data: { connectorId: conn.connector_id } });
     },
     onSuccess: () => { toast.success("Disconnected"); qc.invalidateQueries({ queryKey: ["connector-connections", orgId] }); },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not disconnect this connector"),
   });
 
   const stateFor = (cid: string) => (connections ?? []).find(c => c.connector_id === cid);
