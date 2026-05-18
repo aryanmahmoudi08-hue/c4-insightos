@@ -14,7 +14,9 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.index'
 import { Route as AuthenticatedTrafficRouteImport } from './routes/_authenticated.traffic'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
+import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated.onboarding'
 import { Route as AuthenticatedInsightsRouteImport } from './routes/_authenticated.insights'
+import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated.events'
 import { Route as AuthenticatedDmSetterRouteImport } from './routes/_authenticated.dm-setter'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedContentRouteImport } from './routes/_authenticated.content'
@@ -47,9 +49,19 @@ const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
   path: '/team',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedInsightsRoute = AuthenticatedInsightsRouteImport.update({
   id: '/insights',
   path: '/insights',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedEventsRoute = AuthenticatedEventsRouteImport.update({
+  id: '/events',
+  path: '/events',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedDmSetterRoute = AuthenticatedDmSetterRouteImport.update({
@@ -99,7 +111,9 @@ export interface FileRoutesByFullPath {
   '/content': typeof AuthenticatedContentRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
+  '/events': typeof AuthenticatedEventsRoute
   '/insights': typeof AuthenticatedInsightsRoute
+  '/onboarding': typeof AuthenticatedOnboardingRoute
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
 }
@@ -112,7 +126,9 @@ export interface FileRoutesByTo {
   '/content': typeof AuthenticatedContentRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
+  '/events': typeof AuthenticatedEventsRoute
   '/insights': typeof AuthenticatedInsightsRoute
+  '/onboarding': typeof AuthenticatedOnboardingRoute
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/': typeof AuthenticatedIndexRoute
@@ -128,7 +144,9 @@ export interface FileRoutesById {
   '/_authenticated/content': typeof AuthenticatedContentRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/dm-setter': typeof AuthenticatedDmSetterRoute
+  '/_authenticated/events': typeof AuthenticatedEventsRoute
   '/_authenticated/insights': typeof AuthenticatedInsightsRoute
+  '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/traffic': typeof AuthenticatedTrafficRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
@@ -145,7 +163,9 @@ export interface FileRouteTypes {
     | '/content'
     | '/dashboard'
     | '/dm-setter'
+    | '/events'
     | '/insights'
+    | '/onboarding'
     | '/team'
     | '/traffic'
   fileRoutesByTo: FileRoutesByTo
@@ -158,7 +178,9 @@ export interface FileRouteTypes {
     | '/content'
     | '/dashboard'
     | '/dm-setter'
+    | '/events'
     | '/insights'
+    | '/onboarding'
     | '/team'
     | '/traffic'
     | '/'
@@ -173,7 +195,9 @@ export interface FileRouteTypes {
     | '/_authenticated/content'
     | '/_authenticated/dashboard'
     | '/_authenticated/dm-setter'
+    | '/_authenticated/events'
     | '/_authenticated/insights'
+    | '/_authenticated/onboarding'
     | '/_authenticated/team'
     | '/_authenticated/traffic'
     | '/_authenticated/'
@@ -221,11 +245,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTeamRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/onboarding': {
+      id: '/_authenticated/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof AuthenticatedOnboardingRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/insights': {
       id: '/_authenticated/insights'
       path: '/insights'
       fullPath: '/insights'
       preLoaderRoute: typeof AuthenticatedInsightsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/events': {
+      id: '/_authenticated/events'
+      path: '/events'
+      fullPath: '/events'
+      preLoaderRoute: typeof AuthenticatedEventsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/dm-setter': {
@@ -288,7 +326,9 @@ interface AuthenticatedRouteChildren {
   AuthenticatedContentRoute: typeof AuthenticatedContentRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDmSetterRoute: typeof AuthenticatedDmSetterRoute
+  AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
   AuthenticatedInsightsRoute: typeof AuthenticatedInsightsRoute
+  AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedTrafficRoute: typeof AuthenticatedTrafficRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
@@ -302,7 +342,9 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedContentRoute: AuthenticatedContentRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDmSetterRoute: AuthenticatedDmSetterRoute,
+  AuthenticatedEventsRoute: AuthenticatedEventsRoute,
   AuthenticatedInsightsRoute: AuthenticatedInsightsRoute,
+  AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedTrafficRoute: AuthenticatedTrafficRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,

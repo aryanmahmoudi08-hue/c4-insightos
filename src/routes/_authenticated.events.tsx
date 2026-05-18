@@ -86,9 +86,9 @@ function EventsBus() {
         org_id: orgId!,
         name: String(f.get("name") || ""),
         target_url: String(f.get("target_url") || ""),
-        secret: String(f.get("secret") || ""),
+        signing_secret: String(f.get("secret") || ""),
         event_types,
-        is_active: true,
+        active: true,
       });
       if (error) throw error;
     },

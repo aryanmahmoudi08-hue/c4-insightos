@@ -57,7 +57,7 @@ function Traffic() {
 
   const breakdown = (sources ?? []).map(s => {
     const matched = (leads ?? []).filter(l => l.traffic_source_id === s.id);
-    const won = matched.filter(l => l.status === "client_won").length;
+    const won = matched.filter(l => l.status === "closed").length;
     return { name: s.name, category: s.category, leads: matched.length, clients: won, conv: matched.length ? Math.round((won/matched.length)*100) : 0 };
   });
   const unattributed = (leads ?? []).filter(l => !l.traffic_source_id).length;

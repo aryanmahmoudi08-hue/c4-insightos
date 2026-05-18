@@ -54,7 +54,7 @@ function Closer() {
       const payload = {
         org_id: orgId!,
         lead_id: (f.get("lead_id") as string) || null,
-        status: (f.get("status") as "booked"|"showed"|"no_show"|"rescheduled"|"closed_won"|"closed_lost"),
+        status: (f.get("status") as "booked"|"showed"|"no_show"|"rescheduled"|"closed"|"offer_made"|"disqualified"|"follow_up"),
         scheduled_for: f.get("scheduled_for") ? new Date(String(f.get("scheduled_for"))).toISOString() : null,
         showed, offer_made, closed,
         contract_value_cents: Math.round(Number(f.get("contract_value") || 0) * 100),
@@ -102,8 +102,8 @@ function Closer() {
                       <SelectContent>{(leadList ?? []).map(l => <SelectItem key={l.id} value={l.id}>{l.full_name || l.handle || l.id.slice(0,6)}</SelectItem>)}</SelectContent>
                     </Select></div>
                   <div className="space-y-1.5"><Label>Status</Label>
-                    <Select name="status" defaultValue="closed_won"><SelectTrigger><SelectValue/></SelectTrigger>
-                      <SelectContent>{["booked","showed","no_show","rescheduled","closed_won","closed_lost"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                    <Select name="status" defaultValue="closed"><SelectTrigger><SelectValue/></SelectTrigger>
+                      <SelectContent>{["booked","showed","no_show","rescheduled","offer_made","closed","disqualified","follow_up"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
                     </Select></div>
                 </div>
                 <div className="space-y-1.5"><Label>Scheduled for</Label><Input name="scheduled_for" type="datetime-local" /></div>
