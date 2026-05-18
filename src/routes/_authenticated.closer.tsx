@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { TeamMemberPicker } from "@/components/team-member-picker";
+import { TeamMemberFilter, ALL_MEMBERS } from "@/components/team-member-filter";
 
 export const Route = createFileRoute("/_authenticated/closer")({ component: Closer });
 
@@ -34,6 +35,7 @@ function Closer() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [range, setRange] = useState<DateRange>(RANGES.last30());
+  const [member, setMember] = useState<string>(ALL_MEMBERS);
 
   const { data: calls } = useQuery({
     queryKey: ["calls", orgId, range.from, range.to],
@@ -61,7 +63,7 @@ function Closer() {
     },
   });
 
-  const list = calls ?? [];
+  const list = (calls ?? []).filter(c => member === ALL_MEMBERS || c.closer_name === member);
   const onCalendar = list.length;
   const showed = list.filter(c => c.showed).length;
   const offers = list.filter(c => c.offer_made).length;
@@ -108,7 +110,10 @@ function Closer() {
         <DashboardBar title="CLOSER DASHBOARD" accent="destructive" />
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <DateRangePicker value={range} onChange={setRange} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <DateRangePicker value={range} onChange={setRange} />
+            <TeamMemberFilter role="closer" value={member} onChange={setMember} />
+          </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4" />Log call</Button></DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

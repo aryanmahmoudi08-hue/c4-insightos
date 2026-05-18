@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { TeamMemberPicker } from "@/components/team-member-picker";
+import { TeamMemberFilter, ALL_MEMBERS } from "@/components/team-member-filter";
 
 export type ActivityRole = "dm_setter" | "inbound_dialer";
 
@@ -28,9 +29,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [range, setRange] = useState<DateRange>(RANGES.last30());
+  const [member, setMember] = useState<string>(ALL_MEMBERS);
   const isDialer = role === "inbound_dialer";
 
-  const { data: rows } = useQuery({
+  const { data: allRows } = useQuery({
     queryKey: ["activity", role, orgId, range.from, range.to],
     enabled: !!orgId,
     queryFn: async () => {
@@ -42,6 +44,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       return data;
     },
   });
+  const rows = member === ALL_MEMBERS ? allRows : (allRows ?? []).filter(r => r.team_member_name === member);
 
   const sum = (k: string) => (rows ?? []).reduce((s, r) => s + (Number((r as Record<string, unknown>)[k] ?? 0) || 0), 0);
   const dials = sum("dials");
@@ -94,7 +97,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         <DashboardBar title={isDialer ? "SETTER DASHBOARD (INBOUND DIALER)" : "DM SETTER DASHBOARD"} accent={isDialer ? "accent" : "primary"} />
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <DateRangePicker value={range} onChange={setRange} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <DateRangePicker value={range} onChange={setRange} />
+            <TeamMemberFilter role={role} value={member} onChange={setMember} />
+          </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4" />Log day</Button></DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
