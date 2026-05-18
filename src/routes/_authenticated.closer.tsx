@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import { TeamMemberPicker } from "@/components/team-member-picker";
 
 export const Route = createFileRoute("/_authenticated/closer")({ component: Closer });
 
