@@ -3,20 +3,31 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Video, Layers } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Plus, Video, Layers, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import type { Database } from "@/integrations/supabase/types";
 
 type Platform = Database["public"]["Enums"]["content_platform"];
 type Angle = Database["public"]["Enums"]["content_angle"];
+
+type PieceRow = {
+  id: string; title: string | null; platform: Platform; hook: string | null;
+  angle: Angle | null; posted_at: string | null; url: string | null;
+  hook_score: number | null;
+  content_metrics: { views: number | null; leads_generated: number | null; closes: number | null;
+    cash_collected_cents: number | null; hook_retention_pct: number | null }[] | null;
+};
+
+type Prefill = { title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; hook_score?: number };
 
 export const Route = createFileRoute("/_authenticated/content")({ component: ContentIntel });
 
@@ -25,6 +36,7 @@ function ContentIntel() {
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [prefill, setPrefill] = useState<Prefill | null>(null);
   const [slidesFor, setSlidesFor] = useState<string | null>(null);
 
   const { data: pieces } = useQuery({
@@ -33,12 +45,12 @@ function ContentIntel() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("content_pieces")
-        .select("id, title, platform, hook, angle, posted_at, url, content_metrics(views, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
+        .select("id, title, platform, hook, angle, posted_at, url, hook_score, content_metrics(views, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
         .eq("org_id", orgId!)
         .order("posted_at", { ascending: false, nullsFirst: false })
         .limit(50);
       if (error) throw error;
-      return data;
+      return data as unknown as PieceRow[];
     },
   });
 
@@ -51,6 +63,7 @@ function ContentIntel() {
         platform: form.get("platform") as Platform,
         angle: (form.get("angle") as Angle) || null,
         url: String(form.get("url") || "") || null,
+        hook_score: form.get("hook_score") ? Number(form.get("hook_score")) : null,
         posted_at: new Date().toISOString(),
       };
       const { data: piece, error } = await supabase.from("content_pieces").insert(payload).select("id").single();
@@ -64,9 +77,47 @@ function ContentIntel() {
       };
       await supabase.from("content_metrics").insert(m);
     },
-    onSuccess: () => { toast.success("Content logged"); qc.invalidateQueries({ queryKey: ["content"] }); setOpen(false); },
+    onSuccess: () => { toast.success("Content logged"); qc.invalidateQueries({ queryKey: ["content"] }); setOpen(false); setPrefill(null); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
+
+  const replicate = (p: PieceRow) => {
+    setPrefill({
+      title: p.title ? `${p.title} (v2)` : undefined,
+      hook: p.hook ?? undefined,
+      platform: p.platform,
+      angle: p.angle ?? undefined,
+      url: undefined,
+      hook_score: p.hook_score ?? undefined,
+    });
+    setOpen(true);
+  };
+
+  // Weekly calendar grid (last 6 weeks)
+  const calendar = useMemo(() => {
+    const today = new Date();
+    const day = today.getDay(); // Sun=0
+    const start = new Date(today); start.setDate(today.getDate() - day - 35); // 6 weeks back, Sunday
+    const weeks: { date: string; pieces: PieceRow[] }[][] = [];
+    for (let w = 0; w < 6; w++) {
+      const week: { date: string; pieces: PieceRow[] }[] = [];
+      for (let d = 0; d < 7; d++) {
+        const dt = new Date(start.getTime() + (w * 7 + d) * 86400e3);
+        const iso = dt.toISOString().slice(0, 10);
+        week.push({ date: iso, pieces: [] });
+      }
+      weeks.push(week);
+    }
+    for (const p of pieces ?? []) {
+      if (!p.posted_at) continue;
+      const iso = p.posted_at.slice(0, 10);
+      for (const week of weeks) {
+        const slot = week.find(s => s.date === iso);
+        if (slot) { slot.pieces.push(p); break; }
+      }
+    }
+    return weeks;
+  }, [pieces]);
 
   return (
     <>
@@ -74,24 +125,27 @@ function ContentIntel() {
       <div className="p-6 space-y-4">
         <div className="flex justify-between items-center">
           <div className="text-xs text-muted-foreground">{pieces?.length ?? 0} pieces tracked</div>
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setPrefill(null); }}>
             <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4" />Log content</Button></DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Log content piece</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{prefill ? "Replicate content piece" : "Log content piece"}</DialogTitle></DialogHeader>
               <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); create.mutate(new FormData(e.currentTarget)); }}>
-                <div className="space-y-1.5"><Label>Title</Label><Input name="title" required /></div>
-                <div className="space-y-1.5"><Label>Hook (first 3 sec)</Label><Textarea name="hook" rows={2} /></div>
+                <div className="space-y-1.5"><Label>Title</Label><Input name="title" defaultValue={prefill?.title ?? ""} required /></div>
+                <div className="space-y-1.5"><Label>Hook (first 3 sec)</Label><Textarea name="hook" rows={2} defaultValue={prefill?.hook ?? ""} /></div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5"><Label>Platform / format</Label>
-                    <Select name="platform" defaultValue="reel"><SelectTrigger><SelectValue/></SelectTrigger>
+                    <Select name="platform" defaultValue={prefill?.platform ?? "reel"}><SelectTrigger><SelectValue/></SelectTrigger>
                       <SelectContent>{["reel","story_sequence","post","carousel","youtube","youtube_short","tiktok","vsl","ad_creative","email","dm","other"].map(p =>
                         <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
                   <div className="space-y-1.5"><Label>Angle</Label>
-                    <Select name="angle" defaultValue="authority"><SelectTrigger><SelectValue/></SelectTrigger>
+                    <Select name="angle" defaultValue={prefill?.angle ?? "authority"}><SelectTrigger><SelectValue/></SelectTrigger>
                       <SelectContent>{["authority","story","contrarian","tutorial","case_study","aspirational","fear","social_proof"].map(p =>
                         <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
                 </div>
-                <div className="space-y-1.5"><Label>URL</Label><Input name="url" type="url" /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5"><Label>URL</Label><Input name="url" type="url" /></div>
+                  <div className="space-y-1.5"><Label>Hook score (1–10)</Label><Input name="hook_score" type="number" min={1} max={10} defaultValue={prefill?.hook_score ?? ""} /></div>
+                </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1.5"><Label>Views</Label><Input name="views" type="number" defaultValue={0} /></div>
                   <div className="space-y-1.5"><Label>Leads</Label><Input name="leads" type="number" defaultValue={0} /></div>
@@ -103,50 +157,96 @@ function ContentIntel() {
           </Dialog>
         </div>
 
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
-              <tr><th className="text-left p-3">Hook / Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
-                <th className="text-right p-3 font-mono">Views</th><th className="text-right p-3 font-mono">Leads</th>
-                <th className="text-right p-3 font-mono">Closes</th><th className="text-right p-3 font-mono">Cash</th>
-                <th className="text-right p-3 font-mono">Retention</th><th className="text-right p-3"></th></tr>
-            </thead>
-            <tbody>
-              {(pieces ?? []).map((p) => {
-                const m = (p.content_metrics ?? [])[0];
-                return (
-                  <tr key={p.id} className="border-t border-border hover:bg-muted/20">
-                    <td className="p-3">
-                      <div className="flex items-center gap-2"><Video className="h-3.5 w-3.5 text-muted-foreground" />
-                        <div className="min-w-0">
-                          <div className="truncate font-medium">{p.title || "(untitled)"}</div>
-                          {p.hook && <div className="truncate text-[11px] text-muted-foreground">{p.hook}</div>}
+        <Tabs defaultValue="table">
+          <TabsList>
+            <TabsTrigger value="table">Table</TabsTrigger>
+            <TabsTrigger value="calendar">Calendar</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="table">
+            <div className="rounded-lg border border-border bg-card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <tr><th className="text-left p-3">Hook / Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
+                    <th className="text-center p-3 font-mono">Hook</th>
+                    <th className="text-right p-3 font-mono">Views</th><th className="text-right p-3 font-mono">Leads</th>
+                    <th className="text-right p-3 font-mono">Closes</th><th className="text-right p-3 font-mono">Cash</th>
+                    <th className="text-right p-3 font-mono">Retention</th><th className="text-right p-3"></th></tr>
+                </thead>
+                <tbody>
+                  {(pieces ?? []).map((p) => {
+                    const m = (p.content_metrics ?? [])[0];
+                    return (
+                      <tr key={p.id} className="border-t border-border hover:bg-muted/20">
+                        <td className="p-3">
+                          <div className="flex items-center gap-2"><Video className="h-3.5 w-3.5 text-muted-foreground" />
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">{p.title || "(untitled)"}</div>
+                              {p.hook && <div className="truncate text-[11px] text-muted-foreground">{p.hook}</div>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-3 text-xs uppercase text-muted-foreground">{p.platform}</td>
+                        <td className="p-3 text-xs">{p.angle ?? "—"}</td>
+                        <td className="p-3 text-center font-mono">{p.hook_score ?? "—"}</td>
+                        <td className="p-3 text-right font-mono">{m?.views?.toLocaleString() ?? "—"}</td>
+                        <td className="p-3 text-right font-mono">{m?.leads_generated ?? "—"}</td>
+                        <td className="p-3 text-right font-mono">{m?.closes ?? "—"}</td>
+                        <td className="p-3 text-right font-mono">{m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"}</td>
+                        <td className="p-3 text-right font-mono">{m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"}</td>
+                        <td className="p-3 text-right whitespace-nowrap">
+                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => replicate(p)}>
+                            <Copy className="h-3 w-3" />Replicate
+                          </Button>
+                          {p.platform === "story_sequence" && (
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSlidesFor(p.id)}>
+                              <Layers className="h-3 w-3" />Slides
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(!pieces || pieces.length === 0) && (
+                    <tr><td colSpan={10} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="calendar">
+            <div className="rounded-lg border border-border bg-card p-3">
+              <div className="grid grid-cols-7 gap-1 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => <div key={d} className="p-1 text-center">{d}</div>)}
+              </div>
+              <div className="space-y-1">
+                {calendar.map((week, wi) => (
+                  <div key={wi} className="grid grid-cols-7 gap-1">
+                    {week.map(slot => {
+                      const today = new Date().toISOString().slice(0, 10);
+                      const isToday = slot.date === today;
+                      const dayNum = Number(slot.date.slice(8, 10));
+                      return (
+                        <div key={slot.date} className={`min-h-[72px] rounded border ${isToday ? "border-primary bg-primary/5" : "border-border bg-card"} p-1.5 text-[11px]`}>
+                          <div className={`font-mono mb-1 ${isToday ? "text-primary font-semibold" : "text-muted-foreground"}`}>{dayNum}</div>
+                          <div className="space-y-0.5">
+                            {slot.pieces.slice(0, 3).map(p => (
+                              <div key={p.id} className="truncate rounded bg-accent/15 text-accent px-1 py-0.5" title={p.title ?? ""}>
+                                {p.title ?? p.platform}
+                              </div>
+                            ))}
+                            {slot.pieces.length > 3 && <div className="text-muted-foreground">+{slot.pieces.length - 3}</div>}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="p-3 text-xs uppercase text-muted-foreground">{p.platform}</td>
-                    <td className="p-3 text-xs">{p.angle ?? "—"}</td>
-                    <td className="p-3 text-right font-mono">{m?.views?.toLocaleString() ?? "—"}</td>
-                    <td className="p-3 text-right font-mono">{m?.leads_generated ?? "—"}</td>
-                    <td className="p-3 text-right font-mono">{m?.closes ?? "—"}</td>
-                    <td className="p-3 text-right font-mono">{m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"}</td>
-                    <td className="p-3 text-right font-mono">{m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"}</td>
-                    <td className="p-3 text-right">
-                      {p.platform === "story_sequence" && (
-                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSlidesFor(p.id)}>
-                          <Layers className="h-3 w-3" />Slides
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-              {(!pieces || pieces.length === 0) && (
-                <tr><td colSpan={9} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
       <SlidesPanel orgId={orgId} contentId={slidesFor} onClose={() => setSlidesFor(null)} />
     </>
