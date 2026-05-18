@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
+import { TeamRosterPanel } from "@/components/team-roster-panel";
 import { Users } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/team")({ component: Team });
