@@ -91,6 +91,65 @@ function Insights() {
           </div>
         </div>
 
+        {/* Weekly trend strip — multi-week patterns, not snapshots */}
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Activity className="h-4 w-4 text-accent" />
+            <div className="text-sm font-semibold">4-week trend patterns</div>
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">multi-week direction</span>
+          </div>
+          {trend?.trends && trend.trends.length > 0 && (
+            <div className="mb-3 space-y-1">
+              {trend.trends.map((t, i) => {
+                const declining = /declined|down/.test(t);
+                return (
+                  <div key={i} className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs ${declining ? "bg-destructive/10 text-destructive" : "bg-[color:var(--color-success)]/10 text-[color:var(--color-success)]"}`}>
+                    {declining ? <TrendingDown className="h-3.5 w-3.5" /> : <TrendingUp className="h-3.5 w-3.5" />}
+                    {t}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[
+              { key: "cash", label: "Cash collected", color: "oklch(0.7 0.18 150)", fmt: (v: number) => `$${Math.round(v/100).toLocaleString()}` },
+              { key: "totalCalls", label: "Calls booked", color: "oklch(0.65 0.18 250)", fmt: (v: number) => String(v) },
+              { key: "views", label: "Content views", color: "oklch(0.7 0.2 25)", fmt: (v: number) => v.toLocaleString() },
+            ].map(m => {
+              const data = (trend?.weeks ?? []).map(w => ({ week: w.weekStart.slice(5), value: Number((w as unknown as Record<string, unknown>)[m.key]) }));
+              const last = data[data.length - 1]?.value ?? 0;
+              const prev = data[data.length - 2]?.value ?? 0;
+              const delta = prev > 0 ? ((last - prev) / prev) * 100 : 0;
+              return (
+                <div key={m.key} className="rounded-md border border-border bg-background/40 p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{m.label}</div>
+                    <div className={`text-[11px] font-mono ${delta > 0 ? "text-[color:var(--color-success)]" : delta < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                      {delta > 0 ? "+" : ""}{delta.toFixed(0)}%
+                    </div>
+                  </div>
+                  <div className="font-mono text-lg font-semibold mt-0.5">{m.fmt(last)}</div>
+                  <div className="h-16 mt-1">
+                    <ResponsiveContainer>
+                      <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                        <CartesianGrid vertical={false} stroke="oklch(0.3 0.02 260 / 0.15)" />
+                        <XAxis dataKey="week" hide />
+                        <YAxis hide />
+                        <Tooltip contentStyle={{ background: "oklch(0.15 0.02 260)", border: "1px solid oklch(0.3 0.02 260)", fontSize: 11 }} />
+                        <Line type="monotone" dataKey="value" stroke={m.color} strokeWidth={2} dot={{ r: 2 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {(!trend?.weeks || trend.weeks.length === 0) && (
+            <div className="text-xs text-muted-foreground text-center py-6">Need at least one week of activity to surface trend patterns.</div>
+          )}
+        </div>
+
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30">
             <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-accent" /><div className="text-sm font-semibold">Gemini grounded insights</div></div>
