@@ -171,10 +171,12 @@ export type Database = {
           cash_collected_cents: number | null
           closed: boolean | null
           closer_id: string | null
+          closer_name: string | null
           contract_value_cents: number | null
           created_at: string
           id: string
           key_moment: string | null
+          lead_email: string | null
           lead_id: string | null
           offer_made: boolean | null
           org_id: string
@@ -192,10 +194,12 @@ export type Database = {
           cash_collected_cents?: number | null
           closed?: boolean | null
           closer_id?: string | null
+          closer_name?: string | null
           contract_value_cents?: number | null
           created_at?: string
           id?: string
           key_moment?: string | null
+          lead_email?: string | null
           lead_id?: string | null
           offer_made?: boolean | null
           org_id: string
@@ -213,10 +217,12 @@ export type Database = {
           cash_collected_cents?: number | null
           closed?: boolean | null
           closer_id?: string | null
+          closer_name?: string | null
           contract_value_cents?: number | null
           created_at?: string
           id?: string
           key_moment?: string | null
+          lead_email?: string | null
           lead_id?: string | null
           offer_made?: boolean | null
           org_id?: string
@@ -1509,6 +1515,81 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      setter_activity: {
+        Row: {
+          activity_date: string
+          calls_on_calendar: number | null
+          cash_collected_cents: number | null
+          closes: number | null
+          connections: number | null
+          created_at: string
+          dials: number | null
+          downsells: number | null
+          id: string
+          leads_contacted: number | null
+          live_calls: number | null
+          notes: string | null
+          objections: string | null
+          org_id: string
+          qualified_convos: number | null
+          rate_today: number | null
+          role: string
+          sets: number | null
+          team_member_name: string
+          total_revenue_cents: number | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          activity_date?: string
+          calls_on_calendar?: number | null
+          cash_collected_cents?: number | null
+          closes?: number | null
+          connections?: number | null
+          created_at?: string
+          dials?: number | null
+          downsells?: number | null
+          id?: string
+          leads_contacted?: number | null
+          live_calls?: number | null
+          notes?: string | null
+          objections?: string | null
+          org_id: string
+          qualified_convos?: number | null
+          rate_today?: number | null
+          role?: string
+          sets?: number | null
+          team_member_name: string
+          total_revenue_cents?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          activity_date?: string
+          calls_on_calendar?: number | null
+          cash_collected_cents?: number | null
+          closes?: number | null
+          connections?: number | null
+          created_at?: string
+          dials?: number | null
+          downsells?: number | null
+          id?: string
+          leads_contacted?: number | null
+          live_calls?: number | null
+          notes?: string | null
+          objections?: string | null
+          org_id?: string
+          qualified_convos?: number | null
+          rate_today?: number | null
+          role?: string
+          sets?: number | null
+          team_member_name?: string
+          total_revenue_cents?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
       }
       slide_metrics: {
         Row: {
