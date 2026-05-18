@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { ensureWorkspaceForUser } from "./workspace.server";
 
 const ConnectorInput = z.object({ connectorId: z.string().min(1).max(80) });
 
@@ -12,8 +13,9 @@ async function getOrgId(supabase: any, userId: string) {
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data?.org_id) throw new Error("No workspace found for this account");
-  return data.org_id as string;
+  if (data?.org_id) return data.org_id as string;
+  const workspace = await ensureWorkspaceForUser(userId);
+  return workspace.org_id;
 }
 
 export const connectWorkspaceConnector = createServerFn({ method: "POST" })

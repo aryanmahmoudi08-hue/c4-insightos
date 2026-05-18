@@ -48,7 +48,11 @@ function Connectors() {
       const result = await connectConnector({ data: { connectorId: c.id } });
       return result.name;
     },
-    onSuccess: (name) => { toast.success(`${name} connected`); qc.invalidateQueries({ queryKey: ["connector-connections", orgId] }); },
+    onSuccess: (name) => {
+      toast.success(`${name} connected`);
+      qc.invalidateQueries({ queryKey: ["current-org"] });
+      qc.invalidateQueries({ queryKey: ["connector-connections"] });
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Could not connect this connector"),
   });
 
@@ -56,7 +60,7 @@ function Connectors() {
     mutationFn: async (conn: ConnectionRow) => {
       await disconnectConnector({ data: { connectorId: conn.connector_id } });
     },
-    onSuccess: () => { toast.success("Disconnected"); qc.invalidateQueries({ queryKey: ["connector-connections", orgId] }); },
+    onSuccess: () => { toast.success("Disconnected"); qc.invalidateQueries({ queryKey: ["connector-connections"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Could not disconnect this connector"),
   });
 
