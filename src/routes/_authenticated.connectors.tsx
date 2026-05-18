@@ -41,7 +41,9 @@ function Connectors() {
 
   const connect = useMutation({
     mutationFn: async (c: ConnectorRow) => {
+      if (!orgId) throw new Error("No workspace");
       const existing = (connections ?? []).find(x => x.connector_id === c.id);
+      let connectionId = existing?.id;
       if (existing) {
         const { error } = await supabase
           .from("connector_connections")
@@ -49,22 +51,28 @@ function Connectors() {
           .eq("id", existing.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("connector_connections").insert({
-          org_id: orgId!,
-          connector_id: c.id,
-          state: "connected",
-          display_name: c.name,
-        });
+        const { data: inserted, error } = await supabase
+          .from("connector_connections")
+          .insert({
+            org_id: orgId,
+            connector_id: c.id,
+            state: "connected",
+            display_name: c.name,
+          })
+          .select("id")
+          .single();
         if (error) throw error;
+        connectionId = inserted.id;
       }
-      // also seed a sync status row so downstream modules have something to render
-      await supabase.from("connector_sync_status").upsert({
-        org_id: orgId!,
-        connection_id: (existing?.id) ?? null,
-        resource: "default",
-        state: "connected",
-        last_sync_at: new Date().toISOString(),
-      } as never);
+      if (connectionId) {
+        await supabase.from("connector_sync_status").insert({
+          org_id: orgId,
+          connection_id: connectionId,
+          resource: "default",
+          state: "connected",
+          last_sync_at: new Date().toISOString(),
+        } as never);
+      }
       return c.name;
     },
     onSuccess: (name) => { toast.success(`${name} connected`); qc.invalidateQueries({ queryKey: ["connector-connections", orgId] }); },
