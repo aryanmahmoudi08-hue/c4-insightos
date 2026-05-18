@@ -20,6 +20,7 @@ const TOP_NAV: NavItem[] = [
 ];
 
 const SALES_TEAM: NavItem[] = [
+  { to: "/team", label: "Team Members", icon: Users },
   { to: "/dm-setter", label: "DM Setter", icon: MessageSquare },
   { to: "/inbound-dialer", label: "Inbound Dialer", icon: PhoneIncoming },
   { to: "/closer", label: "Closer", icon: PhoneCall },
@@ -29,7 +30,6 @@ const BOTTOM_NAV: NavItem[] = [
   { to: "/clients", label: "Clients", icon: BadgeCheck },
   { to: "/onboarding", label: "Onboarding", icon: Brain },
   { to: "/traffic", label: "Traffic", icon: TrendingUp },
-  { to: "/team", label: "Team", icon: Users },
   { to: "/insights", label: "AI Insights", icon: Sparkles },
   { to: "/events", label: "Event Bus", icon: Activity },
   { to: "/connectors", label: "Connectors", icon: Plug },
@@ -86,7 +86,7 @@ export function AppSidebar() {
           )}
         >
           <Briefcase className="h-4 w-4 shrink-0" />
-          <span className="flex-1 text-left truncate">Sales Team</span>
+          <span className="flex-1 text-left truncate">Sales Tracking</span>
           <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", salesOpen && "rotate-180")} />
         </button>
         {salesOpen && (
