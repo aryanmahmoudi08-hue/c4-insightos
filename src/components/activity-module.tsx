@@ -4,16 +4,22 @@ import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { KpiTile, DashboardBar } from "@/components/kpi-tile";
 import { DateRangePicker, RANGES, type DateRange } from "@/components/date-range-picker";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Plus, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { toast } from "sonner";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { TeamMemberFilter, ALL_MEMBERS } from "@/components/team-member-filter";
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
+  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend,
+} from "recharts";
 
 export type ActivityRole = "dm_setter" | "inbound_dialer";
 
@@ -22,6 +28,8 @@ interface Props { role: ActivityRole; title: string; subtitle: string; }
 const NUM = (v: FormDataEntryValue | null) => Number(v ?? 0) || 0;
 const fmtMoney = (cents: number) => `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (n: number, d: number) => d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%";
+
+const LEAD_SOURCES = ["Instagram Spiderweb", "Keyword", "Inbound", "Referral", "Ads", "Other"];
 
 export function ActivityModule({ role, title, subtitle }: Props) {
   const { data: org } = useCurrentOrg();
@@ -60,6 +68,78 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const cashCents = sum("cash_collected_cents");
   const revCents = sum("total_revenue_cents");
 
+  // Objection frequency aggregation across all rows in range (uses unfiltered allRows so the chart reflects org-wide patterns)
+  const objectionStats = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of allRows ?? []) {
+      if (!r.objections) continue;
+      const parts = String(r.objections).split(/[,;\n|]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+      for (const p of parts) counts.set(p, (counts.get(p) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([objection, count]) => ({ objection: objection.length > 24 ? objection.slice(0, 24) + "…" : objection, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [allRows]);
+
+  // Per-setter momentum: avg sets in last 7 days vs personal best 7-day window in the visible range
+  const momentum = useMemo(() => {
+    const byName = new Map<string, { date: string; sets: number }[]>();
+    for (const r of allRows ?? []) {
+      const arr = byName.get(r.team_member_name) ?? [];
+      arr.push({ date: r.activity_date, sets: r.sets ?? 0 });
+      byName.set(r.team_member_name, arr);
+    }
+    const today = new Date(range.to);
+    const cutoff = new Date(today.getTime() - 6 * 86400e3).toISOString().slice(0, 10);
+    return Array.from(byName.entries()).map(([name, entries]) => {
+      const recent = entries.filter(e => e.date >= cutoff);
+      const recentAvg = recent.length ? recent.reduce((s, e) => s + e.sets, 0) / recent.length : 0;
+      // personal best: max single-day in the range (proxy for "best")
+      const best = entries.reduce((m, e) => Math.max(m, e.sets), 0);
+      const score = best > 0 ? Math.round((recentAvg / best) * 100) : 0;
+      return { name, recentAvg: +recentAvg.toFixed(1), best, score };
+    }).sort((a, b) => b.score - a.score);
+  }, [allRows, range.to]);
+
+  // Setter scorecard radar — normalized 0-100 across key metrics
+  const scorecard = useMemo(() => {
+    const byName = new Map<string, { sets: number; live: number; oncal: number; closes: number; qual: number; reach: number }>();
+    for (const r of allRows ?? []) {
+      const x = byName.get(r.team_member_name) ?? { sets: 0, live: 0, oncal: 0, closes: 0, qual: 0, reach: 0 };
+      x.sets += r.sets ?? 0;
+      x.live += r.live_calls ?? 0;
+      x.oncal += r.calls_on_calendar ?? 0;
+      x.closes += r.closes ?? 0;
+      x.qual += r.qualified_convos ?? 0;
+      x.reach += (r.leads_contacted ?? 0) + (r.connections ?? 0);
+      byName.set(r.team_member_name, x);
+    }
+    const people = Array.from(byName.entries()).map(([name, x]) => ({
+      name,
+      Sets: x.sets,
+      ShowRate: x.oncal ? (x.live / x.oncal) * 100 : 0,
+      CloseRate: x.live ? (x.closes / x.live) * 100 : 0,
+      QualRate: x.reach ? (x.qual / x.reach) * 100 : 0,
+    }));
+    const maxSets = Math.max(1, ...people.map(p => p.Sets));
+    // Build per-axis dataset for recharts radar
+    const axes = ["Sets", "ShowRate", "CloseRate", "QualRate"] as const;
+    return axes.map(axis => {
+      const row: Record<string, number | string> = { axis };
+      for (const p of people) {
+        row[p.name] = axis === "Sets" ? Math.round((p.Sets / maxSets) * 100) : Math.round(p[axis]);
+      }
+      return row;
+    });
+  }, [allRows]);
+  const scorecardNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const r of allRows ?? []) names.add(r.team_member_name);
+    return Array.from(names);
+  }, [allRows]);
+  const radarColors = ["oklch(0.7 0.2 258)", "oklch(0.72 0.18 25)", "oklch(0.7 0.18 145)", "oklch(0.72 0.18 60)", "oklch(0.7 0.18 320)"];
+
   const create = useMutation({
     mutationFn: async (f: FormData) => {
       const payload = {
@@ -69,6 +149,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         rate_today: f.get("rate_today") ? Number(f.get("rate_today")) : null,
         objections: String(f.get("objections") || "") || null,
         notes: String(f.get("notes") || "") || null,
+        lead_source: String(f.get("lead_source") || "") || null,
         leads_contacted: NUM(f.get("leads_contacted")),
         links_sent: NUM(f.get("links_sent")),
         qualified_convos: NUM(f.get("qualified_convos")),
@@ -110,6 +191,13 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                   <div className="space-y-1.5 col-span-2"><Label>Name</Label><TeamMemberPicker role={role} name="team_member_name" required /></div>
                   <div className="space-y-1.5"><Label>Date</Label><Input name="activity_date" type="date" defaultValue={new Date().toISOString().slice(0,10)} /></div>
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Lead source</Label>
+                  <Select name="lead_source">
+                    <SelectTrigger><SelectValue placeholder="Where did most leads come from?" /></SelectTrigger>
+                    <SelectContent>{LEAD_SOURCES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
                 {isDialer ? (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5"><Label>Dials</Label><Input name="dials" type="number" min={0} defaultValue={0} /></div>
@@ -132,7 +220,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                   <div className="space-y-1.5"><Label>Total revenue $</Label><Input name="total_revenue" type="number" step="0.01" min={0} defaultValue={0} /></div>
                   <div className="space-y-1.5"><Label>Rate today (1–10)</Label><Input name="rate_today" type="number" min={1} max={10} /></div>
                 </div>
-                <div className="space-y-1.5"><Label>Objections</Label><Textarea name="objections" rows={2} placeholder="price, timing, spouse…" /></div>
+                <div className="space-y-1.5"><Label>Objections (comma-separated)</Label><Textarea name="objections" rows={2} placeholder="price, timing, spouse…" /></div>
                 <div className="space-y-1.5"><Label>Notes</Label><Textarea name="notes" rows={3} /></div>
                 <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "…" : "Save day"}</Button>
               </form>
@@ -176,6 +264,90 @@ export function ActivityModule({ role, title, subtitle }: Props) {
           </div>
         )}
 
+        {/* Insights row: Objection frequency + Momentum + Scorecard */}
+        <Tabs defaultValue="objections">
+          <TabsList>
+            <TabsTrigger value="objections">Objection frequency</TabsTrigger>
+            <TabsTrigger value="momentum">Momentum (7d)</TabsTrigger>
+            <TabsTrigger value="scorecard">Setter scorecard</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="objections">
+            <div className="rounded-lg border border-border bg-card p-4">
+              <div className="mb-3">
+                <div className="text-sm font-semibold">Most-logged objections · feeds content strategy</div>
+                <div className="text-xs text-muted-foreground">Parsed from objections field across {allRows?.length ?? 0} entries in range</div>
+              </div>
+              {objectionStats.length === 0 ? (
+                <div className="p-10 text-center text-sm text-muted-foreground">No objections logged yet. Add them to daily entries (comma-separated) to see patterns.</div>
+              ) : (
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={objectionStats} layout="vertical" margin={{ left: 8, right: 24 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.28 0.02 265 / 0.5)" horizontal={false} />
+                      <XAxis type="number" stroke="oklch(0.65 0.02 260)" fontSize={11} allowDecimals={false} />
+                      <YAxis type="category" dataKey="objection" stroke="oklch(0.65 0.02 260)" fontSize={11} width={140} />
+                      <Tooltip contentStyle={{ background: "oklch(0.18 0.015 265)", border: "1px solid oklch(0.28 0.02 265)", borderRadius: 8, fontSize: 12 }} />
+                      <Bar dataKey="count" fill="oklch(0.72 0.18 25)" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="momentum">
+            <div className="rounded-lg border border-border bg-card overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider">7-day rolling momentum vs personal best</div>
+              <div className="divide-y divide-border">
+                {momentum.length === 0 && <div className="p-10 text-center text-sm text-muted-foreground">Log activity over multiple days to see momentum.</div>}
+                {momentum.map(m => {
+                  const Icon = m.score >= 80 ? TrendingUp : m.score >= 50 ? Minus : TrendingDown;
+                  const tone = m.score >= 80 ? "text-[color:var(--color-success)]" : m.score >= 50 ? "text-muted-foreground" : "text-destructive";
+                  return (
+                    <div key={m.name} className="flex items-center gap-3 px-4 py-2.5">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{m.name}</div>
+                        <div className="text-[11px] text-muted-foreground">avg {m.recentAvg} sets/day last 7d · best day {m.best}</div>
+                      </div>
+                      <div className={`flex items-center gap-1.5 font-mono text-sm font-semibold ${tone}`}>
+                        <Icon className="h-4 w-4" />{m.score}%
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="scorecard">
+            <div className="rounded-lg border border-border bg-card p-4">
+              <div className="mb-3">
+                <div className="text-sm font-semibold">Setter scorecard · Sets / Show / Close / Qual</div>
+                <div className="text-xs text-muted-foreground">Normalized 0–100. Sets is relative to top performer.</div>
+              </div>
+              {scorecardNames.length === 0 ? (
+                <div className="p-10 text-center text-sm text-muted-foreground">No data yet.</div>
+              ) : (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart data={scorecard}>
+                      <PolarGrid stroke="oklch(0.28 0.02 265)" />
+                      <PolarAngleAxis dataKey="axis" stroke="oklch(0.65 0.02 260)" fontSize={11} />
+                      <PolarRadiusAxis stroke="oklch(0.45 0.02 260)" fontSize={9} angle={30} domain={[0, 100]} />
+                      {scorecardNames.slice(0, 5).map((name, i) => (
+                        <Radar key={name} name={name} dataKey={name} stroke={radarColors[i]} fill={radarColors[i]} fillOpacity={0.25} />
+                      ))}
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Tooltip contentStyle={{ background: "oklch(0.18 0.015 265)", border: "1px solid oklch(0.28 0.02 265)", borderRadius: 8, fontSize: 12 }} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+
         {/* Activity Log */}
         <div className="rounded-lg border border-border bg-card overflow-x-auto">
           <div className="px-4 py-2 border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -186,6 +358,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               <tr>
                 <th className="text-left p-2.5">Name</th>
                 <th className="text-left p-2.5">Date</th>
+                <th className="text-left p-2.5">Source</th>
                 {isDialer ? (<><th className="text-right p-2.5 font-mono">Dials</th><th className="text-right p-2.5 font-mono">Conn</th></>)
                           : (<><th className="text-right p-2.5 font-mono">Contacted</th><th className="text-right p-2.5 font-mono">Links</th></>)}
                 <th className="text-right p-2.5 font-mono">Qual Convos</th>
@@ -206,6 +379,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 <tr key={r.id} className="border-t border-border hover:bg-muted/20">
                   <td className="p-2.5 font-medium">{r.team_member_name}</td>
                   <td className="p-2.5 text-xs text-muted-foreground">{r.activity_date}</td>
+                  <td className="p-2.5 text-xs">{r.lead_source ? <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">{r.lead_source}</span> : <span className="text-muted-foreground">—</span>}</td>
                   {isDialer
                     ? (<><td className="p-2.5 text-right font-mono">{r.dials ?? 0}</td><td className="p-2.5 text-right font-mono">{r.connections ?? 0}</td></>)
                     : (<><td className="p-2.5 text-right font-mono">{r.leads_contacted ?? 0}</td><td className="p-2.5 text-right font-mono">{r.links_sent ?? 0}</td></>)}
@@ -223,7 +397,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 </tr>
               ))}
               {(!rows || rows.length === 0) && (
-                <tr><td colSpan={15} className="p-10 text-center text-sm text-muted-foreground">No entries in this date range. Log your first day to start tracking.</td></tr>
+                <tr><td colSpan={16} className="p-10 text-center text-sm text-muted-foreground">No entries in this date range. Log your first day to start tracking.</td></tr>
               )}
             </tbody>
           </table>
