@@ -20,11 +20,10 @@ function Connectors() {
       <TopBar title="Platform Connectors" subtitle="Native ingestion adapters" />
       <div className="p-6 space-y-4">
         <div className="rounded-lg border border-border bg-card p-4">
-          <div className="text-sm font-semibold">Connectors are in roll-out</div>
+          <div className="text-sm font-semibold">All connectors enabled</div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Live OAuth flows for Instagram, Stripe, Calendly, GoHighLevel and Close are being provisioned per workspace.
-            Until your connector is enabled, every dashboard accepts manual entry via the <span className="text-foreground">Log day / Log call</span> buttons,
-            and CSV import is on the roadmap. Reach out from the workspace settings to request priority enablement for a specific platform.
+            Every platform below is available for your workspace. Pick one to begin OAuth provisioning,
+            or keep using manual entry via the <span className="text-foreground">Log day / Log call</span> buttons on each dashboard.
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
