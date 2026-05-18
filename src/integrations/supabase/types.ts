@@ -174,6 +174,7 @@ export type Database = {
           closer_name: string | null
           contract_value_cents: number | null
           created_at: string
+          deposit_cents: number | null
           id: string
           key_moment: string | null
           lead_email: string | null
@@ -197,6 +198,7 @@ export type Database = {
           closer_name?: string | null
           contract_value_cents?: number | null
           created_at?: string
+          deposit_cents?: number | null
           id?: string
           key_moment?: string | null
           lead_email?: string | null
@@ -220,6 +222,7 @@ export type Database = {
           closer_name?: string | null
           contract_value_cents?: number | null
           created_at?: string
+          deposit_cents?: number | null
           id?: string
           key_moment?: string | null
           lead_email?: string | null
@@ -1528,6 +1531,7 @@ export type Database = {
           downsells: number | null
           id: string
           leads_contacted: number | null
+          links_sent: number | null
           live_calls: number | null
           notes: string | null
           objections: string | null
@@ -1552,6 +1556,7 @@ export type Database = {
           downsells?: number | null
           id?: string
           leads_contacted?: number | null
+          links_sent?: number | null
           live_calls?: number | null
           notes?: string | null
           objections?: string | null
@@ -1576,6 +1581,7 @@ export type Database = {
           downsells?: number | null
           id?: string
           leads_contacted?: number | null
+          links_sent?: number | null
           live_calls?: number | null
           notes?: string | null
           objections?: string | null
