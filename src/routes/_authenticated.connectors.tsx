@@ -1,10 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
-import { Plug, CheckCircle2, Loader2 } from "lucide-react";
+import { Plug, CheckCircle2, Loader2, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { connectWorkspaceConnector, disconnectWorkspaceConnector } from "@/lib/connectors.functions";
@@ -12,7 +16,32 @@ import { connectWorkspaceConnector, disconnectWorkspaceConnector } from "@/lib/c
 export const Route = createFileRoute("/_authenticated/connectors")({ component: Connectors });
 
 interface ConnectorRow { id: string; name: string; category: string; description: string | null; is_available: boolean; }
-interface ConnectionRow { id: string; connector_id: string; state: string; display_name: string | null; }
+interface ConnectionRow { id: string; connector_id: string; state: string; display_name: string | null; config: Record<string, unknown> | null; }
+
+type ConfigField = { key: string; label: string; placeholder: string; help: string; type?: "text" | "url" };
+
+const connectorConfigFields: Record<string, ConfigField[]> = {
+  typeform: [{ key: "formUrl", label: "Typeform URL", placeholder: "https://form.typeform.com/to/abc123", help: "Paste the exact form URL you want this connector to read.", type: "url" }],
+  instagram: [{ key: "accountUrl", label: "Instagram profile URL", placeholder: "https://instagram.com/yourbrand", help: "Use the account that owns the content and DMs.", type: "url" }],
+  tiktok: [{ key: "accountUrl", label: "TikTok profile URL", placeholder: "https://tiktok.com/@yourbrand", help: "Use the account you want analytics tied to.", type: "url" }],
+  youtube: [{ key: "channelUrl", label: "YouTube channel URL", placeholder: "https://youtube.com/@yourchannel", help: "Use the channel URL for videos and shorts.", type: "url" }],
+  stripe: [{ key: "accountLabel", label: "Stripe account name", placeholder: "Main Stripe account", help: "Name the payment account so reports know where revenue is coming from." }],
+  calendly: [{ key: "schedulingUrl", label: "Calendly URL", placeholder: "https://calendly.com/yourteam/strategy-call", help: "Paste the event or scheduling page used for booked calls.", type: "url" }],
+  gohighlevel: [{ key: "locationId", label: "GoHighLevel location ID", placeholder: "Enter location ID", help: "Use the location connected to contacts, pipelines, and calls." }],
+  slack: [{ key: "channelName", label: "Slack channel", placeholder: "#sales-alerts", help: "Choose where alerts should be routed." }],
+  discord: [{ key: "webhookUrl", label: "Discord webhook URL", placeholder: "https://discord.com/api/webhooks/...", help: "Paste the webhook for the channel receiving alerts.", type: "url" }],
+  meta_ads: [{ key: "adAccountId", label: "Meta ad account ID", placeholder: "act_123456789", help: "Use the ad account that owns spend, CPL, and ROAS data." }],
+};
+
+function fieldsFor(connectorId: string) {
+  return connectorConfigFields[connectorId] ?? [];
+}
+
+function isConfigured(conn: ConnectionRow | undefined, connectorId: string) {
+  const fields = fieldsFor(connectorId);
+  if (!conn || fields.length === 0) return true;
+  return fields.every((field) => typeof conn.config?.[field.key] === "string" && String(conn.config[field.key]).trim().length > 0);
+}
 
 function Connectors() {
   const { data: org } = useCurrentOrg();
@@ -20,6 +49,8 @@ function Connectors() {
   const qc = useQueryClient();
   const connectConnector = useServerFn(connectWorkspaceConnector);
   const disconnectConnector = useServerFn(disconnectWorkspaceConnector);
+  const [setupConnector, setSetupConnector] = useState<ConnectorRow | null>(null);
+  const [setupValues, setSetupValues] = useState<Record<string, string>>({});
 
   const { data: registry } = useQuery({
     queryKey: ["connector-registry"],
@@ -36,7 +67,7 @@ function Connectors() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("connector_connections")
-        .select("id, connector_id, state, display_name")
+        .select("id, connector_id, state, display_name, config")
         .eq("org_id", orgId!);
       if (error) throw error;
       return data as ConnectionRow[];
@@ -44,12 +75,14 @@ function Connectors() {
   });
 
   const connect = useMutation({
-    mutationFn: async (c: ConnectorRow) => {
-      const result = await connectConnector({ data: { connectorId: c.id } });
+    mutationFn: async ({ connector, config }: { connector: ConnectorRow; config: Record<string, string> }) => {
+      const result = await connectConnector({ data: { connectorId: connector.id, config } });
       return result.name;
     },
     onSuccess: (name) => {
       toast.success(`${name} connected`);
+      setSetupConnector(null);
+      setSetupValues({});
       qc.invalidateQueries({ queryKey: ["current-org"] });
       qc.invalidateQueries({ queryKey: ["connector-connections"] });
     },
@@ -65,6 +98,15 @@ function Connectors() {
   });
 
   const stateFor = (cid: string) => (connections ?? []).find(c => c.connector_id === cid);
+  const openSetup = (connector: ConnectorRow, conn?: ConnectionRow) => {
+    const nextValues = Object.fromEntries(fieldsFor(connector.id).map((field) => [field.key, String(conn?.config?.[field.key] ?? "")])) as Record<string, string>;
+    setSetupValues(nextValues);
+    setSetupConnector(connector);
+  };
+  const submitSetup = () => {
+    if (!setupConnector) return;
+    connect.mutate({ connector: setupConnector, config: setupValues });
+  };
 
   return (
     <>
@@ -81,7 +123,9 @@ function Connectors() {
           {(registry ?? []).map((c) => {
             const conn = stateFor(c.id);
             const isConnected = conn?.state === "connected";
-            const busy = (connect.isPending && connect.variables?.id === c.id) || (disconnect.isPending && disconnect.variables?.id === conn?.id);
+            const configured = isConfigured(conn, c.id);
+            const hasSetup = fieldsFor(c.id).length > 0;
+            const busy = (connect.isPending && connect.variables?.connector.id === c.id) || (disconnect.isPending && disconnect.variables?.id === conn?.id);
             return (
               <div key={c.id} className={`rounded-lg border bg-card p-4 transition-colors ${isConnected ? "border-[color:var(--color-success)]/60" : "border-border hover:border-primary/40"}`}>
                 <div className="flex items-start justify-between gap-3">
@@ -93,21 +137,35 @@ function Connectors() {
                     <div className="mt-1 text-[11px] uppercase tracking-wider text-muted-foreground">{c.category}</div>
                     {c.description && <p className="mt-2 text-xs text-muted-foreground line-clamp-2">{c.description}</p>}
                   </div>
-                  {isConnected ? (
+                  {isConnected && configured ? (
                     <span className="rounded bg-[color:var(--color-success)]/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--color-success)] flex items-center gap-1">
                       <CheckCircle2 className="h-3 w-3" /> connected
                     </span>
+                  ) : isConnected ? (
+                    <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">setup needed</span>
                   ) : (
                     <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">available</span>
                   )}
                 </div>
+                {isConnected && hasSetup && (
+                  <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    {configured ? "Setup details saved" : "Add the required setup details to make this connector usable."}
+                  </div>
+                )}
                 <div className="mt-3 flex gap-2">
                   {isConnected ? (
-                    <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => conn && disconnect.mutate(conn)}>
-                      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Disconnect"}
-                    </Button>
+                    <>
+                      {hasSetup && (
+                        <Button size="sm" className="w-full" disabled={busy} onClick={() => openSetup(c, conn)}>
+                          <Settings2 className="h-3.5 w-3.5" /> Setup
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => conn && disconnect.mutate(conn)}>
+                        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Disconnect"}
+                      </Button>
+                    </>
                   ) : (
-                    <Button size="sm" className="w-full" disabled={busy} onClick={() => connect.mutate(c)}>
+                    <Button size="sm" className="w-full" disabled={busy} onClick={() => hasSetup ? openSetup(c, conn) : connect.mutate({ connector: c, config: {} })}>
                       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Connect"}
                     </Button>
                   )}
@@ -118,6 +176,35 @@ function Connectors() {
           {(!registry || registry.length === 0) && <div className="text-sm text-muted-foreground">Registry empty.</div>}
         </div>
       </div>
+      <Dialog open={!!setupConnector} onOpenChange={(open) => !open && setSetupConnector(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{setupConnector ? `Set up ${setupConnector.name}` : "Set up connector"}</DialogTitle>
+            <DialogDescription>Enter the required details so this connector knows exactly what software account, form, channel, or URL to use.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {setupConnector && fieldsFor(setupConnector.id).map((field) => (
+              <div key={field.key} className="space-y-2">
+                <Label htmlFor={`connector-${field.key}`}>{field.label}</Label>
+                <Input
+                  id={`connector-${field.key}`}
+                  type={field.type ?? "text"}
+                  value={setupValues[field.key] ?? ""}
+                  placeholder={field.placeholder}
+                  onChange={(event) => setSetupValues((current) => ({ ...current, [field.key]: event.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">{field.help}</p>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSetupConnector(null)}>Cancel</Button>
+            <Button disabled={connect.isPending} onClick={submitSetup}>
+              {connect.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save and connect"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
