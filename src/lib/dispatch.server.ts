@@ -30,18 +30,19 @@ export async function dispatchEvent(orgId: string, eventType: string, payload: R
 
           await supabaseAdmin.from("webhook_deliveries").insert({
             subscription_id: s.id,
-            event_type: eventType,
-            status_code: res.status,
-            success: res.ok,
-            payload: { event_type: eventType, data: payload },
+            org_id: orgId,
+            status: res.ok ? "success" : "failed",
+            response_code: res.status,
+            response_body: (await res.text().catch(() => "")).slice(0, 1000),
+            delivered_at: new Date().toISOString(),
           }).then(() => {}, () => {});
         } catch (err) {
           await supabaseAdmin.from("webhook_deliveries").insert({
             subscription_id: s.id,
-            event_type: eventType,
-            status_code: 0,
-            success: false,
-            payload: { event_type: eventType, data: payload, error: String(err) },
+            org_id: orgId,
+            status: "failed",
+            response_code: 0,
+            response_body: String(err).slice(0, 1000),
           }).then(() => {}, () => {});
         }
       }),
