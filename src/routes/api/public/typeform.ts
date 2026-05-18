@@ -82,6 +82,13 @@ export const Route = createFileRoute("/api/public/typeform")({
           payload: { answers, source: "typeform" },
         });
 
+        await dispatchEvent(connection.org_id, "onboarding.submitted", {
+          answers,
+          source: "typeform",
+          response_id: formResponse.token ?? formResponse.response_id ?? null,
+          submitted_at: new Date().toISOString(),
+        });
+
         return Response.json({ ok: true });
       },
     },
