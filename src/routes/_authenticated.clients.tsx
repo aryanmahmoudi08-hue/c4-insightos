@@ -4,15 +4,58 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, BadgeCheck, HeartPulse, Repeat } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Plus, BadgeCheck, HeartPulse, Repeat, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/clients")({ component: Clients });
+
+const STAGES = [
+  { key: "not_started", label: "Not Started", tone: "bg-muted text-muted-foreground" },
+  { key: "conversation", label: "Conversation", tone: "bg-accent/15 text-accent" },
+  { key: "proposal", label: "Proposal Sent", tone: "bg-[color:var(--color-warning)]/15 text-[color:var(--color-warning)]" },
+  { key: "won", label: "Renewed", tone: "bg-[color:var(--color-success)]/15 text-[color:var(--color-success)]" },
+  { key: "churned", label: "Churned", tone: "bg-destructive/15 text-destructive" },
+] as const;
+
+type Stage = typeof STAGES[number]["key"];
+
+type ClientRow = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  offer_name: string | null;
+  start_date: string;
+  contract_value_cents: number | null;
+  payment_plan: boolean | null;
+  installments_remaining: number | null;
+  status: string | null;
+  health_score: number | null;
+  renewal_date: string | null;
+  renewal_conv_started: boolean | null;
+  renewal_stage: string | null;
+  notes: string | null;
+};
+
+function daysUntil(date: string | null): number | null {
+  if (!date) return null;
+  return Math.floor((new Date(date).getTime() - Date.now()) / 86400e3);
+}
+
+function atRiskReason(c: ClientRow): string | null {
+  const reasons: string[] = [];
+  const hs = Number(c.health_score ?? 100);
+  if (hs < 50) reasons.push(`health ${hs}`);
+  const dru = daysUntil(c.renewal_date);
+  if (dru !== null && dru >= 0 && dru < 30 && !c.renewal_conv_started) reasons.push(`renewal in ${dru}d, no convo`);
+  if (dru !== null && dru < 0) reasons.push(`renewal ${Math.abs(dru)}d overdue`);
+  return reasons.length ? reasons.join(" · ") : null;
+}
 
 function Clients() {
   const { data: org } = useCurrentOrg();
@@ -26,12 +69,25 @@ function Clients() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("clients")
-        .select("id, full_name, email, offer_name, start_date, contract_value_cents, payment_plan, installments_remaining, status, health_score, renewal_date, renewal_conv_started")
+        .select("id, full_name, email, offer_name, start_date, contract_value_cents, payment_plan, installments_remaining, status, health_score, renewal_date, renewal_conv_started, renewal_stage, notes")
         .eq("org_id", orgId!)
         .order("start_date", { ascending: false });
       if (error) throw error;
-      return data;
+      return (data ?? []) as ClientRow[];
     },
+  });
+
+  const updateStage = useMutation({
+    mutationFn: async ({ id, stage }: { id: string; stage: Stage }) => {
+      const patch: Record<string, unknown> = { renewal_stage: stage };
+      if (stage === "conversation") patch.renewal_conv_started = true;
+      if (stage === "churned") patch.status = "churned";
+      if (stage === "won") patch.status = "active";
+      const { error } = await supabase.from("clients").update(patch).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Stage updated"); qc.invalidateQueries({ queryKey: ["clients"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
   const create = useMutation({
@@ -55,19 +111,61 @@ function Clients() {
   });
 
   const active = clients?.filter(c => c.status === "active").length ?? 0;
-  const mrr = (clients?.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0) ?? 0) / 100;
+  const ltv = (clients?.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0) ?? 0) / 100;
   const avgHealth = clients?.length ? Math.round(clients.reduce((s, c) => s + Number(c.health_score ?? 0), 0) / clients.length) : 0;
   const renewalsDue = clients?.filter(c => c.renewal_date && new Date(c.renewal_date) < new Date(Date.now()+30*86400000)).length ?? 0;
+
+  // At-risk list (auto-tagged)
+  const atRisk = useMemo(() => {
+    return (clients ?? [])
+      .map(c => ({ c, reason: atRiskReason(c) }))
+      .filter(x => x.reason)
+      .sort((a, b) => (Number(a.c.health_score ?? 100) - Number(b.c.health_score ?? 100)));
+  }, [clients]);
+
+  // LTV by offer
+  const ltvByOffer = useMemo(() => {
+    const m = new Map<string, { count: number; total: number }>();
+    for (const c of clients ?? []) {
+      const k = c.offer_name || "(no offer)";
+      const cur = m.get(k) ?? { count: 0, total: 0 };
+      cur.count += 1;
+      cur.total += c.contract_value_cents ?? 0;
+      m.set(k, cur);
+    }
+    return Array.from(m.entries())
+      .map(([offer, v]) => ({ offer, count: v.count, total: v.total, avg: v.count ? v.total / v.count : 0 }))
+      .sort((a, b) => b.total - a.total);
+  }, [clients]);
+
+  // Group clients by renewal_stage for kanban
+  const byStage = useMemo(() => {
+    const m = new Map<Stage, ClientRow[]>();
+    STAGES.forEach(s => m.set(s.key, []));
+    for (const c of clients ?? []) {
+      const stage = (c.renewal_stage as Stage) || "not_started";
+      const arr = m.get(stage) ?? m.get("not_started")!;
+      arr.push(c);
+    }
+    return m;
+  }, [clients]);
+
+  const onDrop = (e: React.DragEvent, stage: Stage) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData("text/plain");
+    if (id) updateStage.mutate({ id, stage });
+  };
 
   return (
     <>
       <TopBar title="Clients & Renewals" subtitle="Lifetime value, health, and renewal pipeline" />
       <div className="p-6 space-y-5">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <StatCard label="Active clients" value={active} accent="success" icon={<BadgeCheck className="h-4 w-4" />} />
-          <StatCard label="Total contract value" value={`$${mrr.toLocaleString()}`} accent="primary" />
+          <StatCard label="Total LTV" value={`$${ltv.toLocaleString()}`} accent="primary" />
           <StatCard label="Avg health" value={`${avgHealth}`} accent={avgHealth > 70 ? "success" : avgHealth > 40 ? "warning" : "destructive"} icon={<HeartPulse className="h-4 w-4" />} />
           <StatCard label="Renewals <30d" value={renewalsDue} accent={renewalsDue ? "warning" : "primary"} icon={<Repeat className="h-4 w-4" />} />
+          <StatCard label="At-risk" value={atRisk.length} accent={atRisk.length ? "destructive" : "primary"} icon={<AlertTriangle className="h-4 w-4" />} hint="Auto-flagged" />
         </div>
 
         <div className="flex items-center justify-between">
@@ -100,30 +198,160 @@ function Clients() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
-              <tr><th className="text-left p-3">Client</th><th className="text-left p-3">Offer</th><th className="text-left p-3">Start</th>
-                <th className="text-right p-3 font-mono">Contract</th><th className="text-center p-3">Plan</th>
-                <th className="text-right p-3 font-mono">Health</th><th className="text-left p-3">Renewal</th><th className="text-left p-3">Status</th></tr>
-            </thead>
-            <tbody>
-              {(clients ?? []).map(c => (
-                <tr key={c.id} className="border-t border-border hover:bg-muted/20">
-                  <td className="p-3"><div className="font-medium">{c.full_name}</div><div className="text-[11px] text-muted-foreground">{c.email}</div></td>
-                  <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
-                  <td className="p-3 text-xs text-muted-foreground">{c.start_date}</td>
-                  <td className="p-3 text-right font-mono">${Math.round((c.contract_value_cents ?? 0)/100).toLocaleString()}</td>
-                  <td className="p-3 text-center text-xs">{c.payment_plan ? `${c.installments_remaining} left` : "PIF"}</td>
-                  <td className="p-3 text-right font-mono">{Number(c.health_score ?? 0)}</td>
-                  <td className="p-3 text-xs">{c.renewal_date ?? "—"}</td>
-                  <td className="p-3"><span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">{c.status}</span></td>
-                </tr>
-              ))}
-              {(!clients || clients.length === 0) && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">No clients yet.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <Tabs defaultValue="kanban">
+          <TabsList>
+            <TabsTrigger value="kanban">Renewal pipeline</TabsTrigger>
+            <TabsTrigger value="atrisk">At-risk · {atRisk.length}</TabsTrigger>
+            <TabsTrigger value="ltv">LTV by offer</TabsTrigger>
+            <TabsTrigger value="table">All clients</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="kanban">
+            <div className="text-xs text-muted-foreground mb-2">Drag cards between columns to update renewal stage.</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              {STAGES.map(stage => {
+                const rows = byStage.get(stage.key) ?? [];
+                const total = rows.reduce((s, r) => s + (r.contract_value_cents ?? 0), 0);
+                return (
+                  <div key={stage.key}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => onDrop(e, stage.key)}
+                    className="rounded-lg border border-border bg-card min-h-[300px]"
+                  >
+                    <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+                      <span className={`text-[10px] uppercase tracking-wider rounded px-1.5 py-0.5 ${stage.tone}`}>{stage.label}</span>
+                      <span className="text-[10px] font-mono text-muted-foreground">{rows.length} · ${Math.round(total/100).toLocaleString()}</span>
+                    </div>
+                    <div className="p-2 space-y-2">
+                      {rows.map(c => {
+                        const risk = atRiskReason(c);
+                        return (
+                          <div key={c.id}
+                            draggable
+                            onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
+                            className="cursor-grab active:cursor-grabbing rounded-md border border-border bg-background p-2 hover:border-primary/50 transition-colors"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="font-medium text-sm leading-tight">{c.full_name}</div>
+                              {risk && <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">{c.offer_name || "—"}</div>
+                            <div className="mt-1.5 flex items-center justify-between text-[11px] font-mono">
+                              <span className="text-muted-foreground">{c.renewal_date ?? "no date"}</span>
+                              <span className="text-[color:var(--color-success)]">${Math.round((c.contract_value_cents ?? 0)/100).toLocaleString()}</span>
+                            </div>
+                            {risk && <div className="mt-1 text-[10px] text-destructive">{risk}</div>}
+                          </div>
+                        );
+                      })}
+                      {rows.length === 0 && <div className="text-[11px] text-muted-foreground text-center py-6">Drop here</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="atrisk">
+            <div className="rounded-lg border border-border bg-card overflow-hidden">
+              <div className="px-4 py-2 border-b border-border bg-destructive/5 text-xs font-semibold uppercase tracking-wider text-destructive">
+                Auto-flagged: health &lt; 50, or renewal &lt; 30d with no conversation started, or renewal overdue
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="text-left p-3">Client</th>
+                    <th className="text-left p-3">Offer</th>
+                    <th className="text-right p-3 font-mono">Health</th>
+                    <th className="text-left p-3">Renewal</th>
+                    <th className="text-left p-3">Stage</th>
+                    <th className="text-left p-3">Reason</th>
+                    <th className="text-right p-3 font-mono">Contract</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {atRisk.map(({ c, reason }) => (
+                    <tr key={c.id} className="border-t border-border hover:bg-muted/20">
+                      <td className="p-3"><div className="font-medium">{c.full_name}</div><div className="text-[11px] text-muted-foreground">{c.email}</div></td>
+                      <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
+                      <td className="p-3 text-right font-mono text-destructive">{Number(c.health_score ?? 0)}</td>
+                      <td className="p-3 text-xs">{c.renewal_date ?? "—"}</td>
+                      <td className="p-3 text-xs uppercase">{(c.renewal_stage || "not_started").replace("_", " ")}</td>
+                      <td className="p-3 text-xs text-destructive">{reason}</td>
+                      <td className="p-3 text-right font-mono">${Math.round((c.contract_value_cents ?? 0)/100).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                  {atRisk.length === 0 && <tr><td colSpan={7} className="p-10 text-center text-sm text-muted-foreground">No clients at risk. 🟢</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="ltv">
+            <div className="rounded-lg border border-border bg-card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="text-left p-3">Offer</th>
+                    <th className="text-right p-3 font-mono">Clients</th>
+                    <th className="text-right p-3 font-mono">Total LTV</th>
+                    <th className="text-right p-3 font-mono">Avg deal</th>
+                    <th className="text-left p-3">% of revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ltvByOffer.map(o => {
+                    const sharePct = ltv > 0 ? (o.total / 100 / ltv) * 100 : 0;
+                    return (
+                      <tr key={o.offer} className="border-t border-border hover:bg-muted/20">
+                        <td className="p-3 font-medium">{o.offer}</td>
+                        <td className="p-3 text-right font-mono">{o.count}</td>
+                        <td className="p-3 text-right font-mono text-[color:var(--color-success)]">${Math.round(o.total/100).toLocaleString()}</td>
+                        <td className="p-3 text-right font-mono">${Math.round(o.avg/100).toLocaleString()}</td>
+                        <td className="p-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 bg-muted rounded overflow-hidden">
+                              <div className="h-full bg-primary" style={{ width: `${sharePct}%` }} />
+                            </div>
+                            <span className="text-[11px] font-mono w-12 text-right">{sharePct.toFixed(1)}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {ltvByOffer.length === 0 && <tr><td colSpan={5} className="p-10 text-center text-sm text-muted-foreground">No offers yet.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="table">
+            <div className="rounded-lg border border-border bg-card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <tr><th className="text-left p-3">Client</th><th className="text-left p-3">Offer</th><th className="text-left p-3">Start</th>
+                    <th className="text-right p-3 font-mono">Contract</th><th className="text-center p-3">Plan</th>
+                    <th className="text-right p-3 font-mono">Health</th><th className="text-left p-3">Renewal</th><th className="text-left p-3">Stage</th></tr>
+                </thead>
+                <tbody>
+                  {(clients ?? []).map(c => (
+                    <tr key={c.id} className="border-t border-border hover:bg-muted/20">
+                      <td className="p-3"><div className="font-medium">{c.full_name}</div><div className="text-[11px] text-muted-foreground">{c.email}</div></td>
+                      <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
+                      <td className="p-3 text-xs text-muted-foreground">{c.start_date}</td>
+                      <td className="p-3 text-right font-mono">${Math.round((c.contract_value_cents ?? 0)/100).toLocaleString()}</td>
+                      <td className="p-3 text-center text-xs">{c.payment_plan ? `${c.installments_remaining} left` : "PIF"}</td>
+                      <td className="p-3 text-right font-mono">{Number(c.health_score ?? 0)}</td>
+                      <td className="p-3 text-xs">{c.renewal_date ?? "—"}</td>
+                      <td className="p-3"><span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">{(c.renewal_stage || "not_started").replace("_", " ")}</span></td>
+                    </tr>
+                  ))}
+                  {(!clients || clients.length === 0) && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">No clients yet.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </>
   );
