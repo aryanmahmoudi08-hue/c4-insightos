@@ -35,6 +35,7 @@ function Closer() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [range, setRange] = useState<DateRange>(RANGES.last30());
+  const [member, setMember] = useState<string>(ALL_MEMBERS);
 
   const { data: calls } = useQuery({
     queryKey: ["calls", orgId, range.from, range.to],
