@@ -16,6 +16,7 @@ import { Route as AuthenticatedTrafficRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated.onboarding'
 import { Route as AuthenticatedInsightsRouteImport } from './routes/_authenticated.insights'
+import { Route as AuthenticatedInboundDialerRouteImport } from './routes/_authenticated.inbound-dialer'
 import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated.events'
 import { Route as AuthenticatedDmSetterRouteImport } from './routes/_authenticated.dm-setter'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
@@ -59,6 +60,12 @@ const AuthenticatedInsightsRoute = AuthenticatedInsightsRouteImport.update({
   path: '/insights',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedInboundDialerRoute =
+  AuthenticatedInboundDialerRouteImport.update({
+    id: '/inbound-dialer',
+    path: '/inbound-dialer',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedEventsRoute = AuthenticatedEventsRouteImport.update({
   id: '/events',
   path: '/events',
@@ -112,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
   '/events': typeof AuthenticatedEventsRoute
+  '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/insights': typeof AuthenticatedInsightsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/team': typeof AuthenticatedTeamRoute
@@ -127,6 +135,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
   '/events': typeof AuthenticatedEventsRoute
+  '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/insights': typeof AuthenticatedInsightsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/team': typeof AuthenticatedTeamRoute
@@ -145,6 +154,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/dm-setter': typeof AuthenticatedDmSetterRoute
   '/_authenticated/events': typeof AuthenticatedEventsRoute
+  '/_authenticated/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/_authenticated/insights': typeof AuthenticatedInsightsRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
@@ -164,6 +174,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/dm-setter'
     | '/events'
+    | '/inbound-dialer'
     | '/insights'
     | '/onboarding'
     | '/team'
@@ -179,6 +190,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/dm-setter'
     | '/events'
+    | '/inbound-dialer'
     | '/insights'
     | '/onboarding'
     | '/team'
@@ -196,6 +208,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/dm-setter'
     | '/_authenticated/events'
+    | '/_authenticated/inbound-dialer'
     | '/_authenticated/insights'
     | '/_authenticated/onboarding'
     | '/_authenticated/team'
@@ -257,6 +270,13 @@ declare module '@tanstack/react-router' {
       path: '/insights'
       fullPath: '/insights'
       preLoaderRoute: typeof AuthenticatedInsightsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inbound-dialer': {
+      id: '/_authenticated/inbound-dialer'
+      path: '/inbound-dialer'
+      fullPath: '/inbound-dialer'
+      preLoaderRoute: typeof AuthenticatedInboundDialerRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/events': {
@@ -327,6 +347,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDmSetterRoute: typeof AuthenticatedDmSetterRoute
   AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
+  AuthenticatedInboundDialerRoute: typeof AuthenticatedInboundDialerRoute
   AuthenticatedInsightsRoute: typeof AuthenticatedInsightsRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
@@ -343,6 +364,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDmSetterRoute: AuthenticatedDmSetterRoute,
   AuthenticatedEventsRoute: AuthenticatedEventsRoute,
+  AuthenticatedInboundDialerRoute: AuthenticatedInboundDialerRoute,
   AuthenticatedInsightsRoute: AuthenticatedInsightsRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,

@@ -28,7 +28,7 @@ function Closer() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("calls")
-        .select("id, scheduled_for, status, showed, offer_made, closed, payment_plan, contract_value_cents, cash_collected_cents, call_summary, leads(full_name, handle)")
+        .select("id, scheduled_for, status, showed, offer_made, closed, payment_plan, contract_value_cents, cash_collected_cents, call_summary, recording_url, closer_name, lead_email, leads(full_name, handle, email)")
         .eq("org_id", orgId!)
         .order("scheduled_for", { ascending: false, nullsFirst: false })
         .limit(80);
@@ -41,26 +41,38 @@ function Closer() {
     queryKey: ["leads-min", orgId],
     enabled: !!orgId && open,
     queryFn: async () => {
-      const { data } = await supabase.from("leads").select("id, full_name, handle").eq("org_id", orgId!).limit(200);
+      const { data } = await supabase.from("leads").select("id, full_name, handle, email").eq("org_id", orgId!).limit(200);
       return data ?? [];
     },
   });
 
+  // Spreadsheet-style Lead Status pills → mapped to call_status enum
+  const STATUS_OPTIONS: { value: "closed"|"follow_up"|"booked"|"disqualified"; label: string }[] = [
+    { value: "closed", label: "Closed Won" },
+    { value: "follow_up", label: "Follow Up" },
+    { value: "booked", label: "Pipeline" },
+    { value: "disqualified", label: "DQ" },
+  ];
+
   const create = useMutation({
     mutationFn: async (f: FormData) => {
-      const showed = f.get("showed") === "on";
+      const status = f.get("status") as "closed"|"follow_up"|"booked"|"disqualified";
       const offer_made = f.get("offer_made") === "on";
-      const closed = f.get("closed") === "on";
+      const closed = status === "closed";
       const payload = {
         org_id: orgId!,
         lead_id: (f.get("lead_id") as string) || null,
-        status: (f.get("status") as "booked"|"showed"|"no_show"|"rescheduled"|"closed"|"offer_made"|"disqualified"|"follow_up"),
+        closer_name: String(f.get("closer_name") || "") || null,
+        lead_email: String(f.get("lead_email") || "") || null,
+        status,
         scheduled_for: f.get("scheduled_for") ? new Date(String(f.get("scheduled_for"))).toISOString() : null,
-        showed, offer_made, closed,
+        showed: f.get("showed") === "on",
+        offer_made,
+        closed,
         contract_value_cents: Math.round(Number(f.get("contract_value") || 0) * 100),
         cash_collected_cents: Math.round(Number(f.get("cash_collected") || 0) * 100),
-        payment_plan: f.get("payment_plan") === "on",
         call_summary: String(f.get("summary") || "") || null,
+        recording_url: String(f.get("recording_url") || "") || null,
       };
       const { error } = await supabase.from("calls").insert(payload);
       if (error) throw error;
@@ -97,27 +109,38 @@ function Closer() {
               <DialogHeader><DialogTitle>Log a sales call</DialogTitle></DialogHeader>
               <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); create.mutate(new FormData(e.currentTarget)); }}>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>Lead</Label>
-                    <Select name="lead_id"><SelectTrigger><SelectValue placeholder="Pick lead"/></SelectTrigger>
-                      <SelectContent>{(leadList ?? []).map(l => <SelectItem key={l.id} value={l.id}>{l.full_name || l.handle || l.id.slice(0,6)}</SelectItem>)}</SelectContent>
-                    </Select></div>
-                  <div className="space-y-1.5"><Label>Status</Label>
-                    <Select name="status" defaultValue="closed"><SelectTrigger><SelectValue/></SelectTrigger>
-                      <SelectContent>{["booked","showed","no_show","rescheduled","offer_made","closed","disqualified","follow_up"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                    </Select></div>
-                </div>
-                <div className="space-y-1.5"><Label>Scheduled for</Label><Input name="scheduled_for" type="datetime-local" /></div>
-                <div className="grid grid-cols-3 gap-3 text-xs">
-                  <label className="flex items-center gap-2"><input type="checkbox" name="showed" defaultChecked/> Showed</label>
-                  <label className="flex items-center gap-2"><input type="checkbox" name="offer_made" defaultChecked/> Offer made</label>
-                  <label className="flex items-center gap-2"><input type="checkbox" name="closed" /> Closed</label>
+                  <div className="space-y-1.5"><Label>Closer name</Label><Input name="closer_name" required /></div>
+                  <div className="space-y-1.5"><Label>Date of call</Label><Input name="scheduled_for" type="datetime-local" defaultValue={new Date().toISOString().slice(0,16)} /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>Contract $</Label><Input name="contract_value" type="number" step="0.01" defaultValue={0} /></div>
-                  <div className="space-y-1.5"><Label>Cash collected $</Label><Input name="cash_collected" type="number" step="0.01" defaultValue={0} /></div>
+                  <div className="space-y-1.5"><Label>Lead (optional)</Label>
+                    <Select name="lead_id" onValueChange={(v) => {
+                      const l = (leadList ?? []).find((x) => x.id === v);
+                      const el = document.querySelector<HTMLInputElement>('input[name="lead_email"]');
+                      if (el && l?.email) el.value = l.email;
+                    }}>
+                      <SelectTrigger><SelectValue placeholder="Pick lead"/></SelectTrigger>
+                      <SelectContent>{(leadList ?? []).map(l => <SelectItem key={l.id} value={l.id}>{l.full_name || l.handle || l.id.slice(0,6)}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5"><Label>Lead email</Label><Input name="lead_email" type="email" /></div>
                 </div>
-                <label className="flex items-center gap-2 text-xs"><input type="checkbox" name="payment_plan" /> Payment plan</label>
-                <div className="space-y-1.5"><Label>Summary / key moment</Label><Textarea name="summary" rows={3} /></div>
+                <div className="space-y-1.5"><Label>Lead status</Label>
+                  <Select name="status" defaultValue="closed">
+                    <SelectTrigger><SelectValue/></SelectTrigger>
+                    <SelectContent>{STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <label className="flex items-center gap-2"><input type="checkbox" name="showed" defaultChecked/> Showed</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" name="offer_made" defaultChecked/> Offer made</label>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5"><Label>Cash collected $</Label><Input name="cash_collected" type="number" step="0.01" defaultValue={0} /></div>
+                  <div className="space-y-1.5"><Label>Total revenue $</Label><Input name="contract_value" type="number" step="0.01" defaultValue={0} /></div>
+                </div>
+                <div className="space-y-1.5"><Label>Call recording URL</Label><Input name="recording_url" type="url" placeholder="https://" /></div>
+                <div className="space-y-1.5"><Label>Call summary</Label><Textarea name="summary" rows={3} /></div>
                 <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "…" : "Log call"}</Button>
               </form>
             </DialogContent>
