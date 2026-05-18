@@ -25,6 +25,7 @@ import { Route as AuthenticatedConnectorsRouteImport } from './routes/_authentic
 import { Route as AuthenticatedCloserRouteImport } from './routes/_authenticated.closer'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated.clients'
 import { Route as AuthenticatedAttributionRouteImport } from './routes/_authenticated.attribution'
+import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typeform'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -107,6 +108,11 @@ const AuthenticatedAttributionRoute =
     path: '/attribution',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const ApiPublicTypeformRoute = ApiPublicTypeformRouteImport.update({
+  id: '/api/public/typeform',
+  path: '/api/public/typeform',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
+  '/api/public/typeform': typeof ApiPublicTypeformRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -141,6 +148,7 @@ export interface FileRoutesByTo {
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/': typeof AuthenticatedIndexRoute
+  '/api/public/typeform': typeof ApiPublicTypeformRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -160,6 +168,7 @@ export interface FileRoutesById {
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/traffic': typeof AuthenticatedTrafficRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/api/public/typeform': typeof ApiPublicTypeformRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -179,6 +188,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/team'
     | '/traffic'
+    | '/api/public/typeform'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -196,6 +206,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/traffic'
     | '/'
+    | '/api/public/typeform'
   id:
     | '__root__'
     | '/_authenticated'
@@ -214,11 +225,13 @@ export interface FileRouteTypes {
     | '/_authenticated/team'
     | '/_authenticated/traffic'
     | '/_authenticated/'
+    | '/api/public/typeform'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
+  ApiPublicTypeformRoute: typeof ApiPublicTypeformRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -335,6 +348,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAttributionRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/api/public/typeform': {
+      id: '/api/public/typeform'
+      path: '/api/public/typeform'
+      fullPath: '/api/public/typeform'
+      preLoaderRoute: typeof ApiPublicTypeformRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -379,7 +399,18 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
+  ApiPublicTypeformRoute: ApiPublicTypeformRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
