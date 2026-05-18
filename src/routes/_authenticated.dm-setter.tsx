@@ -36,7 +36,7 @@ function DmSetter() {
 
   const stats = {
     total: leads?.length ?? 0,
-    booked: leads?.filter(l => l.status === "booked").length ?? 0,
+    booked: leads?.filter(l => l.status === "call_booked").length ?? 0,
     closed: leads?.filter(l => l.status === "closed").length ?? 0,
     ghosted: leads?.filter(l => l.status === "ghosted").length ?? 0,
   };
@@ -48,7 +48,7 @@ function DmSetter() {
         full_name: String(form.get("name") || "") || null,
         handle: String(form.get("handle") || "") || null,
         email: String(form.get("email") || "") || null,
-        status: (form.get("status") || "new") as "new",
+        status: (form.get("status") as "dm_received") || "dm_received",
         intent_score: Number(form.get("intent") || 0),
         qualification_notes: String(form.get("notes") || "") || null,
       });
@@ -83,8 +83,8 @@ function DmSetter() {
                 <div className="space-y-1.5"><Label>Email</Label><Input name="email" type="email" /></div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5"><Label>Status</Label>
-                    <Select name="status" defaultValue="new"><SelectTrigger><SelectValue/></SelectTrigger>
-                      <SelectContent>{["new","contacted","qualifying","booked","showed","closed","ghosted","disqualified"].map(s =>
+                    <Select name="status" defaultValue="dm_received"><SelectTrigger><SelectValue/></SelectTrigger>
+                      <SelectContent>{["dm_received","qualified","pre_call_assets_sent","call_booked","showed","closed","ghosted","disqualified","follow_up","no_show"].map(s =>
                         <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
                   <div className="space-y-1.5"><Label>Intent score (0-100)</Label><Input name="intent" type="number" min={0} max={100} defaultValue={50} /></div>
                 </div>
