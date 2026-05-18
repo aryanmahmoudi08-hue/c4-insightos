@@ -115,7 +115,7 @@ function Closer() {
               <DialogHeader><DialogTitle>Log a sales call</DialogTitle></DialogHeader>
               <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); create.mutate(new FormData(e.currentTarget)); }}>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>Closer name</Label><Input name="closer_name" required /></div>
+                  <div className="space-y-1.5"><Label>Closer name</Label><TeamMemberPicker role="closer" name="closer_name" required /></div>
                   <div className="space-y-1.5"><Label>Date of call</Label><Input name="date_of_call" type="datetime-local" defaultValue={new Date().toISOString().slice(0,16)} /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
