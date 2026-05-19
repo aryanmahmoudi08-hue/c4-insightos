@@ -129,7 +129,7 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
             if (error) throw error;
           } else if (event_type === "onboarding_response") {
             const v = onboardingSchema.parse(data);
-            const { error } = await supabaseAdmin.from("onboarding_responses").insert({ org_id: orgId, ...v });
+            const { error } = await supabaseAdmin.from("onboarding_responses").insert({ org_id: orgId, client_id: v.client_id, submitted_at: v.submitted_at, responses: v.responses as never });
             if (error) throw error;
           }
 
