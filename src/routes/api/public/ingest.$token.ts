@@ -85,9 +85,7 @@ const setterDaySchema = z.object({
   };
 });
 
-const dialerDaySchema = setterDaySchema.extend({
-  dials: z.number().int().min(0).optional(),
-});
+const dialerDaySchema = setterDaySchema;
 
 const contentSchema = z.object({
   platform: z.enum(["post", "reel", "story_sequence", "carousel", "vsl", "youtube", "youtube_short", "tiktok", "dm", "email", "ad_creative", "other"]),
