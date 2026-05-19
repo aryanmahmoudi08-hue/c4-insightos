@@ -104,6 +104,8 @@ function EventsBus() {
     <>
       <TopBar title="Event Bus & Webhooks" subtitle="Live event stream, subscriptions, and ingestion payloads" />
       <div className="p-6 space-y-5">
+        <InboundIngestCard orgId={orgId} />
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Events (recent)" value={events?.length ?? 0} icon={<Activity className="h-4 w-4" />} accent="primary" />
           <StatCard label="Active subscriptions" value={(subs ?? []).filter(s => s.active).length} icon={<Webhook className="h-4 w-4" />} accent="accent" />
