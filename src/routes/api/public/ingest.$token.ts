@@ -137,7 +137,7 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
             org_id: orgId,
             event_type: `ingest.${event_type}`,
             subject_type: event_type,
-            payload: data as Record<string, unknown>,
+            payload: data as never,
           });
 
           return jsonRes({ ok: true, event_type });
