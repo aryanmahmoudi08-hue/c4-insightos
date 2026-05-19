@@ -28,7 +28,7 @@ const callSchema = z.object({
   closer_name: z.string().max(255).optional(),
   lead_email: z.string().email().max(255).optional(),
   scheduled_for: z.string().datetime().optional(),
-  status: z.enum(["booked", "showed", "no_show", "rescheduled", "closed_won", "closed_lost"]).optional(),
+  status: z.enum(["booked", "showed", "no_show", "rescheduled", "offer_made", "closed", "follow_up", "disqualified"]).optional(),
   showed: z.boolean().optional(),
   offer_made: z.boolean().optional(),
   closed: z.boolean().optional(),

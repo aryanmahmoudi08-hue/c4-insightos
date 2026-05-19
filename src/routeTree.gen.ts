@@ -26,6 +26,7 @@ import { Route as AuthenticatedCloserRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated.clients'
 import { Route as AuthenticatedAttributionRouteImport } from './routes/_authenticated.attribution'
 import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typeform'
+import { Route as ApiPublicIngestTokenRouteImport } from './routes/api/public/ingest.$token'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -113,6 +114,11 @@ const ApiPublicTypeformRoute = ApiPublicTypeformRouteImport.update({
   path: '/api/public/typeform',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicIngestTokenRoute = ApiPublicIngestTokenRouteImport.update({
+  id: '/api/public/ingest/$token',
+  path: '/api/public/ingest/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
+  '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -149,6 +156,7 @@ export interface FileRoutesByTo {
   '/traffic': typeof AuthenticatedTrafficRoute
   '/': typeof AuthenticatedIndexRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
+  '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -169,6 +177,7 @@ export interface FileRoutesById {
   '/_authenticated/traffic': typeof AuthenticatedTrafficRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
+  '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -189,6 +198,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/traffic'
     | '/api/public/typeform'
+    | '/api/public/ingest/$token'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -207,6 +217,7 @@ export interface FileRouteTypes {
     | '/traffic'
     | '/'
     | '/api/public/typeform'
+    | '/api/public/ingest/$token'
   id:
     | '__root__'
     | '/_authenticated'
@@ -226,12 +237,14 @@ export interface FileRouteTypes {
     | '/_authenticated/traffic'
     | '/_authenticated/'
     | '/api/public/typeform'
+    | '/api/public/ingest/$token'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
   ApiPublicTypeformRoute: typeof ApiPublicTypeformRoute
+  ApiPublicIngestTokenRoute: typeof ApiPublicIngestTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -355,6 +368,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicTypeformRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/ingest/$token': {
+      id: '/api/public/ingest/$token'
+      path: '/api/public/ingest/$token'
+      fullPath: '/api/public/ingest/$token'
+      preLoaderRoute: typeof ApiPublicIngestTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -400,6 +420,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
   ApiPublicTypeformRoute: ApiPublicTypeformRoute,
+  ApiPublicIngestTokenRoute: ApiPublicIngestTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
