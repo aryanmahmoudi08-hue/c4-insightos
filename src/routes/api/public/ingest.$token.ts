@@ -24,6 +24,11 @@ const eventSchema = z.object({
   data: z.record(z.string(), z.unknown()).default({}),
 });
 
+// Money fields are accepted as raw numbers (dollars) and stored as-is in the
+// existing *_cents columns without any conversion. Senders may use either the
+// short name (e.g. cash_collected) or the legacy *_cents name.
+const money = z.number().min(0).optional();
+
 const callSchema = z.object({
   closer_name: z.string().max(255).optional(),
   lead_email: z.string().email().max(255).optional(),
@@ -33,11 +38,22 @@ const callSchema = z.object({
   offer_made: z.boolean().optional(),
   closed: z.boolean().optional(),
   payment_plan: z.boolean().optional(),
-  cash_collected_cents: z.number().int().min(0).optional(),
-  contract_value_cents: z.number().int().min(0).optional(),
-  deposit_cents: z.number().int().min(0).optional(),
+  cash_collected: money,
+  cash_collected_cents: money,
+  contract_value: money,
+  contract_value_cents: money,
+  deposit: money,
+  deposit_cents: money,
   call_summary: z.string().max(5000).optional(),
   key_moment: z.string().max(2000).optional(),
+}).transform((v) => {
+  const { cash_collected, contract_value, deposit, ...rest } = v;
+  return {
+    ...rest,
+    cash_collected_cents: cash_collected ?? v.cash_collected_cents,
+    contract_value_cents: contract_value ?? v.contract_value_cents,
+    deposit_cents: deposit ?? v.deposit_cents,
+  };
 });
 
 const setterDaySchema = z.object({
@@ -53,10 +69,20 @@ const setterDaySchema = z.object({
   live_calls: z.number().int().min(0).optional(),
   closes: z.number().int().min(0).optional(),
   downsells: z.number().int().min(0).optional(),
-  cash_collected_cents: z.number().int().min(0).optional(),
-  total_revenue_cents: z.number().int().min(0).optional(),
+  cash_collected: money,
+  cash_collected_cents: money,
+  total_revenue: money,
+  total_revenue_cents: money,
+  dials: z.number().int().min(0).optional(),
   objections: z.string().max(2000).optional(),
   notes: z.string().max(2000).optional(),
+}).transform((v) => {
+  const { cash_collected, total_revenue, ...rest } = v;
+  return {
+    ...rest,
+    cash_collected_cents: cash_collected ?? v.cash_collected_cents,
+    total_revenue_cents: total_revenue ?? v.total_revenue_cents,
+  };
 });
 
 const dialerDaySchema = setterDaySchema.extend({
