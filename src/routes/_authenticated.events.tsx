@@ -222,3 +222,218 @@ function EventsBus() {
     </>
   );
 }
+
+const EXAMPLES: Record<string, { label: string; table: string; payload: Record<string, unknown> }> = {
+  closer_call: {
+    label: "Closer call",
+    table: "calls",
+    payload: {
+      event_type: "closer_call",
+      data: {
+        closer_name: "Alex Smith",
+        lead_email: "lead@example.com",
+        scheduled_for: "2026-05-19T17:00:00Z",
+        status: "closed",
+        showed: true,
+        offer_made: true,
+        closed: true,
+        cash_collected_cents: 250000,
+        contract_value_cents: 500000,
+        deposit_cents: 100000,
+        payment_plan: true,
+        call_summary: "Strong fit. Closed on payment plan.",
+        key_moment: "Pricing handled with bonus stack",
+      },
+    },
+  },
+  dm_setter_day: {
+    label: "DM setter day",
+    table: "setter_activity (role=dm_setter)",
+    payload: {
+      event_type: "dm_setter_day",
+      data: {
+        team_member_name: "Jordan",
+        activity_date: "2026-05-19",
+        lead_source: "Instagram Spiderweb",
+        leads_contacted: 80,
+        connections: 35,
+        qualified_convos: 18,
+        sets: 6,
+        links_sent: 12,
+        calls_on_calendar: 6,
+        live_calls: 4,
+        closes: 2,
+        downsells: 0,
+        cash_collected_cents: 400000,
+        total_revenue_cents: 800000,
+        objections: "price; timing; spouse",
+        notes: "Strong day on Reels",
+      },
+    },
+  },
+  inbound_dialer_day: {
+    label: "Inbound dialer day",
+    table: "setter_activity (role=inbound_dialer)",
+    payload: {
+      event_type: "inbound_dialer_day",
+      data: {
+        team_member_name: "Sam",
+        activity_date: "2026-05-19",
+        lead_source: "Inbound",
+        dials: 120,
+        connections: 42,
+        qualified_convos: 22,
+        sets: 9,
+        live_calls: 7,
+        closes: 3,
+        cash_collected_cents: 600000,
+        total_revenue_cents: 1200000,
+        objections: "need to think; price",
+        notes: "Hot lead surge after launch email",
+      },
+    },
+  },
+  content_post: {
+    label: "Content post",
+    table: "content_pieces",
+    payload: {
+      event_type: "content_post",
+      data: {
+        platform: "reel",
+        title: "3 reasons your offer isn't closing",
+        url: "https://instagram.com/p/abc",
+        hook: "Your offer isn't broken — your promise is",
+        body: "Walk through the 3 promise levels…",
+        cta: "DM the word PROMISE",
+        topic: "Offer creation",
+        pain_point: "Low close rate",
+        funnel_stage: "TOFU",
+        awareness_stage: "problem_aware",
+        posted_at: "2026-05-19T14:00:00Z",
+        duration_seconds: 47,
+      },
+    },
+  },
+  onboarding_response: {
+    label: "Onboarding response",
+    table: "onboarding_responses",
+    payload: {
+      event_type: "onboarding_response",
+      data: {
+        client_id: "00000000-0000-0000-0000-000000000000",
+        submitted_at: "2026-05-19T20:00:00Z",
+        responses: {
+          business_name: "Acme Co",
+          revenue_goal_usd: 100000,
+          biggest_bottleneck: "lead flow",
+          ideal_client: "B2B SaaS founders",
+        },
+      },
+    },
+  },
+};
+
+function InboundIngestCard({ orgId }: { orgId: string | undefined }) {
+  const getToken = useServerFn(getOrCreateIngestToken);
+  const rotate = useServerFn(rotateIngestToken);
+  const qc = useQueryClient();
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["ingest-token", orgId],
+    enabled: !!orgId,
+    queryFn: () => getToken({ data: { orgId: orgId! } }),
+  });
+
+  const rotateMut = useMutation({
+    mutationFn: () => rotate({ data: { orgId: orgId! } }),
+    onSuccess: (d) => { qc.setQueryData(["ingest-token", orgId], d); toast.success("Token rotated"); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const url = data?.token ? `${origin}/api/public/ingest/${data.token}` : "";
+
+  const copy = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      toast.success("Copied");
+      setTimeout(() => setCopied((c) => (c === key ? null : c)), 1200);
+    } catch { toast.error("Copy failed"); }
+  };
+
+  return (
+    <div className="rounded-lg border-2 border-primary/30 bg-gradient-to-br from-card to-primary/5 overflow-hidden">
+      <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4">
+        <div>
+          <div className="eyebrow text-primary">Inbound Webhook</div>
+          <h2 className="display-serif text-xl mt-1">Your workspace ingest endpoint</h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            POST JSON with an <code className="font-mono text-accent">event_type</code> field. The endpoint routes the payload to the right table automatically.
+          </p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => rotateMut.mutate()} disabled={rotateMut.isPending} className="text-xs">
+          <RefreshCw className="h-3 w-3" /> Rotate
+        </Button>
+      </div>
+
+      <div className="p-5 space-y-4">
+        <div className="space-y-1.5">
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Endpoint URL</Label>
+          <div className="flex gap-2">
+            <Input readOnly value={isLoading ? "Loading…" : url} className="font-mono text-xs bg-background" />
+            <Button variant="outline" size="sm" onClick={() => copy(url, "url")} disabled={!url}>
+              {copied === "url" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} Copy
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">Treat this URL as a secret — anyone with it can write into your workspace. Rotate if leaked.</p>
+        </div>
+
+        <div className="rule-gold" />
+
+        <div>
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 block">Payload schemas by event type</Label>
+          <Tabs defaultValue="closer_call">
+            <TabsList className="grid grid-cols-5 w-full">
+              {Object.entries(EXAMPLES).map(([k, v]) => (
+                <TabsTrigger key={k} value={k} className="text-[11px]">{v.label}</TabsTrigger>
+              ))}
+            </TabsList>
+            {Object.entries(EXAMPLES).map(([k, v]) => {
+              const json = JSON.stringify(v.payload, null, 2);
+              const curl = url ? `curl -X POST '${url}' \\\n  -H 'content-type: application/json' \\\n  -d '${json.replace(/'/g, "'\\''")}'` : "";
+              return (
+                <TabsContent key={k} value={k} className="mt-3 space-y-3">
+                  <div className="text-[11px] text-muted-foreground">
+                    Routes to <span className="font-mono text-accent">{v.table}</span>
+                  </div>
+                  <div className="rounded-md border border-border bg-background overflow-hidden">
+                    <div className="flex items-center justify-between bg-muted/40 px-3 py-1.5">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">JSON body</span>
+                      <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => copy(json, `json-${k}`)}>
+                        {copied === `json-${k}` ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} Copy
+                      </Button>
+                    </div>
+                    <pre className="p-3 text-[11px] font-mono overflow-x-auto max-h-72">{json}</pre>
+                  </div>
+                  {url && (
+                    <div className="rounded-md border border-border bg-background overflow-hidden">
+                      <div className="flex items-center justify-between bg-muted/40 px-3 py-1.5">
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">cURL</span>
+                        <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => copy(curl, `curl-${k}`)}>
+                          {copied === `curl-${k}` ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} Copy
+                        </Button>
+                      </div>
+                      <pre className="p-3 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-all">{curl}</pre>
+                    </div>
+                  )}
+                </TabsContent>
+              );
+            })}
+          </Tabs>
+        </div>
+      </div>
+    </div>
+  );
+}
