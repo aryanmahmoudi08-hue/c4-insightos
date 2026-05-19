@@ -64,7 +64,7 @@ const dialerDaySchema = setterDaySchema.extend({
 });
 
 const contentSchema = z.object({
-  platform: z.enum(["instagram", "tiktok", "youtube", "twitter", "linkedin", "facebook", "other"]),
+  platform: z.enum(["post", "reel", "story_sequence", "carousel", "vsl", "youtube", "youtube_short", "tiktok", "dm", "email", "ad_creative", "other"]),
   title: z.string().max(500).optional(),
   url: z.string().url().max(1000).optional(),
   hook: z.string().max(500).optional(),
