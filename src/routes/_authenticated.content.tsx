@@ -202,6 +202,7 @@ function ContentIntel() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr><th className="text-left p-3">Hook / Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
+                    <th className="text-center p-3">Funnel</th>
                     <th className="text-center p-3 font-mono">Hook</th>
                     <th className="text-center p-3">Link</th>
                     <th className="text-right p-3 font-mono">Views</th><th className="text-right p-3 font-mono">Leads</th>
