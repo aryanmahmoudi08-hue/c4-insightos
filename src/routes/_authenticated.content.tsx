@@ -224,6 +224,16 @@ function ContentIntel() {
                         </td>
                         <td className="p-3 text-xs uppercase text-muted-foreground">{p.platform}</td>
                         <td className="p-3 text-xs">{p.angle ?? "—"}</td>
+                        <td className="p-3 text-center">
+                          {p.funnel_stage ? (
+                            <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-mono uppercase ${
+                              p.funnel_stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
+                              p.funnel_stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
+                              p.funnel_stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" :
+                              "bg-muted text-muted-foreground"
+                            }`}>{p.funnel_stage}</span>
+                          ) : <span className="text-muted-foreground">—</span>}
+                        </td>
                         <td className="p-3 text-center font-mono">{p.hook_score ?? "—"}</td>
                         <td className="p-3 text-center">{p.url ? (
                           <a href={p.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline" title={p.url}>
@@ -236,8 +246,8 @@ function ContentIntel() {
                         <td className="p-3 text-right font-mono">{m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"}</td>
                         <td className="p-3 text-right font-mono">{m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"}</td>
                         <td className="p-3 text-right whitespace-nowrap">
-                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => replicate(p)}>
-                            <Copy className="h-3 w-3" />Replicate
+                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => edit(p)}>
+                            <Pencil className="h-3 w-3" />Edit
                           </Button>
                           {p.platform === "story_sequence" && (
                             <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSlidesFor(p.id)}>
@@ -249,7 +259,7 @@ function ContentIntel() {
                     );
                   })}
                   {(!pieces || pieces.length === 0) && (
-                    <tr><td colSpan={11} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
+                    <tr><td colSpan={12} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
                   )}
                 </tbody>
               </table>
