@@ -151,10 +151,10 @@ function ContentIntel() {
         <div className="flex justify-between items-center">
           <div className="text-xs text-muted-foreground">{pieces?.length ?? 0} pieces tracked</div>
           <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setPrefill(null); }}>
-            <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4" />Log content</Button></DialogTrigger>
+            <DialogTrigger asChild><Button size="sm" onClick={() => setPrefill(null)}><Plus className="h-4 w-4" />Log content</Button></DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>{prefill ? "Replicate content piece" : "Log content piece"}</DialogTitle></DialogHeader>
-              <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); create.mutate(new FormData(e.currentTarget)); }}>
+              <DialogHeader><DialogTitle>{prefill?.id ? "Edit content piece" : "Log content piece"}</DialogTitle></DialogHeader>
+              <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save.mutate(new FormData(e.currentTarget)); }}>
                 <div className="space-y-1.5"><Label>Title</Label><Input name="title" defaultValue={prefill?.title ?? ""} required /></div>
                 <div className="space-y-1.5"><Label>Hook (first 3 sec)</Label><Textarea name="hook" rows={2} defaultValue={prefill?.hook ?? ""} /></div>
                 <div className="grid grid-cols-2 gap-3">
@@ -167,16 +167,25 @@ function ContentIntel() {
                       <SelectContent>{["authority","story","contrarian","tutorial","case_study","aspirational","fear","social_proof"].map(p =>
                         <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
                 </div>
+                <div className="space-y-1.5"><Label>Funnel stage</Label>
+                  <Select name="funnel_stage" defaultValue={prefill?.funnel_stage ?? "TOF"}><SelectTrigger><SelectValue/></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TOF">TOF — Top of Funnel (awareness)</SelectItem>
+                      <SelectItem value="MOF">MOF — Middle of Funnel (consideration)</SelectItem>
+                      <SelectItem value="BOF">BOF — Bottom of Funnel (conversion)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>Video URL</Label><Input name="url" type="url" placeholder="https://..." /></div>
+                  <div className="space-y-1.5"><Label>Video URL</Label><Input name="url" type="url" placeholder="https://..." defaultValue={prefill?.url ?? ""} /></div>
                   <div className="space-y-1.5"><Label>Hook score (1–10)</Label><Input name="hook_score" type="number" min={1} max={10} defaultValue={prefill?.hook_score ?? ""} /></div>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1.5"><Label>Views</Label><Input name="views" type="number" defaultValue={0} /></div>
-                  <div className="space-y-1.5"><Label>Leads</Label><Input name="leads" type="number" defaultValue={0} /></div>
-                  <div className="space-y-1.5"><Label>Retention %</Label><Input name="retention" type="number" step="0.1" defaultValue={0} /></div>
+                  <div className="space-y-1.5"><Label>Views</Label><Input name="views" type="number" defaultValue={prefill?.views ?? 0} /></div>
+                  <div className="space-y-1.5"><Label>Leads</Label><Input name="leads" type="number" defaultValue={prefill?.leads ?? 0} /></div>
+                  <div className="space-y-1.5"><Label>Retention %</Label><Input name="retention" type="number" step="0.1" defaultValue={prefill?.retention ?? 0} /></div>
                 </div>
-                <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "…" : "Save"}</Button>
+                <Button type="submit" className="w-full" disabled={save.isPending}>{save.isPending ? "…" : "Save"}</Button>
               </form>
             </DialogContent>
           </Dialog>
