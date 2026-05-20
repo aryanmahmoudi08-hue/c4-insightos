@@ -39,17 +39,21 @@ function topPhrases(texts: string[], n = 2, limit = 20): { phrase: string; count
     .slice(0, limit);
 }
 
-const QUESTIONS = [
-  { key: "first_touchpoint", q: "What was the first piece of content / touchpoint that made you discover us?" },
-  { key: "pivotal_moment", q: "What was the moment you decided 'I have to work with them'?" },
-  { key: "objections_before", q: "What hesitations or doubts almost stopped you from joining?" },
-  { key: "join_sooner", q: "What could we have done to make you join 30 days sooner?" },
-  { key: "current_pain", q: "What is the #1 problem you're hoping we solve right now?" },
-  { key: "desired_identity", q: "12 months from now, who do you want to have become?" },
-  { key: "tried_before", q: "What have you tried before that didn't work, and why?" },
-  { key: "success_metric", q: "What single result would make this investment a clear 10x ROI?" },
-  { key: "fear", q: "What's your biggest fear about this not working?" },
-  { key: "beliefs_shifted", q: "What belief about your business shifted when you saw our content?" },
+type QType = "short" | "long" | "choice";
+const QUESTIONS: { key: string; q: string; type: QType; options?: string[] }[] = [
+  { key: "name", q: "Name", type: "short" },
+  { key: "first_touchpoint", q: "What was the first piece of content / touchpoint that made you discover us?", type: "short" },
+  { key: "pivotal_moment", q: "What was the moment you decided 'I have to work with them'?", type: "short" },
+  { key: "objections_before", q: "What hesitations or doubts almost stopped you from joining?", type: "short" },
+  { key: "join_sooner", q: "What could we have done to make you join 30 days sooner?", type: "long" },
+  { key: "why_us", q: "Why did you choose us over competitors?", type: "long" },
+  { key: "current_pain", q: "What is the #1 problem/frustration you're hoping we solve?", type: "short" },
+  { key: "desired_identity", q: "12 months from now, who do you want to have become?", type: "short" },
+  { key: "tried_before", q: "What have you tried before that didn't work, and why?", type: "long" },
+  { key: "fear", q: "What's your biggest fear about this not working?", type: "long" },
+  { key: "beliefs_shifted", q: "What belief [income wise] shifted when you saw our content?", type: "long" },
+  { key: "content_type_helped", q: "Which content type helped most?", type: "choice", options: ["Reels", "Stories", "YouTube", "DMs", "Ads"] },
+  { key: "experience_level", q: "Experience level", type: "choice", options: ["Beginner", "Intermediate", "Advanced"] },
 ];
 
 function Onboarding() {
