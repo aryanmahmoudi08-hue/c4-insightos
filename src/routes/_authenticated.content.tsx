@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Video, Layers, Copy, ExternalLink } from "lucide-react";
+import { Plus, Video, Layers, Pencil, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import type { Database } from "@/integrations/supabase/types";
@@ -22,12 +22,12 @@ type Angle = Database["public"]["Enums"]["content_angle"];
 type PieceRow = {
   id: string; title: string | null; platform: Platform; hook: string | null;
   angle: Angle | null; posted_at: string | null; url: string | null;
-  hook_score: number | null;
+  hook_score: number | null; funnel_stage: string | null;
   content_metrics: { views: number | null; leads_generated: number | null; closes: number | null;
     cash_collected_cents: number | null; hook_retention_pct: number | null }[] | null;
 };
 
-type Prefill = { title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; hook_score?: number };
+type Prefill = { id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; hook_score?: number; funnel_stage?: string; views?: number; leads?: number; retention?: number };
 
 export const Route = createFileRoute("/_authenticated/content")({ component: ContentIntel });
 
@@ -45,7 +45,7 @@ function ContentIntel() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("content_pieces")
-        .select("id, title, platform, hook, angle, posted_at, url, hook_score, content_metrics(views, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
+        .select("id, title, platform, hook, angle, posted_at, url, hook_score, funnel_stage, content_metrics(views, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
         .eq("org_id", orgId!)
         .order("posted_at", { ascending: false, nullsFirst: false })
         .limit(50);
@@ -54,8 +54,9 @@ function ContentIntel() {
     },
   });
 
-  const create = useMutation({
+  const save = useMutation({
     mutationFn: async (form: FormData) => {
+      const editingId = prefill?.id;
       const payload = {
         org_id: orgId!,
         title: String(form.get("title") || ""),
@@ -64,31 +65,55 @@ function ContentIntel() {
         angle: (form.get("angle") as Angle) || null,
         url: String(form.get("url") || "") || null,
         hook_score: form.get("hook_score") ? Number(form.get("hook_score")) : null,
-        posted_at: new Date().toISOString(),
+        funnel_stage: String(form.get("funnel_stage") || "") || null,
       };
-      const { data: piece, error } = await supabase.from("content_pieces").insert(payload).select("id").single();
-      if (error) throw error;
-      const m = {
-        org_id: orgId!,
-        content_id: piece.id,
+      let contentId = editingId;
+      if (editingId) {
+        const { error } = await supabase.from("content_pieces").update(payload).eq("id", editingId);
+        if (error) throw error;
+      } else {
+        const { data: piece, error } = await supabase
+          .from("content_pieces")
+          .insert({ ...payload, posted_at: new Date().toISOString() })
+          .select("id").single();
+        if (error) throw error;
+        contentId = piece.id;
+      }
+      const metrics = {
         views: Number(form.get("views") || 0),
         leads_generated: Number(form.get("leads") || 0),
         hook_retention_pct: Number(form.get("retention") || 0),
       };
-      await supabase.from("content_metrics").insert(m);
+      if (editingId) {
+        const { data: existing } = await supabase
+          .from("content_metrics").select("id").eq("content_id", editingId).limit(1).maybeSingle();
+        if (existing) {
+          await supabase.from("content_metrics").update(metrics).eq("id", existing.id);
+        } else {
+          await supabase.from("content_metrics").insert({ org_id: orgId!, content_id: contentId!, ...metrics });
+        }
+      } else {
+        await supabase.from("content_metrics").insert({ org_id: orgId!, content_id: contentId!, ...metrics });
+      }
     },
-    onSuccess: () => { toast.success("Content logged"); qc.invalidateQueries({ queryKey: ["content"] }); setOpen(false); setPrefill(null); },
+    onSuccess: () => { toast.success(prefill?.id ? "Content updated" : "Content logged"); qc.invalidateQueries({ queryKey: ["content"] }); setOpen(false); setPrefill(null); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
-  const replicate = (p: PieceRow) => {
+  const edit = (p: PieceRow) => {
+    const m = (p.content_metrics ?? [])[0];
     setPrefill({
-      title: p.title ? `${p.title} (v2)` : undefined,
+      id: p.id,
+      title: p.title ?? undefined,
       hook: p.hook ?? undefined,
       platform: p.platform,
       angle: p.angle ?? undefined,
-      url: undefined,
+      url: p.url ?? undefined,
       hook_score: p.hook_score ?? undefined,
+      funnel_stage: p.funnel_stage ?? undefined,
+      views: m?.views ?? 0,
+      leads: m?.leads_generated ?? 0,
+      retention: m?.hook_retention_pct ?? 0,
     });
     setOpen(true);
   };
@@ -126,10 +151,10 @@ function ContentIntel() {
         <div className="flex justify-between items-center">
           <div className="text-xs text-muted-foreground">{pieces?.length ?? 0} pieces tracked</div>
           <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setPrefill(null); }}>
-            <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4" />Log content</Button></DialogTrigger>
+            <DialogTrigger asChild><Button size="sm" onClick={() => setPrefill(null)}><Plus className="h-4 w-4" />Log content</Button></DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>{prefill ? "Replicate content piece" : "Log content piece"}</DialogTitle></DialogHeader>
-              <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); create.mutate(new FormData(e.currentTarget)); }}>
+              <DialogHeader><DialogTitle>{prefill?.id ? "Edit content piece" : "Log content piece"}</DialogTitle></DialogHeader>
+              <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save.mutate(new FormData(e.currentTarget)); }}>
                 <div className="space-y-1.5"><Label>Title</Label><Input name="title" defaultValue={prefill?.title ?? ""} required /></div>
                 <div className="space-y-1.5"><Label>Hook (first 3 sec)</Label><Textarea name="hook" rows={2} defaultValue={prefill?.hook ?? ""} /></div>
                 <div className="grid grid-cols-2 gap-3">
@@ -142,16 +167,25 @@ function ContentIntel() {
                       <SelectContent>{["authority","story","contrarian","tutorial","case_study","aspirational","fear","social_proof"].map(p =>
                         <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
                 </div>
+                <div className="space-y-1.5"><Label>Funnel stage</Label>
+                  <Select name="funnel_stage" defaultValue={prefill?.funnel_stage ?? "TOF"}><SelectTrigger><SelectValue/></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TOF">TOF — Top of Funnel (awareness)</SelectItem>
+                      <SelectItem value="MOF">MOF — Middle of Funnel (consideration)</SelectItem>
+                      <SelectItem value="BOF">BOF — Bottom of Funnel (conversion)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>Video URL</Label><Input name="url" type="url" placeholder="https://..." /></div>
+                  <div className="space-y-1.5"><Label>Video URL</Label><Input name="url" type="url" placeholder="https://..." defaultValue={prefill?.url ?? ""} /></div>
                   <div className="space-y-1.5"><Label>Hook score (1–10)</Label><Input name="hook_score" type="number" min={1} max={10} defaultValue={prefill?.hook_score ?? ""} /></div>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1.5"><Label>Views</Label><Input name="views" type="number" defaultValue={0} /></div>
-                  <div className="space-y-1.5"><Label>Leads</Label><Input name="leads" type="number" defaultValue={0} /></div>
-                  <div className="space-y-1.5"><Label>Retention %</Label><Input name="retention" type="number" step="0.1" defaultValue={0} /></div>
+                  <div className="space-y-1.5"><Label>Views</Label><Input name="views" type="number" defaultValue={prefill?.views ?? 0} /></div>
+                  <div className="space-y-1.5"><Label>Leads</Label><Input name="leads" type="number" defaultValue={prefill?.leads ?? 0} /></div>
+                  <div className="space-y-1.5"><Label>Retention %</Label><Input name="retention" type="number" step="0.1" defaultValue={prefill?.retention ?? 0} /></div>
                 </div>
-                <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "…" : "Save"}</Button>
+                <Button type="submit" className="w-full" disabled={save.isPending}>{save.isPending ? "…" : "Save"}</Button>
               </form>
             </DialogContent>
           </Dialog>
@@ -168,6 +202,7 @@ function ContentIntel() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr><th className="text-left p-3">Hook / Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
+                    <th className="text-center p-3">Funnel</th>
                     <th className="text-center p-3 font-mono">Hook</th>
                     <th className="text-center p-3">Link</th>
                     <th className="text-right p-3 font-mono">Views</th><th className="text-right p-3 font-mono">Leads</th>
@@ -189,6 +224,16 @@ function ContentIntel() {
                         </td>
                         <td className="p-3 text-xs uppercase text-muted-foreground">{p.platform}</td>
                         <td className="p-3 text-xs">{p.angle ?? "—"}</td>
+                        <td className="p-3 text-center">
+                          {p.funnel_stage ? (
+                            <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-mono uppercase ${
+                              p.funnel_stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
+                              p.funnel_stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
+                              p.funnel_stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" :
+                              "bg-muted text-muted-foreground"
+                            }`}>{p.funnel_stage}</span>
+                          ) : <span className="text-muted-foreground">—</span>}
+                        </td>
                         <td className="p-3 text-center font-mono">{p.hook_score ?? "—"}</td>
                         <td className="p-3 text-center">{p.url ? (
                           <a href={p.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline" title={p.url}>
@@ -201,8 +246,8 @@ function ContentIntel() {
                         <td className="p-3 text-right font-mono">{m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"}</td>
                         <td className="p-3 text-right font-mono">{m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"}</td>
                         <td className="p-3 text-right whitespace-nowrap">
-                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => replicate(p)}>
-                            <Copy className="h-3 w-3" />Replicate
+                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => edit(p)}>
+                            <Pencil className="h-3 w-3" />Edit
                           </Button>
                           {p.platform === "story_sequence" && (
                             <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSlidesFor(p.id)}>
@@ -214,7 +259,7 @@ function ContentIntel() {
                     );
                   })}
                   {(!pieces || pieces.length === 0) && (
-                    <tr><td colSpan={11} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
+                    <tr><td colSpan={12} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
                   )}
                 </tbody>
               </table>
