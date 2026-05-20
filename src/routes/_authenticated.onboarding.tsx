@@ -248,5 +248,5 @@ const THEME_GROUPS = [
   { label: "Pain points", keys: ["current_pain", "tried_before"], icon: MessageSquareQuote, hint: "What problems clients say they're trying to solve — feeds hook + offer copy" },
   { label: "Pivotal moments", keys: ["pivotal_moment", "beliefs_shifted"], icon: Sparkles, hint: "The exact moments + beliefs that converted them — replicate in content" },
   { label: "Objections that almost killed the sale", keys: ["objections_before", "fear"], icon: Brain, hint: "Pre-emptive content + script targets" },
-  { label: "Desired identity", keys: ["desired_identity", "success_metric"], icon: Cloud, hint: "Aspirational language to mirror in long-form + sales" },
+  { label: "Desired identity", keys: ["desired_identity", "why_us"], icon: Cloud, hint: "Aspirational language to mirror in long-form + sales" },
 ] as const;
