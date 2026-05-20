@@ -14,8 +14,8 @@ import c4Logo from "@/assets/c4-logo.png";
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; soon?: boolean };
 
 const TOP_NAV: NavItem[] = [
-  { to: "/dashboard", label: "Executive", icon: LayoutDashboard },
-  { to: "/content", label: "Content Intel", icon: Video },
+  { to: "/dashboard", label: "Main Hub", icon: LayoutDashboard },
+  { to: "/content", label: "Content Tracker", icon: Video },
   { to: "/attribution", label: "Attribution", icon: GitBranch },
 ];
 

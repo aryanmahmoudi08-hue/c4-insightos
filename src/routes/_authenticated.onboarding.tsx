@@ -39,17 +39,21 @@ function topPhrases(texts: string[], n = 2, limit = 20): { phrase: string; count
     .slice(0, limit);
 }
 
-const QUESTIONS = [
-  { key: "first_touchpoint", q: "What was the first piece of content / touchpoint that made you discover us?" },
-  { key: "pivotal_moment", q: "What was the moment you decided 'I have to work with them'?" },
-  { key: "objections_before", q: "What hesitations or doubts almost stopped you from joining?" },
-  { key: "join_sooner", q: "What could we have done to make you join 30 days sooner?" },
-  { key: "current_pain", q: "What is the #1 problem you're hoping we solve right now?" },
-  { key: "desired_identity", q: "12 months from now, who do you want to have become?" },
-  { key: "tried_before", q: "What have you tried before that didn't work, and why?" },
-  { key: "success_metric", q: "What single result would make this investment a clear 10x ROI?" },
-  { key: "fear", q: "What's your biggest fear about this not working?" },
-  { key: "beliefs_shifted", q: "What belief about your business shifted when you saw our content?" },
+type QType = "short" | "long" | "choice";
+const QUESTIONS: { key: string; q: string; type: QType; options?: string[] }[] = [
+  { key: "name", q: "Name", type: "short" },
+  { key: "first_touchpoint", q: "What was the first piece of content / touchpoint that made you discover us?", type: "short" },
+  { key: "pivotal_moment", q: "What was the moment you decided 'I have to work with them'?", type: "short" },
+  { key: "objections_before", q: "What hesitations or doubts almost stopped you from joining?", type: "short" },
+  { key: "join_sooner", q: "What could we have done to make you join 30 days sooner?", type: "long" },
+  { key: "why_us", q: "Why did you choose us over competitors?", type: "long" },
+  { key: "current_pain", q: "What is the #1 problem/frustration you're hoping we solve?", type: "short" },
+  { key: "desired_identity", q: "12 months from now, who do you want to have become?", type: "short" },
+  { key: "tried_before", q: "What have you tried before that didn't work, and why?", type: "long" },
+  { key: "fear", q: "What's your biggest fear about this not working?", type: "long" },
+  { key: "beliefs_shifted", q: "What belief [income wise] shifted when you saw our content?", type: "long" },
+  { key: "content_type_helped", q: "Which content type helped most?", type: "choice", options: ["Reels", "Stories", "YouTube", "DMs", "Ads"] },
+  { key: "experience_level", q: "Experience level", type: "choice", options: ["Beginner", "Intermediate", "Advanced"] },
 ];
 
 function Onboarding() {
@@ -135,7 +139,16 @@ function Onboarding() {
                 {QUESTIONS.map(q => (
                   <div key={q.key} className="space-y-1.5">
                     <Label className="text-xs leading-snug">{q.q}</Label>
-                    <Textarea name={q.key} rows={2} maxLength={2000} />
+                    {q.type === "short" && <Input name={q.key} maxLength={500} />}
+                    {q.type === "long" && <Textarea name={q.key} rows={3} maxLength={2000} />}
+                    {q.type === "choice" && (
+                      <Select name={q.key}>
+                        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                        <SelectContent>
+                          {q.options!.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 ))}
                 <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "Saving…" : "Submit intake"}</Button>
@@ -235,5 +248,5 @@ const THEME_GROUPS = [
   { label: "Pain points", keys: ["current_pain", "tried_before"], icon: MessageSquareQuote, hint: "What problems clients say they're trying to solve — feeds hook + offer copy" },
   { label: "Pivotal moments", keys: ["pivotal_moment", "beliefs_shifted"], icon: Sparkles, hint: "The exact moments + beliefs that converted them — replicate in content" },
   { label: "Objections that almost killed the sale", keys: ["objections_before", "fear"], icon: Brain, hint: "Pre-emptive content + script targets" },
-  { label: "Desired identity", keys: ["desired_identity", "success_metric"], icon: Cloud, hint: "Aspirational language to mirror in long-form + sales" },
+  { label: "Desired identity", keys: ["desired_identity", "why_us"], icon: Cloud, hint: "Aspirational language to mirror in long-form + sales" },
 ] as const;
