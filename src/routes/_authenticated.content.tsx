@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Video, Layers, Copy } from "lucide-react";
+import { Plus, Video, Layers, Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import type { Database } from "@/integrations/supabase/types";
@@ -143,7 +143,7 @@ function ContentIntel() {
                         <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>URL</Label><Input name="url" type="url" /></div>
+                  <div className="space-y-1.5"><Label>Video URL</Label><Input name="url" type="url" placeholder="https://..." /></div>
                   <div className="space-y-1.5"><Label>Hook score (1–10)</Label><Input name="hook_score" type="number" min={1} max={10} defaultValue={prefill?.hook_score ?? ""} /></div>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
@@ -169,6 +169,7 @@ function ContentIntel() {
                 <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr><th className="text-left p-3">Hook / Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
                     <th className="text-center p-3 font-mono">Hook</th>
+                    <th className="text-center p-3">Link</th>
                     <th className="text-right p-3 font-mono">Views</th><th className="text-right p-3 font-mono">Leads</th>
                     <th className="text-right p-3 font-mono">Closes</th><th className="text-right p-3 font-mono">Cash</th>
                     <th className="text-right p-3 font-mono">Retention</th><th className="text-right p-3"></th></tr>
@@ -189,6 +190,11 @@ function ContentIntel() {
                         <td className="p-3 text-xs uppercase text-muted-foreground">{p.platform}</td>
                         <td className="p-3 text-xs">{p.angle ?? "—"}</td>
                         <td className="p-3 text-center font-mono">{p.hook_score ?? "—"}</td>
+                        <td className="p-3 text-center">{p.url ? (
+                          <a href={p.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline" title={p.url}>
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        ) : <span className="text-muted-foreground">—</span>}</td>
                         <td className="p-3 text-right font-mono">{m?.views?.toLocaleString() ?? "—"}</td>
                         <td className="p-3 text-right font-mono">{m?.leads_generated ?? "—"}</td>
                         <td className="p-3 text-right font-mono">{m?.closes ?? "—"}</td>
@@ -208,7 +214,7 @@ function ContentIntel() {
                     );
                   })}
                   {(!pieces || pieces.length === 0) && (
-                    <tr><td colSpan={10} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
+                    <tr><td colSpan={11} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
                   )}
                 </tbody>
               </table>
