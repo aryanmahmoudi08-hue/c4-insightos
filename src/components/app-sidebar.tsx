@@ -32,7 +32,6 @@ const BOTTOM_NAV: NavItem[] = [
   { to: "/traffic", label: "Traffic", icon: TrendingUp },
   { to: "/insights", label: "AI Insights", icon: Sparkles },
   { to: "/events", label: "Event Bus", icon: Activity },
-  { to: "/connectors", label: "Connectors", icon: Plug },
 ];
 
 export function AppSidebar() {
