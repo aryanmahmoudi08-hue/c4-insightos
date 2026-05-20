@@ -143,7 +143,7 @@ function ContentIntel() {
                         <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>URL</Label><Input name="url" type="url" /></div>
+                  <div className="space-y-1.5"><Label>Video URL</Label><Input name="url" type="url" placeholder="https://..." /></div>
                   <div className="space-y-1.5"><Label>Hook score (1–10)</Label><Input name="hook_score" type="number" min={1} max={10} defaultValue={prefill?.hook_score ?? ""} /></div>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
