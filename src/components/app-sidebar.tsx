@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard, Video, GitBranch, MessageSquare, PhoneCall, Users, BadgeCheck,
-  TrendingUp, Sparkles, Plug, Settings, LogOut, Bell, Search, Brain, Activity, PhoneIncoming,
+  TrendingUp, Sparkles, Settings, LogOut, Bell, Search, Brain, Activity, PhoneIncoming,
   ChevronDown, Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
