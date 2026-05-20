@@ -54,8 +54,9 @@ function ContentIntel() {
     },
   });
 
-  const create = useMutation({
+  const save = useMutation({
     mutationFn: async (form: FormData) => {
+      const editingId = prefill?.id;
       const payload = {
         org_id: orgId!,
         title: String(form.get("title") || ""),
@@ -64,31 +65,55 @@ function ContentIntel() {
         angle: (form.get("angle") as Angle) || null,
         url: String(form.get("url") || "") || null,
         hook_score: form.get("hook_score") ? Number(form.get("hook_score")) : null,
-        posted_at: new Date().toISOString(),
+        funnel_stage: String(form.get("funnel_stage") || "") || null,
       };
-      const { data: piece, error } = await supabase.from("content_pieces").insert(payload).select("id").single();
-      if (error) throw error;
-      const m = {
-        org_id: orgId!,
-        content_id: piece.id,
+      let contentId = editingId;
+      if (editingId) {
+        const { error } = await supabase.from("content_pieces").update(payload).eq("id", editingId);
+        if (error) throw error;
+      } else {
+        const { data: piece, error } = await supabase
+          .from("content_pieces")
+          .insert({ ...payload, posted_at: new Date().toISOString() })
+          .select("id").single();
+        if (error) throw error;
+        contentId = piece.id;
+      }
+      const metrics = {
         views: Number(form.get("views") || 0),
         leads_generated: Number(form.get("leads") || 0),
         hook_retention_pct: Number(form.get("retention") || 0),
       };
-      await supabase.from("content_metrics").insert(m);
+      if (editingId) {
+        const { data: existing } = await supabase
+          .from("content_metrics").select("id").eq("content_id", editingId).limit(1).maybeSingle();
+        if (existing) {
+          await supabase.from("content_metrics").update(metrics).eq("id", existing.id);
+        } else {
+          await supabase.from("content_metrics").insert({ org_id: orgId!, content_id: contentId!, ...metrics });
+        }
+      } else {
+        await supabase.from("content_metrics").insert({ org_id: orgId!, content_id: contentId!, ...metrics });
+      }
     },
-    onSuccess: () => { toast.success("Content logged"); qc.invalidateQueries({ queryKey: ["content"] }); setOpen(false); setPrefill(null); },
+    onSuccess: () => { toast.success(prefill?.id ? "Content updated" : "Content logged"); qc.invalidateQueries({ queryKey: ["content"] }); setOpen(false); setPrefill(null); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
-  const replicate = (p: PieceRow) => {
+  const edit = (p: PieceRow) => {
+    const m = (p.content_metrics ?? [])[0];
     setPrefill({
-      title: p.title ? `${p.title} (v2)` : undefined,
+      id: p.id,
+      title: p.title ?? undefined,
       hook: p.hook ?? undefined,
       platform: p.platform,
       angle: p.angle ?? undefined,
-      url: undefined,
+      url: p.url ?? undefined,
       hook_score: p.hook_score ?? undefined,
+      funnel_stage: p.funnel_stage ?? undefined,
+      views: m?.views ?? 0,
+      leads: m?.leads_generated ?? 0,
+      retention: m?.hook_retention_pct ?? 0,
     });
     setOpen(true);
   };
