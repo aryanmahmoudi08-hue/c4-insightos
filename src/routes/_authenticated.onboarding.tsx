@@ -139,7 +139,16 @@ function Onboarding() {
                 {QUESTIONS.map(q => (
                   <div key={q.key} className="space-y-1.5">
                     <Label className="text-xs leading-snug">{q.q}</Label>
-                    <Textarea name={q.key} rows={2} maxLength={2000} />
+                    {q.type === "short" && <Input name={q.key} maxLength={500} />}
+                    {q.type === "long" && <Textarea name={q.key} rows={3} maxLength={2000} />}
+                    {q.type === "choice" && (
+                      <Select name={q.key}>
+                        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                        <SelectContent>
+                          {q.options!.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 ))}
                 <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "Saving…" : "Submit intake"}</Button>
