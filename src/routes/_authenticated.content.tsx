@@ -198,8 +198,8 @@ function ContentIntel() {
           </TabsList>
 
           <TabsContent value="table">
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="rounded-lg border border-border bg-card overflow-x-auto">
+              <table className="w-full min-w-[1200px] text-sm">
                 <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr><th className="text-left p-3">Hook / Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
                     <th className="text-center p-3">Funnel</th>
