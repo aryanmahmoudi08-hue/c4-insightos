@@ -64,7 +64,6 @@ function ContentIntel() {
         platform: form.get("platform") as Platform,
         angle: (form.get("angle") as Angle) || null,
         url: String(form.get("url") || "") || null,
-        hook_score: form.get("hook_score") ? Number(form.get("hook_score")) : null,
         funnel_stage: String(form.get("funnel_stage") || "") || null,
       };
       let contentId = editingId;
