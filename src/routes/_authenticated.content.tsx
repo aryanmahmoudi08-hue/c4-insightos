@@ -22,12 +22,12 @@ type Angle = Database["public"]["Enums"]["content_angle"];
 type PieceRow = {
   id: string; title: string | null; platform: Platform; hook: string | null;
   angle: Angle | null; posted_at: string | null; url: string | null;
-  hook_score: number | null; funnel_stage: string | null;
+  funnel_stage: string | null;
   content_metrics: { views: number | null; leads_generated: number | null; closes: number | null;
     cash_collected_cents: number | null; hook_retention_pct: number | null }[] | null;
 };
 
-type Prefill = { id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; hook_score?: number; funnel_stage?: string; views?: number; leads?: number; retention?: number };
+type Prefill = { id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; funnel_stage?: string; views?: number; leads?: number; retention?: number };
 
 export const Route = createFileRoute("/_authenticated/content")({ component: ContentIntel });
 
@@ -45,7 +45,7 @@ function ContentIntel() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("content_pieces")
-        .select("id, title, platform, hook, angle, posted_at, url, hook_score, funnel_stage, content_metrics(views, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
+        .select("id, title, platform, hook, angle, posted_at, url, funnel_stage, content_metrics(views, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
         .eq("org_id", orgId!)
         .order("posted_at", { ascending: false, nullsFirst: false })
         .limit(50);
@@ -64,7 +64,6 @@ function ContentIntel() {
         platform: form.get("platform") as Platform,
         angle: (form.get("angle") as Angle) || null,
         url: String(form.get("url") || "") || null,
-        hook_score: form.get("hook_score") ? Number(form.get("hook_score")) : null,
         funnel_stage: String(form.get("funnel_stage") || "") || null,
       };
       let contentId = editingId;
@@ -109,7 +108,6 @@ function ContentIntel() {
       platform: p.platform,
       angle: p.angle ?? undefined,
       url: p.url ?? undefined,
-      hook_score: p.hook_score ?? undefined,
       funnel_stage: p.funnel_stage ?? undefined,
       views: m?.views ?? 0,
       leads: m?.leads_generated ?? 0,
@@ -176,10 +174,7 @@ function ContentIntel() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>Video URL</Label><Input name="url" type="url" placeholder="https://..." defaultValue={prefill?.url ?? ""} /></div>
-                  <div className="space-y-1.5"><Label>Hook score (1–10)</Label><Input name="hook_score" type="number" min={1} max={10} defaultValue={prefill?.hook_score ?? ""} /></div>
-                </div>
+                <div className="space-y-1.5"><Label>Video URL</Label><Input name="url" type="url" placeholder="https://..." defaultValue={prefill?.url ?? ""} /></div>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1.5"><Label>Views</Label><Input name="views" type="number" defaultValue={prefill?.views ?? 0} /></div>
                   <div className="space-y-1.5"><Label>Leads</Label><Input name="leads" type="number" defaultValue={prefill?.leads ?? 0} /></div>
@@ -203,7 +198,6 @@ function ContentIntel() {
                 <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr><th className="text-left p-3">Hook / Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
                     <th className="text-center p-3">Funnel</th>
-                    <th className="text-center p-3 font-mono">Hook</th>
                     <th className="text-center p-3">Link</th>
                     <th className="text-right p-3 font-mono">Views</th><th className="text-right p-3 font-mono">Leads</th>
                     <th className="text-right p-3 font-mono">Closes</th><th className="text-right p-3 font-mono">Cash</th>
@@ -234,7 +228,6 @@ function ContentIntel() {
                             }`}>{p.funnel_stage}</span>
                           ) : <span className="text-muted-foreground">—</span>}
                         </td>
-                        <td className="p-3 text-center font-mono">{p.hook_score ?? "—"}</td>
                         <td className="p-3 text-center">{p.url ? (
                           <a href={p.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline" title={p.url}>
                             <ExternalLink className="h-3.5 w-3.5" />
@@ -259,7 +252,7 @@ function ContentIntel() {
                     );
                   })}
                   {(!pieces || pieces.length === 0) && (
-                    <tr><td colSpan={12} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
+                    <tr><td colSpan={11} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
                   )}
                 </tbody>
               </table>
