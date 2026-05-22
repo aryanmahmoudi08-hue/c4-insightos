@@ -191,6 +191,7 @@ function ContentIntel() {
                   </Select>
                 </div>
                 <div className="space-y-1.5"><Label>Video URL</Label><Input name="url" type="url" placeholder="https://..." defaultValue={prefill?.url ?? ""} /></div>
+                <div className="space-y-1.5"><Label>Full transcript</Label><Textarea name="transcript" rows={6} placeholder="Paste the entire reel transcript here…" defaultValue={prefill?.transcript ?? ""} /></div>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1.5"><Label>Views</Label><Input name="views" type="number" defaultValue={prefill?.views ?? 0} /></div>
                   <div className="space-y-1.5"><Label>Leads</Label><Input name="leads" type="number" defaultValue={prefill?.leads ?? 0} /></div>
