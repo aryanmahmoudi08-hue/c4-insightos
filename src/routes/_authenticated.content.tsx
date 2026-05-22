@@ -11,8 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Video, Layers, Pencil, ExternalLink, Trash2 } from "lucide-react";
+import { Plus, Video, Layers, Pencil, ExternalLink, Trash2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { analyzeContent } from "@/lib/analyze-content.functions";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -168,37 +170,7 @@ function ContentIntel() {
             <DialogTrigger asChild><Button size="sm" onClick={() => setPrefill(null)}><Plus className="h-4 w-4" />Log content</Button></DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>{prefill?.id ? "Edit content piece" : "Log content piece"}</DialogTitle></DialogHeader>
-              <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save.mutate(new FormData(e.currentTarget)); }}>
-                <div className="space-y-1.5"><Label>Title</Label><Input name="title" defaultValue={prefill?.title ?? ""} required /></div>
-                <div className="space-y-1.5"><Label>Hook (first 3 sec)</Label><Textarea name="hook" rows={2} defaultValue={prefill?.hook ?? ""} /></div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label>Platform / format</Label>
-                    <Select name="platform" defaultValue={prefill?.platform ?? "reel"}><SelectTrigger><SelectValue/></SelectTrigger>
-                      <SelectContent>{["reel","story_sequence","post","carousel","youtube","youtube_short","tiktok","vsl","ad_creative","email","dm","other"].map(p =>
-                        <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
-                  <div className="space-y-1.5"><Label>Angle</Label>
-                    <Select name="angle" defaultValue={prefill?.angle ?? "authority"}><SelectTrigger><SelectValue/></SelectTrigger>
-                      <SelectContent>{["authority","story","contrarian","tutorial","case_study","aspirational","fear","social_proof"].map(p =>
-                        <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
-                </div>
-                <div className="space-y-1.5"><Label>Funnel stage</Label>
-                  <Select name="funnel_stage" defaultValue={prefill?.funnel_stage ?? "TOF"}><SelectTrigger><SelectValue/></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="TOF">TOF — Top of Funnel (awareness)</SelectItem>
-                      <SelectItem value="MOF">MOF — Middle of Funnel (consideration)</SelectItem>
-                      <SelectItem value="BOF">BOF — Bottom of Funnel (conversion)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5"><Label>Video URL</Label><Input name="url" type="url" placeholder="https://..." defaultValue={prefill?.url ?? ""} /></div>
-                <div className="space-y-1.5"><Label>Full transcript</Label><Textarea name="transcript" rows={6} placeholder="Paste the entire reel transcript here…" defaultValue={prefill?.transcript ?? ""} /></div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1.5"><Label>Views</Label><Input name="views" type="number" defaultValue={prefill?.views ?? 0} /></div>
-                  <div className="space-y-1.5"><Label>Leads</Label><Input name="leads" type="number" defaultValue={prefill?.leads ?? 0} /></div>
-                  <div className="space-y-1.5"><Label>Retention %</Label><Input name="retention" type="number" step="0.1" defaultValue={prefill?.retention ?? 0} /></div>
-                </div>
-                <Button type="submit" className="w-full" disabled={save.isPending}>{save.isPending ? "…" : "Save"}</Button>
-              </form>
+              <ContentForm key={prefill?.id ?? "new"} prefill={prefill} onSubmit={(fd) => save.mutate(fd)} pending={save.isPending} />
             </DialogContent>
           </Dialog>
         </div>
@@ -314,6 +286,81 @@ function ContentIntel() {
       </div>
       <SlidesPanel orgId={orgId} contentId={slidesFor} onClose={() => setSlidesFor(null)} />
     </>
+  );
+}
+
+function ContentForm({ prefill, onSubmit, pending }: { prefill: Prefill | null; onSubmit: (fd: FormData) => void; pending: boolean }) {
+  const [title, setTitle] = useState(prefill?.title ?? "");
+  const [hook, setHook] = useState(prefill?.hook ?? "");
+  const [platform, setPlatform] = useState<Platform>(prefill?.platform ?? "reel");
+  const [angle, setAngle] = useState<Angle>(prefill?.angle ?? "authority");
+  const [funnel, setFunnel] = useState(prefill?.funnel_stage ?? "TOF");
+  const [url, setUrl] = useState(prefill?.url ?? "");
+  const [transcript, setTranscript] = useState(prefill?.transcript ?? "");
+  const analyze = useServerFn(analyzeContent);
+  const [analyzing, setAnalyzing] = useState(false);
+
+  const runAnalyze = async () => {
+    if (!transcript.trim()) { toast.error("Paste the transcript first"); return; }
+    setAnalyzing(true);
+    try {
+      const r = await analyze({ data: { transcript, hook, title } });
+      setHook(r.hook);
+      setAngle(r.angle as Angle);
+      setFunnel(r.funnel_stage);
+      toast.success(`Detected: ${r.funnel_stage} · ${r.angle}`, { description: r.rationale });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Analysis failed");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  return (
+    <form className="space-y-3" onSubmit={(e) => {
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      fd.set("platform", platform); fd.set("angle", angle); fd.set("funnel_stage", funnel);
+      onSubmit(fd);
+    }}>
+      <div className="space-y-1.5"><Label>Title</Label><Input name="title" value={title} onChange={(e) => setTitle(e.target.value)} required /></div>
+      <div className="space-y-1.5"><Label>Video URL</Label><Input name="url" type="url" placeholder="https://..." value={url} onChange={(e) => setUrl(e.target.value)} /></div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <Label>Full transcript</Label>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={runAnalyze} disabled={analyzing}>
+            <Sparkles className="h-3 w-3" />{analyzing ? "Analyzing…" : "AI: detect hook, angle, funnel"}
+          </Button>
+        </div>
+        <Textarea name="transcript" rows={6} placeholder="Paste the entire reel transcript here…" value={transcript} onChange={(e) => setTranscript(e.target.value)} />
+      </div>
+      <div className="space-y-1.5"><Label>Hook (first 3 sec)</Label><Textarea name="hook" rows={2} value={hook} onChange={(e) => setHook(e.target.value)} /></div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5"><Label>Platform / format</Label>
+          <Select value={platform} onValueChange={(v) => setPlatform(v as Platform)}><SelectTrigger><SelectValue/></SelectTrigger>
+            <SelectContent>{["reel","story_sequence","post","carousel","youtube","youtube_short","tiktok","vsl","ad_creative","email","dm","other"].map(p =>
+              <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-1.5"><Label>Angle</Label>
+          <Select value={angle} onValueChange={(v) => setAngle(v as Angle)}><SelectTrigger><SelectValue/></SelectTrigger>
+            <SelectContent>{["authority","story","contrarian","tutorial","case_study","aspirational","fear","social_proof"].map(p =>
+              <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
+      </div>
+      <div className="space-y-1.5"><Label>Funnel stage</Label>
+        <Select value={funnel} onValueChange={setFunnel}><SelectTrigger><SelectValue/></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="TOF">TOF — Top of Funnel (awareness)</SelectItem>
+            <SelectItem value="MOF">MOF — Middle of Funnel (consideration)</SelectItem>
+            <SelectItem value="BOF">BOF — Bottom of Funnel (conversion)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="space-y-1.5"><Label>Views</Label><Input name="views" type="number" defaultValue={prefill?.views ?? 0} /></div>
+        <div className="space-y-1.5"><Label>Leads</Label><Input name="leads" type="number" defaultValue={prefill?.leads ?? 0} /></div>
+        <div className="space-y-1.5"><Label>Retention %</Label><Input name="retention" type="number" step="0.1" defaultValue={prefill?.retention ?? 0} /></div>
+      </div>
+      <Button type="submit" className="w-full" disabled={pending}>{pending ? "…" : "Save"}</Button>
+    </form>
   );
 }
 
