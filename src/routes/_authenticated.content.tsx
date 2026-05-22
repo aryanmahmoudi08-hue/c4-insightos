@@ -22,12 +22,12 @@ type Angle = Database["public"]["Enums"]["content_angle"];
 type PieceRow = {
   id: string; title: string | null; platform: Platform; hook: string | null;
   angle: Angle | null; posted_at: string | null; url: string | null;
-  hook_score: number | null; funnel_stage: string | null;
+  funnel_stage: string | null;
   content_metrics: { views: number | null; leads_generated: number | null; closes: number | null;
     cash_collected_cents: number | null; hook_retention_pct: number | null }[] | null;
 };
 
-type Prefill = { id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; hook_score?: number; funnel_stage?: string; views?: number; leads?: number; retention?: number };
+type Prefill = { id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; funnel_stage?: string; views?: number; leads?: number; retention?: number };
 
 export const Route = createFileRoute("/_authenticated/content")({ component: ContentIntel });
 
