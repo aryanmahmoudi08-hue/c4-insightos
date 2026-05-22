@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Video, Layers, Pencil, ExternalLink } from "lucide-react";
+import { Plus, Video, Layers, Pencil, ExternalLink, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import type { Database } from "@/integrations/supabase/types";
@@ -22,12 +22,12 @@ type Angle = Database["public"]["Enums"]["content_angle"];
 type PieceRow = {
   id: string; title: string | null; platform: Platform; hook: string | null;
   angle: Angle | null; posted_at: string | null; url: string | null;
-  funnel_stage: string | null;
+  funnel_stage: string | null; body: string | null;
   content_metrics: { views: number | null; leads_generated: number | null; closes: number | null;
     cash_collected_cents: number | null; hook_retention_pct: number | null }[] | null;
 };
 
-type Prefill = { id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; funnel_stage?: string; views?: number; leads?: number; retention?: number };
+type Prefill = { id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; funnel_stage?: string; transcript?: string; views?: number; leads?: number; retention?: number };
 
 export const Route = createFileRoute("/_authenticated/content")({ component: ContentIntel });
 
@@ -45,7 +45,7 @@ function ContentIntel() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("content_pieces")
-        .select("id, title, platform, hook, angle, posted_at, url, funnel_stage, content_metrics(views, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
+        .select("id, title, platform, hook, angle, posted_at, url, funnel_stage, body, content_metrics(views, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
         .eq("org_id", orgId!)
         .order("posted_at", { ascending: false, nullsFirst: false })
         .limit(50);
@@ -65,6 +65,7 @@ function ContentIntel() {
         angle: (form.get("angle") as Angle) || null,
         url: String(form.get("url") || "") || null,
         funnel_stage: String(form.get("funnel_stage") || "") || null,
+        body: String(form.get("transcript") || "") || null,
       };
       let contentId = editingId;
       if (editingId) {
@@ -99,6 +100,20 @@ function ContentIntel() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
+  const del = useMutation({
+    mutationFn: async (id: string) => {
+      await supabase.from("content_metrics").delete().eq("content_id", id);
+      await supabase.from("slide_metrics").delete().eq("org_id", orgId!).in("slide_id",
+        (await supabase.from("story_slides").select("id").eq("content_id", id)).data?.map(s => s.id) ?? []);
+      await supabase.from("story_slides").delete().eq("content_id", id);
+      await supabase.from("lead_content_touches").delete().eq("content_id", id);
+      const { error } = await supabase.from("content_pieces").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Deleted"); qc.invalidateQueries({ queryKey: ["content"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
   const edit = (p: PieceRow) => {
     const m = (p.content_metrics ?? [])[0];
     setPrefill({
@@ -109,6 +124,7 @@ function ContentIntel() {
       angle: p.angle ?? undefined,
       url: p.url ?? undefined,
       funnel_stage: p.funnel_stage ?? undefined,
+      transcript: p.body ?? undefined,
       views: m?.views ?? 0,
       leads: m?.leads_generated ?? 0,
       retention: m?.hook_retention_pct ?? 0,
@@ -175,6 +191,7 @@ function ContentIntel() {
                   </Select>
                 </div>
                 <div className="space-y-1.5"><Label>Video URL</Label><Input name="url" type="url" placeholder="https://..." defaultValue={prefill?.url ?? ""} /></div>
+                <div className="space-y-1.5"><Label>Full transcript</Label><Textarea name="transcript" rows={6} placeholder="Paste the entire reel transcript here…" defaultValue={prefill?.transcript ?? ""} /></div>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1.5"><Label>Views</Label><Input name="views" type="number" defaultValue={prefill?.views ?? 0} /></div>
                   <div className="space-y-1.5"><Label>Leads</Label><Input name="leads" type="number" defaultValue={prefill?.leads ?? 0} /></div>
@@ -247,6 +264,9 @@ function ContentIntel() {
                               <Layers className="h-3 w-3" />Slides
                             </Button>
                           )}
+                          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => { if (confirm(`Delete "${p.title || "this piece"}"? This cannot be undone.`)) del.mutate(p.id); }}>
+                            <Trash2 className="h-3 w-3" />Delete
+                          </Button>
                         </td>
                       </tr>
                     );
