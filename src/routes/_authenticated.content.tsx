@@ -65,6 +65,7 @@ function ContentIntel() {
         angle: (form.get("angle") as Angle) || null,
         url: String(form.get("url") || "") || null,
         funnel_stage: String(form.get("funnel_stage") || "") || null,
+        body: String(form.get("transcript") || "") || null,
       };
       let contentId = editingId;
       if (editingId) {
