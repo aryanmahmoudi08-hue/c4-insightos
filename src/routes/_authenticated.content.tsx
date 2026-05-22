@@ -100,6 +100,20 @@ function ContentIntel() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
+  const del = useMutation({
+    mutationFn: async (id: string) => {
+      await supabase.from("content_metrics").delete().eq("content_id", id);
+      await supabase.from("slide_metrics").delete().eq("org_id", orgId!).in("slide_id",
+        (await supabase.from("story_slides").select("id").eq("content_id", id)).data?.map(s => s.id) ?? []);
+      await supabase.from("story_slides").delete().eq("content_id", id);
+      await supabase.from("lead_content_touches").delete().eq("content_id", id);
+      const { error } = await supabase.from("content_pieces").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Deleted"); qc.invalidateQueries({ queryKey: ["content"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
   const edit = (p: PieceRow) => {
     const m = (p.content_metrics ?? [])[0];
     setPrefill({
