@@ -150,7 +150,28 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
             if (error) throw error;
           } else if (event_type === "content_post") {
             const v = contentSchema.parse(data);
-            const { error } = await supabaseAdmin.from("content_pieces").insert({ org_id: orgId, source_connector: "ingest_api", ...v });
+            // Auto-classify with AI when a transcript (body) is supplied and any of
+            // hook / angle / funnel_stage are missing. Angle column doesn't exist on
+            // contentSchema as a passthrough — we set it directly on the insert.
+            let aiAngle: string | null = null;
+            let merged: typeof v & { angle?: string } = { ...v };
+            if (v.body && (!v.hook || !v.funnel_stage)) {
+              const r = await classifyTranscript({ transcript: v.body, hook: v.hook ?? null, title: v.title ?? null });
+              if (r) {
+                merged = {
+                  ...v,
+                  hook: v.hook ?? r.hook,
+                  funnel_stage: v.funnel_stage ?? r.funnel_stage,
+                };
+                aiAngle = r.angle;
+              }
+            }
+            const { error } = await supabaseAdmin.from("content_pieces").insert({
+              org_id: orgId,
+              source_connector: "ingest_api",
+              ...merged,
+              ...(aiAngle ? { angle: aiAngle } : {}),
+            });
             if (error) throw error;
           } else if (event_type === "onboarding_response") {
             const v = onboardingSchema.parse(data);
