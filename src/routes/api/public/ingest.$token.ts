@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { classifyTranscript } from "@/lib/analyze-content.server";
 import { z } from "zod";
 
 const jsonRes = (body: unknown, status = 200) =>
