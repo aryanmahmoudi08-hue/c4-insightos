@@ -253,7 +253,7 @@ function ContentIntel() {
                     );
                   })}
                   {(!pieces || pieces.length === 0) && (
-                    <tr><td colSpan={12} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
+                    <tr><td colSpan={11} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
                   )}
                 </tbody>
               </table>
