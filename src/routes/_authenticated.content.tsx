@@ -264,6 +264,9 @@ function ContentIntel() {
                               <Layers className="h-3 w-3" />Slides
                             </Button>
                           )}
+                          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => { if (confirm(`Delete "${p.title || "this piece"}"? This cannot be undone.`)) del.mutate(p.id); }}>
+                            <Trash2 className="h-3 w-3" />Delete
+                          </Button>
                         </td>
                       </tr>
                     );
