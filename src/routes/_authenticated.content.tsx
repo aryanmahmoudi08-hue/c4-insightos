@@ -108,7 +108,6 @@ function ContentIntel() {
       platform: p.platform,
       angle: p.angle ?? undefined,
       url: p.url ?? undefined,
-      hook_score: p.hook_score ?? undefined,
       funnel_stage: p.funnel_stage ?? undefined,
       views: m?.views ?? 0,
       leads: m?.leads_generated ?? 0,
