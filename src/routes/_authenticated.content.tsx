@@ -229,7 +229,6 @@ function ContentIntel() {
                             }`}>{p.funnel_stage}</span>
                           ) : <span className="text-muted-foreground">—</span>}
                         </td>
-                        <td className="p-3 text-center font-mono">{p.hook_score ?? "—"}</td>
                         <td className="p-3 text-center">{p.url ? (
                           <a href={p.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline" title={p.url}>
                             <ExternalLink className="h-3.5 w-3.5" />
