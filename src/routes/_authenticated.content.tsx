@@ -173,11 +173,6 @@ function ContentIntel() {
               <ContentForm key={prefill?.id ?? "new"} prefill={prefill} onSubmit={(fd) => save.mutate(fd)} pending={save.isPending} />
             </DialogContent>
           </Dialog>
-                </div>
-                <Button type="submit" className="w-full" disabled={save.isPending}>{save.isPending ? "…" : "Save"}</Button>
-              </form>
-            </DialogContent>
-          </Dialog>
         </div>
 
         <Tabs defaultValue="table">
