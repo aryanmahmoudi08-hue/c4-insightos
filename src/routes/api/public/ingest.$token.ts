@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { classifyTranscript } from "@/lib/analyze-content.server";
 import { z } from "zod";
 
 const jsonRes = (body: unknown, status = 200) =>
@@ -149,7 +150,19 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
             if (error) throw error;
           } else if (event_type === "content_post") {
             const v = contentSchema.parse(data);
-            const { error } = await supabaseAdmin.from("content_pieces").insert({ org_id: orgId, source_connector: "ingest_api", ...v });
+            let aiAngle: string | null = null;
+            const merged = { ...v } as typeof v & { hook?: string; funnel_stage?: string };
+            if (v.body && (!v.hook || !v.funnel_stage)) {
+              const r = await classifyTranscript({ transcript: v.body, hook: v.hook ?? null, title: v.title ?? null });
+              if (r) {
+                merged.hook = v.hook ?? r.hook;
+                merged.funnel_stage = v.funnel_stage ?? r.funnel_stage;
+                aiAngle = r.angle;
+              }
+            }
+            const insertRow: Record<string, unknown> = { org_id: orgId, source_connector: "ingest_api", ...merged };
+            if (aiAngle) insertRow.angle = aiAngle;
+            const { error } = await supabaseAdmin.from("content_pieces").insert(insertRow as never);
             if (error) throw error;
           } else if (event_type === "onboarding_response") {
             const v = onboardingSchema.parse(data);
