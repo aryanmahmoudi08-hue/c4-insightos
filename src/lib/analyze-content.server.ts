@@ -8,8 +8,9 @@ export type ContentClassification = {
   rationale: string;
 };
 
-const ANGLES = ["authority","story","contrarian","tutorial","case_study","aspirational","fear","social_proof"] as const;
+const ANGLES = ["authority","proof","educational","origin_story","identity","lifestyle","controversial","other"] as const;
 const STAGES = ["TOF","MOF","BOF"] as const;
+export type AngleEnum = typeof ANGLES[number];
 
 export async function classifyTranscript(input: {
   transcript: string;
