@@ -148,7 +148,10 @@ function Dashboard() {
       ];
 
       // Pace predictor
-      const monthCash = (monthPays.data ?? []).reduce((s, p) => s + (p.amount_cents ?? 0), 0);
+      const monthPaymentsCash = (monthPays.data ?? []).reduce((s, p) => s + (p.amount_cents ?? 0), 0);
+      const monthReportedCash = (monthCalls.data ?? []).reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0)
+        + (monthSetters.data ?? []).reduce((s, a) => s + (a.cash_collected_cents ?? 0), 0);
+      const monthCash = Math.max(monthPaymentsCash, monthReportedCash);
       const dailyPace = dayOfMonth > 0 ? monthCash / dayOfMonth : 0;
       const projection = dailyPace * daysInMonth;
 
