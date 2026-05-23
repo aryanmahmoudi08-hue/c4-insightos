@@ -496,3 +496,107 @@ function SlidesPanel({ orgId, contentId, onClose }: { orgId?: string; contentId:
     </Dialog>
   );
 }
+
+function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onClose: () => void; onEdit: (p: PieceRow) => void }) {
+  const coach = useServerFn(coachContentFn);
+  const m = (piece?.content_metrics ?? [])[0];
+  const { data: coaching, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ["coach", piece?.id],
+    enabled: !!piece,
+    staleTime: 1000 * 60 * 60,
+    queryFn: async () => coach({ data: {
+      title: piece!.title, hook: piece!.hook, transcript: piece!.body,
+      angle: piece!.angle, funnel_stage: piece!.funnel_stage, platform: piece!.platform,
+      views: m?.views ?? 0, leads: m?.leads_generated ?? 0, closes: m?.closes ?? 0,
+      cash_cents: m?.cash_collected_cents ?? 0, retention_pct: Number(m?.hook_retention_pct ?? 0),
+    } }),
+  });
+
+  if (!piece) return null;
+  const stage = piece.funnel_stage ?? "—";
+  const stageCls = stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
+    stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
+    stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" : "bg-muted text-muted-foreground";
+
+  return (
+    <Dialog open={!!piece} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="pr-8">{piece.title || "(untitled)"}</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="uppercase text-muted-foreground">{piece.platform}</span>
+          <span className={`rounded px-1.5 py-0.5 font-mono uppercase text-[10px] ${stageCls}`}>{stage}</span>
+          {piece.angle && <span className="rounded bg-muted px-1.5 py-0.5">{piece.angle}</span>}
+          {piece.posted_at && <span className="text-muted-foreground">· {new Date(piece.posted_at).toLocaleDateString()}</span>}
+          {piece.url && <a href={piece.url} target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 text-accent hover:underline"><ExternalLink className="h-3 w-3" />Open</a>}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {[
+            ["Views", m?.views?.toLocaleString() ?? "—"],
+            ["Leads", m?.leads_generated ?? "—"],
+            ["Closes", m?.closes ?? "—"],
+            ["Cash", m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"],
+            ["Retention", m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"],
+          ].map(([k, v]) => (
+            <div key={k as string} className="rounded border border-border bg-card/40 p-2">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{k}</div>
+              <div className="font-mono text-sm">{v}</div>
+            </div>
+          ))}
+        </div>
+
+        {piece.hook && (
+          <div className="rounded border border-border bg-card/40 p-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Hook (first 3s)</div>
+            <div className="text-sm">{piece.hook}</div>
+          </div>
+        )}
+
+        {piece.body && (
+          <div className="rounded border border-border bg-card/40 p-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Transcript</div>
+            <div className="whitespace-pre-wrap text-xs text-foreground/90 max-h-48 overflow-y-auto">{piece.body}</div>
+          </div>
+        )}
+
+        <div className="rounded border border-accent/30 bg-accent/5 p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-accent" />AI coach review</div>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => refetch()} disabled={isFetching}>
+              {isFetching ? "Thinking…" : "Re-analyze"}
+            </Button>
+          </div>
+          {isLoading || isFetching ? (
+            <div className="text-xs text-muted-foreground">Analyzing transcript and metrics…</div>
+          ) : coaching ? (
+            <div className="space-y-3 text-sm">
+              <div>{coaching.summary}</div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-success,oklch(0.7_0.16_150))] mb-1">What worked</div>
+                <ul className="list-disc pl-5 space-y-1 text-xs">{coaching.strengths.map((s, i) => <li key={i}>{s}</li>)}</ul>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-amber-400 mb-1">How to improve</div>
+                <ul className="list-disc pl-5 space-y-1 text-xs">{coaching.improvements.map((s, i) => <li key={i}>{s}</li>)}</ul>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-accent mb-1">Try these hooks next time</div>
+                <ul className="list-disc pl-5 space-y-1 text-xs">{coaching.next_hook_ideas.map((s, i) => <li key={i}>{s}</li>)}</ul>
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">No review yet.</div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => onEdit(piece)}><Pencil className="h-3 w-3" />Edit piece</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
