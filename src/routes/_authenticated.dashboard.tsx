@@ -119,10 +119,20 @@ function Dashboard() {
         const dt = new Date(fromTime + i * 86400e3);
         series.push({ d: dt.toISOString().slice(5, 10), cash: 0, leads: 0 });
       }
-      const seriesPays = await supabase.from("payments").select("amount_cents, collected_at").eq("org_id", orgId!).gte("collected_at", fromISO).lte("collected_at", toISO);
-      const seriesLeads = await supabase.from("leads").select("created_at").eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO);
+      const [seriesPays, seriesLeads, seriesCalls, seriesSetters] = await Promise.all([
+        supabase.from("payments").select("amount_cents, collected_at").eq("org_id", orgId!).gte("collected_at", fromISO).lte("collected_at", toISO),
+        supabase.from("leads").select("created_at").eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO),
+        supabase.from("calls").select("cash_collected_cents, created_at").eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO),
+        supabase.from("setter_activity").select("cash_collected_cents, activity_date").eq("org_id", orgId!).gte("activity_date", range.from).lte("activity_date", range.to),
+      ]);
       const idx = (iso?: string | null) => { if (!iso) return -1; const k = iso.slice(5, 10); return series.findIndex(s => s.d === k); };
-      for (const p of seriesPays.data ?? []) { const i = idx(p.collected_at); if (i >= 0) series[i].cash += p.amount_cents ?? 0; }
+      // Per-day: prefer max of payments vs (calls + setter) to avoid double-counting same dollars
+      const payByDay = new Map<number, number>();
+      const reportedByDay = new Map<number, number>();
+      for (const p of seriesPays.data ?? []) { const i = idx(p.collected_at); if (i >= 0) payByDay.set(i, (payByDay.get(i) ?? 0) + (p.amount_cents ?? 0)); }
+      for (const c of seriesCalls.data ?? []) { const i = idx(c.created_at); if (i >= 0) reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (c.cash_collected_cents ?? 0)); }
+      for (const a of seriesSetters.data ?? []) { const i = idx(a.activity_date); if (i >= 0) reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (a.cash_collected_cents ?? 0)); }
+      for (let i = 0; i < series.length; i++) series[i].cash = Math.max(payByDay.get(i) ?? 0, reportedByDay.get(i) ?? 0);
       for (const l of seriesLeads.data ?? []) { const i = idx(l.created_at); if (i >= 0) series[i].leads += 1; }
 
       // Funnel with conversion percentages
