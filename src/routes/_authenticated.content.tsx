@@ -299,11 +299,20 @@ function ContentIntel() {
                         <div key={slot.date} className={`min-h-[72px] rounded border ${isToday ? "border-primary bg-primary/5" : "border-border bg-card"} p-1.5 text-[11px]`}>
                           <div className={`font-mono mb-1 ${isToday ? "text-primary font-semibold" : "text-muted-foreground"}`}>{dayNum}</div>
                           <div className="space-y-0.5">
-                            {slot.pieces.slice(0, 3).map(p => (
-                              <div key={p.id} className="truncate rounded bg-accent/15 text-accent px-1 py-0.5" title={p.title ?? ""}>
-                                {p.title ?? p.platform}
-                              </div>
-                            ))}
+                            {slot.pieces.slice(0, 3).map(p => {
+                              const m = (p.content_metrics ?? [])[0];
+                              const stage = p.funnel_stage ?? "—";
+                              const stageCls = stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
+                                stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
+                                stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" : "bg-muted text-muted-foreground";
+                              return (
+                                <button key={p.id} onClick={() => setOverviewFor(p)} className="w-full flex items-center gap-1 rounded px-1 py-0.5 hover:bg-accent/10 text-left" title={p.title ?? ""}>
+                                  <span className={`rounded px-1 py-px text-[9px] font-mono uppercase ${stageCls}`}>{stage}</span>
+                                  <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground"><Eye className="h-2.5 w-2.5" />{m?.views ?? 0}</span>
+                                  <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground"><Heart className="h-2.5 w-2.5" />{m?.likes ?? 0}</span>
+                                </button>
+                              );
+                            })}
                             {slot.pieces.length > 3 && <div className="text-muted-foreground">+{slot.pieces.length - 3}</div>}
                           </div>
                         </div>
