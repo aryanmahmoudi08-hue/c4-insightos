@@ -271,7 +271,7 @@ function ContentIntel() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                   {(!pieces || pieces.length === 0) && (
