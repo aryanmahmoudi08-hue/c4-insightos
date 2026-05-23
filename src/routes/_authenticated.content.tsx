@@ -326,6 +326,7 @@ function ContentIntel() {
         </Tabs>
       </div>
       <SlidesPanel orgId={orgId} contentId={slidesFor} onClose={() => setSlidesFor(null)} />
+      <OverviewPanel piece={overviewFor} onClose={() => setOverviewFor(null)} onEdit={(p) => { setOverviewFor(null); edit(p); }} />
     </>
   );
 }
