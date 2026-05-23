@@ -20,15 +20,23 @@ const pct = (n: number, d: number) => d > 0 ? `${((n / d) * 100).toFixed(1)}%` :
 async function fetchPeriod(orgId: string, from: string, to: string) {
   const fromISO = `${from}T00:00:00`;
   const toISO = `${to}T23:59:59`;
-  const [pays, leads, calls, content] = await Promise.all([
+  const [pays, leads, calls, content, setters] = await Promise.all([
     supabase.from("payments").select("amount_cents, collected_at").eq("org_id", orgId).gte("collected_at", fromISO).lte("collected_at", toISO),
     supabase.from("leads").select("id, created_at").eq("org_id", orgId).gte("created_at", fromISO).lte("created_at", toISO),
     supabase.from("calls").select("showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at").eq("org_id", orgId).gte("created_at", fromISO).lte("created_at", toISO),
     supabase.from("content_metrics").select("views, leads_generated, captured_at").eq("org_id", orgId).gte("captured_at", fromISO).lte("captured_at", toISO),
+    supabase.from("setter_activity").select("cash_collected_cents, total_revenue_cents, activity_date").eq("org_id", orgId).gte("activity_date", from).lte("activity_date", to),
   ]);
-  const payList = pays.data ?? []; const leadList = leads.data ?? []; const callList = calls.data ?? []; const contentList = content.data ?? [];
+  const payList = pays.data ?? []; const leadList = leads.data ?? []; const callList = calls.data ?? []; const contentList = content.data ?? []; const setterList = setters.data ?? [];
+  const paymentsCash = payList.reduce((s, p) => s + (p.amount_cents ?? 0), 0);
+  const callsCash = callList.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
+  const setterCash = setterList.reduce((s, a) => s + (a.cash_collected_cents ?? 0), 0);
+  // Unified cash = max of (payments) vs (sales-team self-reported). Avoids double counting
+  // when both sources record the same dollars; surfaces sales data when payments aren't wired.
+  const reportedCash = callsCash + setterCash;
   return {
-    cash: payList.reduce((s, p) => s + (p.amount_cents ?? 0), 0),
+    cash: Math.max(paymentsCash, reportedCash),
+    paymentsCash, callsCash, setterCash,
     newLeads: leadList.length,
     totalCalls: callList.length,
     showed: callList.filter(c => c.showed).length,
