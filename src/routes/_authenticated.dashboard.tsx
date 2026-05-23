@@ -73,13 +73,15 @@ function Dashboard() {
       const dayOfMonth = now.getDate();
 
       const [
-        curr, prev, monthPays,
+        curr, prev, monthPays, monthCalls, monthSetters,
         setterAct, alerts, insights,
         contentAttribution,
       ] = await Promise.all([
         fetchPeriod(orgId!, range.from, range.to),
         fetchPeriod(orgId!, prevFrom, prevTo),
         supabase.from("payments").select("amount_cents").eq("org_id", orgId!).gte("collected_at", `${monthStart}T00:00:00`),
+        supabase.from("calls").select("cash_collected_cents").eq("org_id", orgId!).gte("created_at", `${monthStart}T00:00:00`),
+        supabase.from("setter_activity").select("cash_collected_cents").eq("org_id", orgId!).gte("activity_date", monthStart),
         supabase.from("setter_activity").select("team_member_name, role, sets, closes, cash_collected_cents").eq("org_id", orgId!).gte("activity_date", range.from).lte("activity_date", range.to),
         supabase.from("alerts").select("id, severity, title, created_at").eq("org_id", orgId!).eq("acknowledged", false).order("created_at", { ascending: false }).limit(6),
         supabase.from("ai_insights").select("id, title, body, module, confidence, created_at").eq("org_id", orgId!).eq("dismissed", false).order("created_at", { ascending: false }).limit(4),
