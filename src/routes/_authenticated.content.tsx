@@ -194,7 +194,9 @@ function ContentIntel() {
             <div className="rounded-lg border border-border bg-card overflow-x-auto">
               <table className="w-full min-w-[1200px] text-sm">
                 <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
-                  <tr><th className="text-left p-3">Hook / Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
+                  <tr>
+                    <th className="w-6 p-3"></th>
+                    <th className="text-left p-3">Title – Hook</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
                     <th className="text-center p-3">Funnel</th>
                     <th className="text-center p-3">Link</th>
                     <th className="text-right p-3 font-mono">Views</th><th className="text-right p-3 font-mono">Leads</th>
@@ -204,61 +206,82 @@ function ContentIntel() {
                 <tbody>
                   {(pieces ?? []).map((p) => {
                     const m = (p.content_metrics ?? [])[0];
+                    const isOpen = expanded.has(p.id);
                     return (
-                      <tr key={p.id} className="border-t border-border hover:bg-muted/20">
-                        <td className="p-3">
-                          <div className="flex items-center gap-2"><Video className="h-3.5 w-3.5 text-muted-foreground" />
-                            <div className="min-w-0">
-                              <div className="truncate font-medium">{p.title || "(untitled)"}</div>
-                              {p.hook && <div className="truncate text-[11px] text-muted-foreground">{p.hook}</div>}
+                      <>
+                        <tr key={p.id} className="border-t border-border hover:bg-muted/20">
+                          <td className="p-3 align-top">
+                            <button onClick={() => toggleExpand(p.id)} className="text-muted-foreground hover:text-foreground" title={isOpen ? "Hide transcript" : "Show transcript"}>
+                              {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </button>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex items-start gap-2"><Video className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
+                              <button onClick={() => setOverviewFor(p)} className="min-w-0 text-left group">
+                                <div className="truncate font-medium group-hover:text-accent group-hover:underline">
+                                  {(p.title || "(untitled)")}{p.hook ? <span className="text-muted-foreground font-normal"> — {p.hook}</span> : null}
+                                </div>
+                              </button>
                             </div>
-                          </div>
-                        </td>
-                        <td className="p-3 text-xs uppercase text-muted-foreground">{p.platform}</td>
-                        <td className="p-3 text-xs">{p.angle ?? "—"}</td>
-                        <td className="p-3 text-center">
-                          {p.funnel_stage ? (
-                            <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-mono uppercase ${
-                              p.funnel_stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
-                              p.funnel_stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
-                              p.funnel_stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" :
-                              "bg-muted text-muted-foreground"
-                            }`}>{p.funnel_stage}</span>
-                          ) : <span className="text-muted-foreground">—</span>}
-                        </td>
-                        <td className="p-3 text-center">{p.url ? (
-                          <a href={p.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline" title={p.url}>
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
-                        ) : <span className="text-muted-foreground">—</span>}</td>
-                        <td className="p-3 text-right font-mono">{m?.views?.toLocaleString() ?? "—"}</td>
-                        <td className="p-3 text-right font-mono">{m?.leads_generated ?? "—"}</td>
-                        <td className="p-3 text-right font-mono">{m?.closes ?? "—"}</td>
-                        <td className="p-3 text-right font-mono">{m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"}</td>
-                        <td className="p-3 text-right font-mono">{m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"}</td>
-                        <td className="p-3 text-right whitespace-nowrap">
-                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => edit(p)}>
-                            <Pencil className="h-3 w-3" />Edit
-                          </Button>
-                          {p.platform === "story_sequence" && (
-                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSlidesFor(p.id)}>
-                              <Layers className="h-3 w-3" />Slides
+                          </td>
+                          <td className="p-3 text-xs uppercase text-muted-foreground">{p.platform}</td>
+                          <td className="p-3 text-xs">{p.angle ?? "—"}</td>
+                          <td className="p-3 text-center">
+                            {p.funnel_stage ? (
+                              <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-mono uppercase ${
+                                p.funnel_stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
+                                p.funnel_stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
+                                p.funnel_stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" :
+                                "bg-muted text-muted-foreground"
+                              }`}>{p.funnel_stage}</span>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </td>
+                          <td className="p-3 text-center">{p.url ? (
+                            <a href={p.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline" title={p.url}>
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          ) : <span className="text-muted-foreground">—</span>}</td>
+                          <td className="p-3 text-right font-mono">{m?.views?.toLocaleString() ?? "—"}</td>
+                          <td className="p-3 text-right font-mono">{m?.leads_generated ?? "—"}</td>
+                          <td className="p-3 text-right font-mono">{m?.closes ?? "—"}</td>
+                          <td className="p-3 text-right font-mono">{m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"}</td>
+                          <td className="p-3 text-right font-mono">{m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"}</td>
+                          <td className="p-3 text-right whitespace-nowrap">
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => edit(p)}>
+                              <Pencil className="h-3 w-3" />Edit
                             </Button>
-                          )}
-                          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => { if (confirm(`Delete "${p.title || "this piece"}"? This cannot be undone.`)) del.mutate(p.id); }}>
-                            <Trash2 className="h-3 w-3" />Delete
-                          </Button>
-                        </td>
-                      </tr>
+                            {p.platform === "story_sequence" && (
+                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSlidesFor(p.id)}>
+                                <Layers className="h-3 w-3" />Slides
+                              </Button>
+                            )}
+                            <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => { if (confirm(`Delete "${p.title || "this piece"}"? This cannot be undone.`)) del.mutate(p.id); }}>
+                              <Trash2 className="h-3 w-3" />Delete
+                            </Button>
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr key={p.id + "-tx"} className="bg-muted/10 border-t border-border/50">
+                            <td></td>
+                            <td colSpan={11} className="p-3">
+                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Transcript</div>
+                              <div className="whitespace-pre-wrap text-xs text-foreground/90 max-h-64 overflow-y-auto rounded bg-background/50 p-3 border border-border">
+                                {p.body || <span className="text-muted-foreground italic">No transcript yet. Add one via Edit.</span>}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
                     );
                   })}
                   {(!pieces || pieces.length === 0) && (
-                    <tr><td colSpan={11} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
+                    <tr><td colSpan={12} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           </TabsContent>
+
 
           <TabsContent value="calendar">
             <div className="rounded-lg border border-border bg-card p-3">
