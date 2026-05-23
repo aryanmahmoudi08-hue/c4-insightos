@@ -208,8 +208,8 @@ function ContentIntel() {
                     const m = (p.content_metrics ?? [])[0];
                     const isOpen = expanded.has(p.id);
                     return (
-                      <>
-                        <tr key={p.id} className="border-t border-border hover:bg-muted/20">
+                      <Fragment key={p.id}>
+                        <tr className="border-t border-border hover:bg-muted/20">
                           <td className="p-3 align-top">
                             <button onClick={() => toggleExpand(p.id)} className="text-muted-foreground hover:text-foreground" title={isOpen ? "Hide transcript" : "Show transcript"}>
                               {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
