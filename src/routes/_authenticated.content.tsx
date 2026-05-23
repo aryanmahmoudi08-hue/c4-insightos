@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
-import { useMemo, useState } from "react";
+import { useMemo, useState, Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,10 +11,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Video, Layers, Pencil, ExternalLink, Trash2, Sparkles } from "lucide-react";
+import { Plus, Video, Layers, Pencil, ExternalLink, Trash2, Sparkles, ChevronRight, ChevronDown, Eye, Heart } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeContent } from "@/lib/analyze-content.functions";
+import { coachContentFn } from "@/lib/coach-content.functions";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -25,7 +26,7 @@ type PieceRow = {
   id: string; title: string | null; platform: Platform; hook: string | null;
   angle: Angle | null; posted_at: string | null; url: string | null;
   funnel_stage: string | null; body: string | null;
-  content_metrics: { views: number | null; leads_generated: number | null; closes: number | null;
+  content_metrics: { views: number | null; likes: number | null; leads_generated: number | null; closes: number | null;
     cash_collected_cents: number | null; hook_retention_pct: number | null }[] | null;
 };
 
@@ -40,6 +41,14 @@ function ContentIntel() {
   const [open, setOpen] = useState(false);
   const [prefill, setPrefill] = useState<Prefill | null>(null);
   const [slidesFor, setSlidesFor] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [overviewFor, setOverviewFor] = useState<PieceRow | null>(null);
+
+  const toggleExpand = (id: string) => setExpanded(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const { data: pieces } = useQuery({
     queryKey: ["content", orgId],
@@ -47,7 +56,7 @@ function ContentIntel() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("content_pieces")
-        .select("id, title, platform, hook, angle, posted_at, url, funnel_stage, body, content_metrics(views, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
+        .select("id, title, platform, hook, angle, posted_at, url, funnel_stage, body, content_metrics(views, likes, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
         .eq("org_id", orgId!)
         .order("posted_at", { ascending: false, nullsFirst: false })
         .limit(50);
@@ -185,7 +194,9 @@ function ContentIntel() {
             <div className="rounded-lg border border-border bg-card overflow-x-auto">
               <table className="w-full min-w-[1200px] text-sm">
                 <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
-                  <tr><th className="text-left p-3">Hook / Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
+                  <tr>
+                    <th className="w-6 p-3"></th>
+                    <th className="text-left p-3">Title – Hook</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
                     <th className="text-center p-3">Funnel</th>
                     <th className="text-center p-3">Link</th>
                     <th className="text-right p-3 font-mono">Views</th><th className="text-right p-3 font-mono">Leads</th>
@@ -195,61 +206,82 @@ function ContentIntel() {
                 <tbody>
                   {(pieces ?? []).map((p) => {
                     const m = (p.content_metrics ?? [])[0];
+                    const isOpen = expanded.has(p.id);
                     return (
-                      <tr key={p.id} className="border-t border-border hover:bg-muted/20">
-                        <td className="p-3">
-                          <div className="flex items-center gap-2"><Video className="h-3.5 w-3.5 text-muted-foreground" />
-                            <div className="min-w-0">
-                              <div className="truncate font-medium">{p.title || "(untitled)"}</div>
-                              {p.hook && <div className="truncate text-[11px] text-muted-foreground">{p.hook}</div>}
+                      <Fragment key={p.id}>
+                        <tr className="border-t border-border hover:bg-muted/20">
+                          <td className="p-3 align-top">
+                            <button onClick={() => toggleExpand(p.id)} className="text-muted-foreground hover:text-foreground" title={isOpen ? "Hide transcript" : "Show transcript"}>
+                              {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </button>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex items-start gap-2"><Video className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
+                              <button onClick={() => setOverviewFor(p)} className="min-w-0 text-left group">
+                                <div className="truncate font-medium group-hover:text-accent group-hover:underline">
+                                  {(p.title || "(untitled)")}{p.hook ? <span className="text-muted-foreground font-normal"> — {p.hook}</span> : null}
+                                </div>
+                              </button>
                             </div>
-                          </div>
-                        </td>
-                        <td className="p-3 text-xs uppercase text-muted-foreground">{p.platform}</td>
-                        <td className="p-3 text-xs">{p.angle ?? "—"}</td>
-                        <td className="p-3 text-center">
-                          {p.funnel_stage ? (
-                            <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-mono uppercase ${
-                              p.funnel_stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
-                              p.funnel_stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
-                              p.funnel_stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" :
-                              "bg-muted text-muted-foreground"
-                            }`}>{p.funnel_stage}</span>
-                          ) : <span className="text-muted-foreground">—</span>}
-                        </td>
-                        <td className="p-3 text-center">{p.url ? (
-                          <a href={p.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline" title={p.url}>
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
-                        ) : <span className="text-muted-foreground">—</span>}</td>
-                        <td className="p-3 text-right font-mono">{m?.views?.toLocaleString() ?? "—"}</td>
-                        <td className="p-3 text-right font-mono">{m?.leads_generated ?? "—"}</td>
-                        <td className="p-3 text-right font-mono">{m?.closes ?? "—"}</td>
-                        <td className="p-3 text-right font-mono">{m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"}</td>
-                        <td className="p-3 text-right font-mono">{m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"}</td>
-                        <td className="p-3 text-right whitespace-nowrap">
-                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => edit(p)}>
-                            <Pencil className="h-3 w-3" />Edit
-                          </Button>
-                          {p.platform === "story_sequence" && (
-                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSlidesFor(p.id)}>
-                              <Layers className="h-3 w-3" />Slides
+                          </td>
+                          <td className="p-3 text-xs uppercase text-muted-foreground">{p.platform}</td>
+                          <td className="p-3 text-xs">{p.angle ?? "—"}</td>
+                          <td className="p-3 text-center">
+                            {p.funnel_stage ? (
+                              <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-mono uppercase ${
+                                p.funnel_stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
+                                p.funnel_stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
+                                p.funnel_stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" :
+                                "bg-muted text-muted-foreground"
+                              }`}>{p.funnel_stage}</span>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </td>
+                          <td className="p-3 text-center">{p.url ? (
+                            <a href={p.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline" title={p.url}>
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          ) : <span className="text-muted-foreground">—</span>}</td>
+                          <td className="p-3 text-right font-mono">{m?.views?.toLocaleString() ?? "—"}</td>
+                          <td className="p-3 text-right font-mono">{m?.leads_generated ?? "—"}</td>
+                          <td className="p-3 text-right font-mono">{m?.closes ?? "—"}</td>
+                          <td className="p-3 text-right font-mono">{m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"}</td>
+                          <td className="p-3 text-right font-mono">{m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"}</td>
+                          <td className="p-3 text-right whitespace-nowrap">
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => edit(p)}>
+                              <Pencil className="h-3 w-3" />Edit
                             </Button>
-                          )}
-                          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => { if (confirm(`Delete "${p.title || "this piece"}"? This cannot be undone.`)) del.mutate(p.id); }}>
-                            <Trash2 className="h-3 w-3" />Delete
-                          </Button>
-                        </td>
-                      </tr>
+                            {p.platform === "story_sequence" && (
+                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSlidesFor(p.id)}>
+                                <Layers className="h-3 w-3" />Slides
+                              </Button>
+                            )}
+                            <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => { if (confirm(`Delete "${p.title || "this piece"}"? This cannot be undone.`)) del.mutate(p.id); }}>
+                              <Trash2 className="h-3 w-3" />Delete
+                            </Button>
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr key={p.id + "-tx"} className="bg-muted/10 border-t border-border/50">
+                            <td></td>
+                            <td colSpan={11} className="p-3">
+                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Transcript</div>
+                              <div className="whitespace-pre-wrap text-xs text-foreground/90 max-h-64 overflow-y-auto rounded bg-background/50 p-3 border border-border">
+                                {p.body || <span className="text-muted-foreground italic">No transcript yet. Add one via Edit.</span>}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                   {(!pieces || pieces.length === 0) && (
-                    <tr><td colSpan={11} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
+                    <tr><td colSpan={12} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           </TabsContent>
+
 
           <TabsContent value="calendar">
             <div className="rounded-lg border border-border bg-card p-3">
@@ -267,11 +299,20 @@ function ContentIntel() {
                         <div key={slot.date} className={`min-h-[72px] rounded border ${isToday ? "border-primary bg-primary/5" : "border-border bg-card"} p-1.5 text-[11px]`}>
                           <div className={`font-mono mb-1 ${isToday ? "text-primary font-semibold" : "text-muted-foreground"}`}>{dayNum}</div>
                           <div className="space-y-0.5">
-                            {slot.pieces.slice(0, 3).map(p => (
-                              <div key={p.id} className="truncate rounded bg-accent/15 text-accent px-1 py-0.5" title={p.title ?? ""}>
-                                {p.title ?? p.platform}
-                              </div>
-                            ))}
+                            {slot.pieces.slice(0, 3).map(p => {
+                              const m = (p.content_metrics ?? [])[0];
+                              const stage = p.funnel_stage ?? "—";
+                              const stageCls = stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
+                                stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
+                                stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" : "bg-muted text-muted-foreground";
+                              return (
+                                <button key={p.id} onClick={() => setOverviewFor(p)} className="w-full flex items-center gap-1 rounded px-1 py-0.5 hover:bg-accent/10 text-left" title={p.title ?? ""}>
+                                  <span className={`rounded px-1 py-px text-[9px] font-mono uppercase ${stageCls}`}>{stage}</span>
+                                  <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground"><Eye className="h-2.5 w-2.5" />{m?.views ?? 0}</span>
+                                  <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground"><Heart className="h-2.5 w-2.5" />{m?.likes ?? 0}</span>
+                                </button>
+                              );
+                            })}
                             {slot.pieces.length > 3 && <div className="text-muted-foreground">+{slot.pieces.length - 3}</div>}
                           </div>
                         </div>
@@ -285,6 +326,7 @@ function ContentIntel() {
         </Tabs>
       </div>
       <SlidesPanel orgId={orgId} contentId={slidesFor} onClose={() => setSlidesFor(null)} />
+      <OverviewPanel piece={overviewFor} onClose={() => setOverviewFor(null)} onEdit={(p) => { setOverviewFor(null); edit(p); }} />
     </>
   );
 }
@@ -454,3 +496,107 @@ function SlidesPanel({ orgId, contentId, onClose }: { orgId?: string; contentId:
     </Dialog>
   );
 }
+
+function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onClose: () => void; onEdit: (p: PieceRow) => void }) {
+  const coach = useServerFn(coachContentFn);
+  const m = (piece?.content_metrics ?? [])[0];
+  const { data: coaching, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ["coach", piece?.id],
+    enabled: !!piece,
+    staleTime: 1000 * 60 * 60,
+    queryFn: async () => coach({ data: {
+      title: piece!.title, hook: piece!.hook, transcript: piece!.body,
+      angle: piece!.angle, funnel_stage: piece!.funnel_stage, platform: piece!.platform,
+      views: m?.views ?? 0, leads: m?.leads_generated ?? 0, closes: m?.closes ?? 0,
+      cash_cents: m?.cash_collected_cents ?? 0, retention_pct: Number(m?.hook_retention_pct ?? 0),
+    } }),
+  });
+
+  if (!piece) return null;
+  const stage = piece.funnel_stage ?? "—";
+  const stageCls = stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
+    stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
+    stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" : "bg-muted text-muted-foreground";
+
+  return (
+    <Dialog open={!!piece} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="pr-8">{piece.title || "(untitled)"}</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="uppercase text-muted-foreground">{piece.platform}</span>
+          <span className={`rounded px-1.5 py-0.5 font-mono uppercase text-[10px] ${stageCls}`}>{stage}</span>
+          {piece.angle && <span className="rounded bg-muted px-1.5 py-0.5">{piece.angle}</span>}
+          {piece.posted_at && <span className="text-muted-foreground">· {new Date(piece.posted_at).toLocaleDateString()}</span>}
+          {piece.url && <a href={piece.url} target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 text-accent hover:underline"><ExternalLink className="h-3 w-3" />Open</a>}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {[
+            ["Views", m?.views?.toLocaleString() ?? "—"],
+            ["Leads", m?.leads_generated ?? "—"],
+            ["Closes", m?.closes ?? "—"],
+            ["Cash", m?.cash_collected_cents ? "$"+Math.round(m.cash_collected_cents/100) : "—"],
+            ["Retention", m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"],
+          ].map(([k, v]) => (
+            <div key={k as string} className="rounded border border-border bg-card/40 p-2">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{k}</div>
+              <div className="font-mono text-sm">{v}</div>
+            </div>
+          ))}
+        </div>
+
+        {piece.hook && (
+          <div className="rounded border border-border bg-card/40 p-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Hook (first 3s)</div>
+            <div className="text-sm">{piece.hook}</div>
+          </div>
+        )}
+
+        {piece.body && (
+          <div className="rounded border border-border bg-card/40 p-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Transcript</div>
+            <div className="whitespace-pre-wrap text-xs text-foreground/90 max-h-48 overflow-y-auto">{piece.body}</div>
+          </div>
+        )}
+
+        <div className="rounded border border-accent/30 bg-accent/5 p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-accent" />AI coach review</div>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => refetch()} disabled={isFetching}>
+              {isFetching ? "Thinking…" : "Re-analyze"}
+            </Button>
+          </div>
+          {isLoading || isFetching ? (
+            <div className="text-xs text-muted-foreground">Analyzing transcript and metrics…</div>
+          ) : coaching ? (
+            <div className="space-y-3 text-sm">
+              <div>{coaching.summary}</div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-success,oklch(0.7_0.16_150))] mb-1">What worked</div>
+                <ul className="list-disc pl-5 space-y-1 text-xs">{coaching.strengths.map((s, i) => <li key={i}>{s}</li>)}</ul>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-amber-400 mb-1">How to improve</div>
+                <ul className="list-disc pl-5 space-y-1 text-xs">{coaching.improvements.map((s, i) => <li key={i}>{s}</li>)}</ul>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-accent mb-1">Try these hooks next time</div>
+                <ul className="list-disc pl-5 space-y-1 text-xs">{coaching.next_hook_ideas.map((s, i) => <li key={i}>{s}</li>)}</ul>
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">No review yet.</div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => onEdit(piece)}><Pencil className="h-3 w-3" />Edit piece</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+

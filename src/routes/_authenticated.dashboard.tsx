@@ -20,15 +20,23 @@ const pct = (n: number, d: number) => d > 0 ? `${((n / d) * 100).toFixed(1)}%` :
 async function fetchPeriod(orgId: string, from: string, to: string) {
   const fromISO = `${from}T00:00:00`;
   const toISO = `${to}T23:59:59`;
-  const [pays, leads, calls, content] = await Promise.all([
+  const [pays, leads, calls, content, setters] = await Promise.all([
     supabase.from("payments").select("amount_cents, collected_at").eq("org_id", orgId).gte("collected_at", fromISO).lte("collected_at", toISO),
     supabase.from("leads").select("id, created_at").eq("org_id", orgId).gte("created_at", fromISO).lte("created_at", toISO),
     supabase.from("calls").select("showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at").eq("org_id", orgId).gte("created_at", fromISO).lte("created_at", toISO),
     supabase.from("content_metrics").select("views, leads_generated, captured_at").eq("org_id", orgId).gte("captured_at", fromISO).lte("captured_at", toISO),
+    supabase.from("setter_activity").select("cash_collected_cents, total_revenue_cents, activity_date").eq("org_id", orgId).gte("activity_date", from).lte("activity_date", to),
   ]);
-  const payList = pays.data ?? []; const leadList = leads.data ?? []; const callList = calls.data ?? []; const contentList = content.data ?? [];
+  const payList = pays.data ?? []; const leadList = leads.data ?? []; const callList = calls.data ?? []; const contentList = content.data ?? []; const setterList = setters.data ?? [];
+  const paymentsCash = payList.reduce((s, p) => s + (p.amount_cents ?? 0), 0);
+  const callsCash = callList.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
+  const setterCash = setterList.reduce((s, a) => s + (a.cash_collected_cents ?? 0), 0);
+  // Unified cash = max of (payments) vs (sales-team self-reported). Avoids double counting
+  // when both sources record the same dollars; surfaces sales data when payments aren't wired.
+  const reportedCash = callsCash + setterCash;
   return {
-    cash: payList.reduce((s, p) => s + (p.amount_cents ?? 0), 0),
+    cash: Math.max(paymentsCash, reportedCash),
+    paymentsCash, callsCash, setterCash,
     newLeads: leadList.length,
     totalCalls: callList.length,
     showed: callList.filter(c => c.showed).length,
@@ -65,13 +73,15 @@ function Dashboard() {
       const dayOfMonth = now.getDate();
 
       const [
-        curr, prev, monthPays,
+        curr, prev, monthPays, monthCalls, monthSetters,
         setterAct, alerts, insights,
         contentAttribution,
       ] = await Promise.all([
         fetchPeriod(orgId!, range.from, range.to),
         fetchPeriod(orgId!, prevFrom, prevTo),
         supabase.from("payments").select("amount_cents").eq("org_id", orgId!).gte("collected_at", `${monthStart}T00:00:00`),
+        supabase.from("calls").select("cash_collected_cents").eq("org_id", orgId!).gte("created_at", `${monthStart}T00:00:00`),
+        supabase.from("setter_activity").select("cash_collected_cents").eq("org_id", orgId!).gte("activity_date", monthStart),
         supabase.from("setter_activity").select("team_member_name, role, sets, closes, cash_collected_cents").eq("org_id", orgId!).gte("activity_date", range.from).lte("activity_date", range.to),
         supabase.from("alerts").select("id, severity, title, created_at").eq("org_id", orgId!).eq("acknowledged", false).order("created_at", { ascending: false }).limit(6),
         supabase.from("ai_insights").select("id, title, body, module, confidence, created_at").eq("org_id", orgId!).eq("dismissed", false).order("created_at", { ascending: false }).limit(4),
@@ -111,10 +121,20 @@ function Dashboard() {
         const dt = new Date(fromTime + i * 86400e3);
         series.push({ d: dt.toISOString().slice(5, 10), cash: 0, leads: 0 });
       }
-      const seriesPays = await supabase.from("payments").select("amount_cents, collected_at").eq("org_id", orgId!).gte("collected_at", fromISO).lte("collected_at", toISO);
-      const seriesLeads = await supabase.from("leads").select("created_at").eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO);
+      const [seriesPays, seriesLeads, seriesCalls, seriesSetters] = await Promise.all([
+        supabase.from("payments").select("amount_cents, collected_at").eq("org_id", orgId!).gte("collected_at", fromISO).lte("collected_at", toISO),
+        supabase.from("leads").select("created_at").eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO),
+        supabase.from("calls").select("cash_collected_cents, created_at").eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO),
+        supabase.from("setter_activity").select("cash_collected_cents, activity_date").eq("org_id", orgId!).gte("activity_date", range.from).lte("activity_date", range.to),
+      ]);
       const idx = (iso?: string | null) => { if (!iso) return -1; const k = iso.slice(5, 10); return series.findIndex(s => s.d === k); };
-      for (const p of seriesPays.data ?? []) { const i = idx(p.collected_at); if (i >= 0) series[i].cash += p.amount_cents ?? 0; }
+      // Per-day: prefer max of payments vs (calls + setter) to avoid double-counting same dollars
+      const payByDay = new Map<number, number>();
+      const reportedByDay = new Map<number, number>();
+      for (const p of seriesPays.data ?? []) { const i = idx(p.collected_at); if (i >= 0) payByDay.set(i, (payByDay.get(i) ?? 0) + (p.amount_cents ?? 0)); }
+      for (const c of seriesCalls.data ?? []) { const i = idx(c.created_at); if (i >= 0) reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (c.cash_collected_cents ?? 0)); }
+      for (const a of seriesSetters.data ?? []) { const i = idx(a.activity_date); if (i >= 0) reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (a.cash_collected_cents ?? 0)); }
+      for (let i = 0; i < series.length; i++) series[i].cash = Math.max(payByDay.get(i) ?? 0, reportedByDay.get(i) ?? 0);
       for (const l of seriesLeads.data ?? []) { const i = idx(l.created_at); if (i >= 0) series[i].leads += 1; }
 
       // Funnel with conversion percentages
@@ -128,7 +148,10 @@ function Dashboard() {
       ];
 
       // Pace predictor
-      const monthCash = (monthPays.data ?? []).reduce((s, p) => s + (p.amount_cents ?? 0), 0);
+      const monthPaymentsCash = (monthPays.data ?? []).reduce((s, p) => s + (p.amount_cents ?? 0), 0);
+      const monthReportedCash = (monthCalls.data ?? []).reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0)
+        + (monthSetters.data ?? []).reduce((s, a) => s + (a.cash_collected_cents ?? 0), 0);
+      const monthCash = Math.max(monthPaymentsCash, monthReportedCash);
       const dailyPace = dayOfMonth > 0 ? monthCash / dayOfMonth : 0;
       const projection = dailyPace * daysInMonth;
 
