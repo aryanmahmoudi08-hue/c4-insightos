@@ -208,25 +208,9 @@ function Clients() {
             <Link to="/onboarding"><Button size="sm" variant="outline">Onboarding intake</Button></Link>
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4" />Add client</Button></DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>New client</DialogTitle></DialogHeader>
-                <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); create.mutate(new FormData(e.currentTarget)); }}>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5"><Label>Name</Label><Input name="full_name" required /></div>
-                    <div className="space-y-1.5"><Label>Email</Label><Input name="email" type="email" /></div>
-                  </div>
-                  <div className="space-y-1.5"><Label>Offer</Label><Input name="offer_name" placeholder="Mastermind / 1:1 / Course" /></div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5"><Label>Contract $</Label><Input name="contract_value" type="number" step="0.01" /></div>
-                    <div className="space-y-1.5"><Label>Installments left</Label><Input name="installments_remaining" type="number" defaultValue={0} /></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5"><Label>Start date</Label><Input name="start_date" type="date" defaultValue={new Date().toISOString().slice(0,10)} /></div>
-                    <div className="space-y-1.5"><Label>Renewal date</Label><Input name="renewal_date" type="date" /></div>
-                  </div>
-                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" name="payment_plan" /> Payment plan</label>
-                  <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "…" : "Save client"}</Button>
-                </form>
+                <ClientForm onSubmit={(f) => create.mutate(f)} planChecked={planChecked} setPlanChecked={setPlanChecked} pending={create.isPending} />
               </DialogContent>
             </Dialog>
           </div>
