@@ -70,8 +70,9 @@ function Clients() {
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-
-  const { data: clients } = useQuery({
+  const [editing, setEditing] = useState<ClientRow | null>(null);
+  const [planChecked, setPlanChecked] = useState(false);
+  const generatePreClose = useServerFn(generatePreCloseFn);
     queryKey: ["clients", orgId],
     enabled: !!orgId,
     queryFn: async () => {
