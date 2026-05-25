@@ -260,15 +260,21 @@ export type Database = {
           contract_value_cents: number | null
           created_at: string
           email: string | null
+          expected_next_payment_cents: number | null
+          expected_next_payment_date: string | null
           full_name: string
           health_score: number | null
           id: string
           installments_remaining: number | null
+          invested_to_date_cents: number | null
           lead_id: string | null
           notes: string | null
           offer_name: string | null
           org_id: string
           payment_plan: boolean | null
+          phone: string | null
+          pre_close_raw: Json | null
+          pre_close_summary: string | null
           renewal_conv_started: boolean | null
           renewal_date: string | null
           renewal_stage: string
@@ -280,15 +286,21 @@ export type Database = {
           contract_value_cents?: number | null
           created_at?: string
           email?: string | null
+          expected_next_payment_cents?: number | null
+          expected_next_payment_date?: string | null
           full_name: string
           health_score?: number | null
           id?: string
           installments_remaining?: number | null
+          invested_to_date_cents?: number | null
           lead_id?: string | null
           notes?: string | null
           offer_name?: string | null
           org_id: string
           payment_plan?: boolean | null
+          phone?: string | null
+          pre_close_raw?: Json | null
+          pre_close_summary?: string | null
           renewal_conv_started?: boolean | null
           renewal_date?: string | null
           renewal_stage?: string
@@ -300,15 +312,21 @@ export type Database = {
           contract_value_cents?: number | null
           created_at?: string
           email?: string | null
+          expected_next_payment_cents?: number | null
+          expected_next_payment_date?: string | null
           full_name?: string
           health_score?: number | null
           id?: string
           installments_remaining?: number | null
+          invested_to_date_cents?: number | null
           lead_id?: string | null
           notes?: string | null
           offer_name?: string | null
           org_id?: string
           payment_plan?: boolean | null
+          phone?: string | null
+          pre_close_raw?: Json | null
+          pre_close_summary?: string | null
           renewal_conv_started?: boolean | null
           renewal_date?: string | null
           renewal_stage?: string
@@ -1124,6 +1142,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      membership_requests: {
+        Row: {
+          admin_email: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          email: string
+          full_name: string
+          id: string
+          org_id: string
+          requested_role: Database["public"]["Enums"]["app_role"]
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          admin_email?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          email: string
+          full_name: string
+          id?: string
+          org_id: string
+          requested_role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          admin_email?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          org_id?: string
+          requested_role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       memberships: {
         Row: {
@@ -1975,7 +2035,15 @@ export type Database = {
     }
     Enums: {
       alert_severity: "info" | "warning" | "critical"
-      app_role: "owner" | "admin" | "closer" | "setter" | "va" | "viewer"
+      app_role:
+        | "owner"
+        | "admin"
+        | "closer"
+        | "setter"
+        | "va"
+        | "viewer"
+        | "sales_manager"
+        | "growth_ops"
       awareness_stage:
         | "unaware"
         | "problem_aware"
@@ -2168,7 +2236,16 @@ export const Constants = {
   public: {
     Enums: {
       alert_severity: ["info", "warning", "critical"],
-      app_role: ["owner", "admin", "closer", "setter", "va", "viewer"],
+      app_role: [
+        "owner",
+        "admin",
+        "closer",
+        "setter",
+        "va",
+        "viewer",
+        "sales_manager",
+        "growth_ops",
+      ],
       awareness_stage: [
         "unaware",
         "problem_aware",
