@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
@@ -8,10 +9,12 @@ import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, BadgeCheck, HeartPulse, Repeat, AlertTriangle } from "lucide-react";
+import { Plus, BadgeCheck, HeartPulse, Repeat, AlertTriangle, Sparkles, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { generatePreCloseFn } from "@/lib/pre-close.functions";
 
 export const Route = createFileRoute("/_authenticated/clients")({ component: Clients });
 
@@ -29,9 +32,13 @@ type ClientRow = {
   id: string;
   full_name: string;
   email: string | null;
+  phone: string | null;
   offer_name: string | null;
   start_date: string;
   contract_value_cents: number | null;
+  invested_to_date_cents: number | null;
+  expected_next_payment_cents: number | null;
+  expected_next_payment_date: string | null;
   payment_plan: boolean | null;
   installments_remaining: number | null;
   status: string | null;
@@ -40,6 +47,7 @@ type ClientRow = {
   renewal_conv_started: boolean | null;
   renewal_stage: string | null;
   notes: string | null;
+  pre_close_summary: string | null;
 };
 
 function daysUntil(date: string | null): number | null {
@@ -62,6 +70,9 @@ function Clients() {
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<ClientRow | null>(null);
+  const [planChecked, setPlanChecked] = useState(false);
+  const generatePreClose = useServerFn(generatePreCloseFn);
 
   const { data: clients } = useQuery({
     queryKey: ["clients", orgId],
@@ -69,7 +80,7 @@ function Clients() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("clients")
-        .select("id, full_name, email, offer_name, start_date, contract_value_cents, payment_plan, installments_remaining, status, health_score, renewal_date, renewal_conv_started, renewal_stage, notes")
+        .select("id, full_name, email, phone, offer_name, start_date, contract_value_cents, invested_to_date_cents, expected_next_payment_cents, expected_next_payment_date, payment_plan, installments_remaining, status, health_score, renewal_date, renewal_conv_started, renewal_stage, notes, pre_close_summary")
         .eq("org_id", orgId!)
         .order("start_date", { ascending: false });
       if (error) throw error;
@@ -90,23 +101,46 @@ function Clients() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
+  const buildPatch = (f: FormData) => {
+    const isPlan = f.get("payment_plan") === "on";
+    return {
+      full_name: String(f.get("full_name") || ""),
+      email: String(f.get("email") || "") || null,
+      phone: String(f.get("phone") || "") || null,
+      offer_name: String(f.get("offer_name") || "") || null,
+      contract_value_cents: Math.round(Number(f.get("contract_value") || 0) * 100),
+      invested_to_date_cents: Math.round(Number(f.get("invested_to_date") || 0) * 100),
+      expected_next_payment_cents: Math.round(Number(f.get("expected_next_payment") || 0) * 100),
+      expected_next_payment_date: String(f.get("expected_next_payment_date") || "") || null,
+      start_date: String(f.get("start_date") || new Date().toISOString().slice(0,10)),
+      renewal_date: isPlan ? (String(f.get("renewal_date") || "") || null) : null,
+      payment_plan: isPlan,
+      installments_remaining: Number(f.get("installments_remaining") || 0),
+      notes: String(f.get("notes") || "") || null,
+    };
+  };
+
   const create = useMutation({
     mutationFn: async (f: FormData) => {
-      const { error } = await supabase.from("clients").insert({
-        org_id: orgId!,
-        full_name: String(f.get("full_name") || ""),
-        email: String(f.get("email") || "") || null,
-        offer_name: String(f.get("offer_name") || "") || null,
-        contract_value_cents: Math.round(Number(f.get("contract_value") || 0) * 100),
-        start_date: String(f.get("start_date") || new Date().toISOString().slice(0,10)),
-        renewal_date: String(f.get("renewal_date") || "") || null,
-        payment_plan: f.get("payment_plan") === "on",
-        installments_remaining: Number(f.get("installments_remaining") || 0),
-        status: "active",
-      });
+      const { error } = await supabase.from("clients").insert({ org_id: orgId!, status: "active", ...buildPatch(f) });
       if (error) throw error;
     },
     onSuccess: () => { toast.success("Client added"); qc.invalidateQueries({ queryKey: ["clients"] }); setOpen(false); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  const update = useMutation({
+    mutationFn: async ({ id, f }: { id: string; f: FormData }) => {
+      const { error } = await supabase.from("clients").update(buildPatch(f)).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Client updated"); qc.invalidateQueries({ queryKey: ["clients"] }); setEditing(null); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  const preClose = useMutation({
+    mutationFn: async (clientId: string) => generatePreClose({ data: { client_id: clientId, org_id: orgId! } }),
+    onSuccess: () => { toast.success("Pre-close summary generated"); qc.invalidateQueries({ queryKey: ["clients"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
@@ -174,25 +208,9 @@ function Clients() {
             <Link to="/onboarding"><Button size="sm" variant="outline">Onboarding intake</Button></Link>
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4" />Add client</Button></DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>New client</DialogTitle></DialogHeader>
-                <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); create.mutate(new FormData(e.currentTarget)); }}>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5"><Label>Name</Label><Input name="full_name" required /></div>
-                    <div className="space-y-1.5"><Label>Email</Label><Input name="email" type="email" /></div>
-                  </div>
-                  <div className="space-y-1.5"><Label>Offer</Label><Input name="offer_name" placeholder="Mastermind / 1:1 / Course" /></div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5"><Label>Contract $</Label><Input name="contract_value" type="number" step="0.01" /></div>
-                    <div className="space-y-1.5"><Label>Installments left</Label><Input name="installments_remaining" type="number" defaultValue={0} /></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5"><Label>Start date</Label><Input name="start_date" type="date" defaultValue={new Date().toISOString().slice(0,10)} /></div>
-                    <div className="space-y-1.5"><Label>Renewal date</Label><Input name="renewal_date" type="date" /></div>
-                  </div>
-                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" name="payment_plan" /> Payment plan</label>
-                  <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "…" : "Save client"}</Button>
-                </form>
+                <ClientForm onSubmit={(f) => create.mutate(f)} planChecked={planChecked} setPlanChecked={setPlanChecked} pending={create.isPending} />
               </DialogContent>
             </Dialog>
           </div>
@@ -335,8 +353,8 @@ function Clients() {
                 </thead>
                 <tbody>
                   {(clients ?? []).map(c => (
-                    <tr key={c.id} className="border-t border-border hover:bg-muted/20">
-                      <td className="p-3"><div className="font-medium">{c.full_name}</div><div className="text-[11px] text-muted-foreground">{c.email}</div></td>
+                    <tr key={c.id} className="border-t border-border hover:bg-muted/20 cursor-pointer" onClick={() => { setEditing(c); setPlanChecked(!!c.payment_plan); }}>
+                      <td className="p-3"><div className="font-medium flex items-center gap-2">{c.full_name}<Pencil className="h-3 w-3 text-muted-foreground" /></div><div className="text-[11px] text-muted-foreground">{c.email}</div></td>
                       <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
                       <td className="p-3 text-xs text-muted-foreground">{c.start_date}</td>
                       <td className="p-3 text-right font-mono">${Math.round((c.contract_value_cents ?? 0)/100).toLocaleString()}</td>
@@ -352,7 +370,70 @@ function Clients() {
             </div>
           </TabsContent>
         </Tabs>
+
+        <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null); }}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>Edit client</DialogTitle></DialogHeader>
+            {editing && (
+              <>
+                <ClientForm initial={editing} onSubmit={(f) => update.mutate({ id: editing.id, f })} planChecked={planChecked} setPlanChecked={setPlanChecked} pending={update.isPending} />
+                <div className="border-t border-border pt-4 mt-2 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground"><Sparkles className="h-3 w-3" /> Pre-close summary</div>
+                  {editing.pre_close_summary ? (
+                    <p className="text-sm whitespace-pre-wrap rounded bg-muted/30 p-3">{editing.pre_close_summary}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No summary yet.</p>
+                  )}
+                  <Button size="sm" variant="outline" disabled={preClose.isPending} onClick={() => preClose.mutate(editing.id)}>
+                    {preClose.isPending ? "Generating…" : (editing.pre_close_summary ? "Regenerate from DMs + calls" : "Generate from DMs + calls")}
+                  </Button>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </>
+  );
+}
+
+function ClientForm({ initial, onSubmit, planChecked, setPlanChecked, pending }: {
+  initial?: ClientRow;
+  onSubmit: (f: FormData) => void;
+  planChecked: boolean;
+  setPlanChecked: (v: boolean) => void;
+  pending: boolean;
+}) {
+  return (
+    <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); onSubmit(new FormData(e.currentTarget)); }}>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5"><Label>Name</Label><Input name="full_name" required defaultValue={initial?.full_name} /></div>
+        <div className="space-y-1.5"><Label>Email</Label><Input name="email" type="email" defaultValue={initial?.email ?? ""} /></div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5"><Label>Phone</Label><Input name="phone" defaultValue={initial?.phone ?? ""} /></div>
+        <div className="space-y-1.5"><Label>Offer</Label><Input name="offer_name" placeholder="Mastermind / 1:1 / Course" defaultValue={initial?.offer_name ?? ""} /></div>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="space-y-1.5"><Label>Contract $</Label><Input name="contract_value" type="number" step="0.01" defaultValue={initial ? (initial.contract_value_cents ?? 0)/100 : ""} /></div>
+        <div className="space-y-1.5"><Label>Invested to date $</Label><Input name="invested_to_date" type="number" step="0.01" defaultValue={initial ? (initial.invested_to_date_cents ?? 0)/100 : ""} /></div>
+        <div className="space-y-1.5"><Label>Next payment $</Label><Input name="expected_next_payment" type="number" step="0.01" defaultValue={initial ? (initial.expected_next_payment_cents ?? 0)/100 : ""} /></div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5"><Label>Next payment date</Label><Input name="expected_next_payment_date" type="date" defaultValue={initial?.expected_next_payment_date ?? ""} /></div>
+        <div className="space-y-1.5"><Label>Start date</Label><Input name="start_date" type="date" defaultValue={initial?.start_date ?? new Date().toISOString().slice(0,10)} /></div>
+      </div>
+      <label className="flex items-center gap-2 text-xs">
+        <input type="checkbox" name="payment_plan" checked={planChecked} onChange={(e) => setPlanChecked(e.target.checked)} /> Payment plan
+      </label>
+      {planChecked && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5"><Label>Renewal date</Label><Input name="renewal_date" type="date" defaultValue={initial?.renewal_date ?? ""} /></div>
+          <div className="space-y-1.5"><Label>Installments left</Label><Input name="installments_remaining" type="number" defaultValue={initial?.installments_remaining ?? 0} /></div>
+        </div>
+      )}
+      <div className="space-y-1.5"><Label>Notes</Label><Textarea name="notes" rows={2} defaultValue={initial?.notes ?? ""} /></div>
+      <Button type="submit" className="w-full" disabled={pending}>{pending ? "…" : initial ? "Save changes" : "Save client"}</Button>
+    </form>
   );
 }

@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as RequestAccessRouteImport } from './routes/request-access'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.index'
@@ -17,6 +18,7 @@ import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.t
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated.onboarding'
 import { Route as AuthenticatedInsightsRouteImport } from './routes/_authenticated.insights'
 import { Route as AuthenticatedInboundDialerRouteImport } from './routes/_authenticated.inbound-dialer'
+import { Route as AuthenticatedFulfillmentRouteImport } from './routes/_authenticated.fulfillment'
 import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated.events'
 import { Route as AuthenticatedDmSetterRouteImport } from './routes/_authenticated.dm-setter'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
@@ -28,6 +30,11 @@ import { Route as AuthenticatedAttributionRouteImport } from './routes/_authenti
 import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typeform'
 import { Route as ApiPublicIngestTokenRouteImport } from './routes/api/public/ingest.$token'
 
+const RequestAccessRoute = RequestAccessRouteImport.update({
+  id: '/request-access',
+  path: '/request-access',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -66,6 +73,12 @@ const AuthenticatedInboundDialerRoute =
   AuthenticatedInboundDialerRouteImport.update({
     id: '/inbound-dialer',
     path: '/inbound-dialer',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedFulfillmentRoute =
+  AuthenticatedFulfillmentRouteImport.update({
+    id: '/fulfillment',
+    path: '/fulfillment',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedEventsRoute = AuthenticatedEventsRouteImport.update({
@@ -123,6 +136,7 @@ const ApiPublicIngestTokenRoute = ApiPublicIngestTokenRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
+  '/request-access': typeof RequestAccessRoute
   '/attribution': typeof AuthenticatedAttributionRoute
   '/clients': typeof AuthenticatedClientsRoute
   '/closer': typeof AuthenticatedCloserRoute
@@ -131,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
   '/events': typeof AuthenticatedEventsRoute
+  '/fulfillment': typeof AuthenticatedFulfillmentRoute
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/insights': typeof AuthenticatedInsightsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
@@ -141,6 +156,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/request-access': typeof RequestAccessRoute
   '/attribution': typeof AuthenticatedAttributionRoute
   '/clients': typeof AuthenticatedClientsRoute
   '/closer': typeof AuthenticatedCloserRoute
@@ -149,6 +165,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
   '/events': typeof AuthenticatedEventsRoute
+  '/fulfillment': typeof AuthenticatedFulfillmentRoute
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/insights': typeof AuthenticatedInsightsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
@@ -162,6 +179,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
+  '/request-access': typeof RequestAccessRoute
   '/_authenticated/attribution': typeof AuthenticatedAttributionRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRoute
   '/_authenticated/closer': typeof AuthenticatedCloserRoute
@@ -170,6 +188,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/dm-setter': typeof AuthenticatedDmSetterRoute
   '/_authenticated/events': typeof AuthenticatedEventsRoute
+  '/_authenticated/fulfillment': typeof AuthenticatedFulfillmentRoute
   '/_authenticated/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/_authenticated/insights': typeof AuthenticatedInsightsRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
@@ -184,6 +203,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/request-access'
     | '/attribution'
     | '/clients'
     | '/closer'
@@ -192,6 +212,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/dm-setter'
     | '/events'
+    | '/fulfillment'
     | '/inbound-dialer'
     | '/insights'
     | '/onboarding'
@@ -202,6 +223,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/request-access'
     | '/attribution'
     | '/clients'
     | '/closer'
@@ -210,6 +232,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/dm-setter'
     | '/events'
+    | '/fulfillment'
     | '/inbound-dialer'
     | '/insights'
     | '/onboarding'
@@ -222,6 +245,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_authenticated'
     | '/login'
+    | '/request-access'
     | '/_authenticated/attribution'
     | '/_authenticated/clients'
     | '/_authenticated/closer'
@@ -230,6 +254,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/dm-setter'
     | '/_authenticated/events'
+    | '/_authenticated/fulfillment'
     | '/_authenticated/inbound-dialer'
     | '/_authenticated/insights'
     | '/_authenticated/onboarding'
@@ -243,12 +268,20 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
+  RequestAccessRoute: typeof RequestAccessRoute
   ApiPublicTypeformRoute: typeof ApiPublicTypeformRoute
   ApiPublicIngestTokenRoute: typeof ApiPublicIngestTokenRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/request-access': {
+      id: '/request-access'
+      path: '/request-access'
+      fullPath: '/request-access'
+      preLoaderRoute: typeof RequestAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -303,6 +336,13 @@ declare module '@tanstack/react-router' {
       path: '/inbound-dialer'
       fullPath: '/inbound-dialer'
       preLoaderRoute: typeof AuthenticatedInboundDialerRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/fulfillment': {
+      id: '/_authenticated/fulfillment'
+      path: '/fulfillment'
+      fullPath: '/fulfillment'
+      preLoaderRoute: typeof AuthenticatedFulfillmentRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/events': {
@@ -387,6 +427,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDmSetterRoute: typeof AuthenticatedDmSetterRoute
   AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
+  AuthenticatedFulfillmentRoute: typeof AuthenticatedFulfillmentRoute
   AuthenticatedInboundDialerRoute: typeof AuthenticatedInboundDialerRoute
   AuthenticatedInsightsRoute: typeof AuthenticatedInsightsRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
@@ -404,6 +445,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDmSetterRoute: AuthenticatedDmSetterRoute,
   AuthenticatedEventsRoute: AuthenticatedEventsRoute,
+  AuthenticatedFulfillmentRoute: AuthenticatedFulfillmentRoute,
   AuthenticatedInboundDialerRoute: AuthenticatedInboundDialerRoute,
   AuthenticatedInsightsRoute: AuthenticatedInsightsRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
@@ -419,6 +461,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
+  RequestAccessRoute: RequestAccessRoute,
   ApiPublicTypeformRoute: ApiPublicTypeformRoute,
   ApiPublicIngestTokenRoute: ApiPublicIngestTokenRoute,
 }

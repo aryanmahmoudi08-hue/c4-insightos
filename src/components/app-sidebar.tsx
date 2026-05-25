@@ -29,9 +29,13 @@ const SALES_TEAM: NavItem[] = [
   { to: "/closer", label: "Closer", icon: PhoneCall },
 ];
 
-const BOTTOM_NAV: NavItem[] = [
+const FULFILLMENT_NAV: NavItem[] = [
   { to: "/clients", label: "Clients", icon: BadgeCheck },
   { to: "/onboarding", label: "Onboarding", icon: Brain },
+  { to: "/fulfillment", label: "Client Results", icon: BadgeCheck },
+];
+
+const BOTTOM_NAV: NavItem[] = [
   { to: "/traffic", label: "Traffic", icon: TrendingUp },
   { to: "/insights", label: "AI Insights", icon: Sparkles },
   { to: "/events", label: "Event Bus", icon: Activity },
@@ -99,6 +103,9 @@ export function AppSidebar() {
         )}
 
         {MID_NAV.map(it => renderItem(it))}
+        <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Fulfillment</div>
+        {FULFILLMENT_NAV.map(it => renderItem(it))}
+        <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Ops</div>
         {BOTTOM_NAV.map(it => renderItem(it))}
       </nav>
       <div className="border-t border-sidebar-border p-2">
