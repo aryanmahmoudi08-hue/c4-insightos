@@ -103,6 +103,9 @@ export function AppSidebar() {
         )}
 
         {MID_NAV.map(it => renderItem(it))}
+        <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Fulfillment</div>
+        {FULFILLMENT_NAV.map(it => renderItem(it))}
+        <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Ops</div>
         {BOTTOM_NAV.map(it => renderItem(it))}
       </nav>
       <div className="border-t border-sidebar-border p-2">
