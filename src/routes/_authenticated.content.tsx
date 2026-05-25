@@ -219,7 +219,7 @@ function ContentIntel() {
                             <div className="flex items-start gap-2"><Video className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
                               <button onClick={() => setOverviewFor(p)} className="min-w-0 text-left group">
                                 <div className="truncate font-medium group-hover:text-accent group-hover:underline">
-                                  {(p.title || "(untitled)")}{p.hook ? <span className="text-muted-foreground font-normal"> — {p.hook}</span> : null}
+                                  {(p.title || "(untitled)")}
                                 </div>
                               </button>
                             </div>
