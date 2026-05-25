@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
@@ -8,10 +9,12 @@ import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, BadgeCheck, HeartPulse, Repeat, AlertTriangle } from "lucide-react";
+import { Plus, BadgeCheck, HeartPulse, Repeat, AlertTriangle, Sparkles, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { generatePreCloseFn } from "@/lib/pre-close.functions";
 
 export const Route = createFileRoute("/_authenticated/clients")({ component: Clients });
 
@@ -29,9 +32,13 @@ type ClientRow = {
   id: string;
   full_name: string;
   email: string | null;
+  phone: string | null;
   offer_name: string | null;
   start_date: string;
   contract_value_cents: number | null;
+  invested_to_date_cents: number | null;
+  expected_next_payment_cents: number | null;
+  expected_next_payment_date: string | null;
   payment_plan: boolean | null;
   installments_remaining: number | null;
   status: string | null;
@@ -40,6 +47,7 @@ type ClientRow = {
   renewal_conv_started: boolean | null;
   renewal_stage: string | null;
   notes: string | null;
+  pre_close_summary: string | null;
 };
 
 function daysUntil(date: string | null): number | null {
