@@ -25,7 +25,7 @@ async function fetchPeriod(orgId: string, from: string, to: string) {
     supabase.from("leads").select("id, created_at").eq("org_id", orgId).gte("created_at", fromISO).lte("created_at", toISO),
     supabase.from("calls").select("showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at").eq("org_id", orgId).gte("created_at", fromISO).lte("created_at", toISO),
     supabase.from("content_metrics").select("views, leads_generated, captured_at").eq("org_id", orgId).gte("captured_at", fromISO).lte("captured_at", toISO),
-    supabase.from("setter_activity").select("cash_collected_cents, total_revenue_cents, activity_date").eq("org_id", orgId).gte("activity_date", from).lte("activity_date", to),
+    supabase.from("setter_activity").select("cash_collected_cents, total_revenue_cents, calls_on_calendar, live_calls, sets, closes, activity_date").eq("org_id", orgId).gte("activity_date", from).lte("activity_date", to),
   ]);
   const payList = pays.data ?? []; const leadList = leads.data ?? []; const callList = calls.data ?? []; const contentList = content.data ?? []; const setterList = setters.data ?? [];
   const paymentsCash = payList.reduce((s, p) => s + (p.amount_cents ?? 0), 0);
@@ -34,14 +34,23 @@ async function fetchPeriod(orgId: string, from: string, to: string) {
   // Unified cash = max of (payments) vs (sales-team self-reported). Avoids double counting
   // when both sources record the same dollars; surfaces sales data when payments aren't wired.
   const reportedCash = callsCash + setterCash;
+  // Funnel: take max of (per-call rows) vs (sales-team day logs) so the tiles populate
+  // regardless of whether the data lands in calls/* or setter_activity/*.
+  const callsBooked = callList.length;
+  const callsShowed = callList.filter(c => c.showed).length;
+  const callsOffers = callList.filter(c => c.offer_made).length;
+  const callsClosed = callList.filter(c => c.closed).length;
+  const setterBooked = setterList.reduce((s, a) => s + (a.calls_on_calendar ?? a.sets ?? 0), 0);
+  const setterShowed = setterList.reduce((s, a) => s + (a.live_calls ?? 0), 0);
+  const setterClosed = setterList.reduce((s, a) => s + (a.closes ?? 0), 0);
   return {
     cash: Math.max(paymentsCash, reportedCash),
     paymentsCash, callsCash, setterCash,
     newLeads: leadList.length,
-    totalCalls: callList.length,
-    showed: callList.filter(c => c.showed).length,
-    offers: callList.filter(c => c.offer_made).length,
-    closed: callList.filter(c => c.closed).length,
+    totalCalls: Math.max(callsBooked, setterBooked),
+    showed: Math.max(callsShowed, setterShowed),
+    offers: callsOffers,
+    closed: Math.max(callsClosed, setterClosed),
     contractValue: callList.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0),
     views: contentList.reduce((s, m) => s + (m.views ?? 0), 0),
     contentLeads: contentList.reduce((s, m) => s + (m.leads_generated ?? 0), 0),

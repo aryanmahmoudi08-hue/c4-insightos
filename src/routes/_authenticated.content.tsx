@@ -196,7 +196,7 @@ function ContentIntel() {
                 <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="w-6 p-3"></th>
-                    <th className="text-left p-3">Title – Hook</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
+                    <th className="text-left p-3">Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
                     <th className="text-center p-3">Funnel</th>
                     <th className="text-center p-3">Link</th>
                     <th className="text-right p-3 font-mono">Views</th><th className="text-right p-3 font-mono">Leads</th>
@@ -219,7 +219,7 @@ function ContentIntel() {
                             <div className="flex items-start gap-2"><Video className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
                               <button onClick={() => setOverviewFor(p)} className="min-w-0 text-left group">
                                 <div className="truncate font-medium group-hover:text-accent group-hover:underline">
-                                  {(p.title || "(untitled)")}{p.hook ? <span className="text-muted-foreground font-normal"> — {p.hook}</span> : null}
+                                  {(p.title || "(untitled)")}
                                 </div>
                               </button>
                             </div>

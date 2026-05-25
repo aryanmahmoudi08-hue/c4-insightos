@@ -239,6 +239,8 @@ Generate insights now. Lead with trend-based observations if any exist.`;
       source_refs: [{ snapshot: metrics as unknown as Record<string, unknown> }] as never,
       generated_by: "gemini-2.5-flash",
     }));
+    // Wipe prior un-dismissed insights so "Generate" always shows the latest take.
+    await supabase.from("ai_insights").delete().eq("org_id", orgId).eq("dismissed", false).eq("saved", false);
     const { error } = await supabase.from("ai_insights").insert(rows as never);
     if (error) throw error;
     return { inserted: rows.length };
