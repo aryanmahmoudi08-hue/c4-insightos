@@ -101,23 +101,46 @@ function Clients() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
+  const buildPatch = (f: FormData) => {
+    const isPlan = f.get("payment_plan") === "on";
+    return {
+      full_name: String(f.get("full_name") || ""),
+      email: String(f.get("email") || "") || null,
+      phone: String(f.get("phone") || "") || null,
+      offer_name: String(f.get("offer_name") || "") || null,
+      contract_value_cents: Math.round(Number(f.get("contract_value") || 0) * 100),
+      invested_to_date_cents: Math.round(Number(f.get("invested_to_date") || 0) * 100),
+      expected_next_payment_cents: Math.round(Number(f.get("expected_next_payment") || 0) * 100),
+      expected_next_payment_date: String(f.get("expected_next_payment_date") || "") || null,
+      start_date: String(f.get("start_date") || new Date().toISOString().slice(0,10)),
+      renewal_date: isPlan ? (String(f.get("renewal_date") || "") || null) : null,
+      payment_plan: isPlan,
+      installments_remaining: Number(f.get("installments_remaining") || 0),
+      notes: String(f.get("notes") || "") || null,
+    };
+  };
+
   const create = useMutation({
     mutationFn: async (f: FormData) => {
-      const { error } = await supabase.from("clients").insert({
-        org_id: orgId!,
-        full_name: String(f.get("full_name") || ""),
-        email: String(f.get("email") || "") || null,
-        offer_name: String(f.get("offer_name") || "") || null,
-        contract_value_cents: Math.round(Number(f.get("contract_value") || 0) * 100),
-        start_date: String(f.get("start_date") || new Date().toISOString().slice(0,10)),
-        renewal_date: String(f.get("renewal_date") || "") || null,
-        payment_plan: f.get("payment_plan") === "on",
-        installments_remaining: Number(f.get("installments_remaining") || 0),
-        status: "active",
-      });
+      const { error } = await supabase.from("clients").insert({ org_id: orgId!, status: "active", ...buildPatch(f) });
       if (error) throw error;
     },
     onSuccess: () => { toast.success("Client added"); qc.invalidateQueries({ queryKey: ["clients"] }); setOpen(false); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  const update = useMutation({
+    mutationFn: async ({ id, f }: { id: string; f: FormData }) => {
+      const { error } = await supabase.from("clients").update(buildPatch(f)).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Client updated"); qc.invalidateQueries({ queryKey: ["clients"] }); setEditing(null); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  const preClose = useMutation({
+    mutationFn: async (clientId: string) => generatePreClose({ data: { client_id: clientId, org_id: orgId! } }),
+    onSuccess: () => { toast.success("Pre-close summary generated"); qc.invalidateQueries({ queryKey: ["clients"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
