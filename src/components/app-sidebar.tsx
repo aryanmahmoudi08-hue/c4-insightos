@@ -15,6 +15,9 @@ type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; soon?:
 
 const TOP_NAV: NavItem[] = [
   { to: "/dashboard", label: "Main Hub", icon: LayoutDashboard },
+];
+
+const MID_NAV: NavItem[] = [
   { to: "/content", label: "Content Tracker", icon: Video },
   { to: "/attribution", label: "Attribution", icon: GitBranch },
 ];
