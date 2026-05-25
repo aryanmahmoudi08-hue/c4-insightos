@@ -29,9 +29,13 @@ const SALES_TEAM: NavItem[] = [
   { to: "/closer", label: "Closer", icon: PhoneCall },
 ];
 
-const BOTTOM_NAV: NavItem[] = [
+const FULFILLMENT_NAV: NavItem[] = [
   { to: "/clients", label: "Clients", icon: BadgeCheck },
   { to: "/onboarding", label: "Onboarding", icon: Brain },
+  { to: "/fulfillment", label: "Client Results", icon: BadgeCheck },
+];
+
+const BOTTOM_NAV: NavItem[] = [
   { to: "/traffic", label: "Traffic", icon: TrendingUp },
   { to: "/insights", label: "AI Insights", icon: Sparkles },
   { to: "/events", label: "Event Bus", icon: Activity },

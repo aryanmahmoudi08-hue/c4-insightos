@@ -9,10 +9,11 @@ export const generatePreCloseFn = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const r = await buildPreCloseSummary(data.org_id, data.client_id);
     if (!r) throw new Error("Could not build summary (missing AI key or no source data).");
+    const rawJson = JSON.parse(JSON.stringify(r.raw)) as never;
     const { error } = await context.supabase
       .from("clients")
-      .update({ pre_close_summary: r.summary, pre_close_raw: r.raw })
+      .update({ pre_close_summary: r.summary, pre_close_raw: rawJson })
       .eq("id", data.client_id);
     if (error) throw new Error(error.message);
-    return r;
+    return { summary: r.summary };
   });
