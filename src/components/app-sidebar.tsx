@@ -98,6 +98,7 @@ export function AppSidebar() {
           </div>
         )}
 
+        {MID_NAV.map(it => renderItem(it))}
         {BOTTOM_NAV.map(it => renderItem(it))}
       </nav>
       <div className="border-t border-sidebar-border p-2">
