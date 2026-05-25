@@ -353,8 +353,8 @@ function Clients() {
                 </thead>
                 <tbody>
                   {(clients ?? []).map(c => (
-                    <tr key={c.id} className="border-t border-border hover:bg-muted/20">
-                      <td className="p-3"><div className="font-medium">{c.full_name}</div><div className="text-[11px] text-muted-foreground">{c.email}</div></td>
+                    <tr key={c.id} className="border-t border-border hover:bg-muted/20 cursor-pointer" onClick={() => { setEditing(c); setPlanChecked(!!c.payment_plan); }}>
+                      <td className="p-3"><div className="font-medium flex items-center gap-2">{c.full_name}<Pencil className="h-3 w-3 text-muted-foreground" /></div><div className="text-[11px] text-muted-foreground">{c.email}</div></td>
                       <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
                       <td className="p-3 text-xs text-muted-foreground">{c.start_date}</td>
                       <td className="p-3 text-right font-mono">${Math.round((c.contract_value_cents ?? 0)/100).toLocaleString()}</td>
@@ -370,7 +370,70 @@ function Clients() {
             </div>
           </TabsContent>
         </Tabs>
+
+        <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null); }}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>Edit client</DialogTitle></DialogHeader>
+            {editing && (
+              <>
+                <ClientForm initial={editing} onSubmit={(f) => update.mutate({ id: editing.id, f })} planChecked={planChecked} setPlanChecked={setPlanChecked} pending={update.isPending} />
+                <div className="border-t border-border pt-4 mt-2 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground"><Sparkles className="h-3 w-3" /> Pre-close summary</div>
+                  {editing.pre_close_summary ? (
+                    <p className="text-sm whitespace-pre-wrap rounded bg-muted/30 p-3">{editing.pre_close_summary}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No summary yet.</p>
+                  )}
+                  <Button size="sm" variant="outline" disabled={preClose.isPending} onClick={() => preClose.mutate(editing.id)}>
+                    {preClose.isPending ? "Generating…" : (editing.pre_close_summary ? "Regenerate from DMs + calls" : "Generate from DMs + calls")}
+                  </Button>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </>
+  );
+}
+
+function ClientForm({ initial, onSubmit, planChecked, setPlanChecked, pending }: {
+  initial?: ClientRow;
+  onSubmit: (f: FormData) => void;
+  planChecked: boolean;
+  setPlanChecked: (v: boolean) => void;
+  pending: boolean;
+}) {
+  return (
+    <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); onSubmit(new FormData(e.currentTarget)); }}>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5"><Label>Name</Label><Input name="full_name" required defaultValue={initial?.full_name} /></div>
+        <div className="space-y-1.5"><Label>Email</Label><Input name="email" type="email" defaultValue={initial?.email ?? ""} /></div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5"><Label>Phone</Label><Input name="phone" defaultValue={initial?.phone ?? ""} /></div>
+        <div className="space-y-1.5"><Label>Offer</Label><Input name="offer_name" placeholder="Mastermind / 1:1 / Course" defaultValue={initial?.offer_name ?? ""} /></div>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="space-y-1.5"><Label>Contract $</Label><Input name="contract_value" type="number" step="0.01" defaultValue={initial ? (initial.contract_value_cents ?? 0)/100 : ""} /></div>
+        <div className="space-y-1.5"><Label>Invested to date $</Label><Input name="invested_to_date" type="number" step="0.01" defaultValue={initial ? (initial.invested_to_date_cents ?? 0)/100 : ""} /></div>
+        <div className="space-y-1.5"><Label>Next payment $</Label><Input name="expected_next_payment" type="number" step="0.01" defaultValue={initial ? (initial.expected_next_payment_cents ?? 0)/100 : ""} /></div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5"><Label>Next payment date</Label><Input name="expected_next_payment_date" type="date" defaultValue={initial?.expected_next_payment_date ?? ""} /></div>
+        <div className="space-y-1.5"><Label>Start date</Label><Input name="start_date" type="date" defaultValue={initial?.start_date ?? new Date().toISOString().slice(0,10)} /></div>
+      </div>
+      <label className="flex items-center gap-2 text-xs">
+        <input type="checkbox" name="payment_plan" checked={planChecked} onChange={(e) => setPlanChecked(e.target.checked)} /> Payment plan
+      </label>
+      {planChecked && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5"><Label>Renewal date</Label><Input name="renewal_date" type="date" defaultValue={initial?.renewal_date ?? ""} /></div>
+          <div className="space-y-1.5"><Label>Installments left</Label><Input name="installments_remaining" type="number" defaultValue={initial?.installments_remaining ?? 0} /></div>
+        </div>
+      )}
+      <div className="space-y-1.5"><Label>Notes</Label><Textarea name="notes" rows={2} defaultValue={initial?.notes ?? ""} /></div>
+      <Button type="submit" className="w-full" disabled={pending}>{pending ? "…" : initial ? "Save changes" : "Save client"}</Button>
+    </form>
   );
 }
