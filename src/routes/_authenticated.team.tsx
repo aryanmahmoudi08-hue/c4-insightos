@@ -114,6 +114,54 @@ function Team() {
         </div>
         <TeamRosterPanel />
 
+        {isAdmin && (
+          <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <div className="px-4 py-2 border-b border-border bg-accent/5 text-xs font-semibold uppercase tracking-wider text-accent flex items-center gap-2">
+              <UserPlus className="h-3.5 w-3.5" /> Pending access requests · {requests?.length ?? 0}
+            </div>
+            {(!requests || requests.length === 0) ? (
+              <div className="p-6 text-center text-xs text-muted-foreground">No pending requests. Share <code className="font-mono">/request-access</code> with teammates.</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <tr><th className="text-left p-3">Name</th><th className="text-left p-3">Email</th><th className="text-left p-3">Role</th><th className="text-right p-3">Actions</th></tr>
+                </thead>
+                <tbody>
+                  {requests.map(r => {
+                    const role = pendingRoles[r.id] ?? r.requested_role;
+                    return (
+                      <tr key={r.id} className="border-t border-border">
+                        <td className="p-3 font-medium">{r.full_name}</td>
+                        <td className="p-3 text-xs text-muted-foreground">{r.email}</td>
+                        <td className="p-3">
+                          <Select value={role} onValueChange={(v) => setPendingRoles(p => ({ ...p, [r.id]: v }))}>
+                            <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {["viewer","setter","closer","sales_manager","growth_ops","admin"].map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="p-3 text-right space-x-1">
+                          <Button size="sm" variant="outline" disabled={decide.isPending}
+                            onClick={() => decide.mutate({ id: r.id, approve: false, role, email: r.email })}>
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" disabled={decide.isPending}
+                            onClick={() => decide.mutate({ id: r.id, approve: true, role, email: r.email })}>
+                            <Check className="h-3.5 w-3.5" /> Approve
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+
+
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <table className="w-full text-sm">
