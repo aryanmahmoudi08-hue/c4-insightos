@@ -1,11 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
+import { useRole } from "@/hooks/use-role";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
 import { TeamRosterPanel } from "@/components/team-roster-panel";
-import { Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, Check, X, UserPlus } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/team")({ component: Team });
 
@@ -13,7 +18,54 @@ type Member = { user_id: string; role: string; profiles: { display_name: string 
 
 function Team() {
   const { data: org } = useCurrentOrg();
+  const { isAdmin } = useRole();
   const orgId = org?.org_id;
+  const qc = useQueryClient();
+  const [pendingRoles, setPendingRoles] = useState<Record<string, string>>({});
+
+  const { data: requests } = useQuery({
+    queryKey: ["membership-requests", orgId],
+    enabled: !!orgId && isAdmin,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("membership_requests")
+        .select("id, full_name, email, requested_role, status, created_at")
+        .eq("org_id", orgId!)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const decide = useMutation({
+    mutationFn: async ({ id, approve, role, email }: { id: string; approve: boolean; role: string; email: string }) => {
+      if (approve) {
+        // Try to find existing user by email via profiles
+        const { data: userRows } = await supabase
+          .from("profiles")
+          .select("id")
+          .ilike("display_name", email.split("@")[0])
+          .limit(1);
+        const userId = userRows?.[0]?.id;
+        if (userId) {
+          const { error: mErr } = await supabase.from("memberships").insert({ org_id: orgId!, user_id: userId, role: role as "owner" });
+          if (mErr) throw mErr;
+        }
+      }
+      const { error } = await supabase
+        .from("membership_requests")
+        .update({ status: approve ? "approved" : "rejected", decided_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, v) => {
+      toast.success(v.approve ? "Request approved" : "Request rejected");
+      qc.invalidateQueries({ queryKey: ["membership-requests"] });
+      qc.invalidateQueries({ queryKey: ["team"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
 
   const { data: members } = useQuery({
     queryKey: ["team", orgId],
@@ -61,6 +113,54 @@ function Team() {
           <StatCard label="Closers" value={(members ?? []).filter(m => m.role === "closer").length} accent="success" />
         </div>
         <TeamRosterPanel />
+
+        {isAdmin && (
+          <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <div className="px-4 py-2 border-b border-border bg-accent/5 text-xs font-semibold uppercase tracking-wider text-accent flex items-center gap-2">
+              <UserPlus className="h-3.5 w-3.5" /> Pending access requests · {requests?.length ?? 0}
+            </div>
+            {(!requests || requests.length === 0) ? (
+              <div className="p-6 text-center text-xs text-muted-foreground">No pending requests. Share <code className="font-mono">/request-access</code> with teammates.</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <tr><th className="text-left p-3">Name</th><th className="text-left p-3">Email</th><th className="text-left p-3">Role</th><th className="text-right p-3">Actions</th></tr>
+                </thead>
+                <tbody>
+                  {requests.map(r => {
+                    const role = pendingRoles[r.id] ?? r.requested_role;
+                    return (
+                      <tr key={r.id} className="border-t border-border">
+                        <td className="p-3 font-medium">{r.full_name}</td>
+                        <td className="p-3 text-xs text-muted-foreground">{r.email}</td>
+                        <td className="p-3">
+                          <Select value={role} onValueChange={(v) => setPendingRoles(p => ({ ...p, [r.id]: v }))}>
+                            <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {["viewer","setter","closer","sales_manager","growth_ops","admin"].map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="p-3 text-right space-x-1">
+                          <Button size="sm" variant="outline" disabled={decide.isPending}
+                            onClick={() => decide.mutate({ id: r.id, approve: false, role, email: r.email })}>
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" disabled={decide.isPending}
+                            onClick={() => decide.mutate({ id: r.id, approve: true, role, email: r.email })}>
+                            <Check className="h-3.5 w-3.5" /> Approve
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+
 
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
