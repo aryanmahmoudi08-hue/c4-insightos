@@ -41,6 +41,7 @@ type ClientRow = {
   expected_next_payment_date: string | null;
   payment_plan: boolean | null;
   installments_remaining: number | null;
+  installment_amount_cents: number | null;
   status: string | null;
   health_score: number | null;
   renewal_date: string | null;
@@ -80,7 +81,7 @@ function Clients() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("clients")
-        .select("id, full_name, email, phone, offer_name, start_date, contract_value_cents, invested_to_date_cents, expected_next_payment_cents, expected_next_payment_date, payment_plan, installments_remaining, status, health_score, renewal_date, renewal_conv_started, renewal_stage, notes, pre_close_summary")
+        .select("id, full_name, email, phone, offer_name, start_date, contract_value_cents, invested_to_date_cents, expected_next_payment_cents, expected_next_payment_date, payment_plan, installments_remaining, installment_amount_cents, status, health_score, renewal_date, renewal_conv_started, renewal_stage, notes, pre_close_summary")
         .eq("org_id", orgId!)
         .order("start_date", { ascending: false });
       if (error) throw error;
@@ -103,6 +104,13 @@ function Clients() {
 
   const buildPatch = (f: FormData) => {
     const isPlan = f.get("payment_plan") === "on";
+    const installmentsLeft = Number(f.get("installments_remaining") || 0);
+    const installmentAmt = Math.round(Number(f.get("installment_amount") || 0) * 100);
+    // Auto-fill next payment $ from per-installment amount when on a plan and no override entered
+    const nextPaymentRaw = Number(f.get("expected_next_payment") || 0);
+    const nextPaymentCents = nextPaymentRaw > 0
+      ? Math.round(nextPaymentRaw * 100)
+      : (isPlan ? installmentAmt : 0);
     return {
       full_name: String(f.get("full_name") || ""),
       email: String(f.get("email") || "") || null,
@@ -110,12 +118,13 @@ function Clients() {
       offer_name: String(f.get("offer_name") || "") || null,
       contract_value_cents: Math.round(Number(f.get("contract_value") || 0) * 100),
       invested_to_date_cents: Math.round(Number(f.get("invested_to_date") || 0) * 100),
-      expected_next_payment_cents: Math.round(Number(f.get("expected_next_payment") || 0) * 100),
+      expected_next_payment_cents: nextPaymentCents,
       expected_next_payment_date: String(f.get("expected_next_payment_date") || "") || null,
       start_date: String(f.get("start_date") || new Date().toISOString().slice(0,10)),
       renewal_date: isPlan ? (String(f.get("renewal_date") || "") || null) : null,
       payment_plan: isPlan,
-      installments_remaining: Number(f.get("installments_remaining") || 0),
+      installments_remaining: isPlan ? installmentsLeft : 0,
+      installment_amount_cents: isPlan ? installmentAmt : 0,
       notes: String(f.get("notes") || "") || null,
     };
   };
@@ -404,6 +413,10 @@ function ClientForm({ initial, onSubmit, planChecked, setPlanChecked, pending }:
   setPlanChecked: (v: boolean) => void;
   pending: boolean;
 }) {
+  const [installmentsLeft, setInstallmentsLeft] = useState<number>(initial?.installments_remaining ?? 0);
+  const [installmentAmt, setInstallmentAmt] = useState<number>(initial ? (initial.installment_amount_cents ?? 0) / 100 : 0);
+  const remainingBalance = installmentsLeft * installmentAmt;
+
   return (
     <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); onSubmit(new FormData(e.currentTarget)); }}>
       <div className="grid grid-cols-2 gap-3">
@@ -417,19 +430,47 @@ function ClientForm({ initial, onSubmit, planChecked, setPlanChecked, pending }:
       <div className="grid grid-cols-3 gap-3">
         <div className="space-y-1.5"><Label>Contract $</Label><Input name="contract_value" type="number" step="0.01" defaultValue={initial ? (initial.contract_value_cents ?? 0)/100 : ""} /></div>
         <div className="space-y-1.5"><Label>Invested to date $</Label><Input name="invested_to_date" type="number" step="0.01" defaultValue={initial ? (initial.invested_to_date_cents ?? 0)/100 : ""} /></div>
-        <div className="space-y-1.5"><Label>Next payment $</Label><Input name="expected_next_payment" type="number" step="0.01" defaultValue={initial ? (initial.expected_next_payment_cents ?? 0)/100 : ""} /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5"><Label>Next payment date</Label><Input name="expected_next_payment_date" type="date" defaultValue={initial?.expected_next_payment_date ?? ""} /></div>
         <div className="space-y-1.5"><Label>Start date</Label><Input name="start_date" type="date" defaultValue={initial?.start_date ?? new Date().toISOString().slice(0,10)} /></div>
       </div>
       <label className="flex items-center gap-2 text-xs">
-        <input type="checkbox" name="payment_plan" checked={planChecked} onChange={(e) => setPlanChecked(e.target.checked)} /> Payment plan
+        <input type="checkbox" name="payment_plan" checked={planChecked} onChange={(e) => setPlanChecked(e.target.checked)} /> Payment plan (uncheck for paid-in-full)
       </label>
       {planChecked && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5"><Label>Renewal date</Label><Input name="renewal_date" type="date" defaultValue={initial?.renewal_date ?? ""} /></div>
-          <div className="space-y-1.5"><Label>Installments left</Label><Input name="installments_remaining" type="number" defaultValue={initial?.installments_remaining ?? 0} /></div>
+        <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Installments left</Label>
+              <Input name="installments_remaining" type="number" min={0} value={installmentsLeft}
+                onChange={(e) => setInstallmentsLeft(Number(e.target.value || 0))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>$ per installment</Label>
+              <Input name="installment_amount" type="number" step="0.01" min={0} value={installmentAmt}
+                onChange={(e) => setInstallmentAmt(Number(e.target.value || 0))} />
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-xs px-1">
+            <span className="text-muted-foreground">Remaining balance</span>
+            <span className="font-mono font-semibold text-[color:var(--color-success)]">
+              ${remainingBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Next payment $ <span className="text-muted-foreground font-normal">(auto)</span></Label>
+              <Input name="expected_next_payment" type="number" step="0.01"
+                placeholder={installmentAmt ? String(installmentAmt) : "0"}
+                defaultValue={initial?.expected_next_payment_cents ? (initial.expected_next_payment_cents/100) : ""} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Next payment date</Label>
+              <Input name="expected_next_payment_date" type="date" defaultValue={initial?.expected_next_payment_date ?? ""} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Renewal date</Label>
+            <Input name="renewal_date" type="date" defaultValue={initial?.renewal_date ?? ""} />
+          </div>
         </div>
       )}
       <div className="space-y-1.5"><Label>Notes</Label><Textarea name="notes" rows={2} defaultValue={initial?.notes ?? ""} /></div>

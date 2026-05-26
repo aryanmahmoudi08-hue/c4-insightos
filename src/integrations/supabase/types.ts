@@ -265,6 +265,7 @@ export type Database = {
           full_name: string
           health_score: number | null
           id: string
+          installment_amount_cents: number | null
           installments_remaining: number | null
           invested_to_date_cents: number | null
           lead_id: string | null
@@ -291,6 +292,7 @@ export type Database = {
           full_name: string
           health_score?: number | null
           id?: string
+          installment_amount_cents?: number | null
           installments_remaining?: number | null
           invested_to_date_cents?: number | null
           lead_id?: string | null
@@ -317,6 +319,7 @@ export type Database = {
           full_name?: string
           health_score?: number | null
           id?: string
+          installment_amount_cents?: number | null
           installments_remaining?: number | null
           invested_to_date_cents?: number | null
           lead_id?: string | null
