@@ -193,15 +193,41 @@ function Onboarding() {
                   const r = responses?.find(x => x.id === selected);
                   if (!r) return null;
                   const ans = (r.responses ?? {}) as Record<string, string>;
+                  const draft = editMode ? editDraft : ans;
                   return (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-sm font-semibold"><MessageSquareQuote className="h-4 w-4 text-accent" /> {r.clients?.full_name ?? "Intake"}</div>
-                      {QUESTIONS.map(q => ans[q.key] ? (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm font-semibold"><MessageSquareQuote className="h-4 w-4 text-accent" /> {r.clients?.full_name ?? "Intake"}</div>
+                        {editMode ? (
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="outline" onClick={() => setEditMode(false)}>Cancel</Button>
+                            <Button size="sm" disabled={updateResp.isPending} onClick={() => updateResp.mutate({ id: r.id, answers: editDraft })}>
+                              <Save className="h-3.5 w-3.5" /> Save
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => { setEditDraft(ans); setEditMode(true); }}>
+                            <Pencil className="h-3.5 w-3.5" /> Edit
+                          </Button>
+                        )}
+                      </div>
+                      {QUESTIONS.map(q => (
                         <div key={q.key} className="space-y-1">
                           <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{q.q}</div>
-                          <div className="rounded bg-muted/30 p-3 text-sm whitespace-pre-wrap">{ans[q.key]}</div>
+                          {editMode ? (
+                            q.type === "long"
+                              ? <Textarea rows={3} value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
+                              : q.type === "choice"
+                                ? <Select value={draft[q.key] ?? ""} onValueChange={(v) => setEditDraft(d => ({ ...d, [q.key]: v }))}>
+                                    <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                                    <SelectContent>{q.options!.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                  </Select>
+                                : <Input value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
+                          ) : (
+                            ans[q.key] ? <div className="rounded bg-muted/30 p-3 text-sm whitespace-pre-wrap">{ans[q.key]}</div> : <div className="text-xs text-muted-foreground italic">—</div>
+                          )}
                         </div>
-                      ) : null)}
+                      ))}
                     </div>
                   );
                 })() : <div className="text-center text-xs text-muted-foreground py-10">Select an intake to view answers</div>}
