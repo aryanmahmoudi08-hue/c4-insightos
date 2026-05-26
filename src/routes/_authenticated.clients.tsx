@@ -41,6 +41,7 @@ type ClientRow = {
   expected_next_payment_date: string | null;
   payment_plan: boolean | null;
   installments_remaining: number | null;
+  installment_amount_cents: number | null;
   status: string | null;
   health_score: number | null;
   renewal_date: string | null;
