@@ -104,6 +104,13 @@ function Clients() {
 
   const buildPatch = (f: FormData) => {
     const isPlan = f.get("payment_plan") === "on";
+    const installmentsLeft = Number(f.get("installments_remaining") || 0);
+    const installmentAmt = Math.round(Number(f.get("installment_amount") || 0) * 100);
+    // Auto-fill next payment $ from per-installment amount when on a plan and no override entered
+    const nextPaymentRaw = Number(f.get("expected_next_payment") || 0);
+    const nextPaymentCents = nextPaymentRaw > 0
+      ? Math.round(nextPaymentRaw * 100)
+      : (isPlan ? installmentAmt : 0);
     return {
       full_name: String(f.get("full_name") || ""),
       email: String(f.get("email") || "") || null,
@@ -111,12 +118,13 @@ function Clients() {
       offer_name: String(f.get("offer_name") || "") || null,
       contract_value_cents: Math.round(Number(f.get("contract_value") || 0) * 100),
       invested_to_date_cents: Math.round(Number(f.get("invested_to_date") || 0) * 100),
-      expected_next_payment_cents: Math.round(Number(f.get("expected_next_payment") || 0) * 100),
+      expected_next_payment_cents: nextPaymentCents,
       expected_next_payment_date: String(f.get("expected_next_payment_date") || "") || null,
       start_date: String(f.get("start_date") || new Date().toISOString().slice(0,10)),
       renewal_date: isPlan ? (String(f.get("renewal_date") || "") || null) : null,
       payment_plan: isPlan,
-      installments_remaining: Number(f.get("installments_remaining") || 0),
+      installments_remaining: isPlan ? installmentsLeft : 0,
+      installment_amount_cents: isPlan ? installmentAmt : 0,
       notes: String(f.get("notes") || "") || null,
     };
   };
