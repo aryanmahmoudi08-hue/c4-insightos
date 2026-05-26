@@ -18,9 +18,55 @@ type Member = { user_id: string; role: string; profiles: { display_name: string 
 
 function Team() {
   const { data: org } = useCurrentOrg();
+  const { isAdmin } = useRole();
   const orgId = org?.org_id;
+  const qc = useQueryClient();
+  const [pendingRoles, setPendingRoles] = useState<Record<string, string>>({});
 
-  const { data: members } = useQuery({
+  const { data: requests } = useQuery({
+    queryKey: ["membership-requests", orgId],
+    enabled: !!orgId && isAdmin,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("membership_requests")
+        .select("id, full_name, email, requested_role, status, created_at")
+        .eq("org_id", orgId!)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const decide = useMutation({
+    mutationFn: async ({ id, approve, role, email }: { id: string; approve: boolean; role: string; email: string }) => {
+      if (approve) {
+        // Try to find existing user by email via profiles
+        const { data: userRows } = await supabase
+          .from("profiles")
+          .select("id")
+          .ilike("display_name", email.split("@")[0])
+          .limit(1);
+        const userId = userRows?.[0]?.id;
+        if (userId) {
+          const { error: mErr } = await supabase.from("memberships").insert({ org_id: orgId!, user_id: userId, role: role as "owner" });
+          if (mErr) throw mErr;
+        }
+      }
+      const { error } = await supabase
+        .from("membership_requests")
+        .update({ status: approve ? "approved" : "rejected", decided_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, v) => {
+      toast.success(v.approve ? "Request approved" : "Request rejected");
+      qc.invalidateQueries({ queryKey: ["membership-requests"] });
+      qc.invalidateQueries({ queryKey: ["team"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
     queryKey: ["team", orgId],
     enabled: !!orgId,
     queryFn: async () => {
