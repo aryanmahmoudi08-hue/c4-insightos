@@ -81,7 +81,7 @@ function Clients() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("clients")
-        .select("id, full_name, email, phone, offer_name, start_date, contract_value_cents, invested_to_date_cents, expected_next_payment_cents, expected_next_payment_date, payment_plan, installments_remaining, status, health_score, renewal_date, renewal_conv_started, renewal_stage, notes, pre_close_summary")
+        .select("id, full_name, email, phone, offer_name, start_date, contract_value_cents, invested_to_date_cents, expected_next_payment_cents, expected_next_payment_date, payment_plan, installments_remaining, installment_amount_cents, status, health_score, renewal_date, renewal_conv_started, renewal_stage, notes, pre_close_summary")
         .eq("org_id", orgId!)
         .order("start_date", { ascending: false });
       if (error) throw error;
