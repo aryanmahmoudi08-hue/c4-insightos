@@ -1,11 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
+import { useRole } from "@/hooks/use-role";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
 import { TeamRosterPanel } from "@/components/team-roster-panel";
-import { Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, Check, X, UserPlus } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/team")({ component: Team });
 
