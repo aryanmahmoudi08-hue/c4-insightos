@@ -112,6 +112,15 @@ function Onboarding() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
+  const updateResp = useMutation({
+    mutationFn: async ({ id, answers }: { id: string; answers: Record<string, string> }) => {
+      const { error } = await supabase.from("onboarding_responses").update({ responses: answers }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Intake updated"); qc.invalidateQueries({ queryKey: ["onboarding"] }); setEditMode(false); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
   const total = responses?.length ?? 0;
   const submitted = responses?.filter(r => r.submitted_at).length ?? 0;
 
