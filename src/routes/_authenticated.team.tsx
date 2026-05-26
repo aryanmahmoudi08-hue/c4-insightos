@@ -67,6 +67,7 @@ function Team() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
+  const { data: members } = useQuery({
     queryKey: ["team", orgId],
     enabled: !!orgId,
     queryFn: async () => {
