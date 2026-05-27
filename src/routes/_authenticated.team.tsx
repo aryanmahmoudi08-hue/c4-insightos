@@ -62,6 +62,8 @@ function Team() {
       toast.success(v.approve ? "Request approved" : "Request rejected");
       qc.invalidateQueries({ queryKey: ["membership-requests"] });
       qc.invalidateQueries({ queryKey: ["team"] });
+      qc.invalidateQueries({ queryKey: ["team_members_all"] });
+      qc.invalidateQueries({ queryKey: ["team_members"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
