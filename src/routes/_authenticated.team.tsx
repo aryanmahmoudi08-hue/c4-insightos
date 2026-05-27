@@ -9,7 +9,7 @@ import { TeamRosterPanel } from "@/components/team-roster-panel";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, Check, X, UserPlus } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/team")({ component: Team });
@@ -37,6 +37,16 @@ function Team() {
       return data ?? [];
     },
   });
+
+  useEffect(() => {
+    if (!orgId || !isAdmin) return;
+    const ch = supabase
+      .channel(`mreq-${orgId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "membership_requests", filter: `org_id=eq.${orgId}` },
+        () => qc.invalidateQueries({ queryKey: ["membership-requests", orgId] }))
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [orgId, isAdmin, qc]);
 
   const decide = useMutation({
     mutationFn: async ({ id, approve, role, email }: { id: string; approve: boolean; role: string; email: string }) => {
