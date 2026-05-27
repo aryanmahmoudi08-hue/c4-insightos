@@ -2022,6 +2022,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      approve_membership_request: {
+        Args: {
+          _request_id: string
+          _role: Database["public"]["Enums"]["app_role"]
+        }
+        Returns: string
+      }
       current_user_orgs: { Args: never; Returns: string[] }
       has_org_role: {
         Args: {
@@ -2034,6 +2041,10 @@ export type Database = {
       is_org_member: {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
+      }
+      reject_membership_request: {
+        Args: { _request_id: string }
+        Returns: undefined
       }
       submit_membership_request: {
         Args: {

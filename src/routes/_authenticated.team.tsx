@@ -49,25 +49,14 @@ function Team() {
   }, [orgId, isAdmin, qc]);
 
   const decide = useMutation({
-    mutationFn: async ({ id, approve, role, email }: { id: string; approve: boolean; role: string; email: string }) => {
+    mutationFn: async ({ id, approve, role }: { id: string; approve: boolean; role: string; email: string }) => {
       if (approve) {
-        // Try to find existing user by email via profiles
-        const { data: userRows } = await supabase
-          .from("profiles")
-          .select("id")
-          .ilike("display_name", email.split("@")[0])
-          .limit(1);
-        const userId = userRows?.[0]?.id;
-        if (userId) {
-          const { error: mErr } = await supabase.from("memberships").insert({ org_id: orgId!, user_id: userId, role: role as "owner" });
-          if (mErr) throw mErr;
-        }
+        const { error } = await supabase.rpc("approve_membership_request", { _request_id: id, _role: role as "setter" });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.rpc("reject_membership_request", { _request_id: id });
+        if (error) throw error;
       }
-      const { error } = await supabase
-        .from("membership_requests")
-        .update({ status: approve ? "approved" : "rejected", decided_at: new Date().toISOString() })
-        .eq("id", id);
-      if (error) throw error;
     },
     onSuccess: (_d, v) => {
       toast.success(v.approve ? "Request approved" : "Request rejected");
