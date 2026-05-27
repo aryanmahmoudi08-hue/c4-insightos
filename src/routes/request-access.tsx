@@ -26,28 +26,17 @@ function RequestAccess() {
     e.preventDefault();
     setLoading(true);
     try {
-      // Find org by admin email -> membership -> org
-      const { data: adminProfile } = await supabase
-        .from("profiles")
-        .select("id")
-        .ilike("display_name", form.admin_email);
-      // Fallback: try memberships join is restricted by RLS for anon, so we ask user to provide a workspace identifier.
-      // Simplest path: insert with admin_email and let an admin route review by email.
-      const { error } = await supabase.from("membership_requests").insert({
-        // org_id will be resolved on admin approval — placeholder via known seed lookup:
-        org_id: "00000000-0000-0000-0000-000000000000",
-        email: form.email,
-        full_name: form.full_name,
-        admin_email: form.admin_email,
-        requested_role: form.requested_role as "setter",
+      const { error } = await supabase.rpc("submit_membership_request", {
+        _admin_email: form.admin_email,
+        _email: form.email,
+        _full_name: form.full_name,
+        _requested_role: form.requested_role as "setter",
       });
       if (error) throw error;
-      // Hide unused var warning
-      void adminProfile;
       setSent(true);
       toast.success("Request submitted. An admin will review it.");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      toast.error(err instanceof Error ? err.message : "Couldn't find that workspace admin. Double-check their email.");
     } finally {
       setLoading(false);
     }
