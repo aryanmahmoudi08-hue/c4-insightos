@@ -2035,6 +2035,15 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      submit_membership_request: {
+        Args: {
+          _admin_email: string
+          _email: string
+          _full_name: string
+          _requested_role: Database["public"]["Enums"]["app_role"]
+        }
+        Returns: string
+      }
     }
     Enums: {
       alert_severity: "info" | "warning" | "critical"
