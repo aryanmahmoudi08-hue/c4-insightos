@@ -40,7 +40,7 @@ export const Route = createFileRoute("/api/public/typeform")({
           .eq("connector_id", "typeform")
           .eq("state", "connected")
           .maybeSingle();
-        if (connectionError) return Response.json({ error: connectionError.message }, { status: 500 });
+        if (connectionError) { console.error("[typeform] connection lookup", connectionError); return Response.json({ error: "Lookup failed" }, { status: 500 }); }
         if (!connection) return Response.json({ error: "Unknown Typeform connection" }, { status: 404 });
 
         const body = await request.text();
@@ -63,7 +63,7 @@ export const Route = createFileRoute("/api/public/typeform")({
           .insert({ org_id: connection.org_id, responses: answers, submitted_at: new Date().toISOString() })
           .select("id")
           .maybeSingle();
-        if (intakeError) return Response.json({ error: intakeError.message }, { status: 500 });
+        if (intakeError) { console.error("[typeform] intake insert", intakeError); return Response.json({ error: "Request could not be processed" }, { status: 500 }); }
 
         await supabaseAdmin.from("raw_payloads").insert({
           org_id: connection.org_id,

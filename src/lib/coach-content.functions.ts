@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { coachContent } from "./coach-content.server";
 
 const Input = z.object({
@@ -17,6 +18,7 @@ const Input = z.object({
 });
 
 export const coachContentFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d) => Input.parse(d))
   .handler(async ({ data }) => {
     const r = await coachContent(data);

@@ -179,8 +179,8 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
 
           return jsonRes({ ok: true, event_type });
         } catch (e) {
-          const msg = e instanceof Error ? e.message : "Insert failed";
-          return jsonRes({ error: msg }, 400);
+          console.error("[ingest] insert error", e);
+          return jsonRes({ error: "Request could not be processed" }, 400);
         }
       },
     },

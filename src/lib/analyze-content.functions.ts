@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { classifyTranscript } from "./analyze-content.server";
 
 const Input = z.object({
@@ -9,6 +10,7 @@ const Input = z.object({
 });
 
 export const analyzeContent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d) => Input.parse(d))
   .handler(async ({ data }) => {
     const r = await classifyTranscript({
