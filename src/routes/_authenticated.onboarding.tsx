@@ -178,19 +178,27 @@ function Onboarding() {
                     <SelectContent>{(clients ?? []).map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                {QUESTIONS.map(q => (
-                  <div key={q.key} className="space-y-1.5">
-                    <Label className="text-xs leading-snug">{q.q}</Label>
-                    {q.type === "short" && <Input name={q.key} maxLength={500} />}
-                    {q.type === "long" && <Textarea name={q.key} rows={3} maxLength={2000} />}
-                    {q.type === "choice" && (
-                      <Select name={q.key}>
-                        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                        <SelectContent>
-                          {q.options!.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    )}
+                {(["sales","fulfillment","logistics"] as Section[]).map(sec => (
+                  <div key={sec} className="space-y-3 pt-2">
+                    <div className="border-t border-border pt-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-accent">{SECTION_META[sec].label}</div>
+                      <div className="text-[11px] text-muted-foreground">{SECTION_META[sec].hint}</div>
+                    </div>
+                    {QUESTIONS.filter(q => q.section === sec).map(q => (
+                      <div key={q.key} className="space-y-1.5">
+                        <Label className="text-xs leading-snug">{q.q}</Label>
+                        {q.type === "short" && <Input name={q.key} maxLength={500} />}
+                        {q.type === "long" && <Textarea name={q.key} rows={3} maxLength={2000} />}
+                        {q.type === "choice" && (
+                          <Select name={q.key}>
+                            <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                            <SelectContent>
+                              {q.options!.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 ))}
                 <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "Saving…" : "Submit intake"}</Button>
@@ -242,21 +250,29 @@ function Onboarding() {
                           </Button>
                         )}
                       </div>
-                      {QUESTIONS.map(q => (
-                        <div key={q.key} className="space-y-1">
-                          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{q.q}</div>
-                          {editMode ? (
-                            q.type === "long"
-                              ? <Textarea rows={3} value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
-                              : q.type === "choice"
-                                ? <Select value={draft[q.key] ?? ""} onValueChange={(v) => setEditDraft(d => ({ ...d, [q.key]: v }))}>
-                                    <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                                    <SelectContent>{q.options!.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-                                  </Select>
-                                : <Input value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
-                          ) : (
-                            ans[q.key] ? <div className="rounded bg-muted/30 p-3 text-sm whitespace-pre-wrap">{ans[q.key]}</div> : <div className="text-xs text-muted-foreground italic">—</div>
-                          )}
+                      {(["sales","fulfillment","logistics"] as Section[]).map(sec => (
+                        <div key={sec} className="space-y-2 pt-2">
+                          <div className="border-t border-border pt-3">
+                            <div className="text-[11px] font-semibold uppercase tracking-wider text-accent">{SECTION_META[sec].label}</div>
+                            <div className="text-[11px] text-muted-foreground">{SECTION_META[sec].hint}</div>
+                          </div>
+                          {QUESTIONS.filter(q => q.section === sec).map(q => (
+                            <div key={q.key} className="space-y-1">
+                              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{q.q}</div>
+                              {editMode ? (
+                                q.type === "long"
+                                  ? <Textarea rows={3} value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
+                                  : q.type === "choice"
+                                    ? <Select value={draft[q.key] ?? ""} onValueChange={(v) => setEditDraft(d => ({ ...d, [q.key]: v }))}>
+                                        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                                        <SelectContent>{q.options!.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                      </Select>
+                                    : <Input value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
+                              ) : (
+                                ans[q.key] ? <div className="rounded bg-muted/30 p-3 text-sm whitespace-pre-wrap">{ans[q.key]}</div> : <div className="text-xs text-muted-foreground italic">—</div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       ))}
                     </div>
