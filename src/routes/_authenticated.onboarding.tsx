@@ -40,21 +40,52 @@ function topPhrases(texts: string[], n = 2, limit = 20): { phrase: string; count
 }
 
 type QType = "short" | "long" | "choice";
-const QUESTIONS: { key: string; q: string; type: QType; options?: string[] }[] = [
-  { key: "name", q: "Name", type: "short" },
-  { key: "first_touchpoint", q: "What was the first piece of content / touchpoint that made you discover us?", type: "short" },
-  { key: "pivotal_moment", q: "What was the moment you decided 'I have to work with them'?", type: "short" },
-  { key: "objections_before", q: "What hesitations or doubts almost stopped you from joining?", type: "short" },
-  { key: "join_sooner", q: "What could we have done to make you join 30 days sooner?", type: "long" },
-  { key: "why_us", q: "Why did you choose us over competitors?", type: "long" },
-  { key: "current_pain", q: "What is the #1 problem/frustration you're hoping we solve?", type: "short" },
-  { key: "desired_identity", q: "12 months from now, who do you want to have become?", type: "short" },
-  { key: "tried_before", q: "What have you tried before that didn't work, and why?", type: "long" },
-  { key: "fear", q: "What's your biggest fear about this not working?", type: "long" },
-  { key: "beliefs_shifted", q: "What belief [income wise] shifted when you saw our content?", type: "long" },
-  { key: "content_type_helped", q: "Which content type helped most?", type: "choice", options: ["Reels", "Stories", "YouTube", "DMs", "Ads"] },
-  { key: "experience_level", q: "Experience level", type: "choice", options: ["Beginner", "Intermediate", "Advanced"] },
+type Section = "sales" | "fulfillment" | "logistics";
+const QUESTIONS: { key: string; q: string; type: QType; options?: string[]; section: Section }[] = [
+  // --- Sales psychology (feeds content/coaching) ---
+  { section: "sales", key: "name", q: "Name", type: "short" },
+  { section: "sales", key: "first_touchpoint", q: "What was the first piece of content / touchpoint that made you discover us?", type: "short" },
+  { section: "sales", key: "pivotal_moment", q: "What was the moment you decided 'I have to work with them'?", type: "short" },
+  { section: "sales", key: "objections_before", q: "What hesitations or doubts almost stopped you from joining?", type: "short" },
+  { section: "sales", key: "join_sooner", q: "What could we have done to make you join 30 days sooner?", type: "long" },
+  { section: "sales", key: "why_us", q: "Why did you choose us over competitors?", type: "long" },
+  { section: "sales", key: "current_pain", q: "What is the #1 problem/frustration you're hoping we solve?", type: "short" },
+  { section: "sales", key: "desired_identity", q: "12 months from now, who do you want to have become?", type: "short" },
+  { section: "sales", key: "tried_before", q: "What have you tried before that didn't work, and why?", type: "long" },
+  { section: "sales", key: "fear", q: "What's your biggest fear about this not working?", type: "long" },
+  { section: "sales", key: "beliefs_shifted", q: "What belief [income wise] shifted when you saw our content?", type: "long" },
+  { section: "sales", key: "content_type_helped", q: "Which content type helped most?", type: "choice", options: ["Reels", "Stories", "YouTube", "DMs", "Ads"] },
+  { section: "sales", key: "experience_level", q: "Experience level", type: "choice", options: ["Beginner", "Intermediate", "Advanced"] },
+
+  // --- Fulfillment intake (what the coach/CSM needs day 1) ---
+  { section: "fulfillment", key: "current_revenue", q: "Current monthly revenue (or close estimate)", type: "short" },
+  { section: "fulfillment", key: "target_revenue_90d", q: "Target monthly revenue 90 days from now", type: "short" },
+  { section: "fulfillment", key: "north_star_outcome", q: "If we accomplish ONE thing together, what is it?", type: "long" },
+  { section: "fulfillment", key: "success_metric", q: "How will you measure success at day 30 / 60 / 90?", type: "long" },
+  { section: "fulfillment", key: "current_offer", q: "What are you selling right now? (offer, price, delivery)", type: "long" },
+  { section: "fulfillment", key: "audience_size", q: "Audience size + main platform (IG followers / email list / etc.)", type: "short" },
+  { section: "fulfillment", key: "current_funnel", q: "Walk us through your current funnel: traffic → lead → sale", type: "long" },
+  { section: "fulfillment", key: "biggest_bottleneck", q: "What is the single biggest bottleneck stopping growth right now?", type: "long" },
+  { section: "fulfillment", key: "team_setup", q: "Who is on your team today? (setter, closer, editor, VA, etc.)", type: "long" },
+  { section: "fulfillment", key: "tech_stack", q: "Tools you use (CRM, scheduling, email, payments, automation)", type: "long" },
+  { section: "fulfillment", key: "weekly_hours", q: "Hours per week you can commit to implementation", type: "choice", options: ["<5", "5-10", "10-20", "20-40", "40+"] },
+  { section: "fulfillment", key: "learning_style", q: "Preferred learning style", type: "choice", options: ["Watch & model", "Live coaching", "1:1 feedback", "Async written", "Do-it-with-me"] },
+  { section: "fulfillment", key: "accountability_pref", q: "How do you want to be held accountable?", type: "choice", options: ["Weekly check-in", "Daily Slack", "Public scoreboard", "Hard deadlines", "Light touch"] },
+  { section: "fulfillment", key: "blockers_personal", q: "Anything personal we should know that could affect pace? (health, family, travel, etc.)", type: "long" },
+  { section: "fulfillment", key: "wins_so_far", q: "What's working right now that we should NOT change?", type: "long" },
+  { section: "fulfillment", key: "non_negotiables", q: "Non-negotiables — things you will NOT do (channels, tactics, hours)", type: "long" },
+
+  // --- Logistics ---
+  { section: "logistics", key: "timezone", q: "Time zone", type: "short" },
+  { section: "logistics", key: "best_contact", q: "Best way + time to reach you", type: "short" },
+  { section: "logistics", key: "kickoff_date", q: "Earliest date you can start implementing this week", type: "short" },
 ];
+
+const SECTION_META: Record<Section, { label: string; hint: string }> = {
+  sales: { label: "Sales psychology", hint: "Feeds the content + coaching engine" },
+  fulfillment: { label: "Fulfillment intake", hint: "What your coach / CSM needs to deliver outcomes" },
+  logistics: { label: "Logistics", hint: "How and when to reach the client" },
+};
 
 function Onboarding() {
   const { data: org } = useCurrentOrg();
@@ -147,19 +178,27 @@ function Onboarding() {
                     <SelectContent>{(clients ?? []).map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                {QUESTIONS.map(q => (
-                  <div key={q.key} className="space-y-1.5">
-                    <Label className="text-xs leading-snug">{q.q}</Label>
-                    {q.type === "short" && <Input name={q.key} maxLength={500} />}
-                    {q.type === "long" && <Textarea name={q.key} rows={3} maxLength={2000} />}
-                    {q.type === "choice" && (
-                      <Select name={q.key}>
-                        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                        <SelectContent>
-                          {q.options!.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    )}
+                {(["sales","fulfillment","logistics"] as Section[]).map(sec => (
+                  <div key={sec} className="space-y-3 pt-2">
+                    <div className="border-t border-border pt-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-accent">{SECTION_META[sec].label}</div>
+                      <div className="text-[11px] text-muted-foreground">{SECTION_META[sec].hint}</div>
+                    </div>
+                    {QUESTIONS.filter(q => q.section === sec).map(q => (
+                      <div key={q.key} className="space-y-1.5">
+                        <Label className="text-xs leading-snug">{q.q}</Label>
+                        {q.type === "short" && <Input name={q.key} maxLength={500} />}
+                        {q.type === "long" && <Textarea name={q.key} rows={3} maxLength={2000} />}
+                        {q.type === "choice" && (
+                          <Select name={q.key}>
+                            <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                            <SelectContent>
+                              {q.options!.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 ))}
                 <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "Saving…" : "Submit intake"}</Button>
@@ -211,21 +250,29 @@ function Onboarding() {
                           </Button>
                         )}
                       </div>
-                      {QUESTIONS.map(q => (
-                        <div key={q.key} className="space-y-1">
-                          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{q.q}</div>
-                          {editMode ? (
-                            q.type === "long"
-                              ? <Textarea rows={3} value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
-                              : q.type === "choice"
-                                ? <Select value={draft[q.key] ?? ""} onValueChange={(v) => setEditDraft(d => ({ ...d, [q.key]: v }))}>
-                                    <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                                    <SelectContent>{q.options!.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-                                  </Select>
-                                : <Input value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
-                          ) : (
-                            ans[q.key] ? <div className="rounded bg-muted/30 p-3 text-sm whitespace-pre-wrap">{ans[q.key]}</div> : <div className="text-xs text-muted-foreground italic">—</div>
-                          )}
+                      {(["sales","fulfillment","logistics"] as Section[]).map(sec => (
+                        <div key={sec} className="space-y-2 pt-2">
+                          <div className="border-t border-border pt-3">
+                            <div className="text-[11px] font-semibold uppercase tracking-wider text-accent">{SECTION_META[sec].label}</div>
+                            <div className="text-[11px] text-muted-foreground">{SECTION_META[sec].hint}</div>
+                          </div>
+                          {QUESTIONS.filter(q => q.section === sec).map(q => (
+                            <div key={q.key} className="space-y-1">
+                              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{q.q}</div>
+                              {editMode ? (
+                                q.type === "long"
+                                  ? <Textarea rows={3} value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
+                                  : q.type === "choice"
+                                    ? <Select value={draft[q.key] ?? ""} onValueChange={(v) => setEditDraft(d => ({ ...d, [q.key]: v }))}>
+                                        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                                        <SelectContent>{q.options!.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                      </Select>
+                                    : <Input value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
+                              ) : (
+                                ans[q.key] ? <div className="rounded bg-muted/30 p-3 text-sm whitespace-pre-wrap">{ans[q.key]}</div> : <div className="text-xs text-muted-foreground italic">—</div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       ))}
                     </div>
