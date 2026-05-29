@@ -15,6 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plus, BadgeCheck, HeartPulse, Repeat, AlertTriangle, Sparkles, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { generatePreCloseFn } from "@/lib/pre-close.functions";
+import { notifyClientStageChangedFn } from "@/lib/client-events.functions";
 
 export const Route = createFileRoute("/_authenticated/clients")({ component: Clients });
 
@@ -74,6 +75,7 @@ function Clients() {
   const [editing, setEditing] = useState<ClientRow | null>(null);
   const [planChecked, setPlanChecked] = useState(false);
   const generatePreClose = useServerFn(generatePreCloseFn);
+  const notifyStageChanged = useServerFn(notifyClientStageChangedFn);
 
   const { data: clients } = useQuery({
     queryKey: ["clients", orgId],
@@ -91,14 +93,19 @@ function Clients() {
 
   const updateStage = useMutation({
     mutationFn: async ({ id, stage }: { id: string; stage: Stage }) => {
+      const current = clients?.find(c => c.id === id);
+      const fromStage = (current?.renewal_stage as string | null) ?? "not_started";
+      if (fromStage === stage) return;
       const patch: { renewal_stage: string; renewal_conv_started?: boolean; status?: string } = { renewal_stage: stage };
       if (stage === "conversation") patch.renewal_conv_started = true;
       if (stage === "churned") patch.status = "churned";
       if (stage === "won") patch.status = "active";
       const { error } = await supabase.from("clients").update(patch).eq("id", id);
       if (error) throw error;
+      // Fire Slack/Discord/webhook notification — non-blocking on failure
+      try { await notifyStageChanged({ data: { client_id: id, from_stage: fromStage, to_stage: stage } }); } catch { /* ignore */ }
     },
-    onSuccess: () => { toast.success("Stage updated"); qc.invalidateQueries({ queryKey: ["clients"] }); },
+    onSuccess: () => { toast.success("Stage updated · team notified"); qc.invalidateQueries({ queryKey: ["clients"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
