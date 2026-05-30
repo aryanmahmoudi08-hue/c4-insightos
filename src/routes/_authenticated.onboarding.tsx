@@ -95,6 +95,7 @@ function Onboarding() {
   const [selected, setSelected] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [editDraft, setEditDraft] = useState<Record<string, string>>({});
+  const [query, setQuery] = useState("");
 
   const { data: responses } = useQuery({
     queryKey: ["onboarding", orgId],
