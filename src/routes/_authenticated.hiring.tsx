@@ -47,7 +47,7 @@ type Applicant = {
 };
 
 // Heuristic AI-style scorer. Replace with Lovable AI call later if desired.
-function scoreApplicant(a: { years_experience?: number; niche?: string; role_applied?: string; notes?: string }): { score: number; reasoning: string } {
+function scoreApplicant(a: { years_experience?: number | null; niche?: string | null; role_applied?: string | null; notes?: string | null }): { score: number; reasoning: string } {
   let score = 5;
   const r: string[] = [];
   const yrs = Number(a.years_experience ?? 0);
