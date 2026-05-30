@@ -74,6 +74,7 @@ function Clients() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ClientRow | null>(null);
   const [planChecked, setPlanChecked] = useState(false);
+  const [query, setQuery] = useState("");
   const generatePreClose = useServerFn(generatePreCloseFn);
   const notifyStageChanged = useServerFn(notifyClientStageChangedFn);
 
