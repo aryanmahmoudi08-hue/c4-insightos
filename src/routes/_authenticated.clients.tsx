@@ -393,7 +393,7 @@ function Clients() {
                       <td className="p-3"><span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">{(c.renewal_stage || "not_started").replace("_", " ")}</span></td>
                     </tr>
                   ))}
-                  {(!clients || clients.length === 0) && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">No clients yet.</td></tr>}
+                  {view.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">{query ? "No matches." : "No clients yet."}</td></tr>}
                 </tbody>
               </table>
             </div>
