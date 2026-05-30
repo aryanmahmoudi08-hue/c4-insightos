@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Brain, MessageSquareQuote, Sparkles, Cloud, Pencil, Save } from "lucide-react";
+import { Plus, Brain, MessageSquareQuote, Sparkles, Cloud, Pencil, Save, Search } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({ component: Onboarding });
@@ -95,6 +95,7 @@ function Onboarding() {
   const [selected, setSelected] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [editDraft, setEditDraft] = useState<Record<string, string>>({});
+  const [query, setQuery] = useState("");
 
   const { data: responses } = useQuery({
     queryKey: ["onboarding", orgId],
@@ -217,8 +218,19 @@ function Onboarding() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="rounded-lg border border-border bg-card overflow-hidden lg:col-span-1">
                 <div className="bg-muted/40 px-3 py-2 text-[11px] uppercase tracking-wider text-muted-foreground">Recent intakes</div>
+                <div className="p-2 border-b border-border">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input placeholder="Search by client or answers…" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8 h-8 text-xs" />
+                  </div>
+                </div>
                 <div className="divide-y divide-border max-h-[60vh] overflow-y-auto">
-                  {(responses ?? []).map(r => (
+                  {(responses ?? []).filter(r => {
+                    const q = query.trim().toLowerCase(); if (!q) return true;
+                    const name = (r.clients?.full_name ?? "").toLowerCase();
+                    const ans = Object.values((r.responses ?? {}) as Record<string,string>).join(" ").toLowerCase();
+                    return name.includes(q) || ans.includes(q);
+                  }).map(r => (
                     <button key={r.id} onClick={() => setSelected(r.id)} className={`w-full text-left p-3 hover:bg-muted/30 ${selected === r.id ? "bg-muted/40" : ""}`}>
                       <div className="font-medium text-sm">{r.clients?.full_name ?? "(no client linked)"}</div>
                       <div className="text-[11px] text-muted-foreground">{new Date(r.created_at).toLocaleString()}</div>

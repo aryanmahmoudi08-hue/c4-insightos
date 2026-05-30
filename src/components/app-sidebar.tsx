@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard, Video, GitBranch, MessageSquare, PhoneCall, Users, BadgeCheck,
   TrendingUp, Sparkles, Settings, LogOut, Bell, Search, Brain, Activity, PhoneIncoming,
-  ChevronDown, Briefcase,
+  ChevronDown, Briefcase, UserPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,6 +24,7 @@ const MID_NAV: NavItem[] = [
 
 const SALES_TEAM: NavItem[] = [
   { to: "/team", label: "Team Members", icon: Users },
+  { to: "/hiring", label: "Hiring", icon: UserPlus },
   { to: "/dm-setter", label: "DM Setter", icon: MessageSquare },
   { to: "/inbound-dialer", label: "Inbound Dialer", icon: PhoneIncoming },
   { to: "/closer", label: "Closer", icon: PhoneCall },

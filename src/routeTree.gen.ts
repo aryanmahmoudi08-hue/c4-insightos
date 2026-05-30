@@ -18,6 +18,7 @@ import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.t
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated.onboarding'
 import { Route as AuthenticatedInsightsRouteImport } from './routes/_authenticated.insights'
 import { Route as AuthenticatedInboundDialerRouteImport } from './routes/_authenticated.inbound-dialer'
+import { Route as AuthenticatedHiringRouteImport } from './routes/_authenticated.hiring'
 import { Route as AuthenticatedFulfillmentRouteImport } from './routes/_authenticated.fulfillment'
 import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated.events'
 import { Route as AuthenticatedDmSetterRouteImport } from './routes/_authenticated.dm-setter'
@@ -75,6 +76,11 @@ const AuthenticatedInboundDialerRoute =
     path: '/inbound-dialer',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedHiringRoute = AuthenticatedHiringRouteImport.update({
+  id: '/hiring',
+  path: '/hiring',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedFulfillmentRoute =
   AuthenticatedFulfillmentRouteImport.update({
     id: '/fulfillment',
@@ -146,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/dm-setter': typeof AuthenticatedDmSetterRoute
   '/events': typeof AuthenticatedEventsRoute
   '/fulfillment': typeof AuthenticatedFulfillmentRoute
+  '/hiring': typeof AuthenticatedHiringRoute
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/insights': typeof AuthenticatedInsightsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
@@ -166,6 +173,7 @@ export interface FileRoutesByTo {
   '/dm-setter': typeof AuthenticatedDmSetterRoute
   '/events': typeof AuthenticatedEventsRoute
   '/fulfillment': typeof AuthenticatedFulfillmentRoute
+  '/hiring': typeof AuthenticatedHiringRoute
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/insights': typeof AuthenticatedInsightsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
@@ -189,6 +197,7 @@ export interface FileRoutesById {
   '/_authenticated/dm-setter': typeof AuthenticatedDmSetterRoute
   '/_authenticated/events': typeof AuthenticatedEventsRoute
   '/_authenticated/fulfillment': typeof AuthenticatedFulfillmentRoute
+  '/_authenticated/hiring': typeof AuthenticatedHiringRoute
   '/_authenticated/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/_authenticated/insights': typeof AuthenticatedInsightsRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
@@ -213,6 +222,7 @@ export interface FileRouteTypes {
     | '/dm-setter'
     | '/events'
     | '/fulfillment'
+    | '/hiring'
     | '/inbound-dialer'
     | '/insights'
     | '/onboarding'
@@ -233,6 +243,7 @@ export interface FileRouteTypes {
     | '/dm-setter'
     | '/events'
     | '/fulfillment'
+    | '/hiring'
     | '/inbound-dialer'
     | '/insights'
     | '/onboarding'
@@ -255,6 +266,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dm-setter'
     | '/_authenticated/events'
     | '/_authenticated/fulfillment'
+    | '/_authenticated/hiring'
     | '/_authenticated/inbound-dialer'
     | '/_authenticated/insights'
     | '/_authenticated/onboarding'
@@ -336,6 +348,13 @@ declare module '@tanstack/react-router' {
       path: '/inbound-dialer'
       fullPath: '/inbound-dialer'
       preLoaderRoute: typeof AuthenticatedInboundDialerRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/hiring': {
+      id: '/_authenticated/hiring'
+      path: '/hiring'
+      fullPath: '/hiring'
+      preLoaderRoute: typeof AuthenticatedHiringRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/fulfillment': {
@@ -428,6 +447,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDmSetterRoute: typeof AuthenticatedDmSetterRoute
   AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
   AuthenticatedFulfillmentRoute: typeof AuthenticatedFulfillmentRoute
+  AuthenticatedHiringRoute: typeof AuthenticatedHiringRoute
   AuthenticatedInboundDialerRoute: typeof AuthenticatedInboundDialerRoute
   AuthenticatedInsightsRoute: typeof AuthenticatedInsightsRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
@@ -446,6 +466,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDmSetterRoute: AuthenticatedDmSetterRoute,
   AuthenticatedEventsRoute: AuthenticatedEventsRoute,
   AuthenticatedFulfillmentRoute: AuthenticatedFulfillmentRoute,
+  AuthenticatedHiringRoute: AuthenticatedHiringRoute,
   AuthenticatedInboundDialerRoute: AuthenticatedInboundDialerRoute,
   AuthenticatedInsightsRoute: AuthenticatedInsightsRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,

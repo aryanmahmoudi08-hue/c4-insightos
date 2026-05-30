@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, BadgeCheck, HeartPulse, Repeat, AlertTriangle, Sparkles, Pencil } from "lucide-react";
+import { Plus, BadgeCheck, HeartPulse, Repeat, AlertTriangle, Sparkles, Pencil, Search } from "lucide-react";
 import { toast } from "sonner";
 import { generatePreCloseFn } from "@/lib/pre-close.functions";
 import { notifyClientStageChangedFn } from "@/lib/client-events.functions";
@@ -74,6 +74,7 @@ function Clients() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ClientRow | null>(null);
   const [planChecked, setPlanChecked] = useState(false);
+  const [query, setQuery] = useState("");
   const generatePreClose = useServerFn(generatePreCloseFn);
   const notifyStageChanged = useServerFn(notifyClientStageChangedFn);
 
@@ -165,18 +166,24 @@ function Clients() {
   const avgHealth = clients?.length ? Math.round(clients.reduce((s, c) => s + Number(c.health_score ?? 0), 0) / clients.length) : 0;
   const renewalsDue = clients?.filter(c => c.renewal_date && new Date(c.renewal_date) < new Date(Date.now()+30*86400000)).length ?? 0;
 
+  const view = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return clients ?? [];
+    return (clients ?? []).filter(c => [c.full_name, c.email, c.phone, c.offer_name, c.notes].some(v => (v ?? "").toLowerCase().includes(q)));
+  }, [clients, query]);
+
   // At-risk list (auto-tagged)
   const atRisk = useMemo(() => {
-    return (clients ?? [])
+    return view
       .map(c => ({ c, reason: atRiskReason(c) }))
       .filter(x => x.reason)
       .sort((a, b) => (Number(a.c.health_score ?? 100) - Number(b.c.health_score ?? 100)));
-  }, [clients]);
+  }, [view]);
 
   // LTV by offer
   const ltvByOffer = useMemo(() => {
     const m = new Map<string, { count: number; total: number }>();
-    for (const c of clients ?? []) {
+    for (const c of view) {
       const k = c.offer_name || "(no offer)";
       const cur = m.get(k) ?? { count: 0, total: 0 };
       cur.count += 1;
@@ -186,19 +193,19 @@ function Clients() {
     return Array.from(m.entries())
       .map(([offer, v]) => ({ offer, count: v.count, total: v.total, avg: v.count ? v.total / v.count : 0 }))
       .sort((a, b) => b.total - a.total);
-  }, [clients]);
+  }, [view]);
 
   // Group clients by renewal_stage for kanban
   const byStage = useMemo(() => {
     const m = new Map<Stage, ClientRow[]>();
     STAGES.forEach(s => m.set(s.key, []));
-    for (const c of clients ?? []) {
+    for (const c of view) {
       const stage = (c.renewal_stage as Stage) || "not_started";
       const arr = m.get(stage) ?? m.get("not_started")!;
       arr.push(c);
     }
     return m;
-  }, [clients]);
+  }, [view]);
 
   const onDrop = (e: React.DragEvent, stage: Stage) => {
     e.preventDefault();
@@ -218,8 +225,14 @@ function Clients() {
           <StatCard label="At-risk" value={atRisk.length} accent={atRisk.length ? "destructive" : "primary"} icon={<AlertTriangle className="h-4 w-4" />} hint="Auto-flagged" />
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="text-xs text-muted-foreground">{clients?.length ?? 0} clients</div>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input placeholder="Search clients by name, email, offer, notes…" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8 h-9" />
+            </div>
+            <div className="text-xs text-muted-foreground whitespace-nowrap">{view.length} / {clients?.length ?? 0}</div>
+          </div>
           <div className="flex gap-2">
             <Link to="/onboarding"><Button size="sm" variant="outline">Onboarding intake</Button></Link>
             <Dialog open={open} onOpenChange={setOpen}>
@@ -368,7 +381,7 @@ function Clients() {
                     <th className="text-right p-3 font-mono">Health</th><th className="text-left p-3">Renewal</th><th className="text-left p-3">Stage</th></tr>
                 </thead>
                 <tbody>
-                  {(clients ?? []).map(c => (
+                  {view.map(c => (
                     <tr key={c.id} className="border-t border-border hover:bg-muted/20 cursor-pointer" onClick={() => { setEditing(c); setPlanChecked(!!c.payment_plan); }}>
                       <td className="p-3"><div className="font-medium flex items-center gap-2">{c.full_name}<Pencil className="h-3 w-3 text-muted-foreground" /></div><div className="text-[11px] text-muted-foreground">{c.email}</div></td>
                       <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
@@ -380,7 +393,7 @@ function Clients() {
                       <td className="p-3"><span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">{(c.renewal_stage || "not_started").replace("_", " ")}</span></td>
                     </tr>
                   ))}
-                  {(!clients || clients.length === 0) && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">No clients yet.</td></tr>}
+                  {view.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">{query ? "No matches." : "No clients yet."}</td></tr>}
                 </tbody>
               </table>
             </div>

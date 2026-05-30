@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { useState, useMemo } from "react";
-import { Briefcase, Target, TrendingUp } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Briefcase, Target, TrendingUp, Search } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/fulfillment")({ component: Fulfillment });
 
@@ -23,6 +24,7 @@ function Fulfillment() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const [selected, setSelected] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const { data: clients } = useQuery({
     queryKey: ["fulfillment-clients", orgId],
@@ -65,8 +67,17 @@ function Fulfillment() {
           <div className="bg-muted/40 px-3 py-2 text-[11px] uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
             <Briefcase className="h-3.5 w-3.5" /> Active clients · {clients?.length ?? 0}
           </div>
+          <div className="p-2 border-b border-border">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input placeholder="Search clients…" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8 h-8 text-xs" />
+            </div>
+          </div>
           <div className="divide-y divide-border max-h-[70vh] overflow-y-auto">
-            {(clients ?? []).map((c) => (
+            {(clients ?? []).filter(c => {
+              const q = query.trim().toLowerCase(); if (!q) return true;
+              return [c.full_name, c.email, c.offer_name].some(v => (v ?? "").toLowerCase().includes(q));
+            }).map((c) => (
               <button key={c.id} onClick={() => setSelected(c.id)} className={`w-full text-left p-3 hover:bg-muted/30 ${selected === c.id ? "bg-muted/40" : ""}`}>
                 <div className="font-medium text-sm">{c.full_name}</div>
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-0.5">
