@@ -24,6 +24,7 @@ const MID_NAV: NavItem[] = [
 
 const SALES_TEAM: NavItem[] = [
   { to: "/team", label: "Team Members", icon: Users },
+  { to: "/hiring", label: "Hiring", icon: UserPlus },
   { to: "/dm-setter", label: "DM Setter", icon: MessageSquare },
   { to: "/inbound-dialer", label: "Inbound Dialer", icon: PhoneIncoming },
   { to: "/closer", label: "Closer", icon: PhoneCall },
