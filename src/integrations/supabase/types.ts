@@ -895,6 +895,69 @@ export type Database = {
         }
         Relationships: []
       }
+      hiring_applicants: {
+        Row: {
+          ai_reasoning: string | null
+          ai_score: number | null
+          applied_at: string
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          last_shown_at: string | null
+          niche: string | null
+          notes: string | null
+          org_id: string
+          phone: string | null
+          responses: Json
+          role_applied: string
+          source: string | null
+          stage: string
+          updated_at: string
+          years_experience: number | null
+        }
+        Insert: {
+          ai_reasoning?: string | null
+          ai_score?: number | null
+          applied_at?: string
+          created_at?: string
+          email?: string | null
+          full_name: string
+          id?: string
+          last_shown_at?: string | null
+          niche?: string | null
+          notes?: string | null
+          org_id: string
+          phone?: string | null
+          responses?: Json
+          role_applied?: string
+          source?: string | null
+          stage?: string
+          updated_at?: string
+          years_experience?: number | null
+        }
+        Update: {
+          ai_reasoning?: string | null
+          ai_score?: number | null
+          applied_at?: string
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id?: string
+          last_shown_at?: string | null
+          niche?: string | null
+          notes?: string | null
+          org_id?: string
+          phone?: string | null
+          responses?: Json
+          role_applied?: string
+          source?: string | null
+          stage?: string
+          updated_at?: string
+          years_experience?: number | null
+        }
+        Relationships: []
+      }
       ingestion_jobs: {
         Row: {
           attempt: number
