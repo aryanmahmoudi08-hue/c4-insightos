@@ -24,6 +24,7 @@ function Fulfillment() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const [selected, setSelected] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const { data: clients } = useQuery({
     queryKey: ["fulfillment-clients", orgId],
