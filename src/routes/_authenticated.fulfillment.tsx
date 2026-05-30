@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { useState, useMemo } from "react";
-import { Briefcase, Target, TrendingUp } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Briefcase, Target, Search } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/fulfillment")({ component: Fulfillment });
 
