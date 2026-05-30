@@ -381,7 +381,7 @@ function Clients() {
                     <th className="text-right p-3 font-mono">Health</th><th className="text-left p-3">Renewal</th><th className="text-left p-3">Stage</th></tr>
                 </thead>
                 <tbody>
-                  {(clients ?? []).map(c => (
+                  {view.map(c => (
                     <tr key={c.id} className="border-t border-border hover:bg-muted/20 cursor-pointer" onClick={() => { setEditing(c); setPlanChecked(!!c.payment_plan); }}>
                       <td className="p-3"><div className="font-medium flex items-center gap-2">{c.full_name}<Pencil className="h-3 w-3 text-muted-foreground" /></div><div className="text-[11px] text-muted-foreground">{c.email}</div></td>
                       <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
