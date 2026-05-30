@@ -166,18 +166,24 @@ function Clients() {
   const avgHealth = clients?.length ? Math.round(clients.reduce((s, c) => s + Number(c.health_score ?? 0), 0) / clients.length) : 0;
   const renewalsDue = clients?.filter(c => c.renewal_date && new Date(c.renewal_date) < new Date(Date.now()+30*86400000)).length ?? 0;
 
+  const view = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return clients ?? [];
+    return (clients ?? []).filter(c => [c.full_name, c.email, c.phone, c.offer_name, c.notes].some(v => (v ?? "").toLowerCase().includes(q)));
+  }, [clients, query]);
+
   // At-risk list (auto-tagged)
   const atRisk = useMemo(() => {
-    return (clients ?? [])
+    return view
       .map(c => ({ c, reason: atRiskReason(c) }))
       .filter(x => x.reason)
       .sort((a, b) => (Number(a.c.health_score ?? 100) - Number(b.c.health_score ?? 100)));
-  }, [clients]);
+  }, [view]);
 
   // LTV by offer
   const ltvByOffer = useMemo(() => {
     const m = new Map<string, { count: number; total: number }>();
-    for (const c of clients ?? []) {
+    for (const c of view) {
       const k = c.offer_name || "(no offer)";
       const cur = m.get(k) ?? { count: 0, total: 0 };
       cur.count += 1;
@@ -187,19 +193,19 @@ function Clients() {
     return Array.from(m.entries())
       .map(([offer, v]) => ({ offer, count: v.count, total: v.total, avg: v.count ? v.total / v.count : 0 }))
       .sort((a, b) => b.total - a.total);
-  }, [clients]);
+  }, [view]);
 
   // Group clients by renewal_stage for kanban
   const byStage = useMemo(() => {
     const m = new Map<Stage, ClientRow[]>();
     STAGES.forEach(s => m.set(s.key, []));
-    for (const c of clients ?? []) {
+    for (const c of view) {
       const stage = (c.renewal_stage as Stage) || "not_started";
       const arr = m.get(stage) ?? m.get("not_started")!;
       arr.push(c);
     }
     return m;
-  }, [clients]);
+  }, [view]);
 
   const onDrop = (e: React.DragEvent, stage: Stage) => {
     e.preventDefault();
