@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, BadgeCheck, HeartPulse, Repeat, AlertTriangle, Sparkles, Pencil } from "lucide-react";
+import { Plus, BadgeCheck, HeartPulse, Repeat, AlertTriangle, Sparkles, Pencil, Search } from "lucide-react";
 import { toast } from "sonner";
 import { generatePreCloseFn } from "@/lib/pre-close.functions";
 import { notifyClientStageChangedFn } from "@/lib/client-events.functions";
