@@ -56,6 +56,22 @@ function Closer() {
     },
   });
 
+  // Pull setter/dialer day-log aggregates so the Closer Dashboard isn't empty
+  // when closes & cash are logged through DM Setter / Inbound Dialer daily entries.
+  const { data: setterAgg } = useQuery({
+    queryKey: ["closer-setter-agg", orgId, range.from, range.to],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("setter_activity")
+        .select("calls_on_calendar, live_calls, closes, downsells, cash_collected_cents, total_revenue_cents")
+        .eq("org_id", orgId!)
+        .gte("activity_date", range.from)
+        .lte("activity_date", range.to);
+      return data ?? [];
+    },
+  });
+
   const { data: objections } = useQuery({
     queryKey: ["call-objections", orgId, range.from, range.to],
     enabled: !!orgId,
@@ -80,13 +96,31 @@ function Closer() {
   });
 
   const list = (calls ?? []).filter(c => member === ALL_MEMBERS || c.closer_name === member);
-  const onCalendar = list.length;
-  const showed = list.filter(c => c.showed).length;
-  const offers = list.filter(c => c.offer_made).length;
-  const closes = list.filter(c => c.closed || c.status === "closed").length;
-  const downsells = 0;
-  const cashCents = list.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
-  const revCents = list.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0);
+  // Per-call totals
+  const callsBooked = list.length;
+  const callsShowed = list.filter(c => c.showed).length;
+  const callsOffers = list.filter(c => c.offer_made).length;
+  const callsClosed = list.filter(c => c.closed || c.status === "closed").length;
+  const callsCash = list.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
+  const callsRev = list.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0);
+  // Day-log totals (org-wide, no per-rep filter — these aren't attributed per-closer)
+  const setterRows = setterAgg ?? [];
+  const setBooked = setterRows.reduce((s, r) => s + (r.calls_on_calendar ?? 0), 0);
+  const setShowed = setterRows.reduce((s, r) => s + (r.live_calls ?? 0), 0);
+  const setClosed = setterRows.reduce((s, r) => s + (r.closes ?? 0), 0);
+  const setDowns = setterRows.reduce((s, r) => s + (r.downsells ?? 0), 0);
+  const setCash = setterRows.reduce((s, r) => s + (r.cash_collected_cents ?? 0), 0);
+  const setRev = setterRows.reduce((s, r) => s + (r.total_revenue_cents ?? 0), 0);
+  // Use max() of each source to avoid double-counting same dollars while still
+  // surfacing whichever source actually has data. Per-rep filter falls back to call rows.
+  const useDayLogs = member === ALL_MEMBERS;
+  const onCalendar = useDayLogs ? Math.max(callsBooked, setBooked) : callsBooked;
+  const showed = useDayLogs ? Math.max(callsShowed, setShowed) : callsShowed;
+  const offers = callsOffers;
+  const closes = useDayLogs ? Math.max(callsClosed, setClosed) : callsClosed;
+  const downsells = useDayLogs ? setDowns : 0;
+  const cashCents = useDayLogs ? Math.max(callsCash, setCash) : callsCash;
+  const revCents = useDayLogs ? Math.max(callsRev, setRev) : callsRev;
   const depositCount = list.filter(c => (c.deposit_cents ?? 0) > 0).length;
   const avgCashPerBooked = onCalendar ? cashCents / onCalendar : 0;
   const avgCashPerShowed = showed ? cashCents / showed : 0;
