@@ -38,10 +38,6 @@ export function DateRangeProvider({ children }: { children: ReactNode }) {
 
 export function useDateRange(): Ctx {
   const ctx = useContext(DateRangeCtx);
-  if (!ctx) {
-    // Safe fallback for components rendered outside the provider (e.g. login)
-    const [range, setRange] = useState<DateRange>(RANGES.last30());
-    return { range, setRange };
-  }
+  if (!ctx) throw new Error("useDateRange must be used within DateRangeProvider");
   return ctx;
 }
