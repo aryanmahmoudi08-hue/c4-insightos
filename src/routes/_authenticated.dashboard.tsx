@@ -60,7 +60,7 @@ async function fetchPeriod(orgId: string, from: string, to: string) {
 function Dashboard() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
-  const [range, setRange] = useState<DateRange>(RANGES.last30());
+  const { range } = useDateRange();
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ["exec-dash", orgId, range.from, range.to],
