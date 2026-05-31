@@ -181,14 +181,14 @@ function Dashboard() {
 
   return (
     <>
-      <TopBar title="Executive Command Center" subtitle="Real-time KPIs across content, attribution, and sales" />
-      <div className="p-6 space-y-4">
+      <TopBar title="Executive Command Center" subtitle="Real-time KPIs across content, attribution, and sales" showDateRange />
+      <div className="p-4 md:p-6 space-y-4">
         <DashboardBar title="EXECUTIVE COMMAND CENTER" accent="primary" />
 
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <DateRangePicker value={range} onChange={setRange} />
+        <div className="flex items-center justify-end gap-3 flex-wrap">
           <div className="text-xs text-muted-foreground font-mono">{isLoading ? "syncing…" : `${range.from} → ${range.to} · vs prior ${Math.max(1, Math.round((new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400e3) + 1)}d`}</div>
         </div>
+
 
         {/* Pace predictor */}
         <PaceCard pace={stats?.pace} />
