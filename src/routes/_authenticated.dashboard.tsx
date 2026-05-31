@@ -4,8 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { DashboardBar } from "@/components/kpi-tile";
-import { DateRangePicker, RANGES, type DateRange } from "@/components/date-range-picker";
-import { useState } from "react";
+import { useDateRange } from "@/hooks/use-date-range";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, Sparkles, TrendingUp, TrendingDown, Minus, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -60,7 +59,7 @@ async function fetchPeriod(orgId: string, from: string, to: string) {
 function Dashboard() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
-  const [range, setRange] = useState<DateRange>(RANGES.last30());
+  const { range } = useDateRange();
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ["exec-dash", orgId, range.from, range.to],
@@ -181,14 +180,14 @@ function Dashboard() {
 
   return (
     <>
-      <TopBar title="Executive Command Center" subtitle="Real-time KPIs across content, attribution, and sales" />
-      <div className="p-6 space-y-4">
+      <TopBar title="Executive Command Center" subtitle="Real-time KPIs across content, attribution, and sales" showDateRange />
+      <div className="p-4 md:p-6 space-y-4">
         <DashboardBar title="EXECUTIVE COMMAND CENTER" accent="primary" />
 
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <DateRangePicker value={range} onChange={setRange} />
+        <div className="flex items-center justify-end gap-3 flex-wrap">
           <div className="text-xs text-muted-foreground font-mono">{isLoading ? "syncing…" : `${range.from} → ${range.to} · vs prior ${Math.max(1, Math.round((new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400e3) + 1)}d`}</div>
         </div>
+
 
         {/* Pace predictor */}
         <PaceCard pace={stats?.pace} />

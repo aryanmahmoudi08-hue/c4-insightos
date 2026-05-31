@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { KpiTile, DashboardBar } from "@/components/kpi-tile";
-import { DateRangePicker, RANGES, type DateRange } from "@/components/date-range-picker";
+import { useDateRange } from "@/hooks/use-date-range";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,7 @@ function Closer() {
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [range, setRange] = useState<DateRange>(RANGES.last30());
+  const { range } = useDateRange();
   const [member, setMember] = useState<string>(ALL_MEMBERS);
 
   const { data: calls } = useQuery({
@@ -239,13 +239,12 @@ function Closer() {
 
   return (
     <>
-      <TopBar title="Closer Dashboard" subtitle="Calls, offers, deposits, cash collected — per-call tracking" />
-      <div className="p-6 space-y-4">
+      <TopBar title="Closer Dashboard" subtitle="Calls, offers, deposits, cash collected — per-call tracking" showDateRange />
+      <div className="p-4 md:p-6 space-y-4">
         <DashboardBar title="CLOSER DASHBOARD" accent="destructive" />
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
-            <DateRangePicker value={range} onChange={setRange} />
             <TeamMemberFilter role="closer" value={member} onChange={setMember} />
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
