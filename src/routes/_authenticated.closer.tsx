@@ -239,13 +239,12 @@ function Closer() {
 
   return (
     <>
-      <TopBar title="Closer Dashboard" subtitle="Calls, offers, deposits, cash collected — per-call tracking" />
-      <div className="p-6 space-y-4">
+      <TopBar title="Closer Dashboard" subtitle="Calls, offers, deposits, cash collected — per-call tracking" showDateRange />
+      <div className="p-4 md:p-6 space-y-4">
         <DashboardBar title="CLOSER DASHBOARD" accent="destructive" />
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
-            <DateRangePicker value={range} onChange={setRange} />
             <TeamMemberFilter role="closer" value={member} onChange={setMember} />
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
