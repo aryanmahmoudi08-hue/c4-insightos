@@ -120,6 +120,16 @@ export function AppSidebar() {
 }
 
 export function TopBar({ title, subtitle }: { title: string; subtitle?: string }) {
+  const nav = useNavigate();
+  const [q, setQ] = useState("");
+  const submitSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const term = q.trim();
+    if (!term) return;
+    // Heuristic routing: looks like email/handle → leads/clients; else default to clients
+    const target = term.includes("@") ? "/clients" : "/clients";
+    nav({ to: target, search: { q: term } as never });
+  };
   return (
     <div className="sticky top-0 z-20 border-b border-border bg-background/70 px-6 py-4 backdrop-blur-xl">
       <div className="flex items-center justify-between gap-4">
@@ -129,11 +139,11 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
           {subtitle && <p className="mt-1.5 text-xs text-muted-foreground">{subtitle}</p>}
         </div>
       <div className="flex items-center gap-2">
-        <div className="relative hidden md:block">
+        <form onSubmit={submitSearch} className="relative hidden md:block">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input placeholder="Search leads, content, clients…"
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search clients, leads, content…"
             className="h-8 w-72 rounded-md border border-input bg-input/40 pl-8 pr-3 text-xs outline-none focus:ring-1 focus:ring-ring" />
-        </div>
+        </form>
         <Button variant="ghost" size="icon" className="h-8 w-8"><Bell className="h-4 w-4" /></Button>
         <Button variant="ghost" size="icon" className="h-8 w-8"><Settings className="h-4 w-4" /></Button>
       </div>
