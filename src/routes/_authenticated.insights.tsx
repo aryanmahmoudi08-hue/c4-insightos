@@ -158,9 +158,12 @@ function Insights() {
         </div>
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30 flex-wrap gap-2">
             <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-accent" /><div className="text-sm font-semibold">Gemini grounded insights</div></div>
-            <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>{run.isPending ? "Analyzing…" : "Generate insights"}</Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => weeklyReport.mutate()} disabled={weeklyReport.isPending}>{weeklyReport.isPending ? "Sending…" : "Send weekly report"}</Button>
+              <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>{run.isPending ? "Analyzing…" : "Generate insights"}</Button>
+            </div>
           </div>
           <div className="divide-y divide-border">
             {(aiInsights ?? []).map((i) => (
