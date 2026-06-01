@@ -16,6 +16,7 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.
 import { Route as AuthenticatedTrafficRouteImport } from './routes/_authenticated.traffic'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated.onboarding'
+import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated.leads'
 import { Route as AuthenticatedInsightsRouteImport } from './routes/_authenticated.insights'
 import { Route as AuthenticatedInboundDialerRouteImport } from './routes/_authenticated.inbound-dialer'
 import { Route as AuthenticatedHiringRouteImport } from './routes/_authenticated.hiring'
@@ -63,6 +64,11 @@ const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
 const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedLeadsRoute = AuthenticatedLeadsRouteImport.update({
+  id: '/leads',
+  path: '/leads',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedInsightsRoute = AuthenticatedInsightsRouteImport.update({
@@ -155,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/hiring': typeof AuthenticatedHiringRoute
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/insights': typeof AuthenticatedInsightsRoute
+  '/leads': typeof AuthenticatedLeadsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
@@ -176,6 +183,7 @@ export interface FileRoutesByTo {
   '/hiring': typeof AuthenticatedHiringRoute
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/insights': typeof AuthenticatedInsightsRoute
+  '/leads': typeof AuthenticatedLeadsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
@@ -200,6 +208,7 @@ export interface FileRoutesById {
   '/_authenticated/hiring': typeof AuthenticatedHiringRoute
   '/_authenticated/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/_authenticated/insights': typeof AuthenticatedInsightsRoute
+  '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/traffic': typeof AuthenticatedTrafficRoute
@@ -225,6 +234,7 @@ export interface FileRouteTypes {
     | '/hiring'
     | '/inbound-dialer'
     | '/insights'
+    | '/leads'
     | '/onboarding'
     | '/team'
     | '/traffic'
@@ -246,6 +256,7 @@ export interface FileRouteTypes {
     | '/hiring'
     | '/inbound-dialer'
     | '/insights'
+    | '/leads'
     | '/onboarding'
     | '/team'
     | '/traffic'
@@ -269,6 +280,7 @@ export interface FileRouteTypes {
     | '/_authenticated/hiring'
     | '/_authenticated/inbound-dialer'
     | '/_authenticated/insights'
+    | '/_authenticated/leads'
     | '/_authenticated/onboarding'
     | '/_authenticated/team'
     | '/_authenticated/traffic'
@@ -334,6 +346,13 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/onboarding'
       preLoaderRoute: typeof AuthenticatedOnboardingRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/leads': {
+      id: '/_authenticated/leads'
+      path: '/leads'
+      fullPath: '/leads'
+      preLoaderRoute: typeof AuthenticatedLeadsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/insights': {
@@ -450,6 +469,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedHiringRoute: typeof AuthenticatedHiringRoute
   AuthenticatedInboundDialerRoute: typeof AuthenticatedInboundDialerRoute
   AuthenticatedInsightsRoute: typeof AuthenticatedInsightsRoute
+  AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedTrafficRoute: typeof AuthenticatedTrafficRoute
@@ -469,6 +489,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedHiringRoute: AuthenticatedHiringRoute,
   AuthenticatedInboundDialerRoute: AuthenticatedInboundDialerRoute,
   AuthenticatedInsightsRoute: AuthenticatedInsightsRoute,
+  AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedTrafficRoute: AuthenticatedTrafficRoute,
@@ -489,13 +510,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

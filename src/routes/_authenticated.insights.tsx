@@ -7,6 +7,7 @@ import { TopBar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Sparkles, AlertTriangle, TrendingUp, TrendingDown, X, Bookmark, Activity } from "lucide-react";
 import { generateAiInsights, getWeeklyTrend } from "@/lib/insights.functions";
+import { sendWeeklyReportFn } from "@/lib/weekly-report.functions";
 import { toast } from "sonner";
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 
@@ -18,6 +19,12 @@ function Insights() {
   const qc = useQueryClient();
   const generate = useServerFn(generateAiInsights);
   const fetchTrend = useServerFn(getWeeklyTrend);
+  const sendReport = useServerFn(sendWeeklyReportFn);
+  const weeklyReport = useMutation({
+    mutationFn: async () => sendReport(),
+    onSuccess: (r) => toast.success(`Weekly report sent · $${Math.round((r.summary.cash) / 100).toLocaleString()} cash, ${r.summary.closes} closes`),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
 
   const { data: trend } = useQuery({
     queryKey: ["weekly-trend", orgId],
@@ -151,9 +158,12 @@ function Insights() {
         </div>
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30 flex-wrap gap-2">
             <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-accent" /><div className="text-sm font-semibold">Gemini grounded insights</div></div>
-            <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>{run.isPending ? "Analyzing…" : "Generate insights"}</Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => weeklyReport.mutate()} disabled={weeklyReport.isPending}>{weeklyReport.isPending ? "Sending…" : "Send weekly report"}</Button>
+              <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>{run.isPending ? "Analyzing…" : "Generate insights"}</Button>
+            </div>
           </div>
           <div className="divide-y divide-border">
             {(aiInsights ?? []).map((i) => (
