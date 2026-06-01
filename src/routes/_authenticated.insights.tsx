@@ -7,6 +7,7 @@ import { TopBar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Sparkles, AlertTriangle, TrendingUp, TrendingDown, X, Bookmark, Activity } from "lucide-react";
 import { generateAiInsights, getWeeklyTrend } from "@/lib/insights.functions";
+import { sendWeeklyReportFn } from "@/lib/weekly-report.functions";
 import { toast } from "sonner";
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 
