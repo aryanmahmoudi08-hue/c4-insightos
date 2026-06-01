@@ -7,6 +7,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
+import { useRole } from "@/hooks/use-role";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import c4Logo from "@/assets/c4-logo.png";
