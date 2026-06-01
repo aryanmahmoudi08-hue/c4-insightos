@@ -19,6 +19,12 @@ function Insights() {
   const qc = useQueryClient();
   const generate = useServerFn(generateAiInsights);
   const fetchTrend = useServerFn(getWeeklyTrend);
+  const sendReport = useServerFn(sendWeeklyReportFn);
+  const weeklyReport = useMutation({
+    mutationFn: async () => sendReport(),
+    onSuccess: (r) => toast.success(`Weekly report sent · $${Math.round((r.summary.cash) / 100).toLocaleString()} cash, ${r.summary.closes} closes`),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
 
   const { data: trend } = useQuery({
     queryKey: ["weekly-trend", orgId],
