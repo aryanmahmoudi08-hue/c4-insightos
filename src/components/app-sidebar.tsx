@@ -137,31 +137,43 @@ export function AppSidebar() {
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {TOP_NAV.map(it => renderItem(it))}
 
-          <button
-            type="button"
-            onClick={() => setSalesOpen(o => !o)}
-            className={cn(
-              "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-              salesActive
-                ? "text-sidebar-foreground"
-                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-            )}
-          >
-            <Briefcase className="h-4 w-4 shrink-0" />
-            <span className="flex-1 text-left truncate">Sales Tracking</span>
-            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", salesOpen && "rotate-180")} />
-          </button>
-          {salesOpen && (
-            <div className="space-y-0.5">
-              {SALES_TEAM.map(it => renderItem(it, true))}
-            </div>
+          {salesItems.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setSalesOpen(o => !o)}
+                className={cn(
+                  "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+                  salesActive
+                    ? "text-sidebar-foreground"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                )}
+              >
+                <Briefcase className="h-4 w-4 shrink-0" />
+                <span className="flex-1 text-left truncate">Sales Tracking</span>
+                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", salesOpen && "rotate-180")} />
+              </button>
+              {salesOpen && (
+                <div className="space-y-0.5">
+                  {salesItems.map(it => renderItem(it, true))}
+                </div>
+              )}
+            </>
           )}
 
-          {MID_NAV.map(it => renderItem(it))}
-          <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Fulfillment</div>
-          {FULFILLMENT_NAV.map(it => renderItem(it))}
-          <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Ops</div>
-          {BOTTOM_NAV.map(it => renderItem(it))}
+          {midItems.map(it => renderItem(it))}
+          {fulfillmentItems.length > 0 && (
+            <>
+              <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Fulfillment</div>
+              {fulfillmentItems.map(it => renderItem(it))}
+            </>
+          )}
+          {bottomItems.length > 0 && (
+            <>
+              <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Ops</div>
+              {bottomItems.map(it => renderItem(it))}
+            </>
+          )}
         </nav>
         <div className="border-t border-sidebar-border p-2">
           <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sidebar-foreground/80"
