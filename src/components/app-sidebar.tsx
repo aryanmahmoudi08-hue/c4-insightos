@@ -57,7 +57,14 @@ export function AppSidebar() {
   const loc = useLocation();
   const nav = useNavigate();
   const { data: org } = useCurrentOrg();
-  const salesActive = SALES_TEAM.some(it => loc.pathname.startsWith(it.to));
+  const { canManage } = useRole();
+  const filterByRole = (items: NavItem[]) =>
+    canManage ? items : items.filter(it => RESTRICTED_ALLOW.has(it.to));
+  const salesItems = filterByRole(SALES_TEAM);
+  const midItems = filterByRole(MID_NAV);
+  const fulfillmentItems = filterByRole(FULFILLMENT_NAV);
+  const bottomItems = filterByRole(BOTTOM_NAV);
+  const salesActive = salesItems.some(it => loc.pathname.startsWith(it.to));
   const [salesOpen, setSalesOpen] = useState(salesActive);
   const [mobileOpen, setMobileOpen] = useState(false);
 
