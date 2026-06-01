@@ -21,6 +21,7 @@ const TOP_NAV: NavItem[] = [
 ];
 
 const MID_NAV: NavItem[] = [
+  { to: "/leads", label: "Leads", icon: Users },
   { to: "/content", label: "Content Tracker", icon: Video },
   { to: "/attribution", label: "Attribution", icon: GitBranch },
 ];
@@ -44,6 +45,13 @@ const BOTTOM_NAV: NavItem[] = [
   { to: "/insights", label: "AI Insights", icon: Sparkles },
   { to: "/events", label: "Event Bus", icon: Activity },
 ];
+
+// Routes a non-manager (setter/closer) is allowed to see. Anything outside this
+// list is hidden from the sidebar for those roles.
+const RESTRICTED_ALLOW = new Set([
+  "/dashboard", "/team", "/dm-setter", "/inbound-dialer", "/closer",
+  "/clients", "/onboarding", "/fulfillment",
+]);
 
 export function AppSidebar() {
   const loc = useLocation();
