@@ -768,6 +768,149 @@ export type Database = {
           },
         ]
       }
+      copy_clients: {
+        Row: {
+          avatar_research: Json
+          competitors: string | null
+          created_at: string
+          display_name: string
+          id: string
+          niche: string | null
+          notes: string | null
+          offer_details: Json
+          org_id: string
+          sacred_cows: string | null
+          updated_at: string
+          voice_fingerprint: Json | null
+          voice_transcripts: string | null
+        }
+        Insert: {
+          avatar_research?: Json
+          competitors?: string | null
+          created_at?: string
+          display_name: string
+          id?: string
+          niche?: string | null
+          notes?: string | null
+          offer_details?: Json
+          org_id: string
+          sacred_cows?: string | null
+          updated_at?: string
+          voice_fingerprint?: Json | null
+          voice_transcripts?: string | null
+        }
+        Update: {
+          avatar_research?: Json
+          competitors?: string | null
+          created_at?: string
+          display_name?: string
+          id?: string
+          niche?: string | null
+          notes?: string | null
+          offer_details?: Json
+          org_id?: string
+          sacred_cows?: string | null
+          updated_at?: string
+          voice_fingerprint?: Json | null
+          voice_transcripts?: string | null
+        }
+        Relationships: []
+      }
+      copy_generations: {
+        Row: {
+          angle: string | null
+          client_id: string | null
+          copy_type: string
+          created_at: string
+          created_by: string | null
+          goal: string | null
+          id: string
+          org_id: string
+          output: string
+          prompt_inputs: Json
+          review_feedback: Json | null
+          review_score: number | null
+        }
+        Insert: {
+          angle?: string | null
+          client_id?: string | null
+          copy_type: string
+          created_at?: string
+          created_by?: string | null
+          goal?: string | null
+          id?: string
+          org_id: string
+          output: string
+          prompt_inputs?: Json
+          review_feedback?: Json | null
+          review_score?: number | null
+        }
+        Update: {
+          angle?: string | null
+          client_id?: string | null
+          copy_type?: string
+          created_at?: string
+          created_by?: string | null
+          goal?: string | null
+          id?: string
+          org_id?: string
+          output?: string
+          prompt_inputs?: Json
+          review_feedback?: Json | null
+          review_score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "copy_generations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "copy_clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      copy_swipes: {
+        Row: {
+          angle: string | null
+          body: string
+          copy_type: string
+          created_at: string
+          emotion: string | null
+          id: string
+          org_id: string
+          source: string | null
+          tags: string[]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          angle?: string | null
+          body: string
+          copy_type: string
+          created_at?: string
+          emotion?: string | null
+          id?: string
+          org_id: string
+          source?: string | null
+          tags?: string[]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          angle?: string | null
+          body?: string
+          copy_type?: string
+          created_at?: string
+          emotion?: string | null
+          id?: string
+          org_id?: string
+          source?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       dashboard_widgets: {
         Row: {
           config: Json

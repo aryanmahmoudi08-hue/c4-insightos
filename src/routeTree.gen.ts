@@ -24,6 +24,7 @@ import { Route as AuthenticatedFulfillmentRouteImport } from './routes/_authenti
 import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated.events'
 import { Route as AuthenticatedDmSetterRouteImport } from './routes/_authenticated.dm-setter'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
+import { Route as AuthenticatedCopyRouteImport } from './routes/_authenticated.copy'
 import { Route as AuthenticatedContentRouteImport } from './routes/_authenticated.content'
 import { Route as AuthenticatedConnectorsRouteImport } from './routes/_authenticated.connectors'
 import { Route as AuthenticatedCloserRouteImport } from './routes/_authenticated.closer'
@@ -108,6 +109,11 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedCopyRoute = AuthenticatedCopyRouteImport.update({
+  id: '/copy',
+  path: '/copy',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedContentRoute = AuthenticatedContentRouteImport.update({
   id: '/content',
   path: '/content',
@@ -154,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/closer': typeof AuthenticatedCloserRoute
   '/connectors': typeof AuthenticatedConnectorsRoute
   '/content': typeof AuthenticatedContentRoute
+  '/copy': typeof AuthenticatedCopyRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
   '/events': typeof AuthenticatedEventsRoute
@@ -176,6 +183,7 @@ export interface FileRoutesByTo {
   '/closer': typeof AuthenticatedCloserRoute
   '/connectors': typeof AuthenticatedConnectorsRoute
   '/content': typeof AuthenticatedContentRoute
+  '/copy': typeof AuthenticatedCopyRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
   '/events': typeof AuthenticatedEventsRoute
@@ -201,6 +209,7 @@ export interface FileRoutesById {
   '/_authenticated/closer': typeof AuthenticatedCloserRoute
   '/_authenticated/connectors': typeof AuthenticatedConnectorsRoute
   '/_authenticated/content': typeof AuthenticatedContentRoute
+  '/_authenticated/copy': typeof AuthenticatedCopyRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/dm-setter': typeof AuthenticatedDmSetterRoute
   '/_authenticated/events': typeof AuthenticatedEventsRoute
@@ -227,6 +236,7 @@ export interface FileRouteTypes {
     | '/closer'
     | '/connectors'
     | '/content'
+    | '/copy'
     | '/dashboard'
     | '/dm-setter'
     | '/events'
@@ -249,6 +259,7 @@ export interface FileRouteTypes {
     | '/closer'
     | '/connectors'
     | '/content'
+    | '/copy'
     | '/dashboard'
     | '/dm-setter'
     | '/events'
@@ -273,6 +284,7 @@ export interface FileRouteTypes {
     | '/_authenticated/closer'
     | '/_authenticated/connectors'
     | '/_authenticated/content'
+    | '/_authenticated/copy'
     | '/_authenticated/dashboard'
     | '/_authenticated/dm-setter'
     | '/_authenticated/events'
@@ -404,6 +416,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/copy': {
+      id: '/_authenticated/copy'
+      path: '/copy'
+      fullPath: '/copy'
+      preLoaderRoute: typeof AuthenticatedCopyRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/content': {
       id: '/_authenticated/content'
       path: '/content'
@@ -462,6 +481,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCloserRoute: typeof AuthenticatedCloserRoute
   AuthenticatedConnectorsRoute: typeof AuthenticatedConnectorsRoute
   AuthenticatedContentRoute: typeof AuthenticatedContentRoute
+  AuthenticatedCopyRoute: typeof AuthenticatedCopyRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDmSetterRoute: typeof AuthenticatedDmSetterRoute
   AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
@@ -482,6 +502,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCloserRoute: AuthenticatedCloserRoute,
   AuthenticatedConnectorsRoute: AuthenticatedConnectorsRoute,
   AuthenticatedContentRoute: AuthenticatedContentRoute,
+  AuthenticatedCopyRoute: AuthenticatedCopyRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDmSetterRoute: AuthenticatedDmSetterRoute,
   AuthenticatedEventsRoute: AuthenticatedEventsRoute,
@@ -510,13 +531,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

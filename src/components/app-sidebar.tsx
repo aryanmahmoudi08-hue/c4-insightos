@@ -23,6 +23,7 @@ const TOP_NAV: NavItem[] = [
 const MID_NAV: NavItem[] = [
   { to: "/leads", label: "Leads", icon: Users },
   { to: "/content", label: "Content Tracker", icon: Video },
+  { to: "/copy", label: "CopyOS", icon: Sparkles },
   { to: "/attribution", label: "Attribution", icon: GitBranch },
 ];
 
