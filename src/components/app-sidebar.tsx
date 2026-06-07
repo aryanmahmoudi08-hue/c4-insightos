@@ -14,7 +14,13 @@ import c4Logo from "@/assets/c4-logo.png";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { useDateRange } from "@/hooks/use-date-range";
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; soon?: boolean };
+type NavItem = {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  soon?: boolean;
+  search?: Record<string, string>;
+};
 
 const TOP_NAV: NavItem[] = [
   { to: "/dashboard", label: "Main Hub", icon: LayoutDashboard },
@@ -23,8 +29,18 @@ const TOP_NAV: NavItem[] = [
 const MID_NAV: NavItem[] = [
   { to: "/leads", label: "Leads", icon: Users },
   { to: "/content", label: "Content Tracker", icon: Video },
-  { to: "/copy", label: "CopyOS", icon: Sparkles },
   { to: "/attribution", label: "Attribution", icon: GitBranch },
+];
+
+const COPY_OS_NAV: NavItem[] = [
+  { to: "/copy", label: "Content", icon: Video, search: { tab: "generate", type: "short_form_hook" } },
+  { to: "/copy", label: "Email / SMS", icon: MessageSquare, search: { tab: "generate", type: "email_single" } },
+  { to: "/copy", label: "Long-form", icon: Brain, search: { tab: "generate", type: "sales_page" } },
+  { to: "/copy", label: "DM outreach", icon: MessageSquare, search: { tab: "generate", type: "dm_outreach" } },
+  { to: "/copy", label: "Review", icon: BadgeCheck, search: { tab: "review" } },
+  { to: "/copy", label: "Angle bank", icon: Sparkles, search: { tab: "angles" } },
+  { to: "/copy", label: "Swipe library", icon: Activity, search: { tab: "swipes" } },
+  { to: "/copy", label: "Client DNA", icon: Users, search: { tab: "clients" } },
 ];
 
 const SALES_TEAM: NavItem[] = [
@@ -71,13 +87,18 @@ export function AppSidebar() {
 
   const closeMobile = () => setMobileOpen(false);
 
+  const copyItems = filterByRole(COPY_OS_NAV);
+  const copyActive = loc.pathname.startsWith("/copy");
+  const [copyOpen, setCopyOpen] = useState(copyActive);
+
   const renderItem = (it: NavItem, nested = false) => {
     const active = loc.pathname === it.to || (it.to !== "/" && loc.pathname.startsWith(it.to));
     const Icon = it.icon;
     return (
       <Link
-        key={it.to}
+        key={`${it.to}-${it.label}`}
         to={it.to}
+        search={it.search as never}
         onClick={closeMobile}
         className={cn(
           "group flex items-center gap-2.5 rounded-md py-2 text-sm transition-colors",
@@ -163,6 +184,30 @@ export function AppSidebar() {
           )}
 
           {midItems.map(it => renderItem(it))}
+
+          {copyItems.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setCopyOpen(o => !o)}
+                className={cn(
+                  "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+                  copyActive
+                    ? "text-sidebar-foreground"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                )}
+              >
+                <Sparkles className="h-4 w-4 shrink-0" />
+                <span className="flex-1 text-left truncate">CopyOS</span>
+                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", copyOpen && "rotate-180")} />
+              </button>
+              {copyOpen && (
+                <div className="space-y-0.5">
+                  {copyItems.map(it => renderItem(it, true))}
+                </div>
+              )}
+            </>
+          )}
           {fulfillmentItems.length > 0 && (
             <>
               <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Fulfillment</div>
