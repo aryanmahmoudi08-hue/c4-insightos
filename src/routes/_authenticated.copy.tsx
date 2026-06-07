@@ -66,7 +66,7 @@ function CopyOSPage() {
     <div className="flex-1 min-w-0">
       <TopBar title="CopyOS" subtitle="KJ-framework-trained copy, calibrated to each client's voice." />
       <div className="p-4 md:p-6">
-        <Tabs defaultValue="generate">
+        <Tabs defaultValue={Route.useSearch().tab || "generate"}>
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="generate"><Wand2 className="h-3.5 w-3.5 mr-1.5" />Generate</TabsTrigger>
             <TabsTrigger value="clients"><FileText className="h-3.5 w-3.5 mr-1.5" />Client DNA</TabsTrigger>
@@ -88,8 +88,9 @@ function CopyOSPage() {
 function GenerateTab() {
   const { data: clients = [] } = useClients();
   const { data: swipes = [] } = useSwipes();
+  const initialType = Route.useSearch().type;
   const [clientId, setClientId] = useState<string>("");
-  const [copyType, setCopyType] = useState<string>("short_form_hook");
+  const [copyType, setCopyType] = useState<string>(initialType || "short_form_hook");
   const [goal, setGoal] = useState("");
   const [angle, setAngle] = useState("");
   const [brief, setBrief] = useState("");
