@@ -87,13 +87,18 @@ export function AppSidebar() {
 
   const closeMobile = () => setMobileOpen(false);
 
+  const copyItems = filterByRole(COPY_OS_NAV);
+  const copyActive = loc.pathname.startsWith("/copy");
+  const [copyOpen, setCopyOpen] = useState(copyActive);
+
   const renderItem = (it: NavItem, nested = false) => {
     const active = loc.pathname === it.to || (it.to !== "/" && loc.pathname.startsWith(it.to));
     const Icon = it.icon;
     return (
       <Link
-        key={it.to}
+        key={`${it.to}-${it.label}`}
         to={it.to}
+        search={it.search as never}
         onClick={closeMobile}
         className={cn(
           "group flex items-center gap-2.5 rounded-md py-2 text-sm transition-colors",
