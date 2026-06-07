@@ -15,7 +15,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { generateCopyFn, reviewCopyFn, suggestAnglesFn, extractFingerprintFn } from "@/lib/copy-os.functions";
 import { Sparkles, Wand2, Search, Plus, Trash2, FileText } from "lucide-react";
 
-export const Route = createFileRoute("/_authenticated/copy")({ component: CopyOSPage });
+export const Route = createFileRoute("/_authenticated/copy")({
+  component: CopyOSPage,
+  validateSearch: (s: Record<string, unknown>) => ({
+    tab: (typeof s.tab === "string" ? s.tab : "generate") as string,
+    type: (typeof s.type === "string" ? s.type : "") as string,
+  }),
+});
 
 const COPY_TYPES: { value: string; label: string }[] = [
   { value: "story_sequence", label: "Story sequence" },
