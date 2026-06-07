@@ -15,7 +15,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { generateCopyFn, reviewCopyFn, suggestAnglesFn, extractFingerprintFn } from "@/lib/copy-os.functions";
 import { Sparkles, Wand2, Search, Plus, Trash2, FileText } from "lucide-react";
 
-export const Route = createFileRoute("/_authenticated/copy")({ component: CopyOSPage });
+export const Route = createFileRoute("/_authenticated/copy")({
+  component: CopyOSPage,
+  validateSearch: (s: Record<string, unknown>) => ({
+    tab: (typeof s.tab === "string" ? s.tab : "generate") as string,
+    type: (typeof s.type === "string" ? s.type : "") as string,
+  }),
+});
 
 const COPY_TYPES: { value: string; label: string }[] = [
   { value: "story_sequence", label: "Story sequence" },
@@ -60,7 +66,7 @@ function CopyOSPage() {
     <div className="flex-1 min-w-0">
       <TopBar title="CopyOS" subtitle="KJ-framework-trained copy, calibrated to each client's voice." />
       <div className="p-4 md:p-6">
-        <Tabs defaultValue="generate">
+        <Tabs defaultValue={Route.useSearch().tab || "generate"}>
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="generate"><Wand2 className="h-3.5 w-3.5 mr-1.5" />Generate</TabsTrigger>
             <TabsTrigger value="clients"><FileText className="h-3.5 w-3.5 mr-1.5" />Client DNA</TabsTrigger>
@@ -82,8 +88,9 @@ function CopyOSPage() {
 function GenerateTab() {
   const { data: clients = [] } = useClients();
   const { data: swipes = [] } = useSwipes();
+  const initialType = Route.useSearch().type;
   const [clientId, setClientId] = useState<string>("");
-  const [copyType, setCopyType] = useState<string>("short_form_hook");
+  const [copyType, setCopyType] = useState<string>(initialType || "short_form_hook");
   const [goal, setGoal] = useState("");
   const [angle, setAngle] = useState("");
   const [brief, setBrief] = useState("");
