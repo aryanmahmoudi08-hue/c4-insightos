@@ -184,6 +184,30 @@ export function AppSidebar() {
           )}
 
           {midItems.map(it => renderItem(it))}
+
+          {copyItems.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setCopyOpen(o => !o)}
+                className={cn(
+                  "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+                  copyActive
+                    ? "text-sidebar-foreground"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                )}
+              >
+                <Sparkles className="h-4 w-4 shrink-0" />
+                <span className="flex-1 text-left truncate">CopyOS</span>
+                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", copyOpen && "rotate-180")} />
+              </button>
+              {copyOpen && (
+                <div className="space-y-0.5">
+                  {copyItems.map(it => renderItem(it, true))}
+                </div>
+              )}
+            </>
+          )}
           {fulfillmentItems.length > 0 && (
             <>
               <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Fulfillment</div>
