@@ -1,6 +1,7 @@
 // Server-only helpers for CopyOS. Calls Lovable AI Gateway with a system
-// prompt grounded in KJ Rainey's frameworks (Big Domino, Customer Bubble,
-// 7 Pillars of Digital Persuasion, Story Selling, High-Value Outreach).
+// prompt grounded in the full distilled KJ Rainey "Copy Elite" + "Digital
+// Persuasion" mentorship (see copy-os-knowledge.server.ts).
+import { KJ_KNOWLEDGE } from "./copy-os-knowledge.server";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
