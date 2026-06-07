@@ -23,8 +23,18 @@ const TOP_NAV: NavItem[] = [
 const MID_NAV: NavItem[] = [
   { to: "/leads", label: "Leads", icon: Users },
   { to: "/content", label: "Content Tracker", icon: Video },
-  { to: "/copy", label: "CopyOS", icon: Sparkles },
   { to: "/attribution", label: "Attribution", icon: GitBranch },
+];
+
+const COPY_OS_NAV: NavItem[] = [
+  { to: "/copy?tab=generate&type=short_form_hook", label: "Content", icon: Video },
+  { to: "/copy?tab=generate&type=email_single", label: "Email / SMS", icon: MessageSquare },
+  { to: "/copy?tab=generate&type=sales_page", label: "Long-form", icon: Brain },
+  { to: "/copy?tab=generate&type=dm_outreach", label: "DM outreach", icon: MessageSquare },
+  { to: "/copy?tab=review", label: "Review", icon: BadgeCheck },
+  { to: "/copy?tab=angles", label: "Angle bank", icon: Sparkles },
+  { to: "/copy?tab=swipes", label: "Swipe library", icon: Activity },
+  { to: "/copy?tab=clients", label: "Client DNA", icon: Users },
 ];
 
 const SALES_TEAM: NavItem[] = [
