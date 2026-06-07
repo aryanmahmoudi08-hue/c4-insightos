@@ -14,7 +14,13 @@ import c4Logo from "@/assets/c4-logo.png";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { useDateRange } from "@/hooks/use-date-range";
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; soon?: boolean };
+type NavItem = {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  soon?: boolean;
+  search?: Record<string, string>;
+};
 
 const TOP_NAV: NavItem[] = [
   { to: "/dashboard", label: "Main Hub", icon: LayoutDashboard },
@@ -27,14 +33,14 @@ const MID_NAV: NavItem[] = [
 ];
 
 const COPY_OS_NAV: NavItem[] = [
-  { to: "/copy?tab=generate&type=short_form_hook", label: "Content", icon: Video },
-  { to: "/copy?tab=generate&type=email_single", label: "Email / SMS", icon: MessageSquare },
-  { to: "/copy?tab=generate&type=sales_page", label: "Long-form", icon: Brain },
-  { to: "/copy?tab=generate&type=dm_outreach", label: "DM outreach", icon: MessageSquare },
-  { to: "/copy?tab=review", label: "Review", icon: BadgeCheck },
-  { to: "/copy?tab=angles", label: "Angle bank", icon: Sparkles },
-  { to: "/copy?tab=swipes", label: "Swipe library", icon: Activity },
-  { to: "/copy?tab=clients", label: "Client DNA", icon: Users },
+  { to: "/copy", label: "Content", icon: Video, search: { tab: "generate", type: "short_form_hook" } },
+  { to: "/copy", label: "Email / SMS", icon: MessageSquare, search: { tab: "generate", type: "email_single" } },
+  { to: "/copy", label: "Long-form", icon: Brain, search: { tab: "generate", type: "sales_page" } },
+  { to: "/copy", label: "DM outreach", icon: MessageSquare, search: { tab: "generate", type: "dm_outreach" } },
+  { to: "/copy", label: "Review", icon: BadgeCheck, search: { tab: "review" } },
+  { to: "/copy", label: "Angle bank", icon: Sparkles, search: { tab: "angles" } },
+  { to: "/copy", label: "Swipe library", icon: Activity, search: { tab: "swipes" } },
+  { to: "/copy", label: "Client DNA", icon: Users, search: { tab: "clients" } },
 ];
 
 const SALES_TEAM: NavItem[] = [
