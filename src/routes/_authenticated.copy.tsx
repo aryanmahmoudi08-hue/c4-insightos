@@ -91,9 +91,10 @@ function CopyOSPage() {
 function GenerateTab() {
   const { data: clients = [] } = useClients();
   const { data: swipes = [] } = useSwipes();
-  const initialType = Route.useSearch().type;
+  const urlType = Route.useSearch().type;
   const [clientId, setClientId] = useState<string>("");
-  const [copyType, setCopyType] = useState<string>(initialType || "short_form_hook");
+  const [copyType, setCopyType] = useState<string>(urlType || "short_form_hook");
+  useEffect(() => { if (urlType) setCopyType(urlType); }, [urlType]);
   const [goal, setGoal] = useState("");
   const [angle, setAngle] = useState("");
   const [brief, setBrief] = useState("");
