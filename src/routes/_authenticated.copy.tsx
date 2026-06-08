@@ -348,15 +348,15 @@ function ClientsTab() {
       display_name: row.display_name as string, niche: (row.niche as string) || null,
       sacred_cows: (row.sacred_cows as string) || null, competitors: (row.competitors as string) || null,
       voice_transcripts: (row.voice_transcripts as string) || null, notes: (row.notes as string) || null,
-      offer_details: row.offer_details ?? {}, avatar_research: row.avatar_research ?? {},
+      offer_details: (row.offer_details ?? {}) as never, avatar_research: (row.avatar_research ?? {}) as never,
     };
     if (row.id) {
-      const { error } = await supabase.from("copy_clients").update(payload).eq("id", row.id as string);
+      const { error } = await (supabase.from("copy_clients") as never as { update: (p: unknown) => { eq: (k: string, v: string) => Promise<{ error: { message: string } | null }> } }).update(payload).eq("id", row.id as string);
       if (error) return toast.error(error.message);
     } else {
       const { data: m } = await supabase.from("memberships").select("org_id").limit(1).maybeSingle();
       if (!m?.org_id) return toast.error("No workspace");
-      const { error } = await supabase.from("copy_clients").insert({ ...payload, org_id: m.org_id });
+      const { error } = await (supabase.from("copy_clients") as never as { insert: (p: unknown) => Promise<{ error: { message: string } | null }> }).insert({ ...payload, org_id: m.org_id });
       if (error) return toast.error(error.message);
     }
     qc.invalidateQueries({ queryKey: ["copy_clients"] });
