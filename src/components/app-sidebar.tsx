@@ -215,7 +215,7 @@ export function AppSidebar() {
                     <>
                       <button
                         type="button"
-                        onClick={() => setGenOpen(o => !o)}
+                        onClick={() => setGenOpen((o: boolean) => !o)}
                         className={cn(
                           "group flex w-full items-center gap-2.5 rounded-md py-2 pl-8 pr-2.5 text-sm transition-colors",
                           generateActive
