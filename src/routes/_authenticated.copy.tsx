@@ -398,19 +398,19 @@ function ClientsTab() {
           <Textarea rows={6} value={(e.voice_transcripts as string) ?? ""} onChange={ev => setEditing({ ...e, voice_transcripts: ev.target.value })} /></div>
         <div><label className="text-xs text-muted-foreground">Notes</label>
           <Textarea rows={2} value={(e.notes as string) ?? ""} onChange={ev => setEditing({ ...e, notes: ev.target.value })} /></div>
-        {e.voice_fingerprint && (
+        {e.voice_fingerprint ? (
           <div className="text-xs"><Badge variant="outline">Voice fingerprint extracted</Badge>
             <pre className="mt-1 text-[10px] text-muted-foreground bg-muted/30 p-2 rounded max-h-32 overflow-auto">{JSON.stringify(e.voice_fingerprint, null, 2)}</pre></div>
-        )}
+        ) : null}
         <div className="flex gap-2">
           <Button onClick={() => save(e)}>Save</Button>
           <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
-          {e.id && e.voice_transcripts && (
+          {e.id && e.voice_transcripts ? (
             <Button variant="outline" onClick={async () => {
               try { const fp = await fpFn({ data: { client_id: e.id as string } }); setEditing({ ...e, voice_fingerprint: fp }); toast.success("Voice fingerprint extracted"); qc.invalidateQueries({ queryKey: ["copy_clients"] }); }
               catch (err: unknown) { toast.error((err as Error)?.message ?? "Failed"); }
             }}>Extract voice fingerprint</Button>
-          )}
+          ) : null}
         </div>
       </Card>
     );
