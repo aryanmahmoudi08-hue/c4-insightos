@@ -230,9 +230,8 @@ export function AppSidebar() {
                         <div className="space-y-0.5">
                           {copyGenItems.map(it => {
                             const Icon = it.icon;
-                            const active = loc.pathname === "/copy" &&
-                              typeof loc.search === "string" &&
-                              loc.search.includes(`cat=${it.search?.cat}`);
+                            const searchObj = (loc.search ?? {}) as Record<string, unknown>;
+                            const active = loc.pathname === "/copy" && searchObj.cat === it.search?.cat;
                             return (
                               <Link
                                 key={it.label}
