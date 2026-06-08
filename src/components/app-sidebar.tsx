@@ -92,8 +92,12 @@ export function AppSidebar() {
   const closeMobile = () => setMobileOpen(false);
 
   const copyItems = filterByRole(COPY_OS_NAV);
-  const copyActive = loc.pathname.startsWith("/copy");
+  const copyGenItems = filterByRole(COPY_GENERATE_NAV);
+  const copyActive = loc.pathname.startsWith("/copy") || loc.pathname.startsWith("/content");
   const [copyOpen, setCopyOpen] = useState(copyActive);
+  const generateActive = loc.pathname.startsWith("/copy") &&
+    (loc.search.includes("cat=") || loc.search.includes("tab=generate") || !loc.search.includes("tab="));
+  const [genOpen, setGenOpen] = useState(generateActive);
 
   const renderItem = (it: NavItem, nested = false) => {
     const active = loc.pathname === it.to || (it.to !== "/" && loc.pathname.startsWith(it.to));
