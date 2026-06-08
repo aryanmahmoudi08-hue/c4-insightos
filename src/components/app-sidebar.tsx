@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard, Video, GitBranch, MessageSquare, PhoneCall, Users, BadgeCheck,
   TrendingUp, Sparkles, Settings, LogOut, Bell, Search, Brain, Activity, PhoneIncoming,
-  ChevronDown, Briefcase, UserPlus, Menu, X,
+  ChevronDown, Briefcase, UserPlus, Menu, X, Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,15 +28,19 @@ const TOP_NAV: NavItem[] = [
 
 const MID_NAV: NavItem[] = [
   { to: "/leads", label: "Leads", icon: Users },
-  { to: "/content", label: "Content Tracker", icon: Video },
   { to: "/attribution", label: "Attribution", icon: GitBranch },
 ];
 
+// Nested sub-dropdown inside CopyOS — the three writing surfaces.
+const COPY_GENERATE_NAV: NavItem[] = [
+  { to: "/copy", label: "Content", icon: Video, search: { tab: "generate", cat: "content" } },
+  { to: "/copy", label: "Long-form", icon: Brain, search: { tab: "generate", cat: "long" } },
+  { to: "/copy", label: "Email / SMS", icon: MessageSquare, search: { tab: "generate", cat: "email" } },
+];
+
+// Everything else inside the CopyOS group.
 const COPY_OS_NAV: NavItem[] = [
-  { to: "/copy", label: "Content", icon: Video, search: { tab: "generate", type: "short_form_hook" } },
-  { to: "/copy", label: "Email / SMS", icon: MessageSquare, search: { tab: "generate", type: "email_single" } },
-  { to: "/copy", label: "Long-form", icon: Brain, search: { tab: "generate", type: "sales_page" } },
-  { to: "/copy", label: "DM outreach", icon: MessageSquare, search: { tab: "generate", type: "dm_outreach" } },
+  { to: "/content", label: "Content Tracker", icon: Video },
   { to: "/copy", label: "Review", icon: BadgeCheck, search: { tab: "review" } },
   { to: "/copy", label: "Angle bank", icon: Sparkles, search: { tab: "angles" } },
   { to: "/copy", label: "Swipe library", icon: Activity, search: { tab: "swipes" } },
@@ -88,8 +92,11 @@ export function AppSidebar() {
   const closeMobile = () => setMobileOpen(false);
 
   const copyItems = filterByRole(COPY_OS_NAV);
-  const copyActive = loc.pathname.startsWith("/copy");
+  const copyGenItems = filterByRole(COPY_GENERATE_NAV);
+  const copyActive = loc.pathname.startsWith("/copy") || loc.pathname.startsWith("/content");
   const [copyOpen, setCopyOpen] = useState(copyActive);
+  const generateActive = loc.pathname.startsWith("/copy");
+  const [genOpen, setGenOpen] = useState<boolean>(generateActive);
 
   const renderItem = (it: NavItem, nested = false) => {
     const active = loc.pathname === it.to || (it.to !== "/" && loc.pathname.startsWith(it.to));
@@ -203,6 +210,50 @@ export function AppSidebar() {
               </button>
               {copyOpen && (
                 <div className="space-y-0.5">
+                  {copyGenItems.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setGenOpen((o: boolean) => !o)}
+                        className={cn(
+                          "group flex w-full items-center gap-2.5 rounded-md py-2 pl-8 pr-2.5 text-sm transition-colors",
+                          generateActive
+                            ? "text-sidebar-foreground"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                        )}
+                      >
+                        <Wand2 className="h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left truncate">Generate</span>
+                        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", genOpen && "rotate-180")} />
+                      </button>
+                      {genOpen && (
+                        <div className="space-y-0.5">
+                          {copyGenItems.map(it => {
+                            const Icon = it.icon;
+                            const searchObj = (loc.search ?? {}) as Record<string, unknown>;
+                            const active = loc.pathname === "/copy" && searchObj.cat === it.search?.cat;
+                            return (
+                              <Link
+                                key={it.label}
+                                to={it.to}
+                                search={it.search as never}
+                                onClick={closeMobile}
+                                className={cn(
+                                  "group flex items-center gap-2.5 rounded-md py-1.5 pl-14 pr-2.5 text-sm transition-colors",
+                                  active
+                                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                    : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                                )}
+                              >
+                                <Icon className="h-3.5 w-3.5 shrink-0" />
+                                <span className="flex-1 truncate">{it.label}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
                   {copyItems.map(it => renderItem(it, true))}
                 </div>
               )}
