@@ -28,15 +28,19 @@ const TOP_NAV: NavItem[] = [
 
 const MID_NAV: NavItem[] = [
   { to: "/leads", label: "Leads", icon: Users },
-  { to: "/content", label: "Content Tracker", icon: Video },
   { to: "/attribution", label: "Attribution", icon: GitBranch },
 ];
 
+// Nested sub-dropdown inside CopyOS — the three writing surfaces.
+const COPY_GENERATE_NAV: NavItem[] = [
+  { to: "/copy", label: "Content", icon: Video, search: { tab: "generate", cat: "content" } },
+  { to: "/copy", label: "Long-form", icon: Brain, search: { tab: "generate", cat: "long" } },
+  { to: "/copy", label: "Email / SMS", icon: MessageSquare, search: { tab: "generate", cat: "email" } },
+];
+
+// Everything else inside the CopyOS group.
 const COPY_OS_NAV: NavItem[] = [
-  { to: "/copy", label: "Content", icon: Video, search: { tab: "generate", type: "short_form_hook" } },
-  { to: "/copy", label: "Email / SMS", icon: MessageSquare, search: { tab: "generate", type: "email_single" } },
-  { to: "/copy", label: "Long-form", icon: Brain, search: { tab: "generate", type: "sales_page" } },
-  { to: "/copy", label: "DM outreach", icon: MessageSquare, search: { tab: "generate", type: "dm_outreach" } },
+  { to: "/content", label: "Content Tracker", icon: Video },
   { to: "/copy", label: "Review", icon: BadgeCheck, search: { tab: "review" } },
   { to: "/copy", label: "Angle bank", icon: Sparkles, search: { tab: "angles" } },
   { to: "/copy", label: "Swipe library", icon: Activity, search: { tab: "swipes" } },
