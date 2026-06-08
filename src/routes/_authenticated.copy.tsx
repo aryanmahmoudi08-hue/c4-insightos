@@ -500,8 +500,8 @@ function SwipesTab() {
                 <div className="font-medium truncate">{s.title as string}</div>
                 <div className="flex gap-1 mt-1 flex-wrap">
                   <Badge variant="outline" className="text-[10px]">{s.copy_type as string}</Badge>
-                  {s.angle && <Badge variant="outline" className="text-[10px]">{s.angle as string}</Badge>}
-                  {s.emotion && <Badge variant="outline" className="text-[10px]">{s.emotion as string}</Badge>}
+                  {s.angle ? <Badge variant="outline" className="text-[10px]">{s.angle as string}</Badge> : null}
+                  {s.emotion ? <Badge variant="outline" className="text-[10px]">{s.emotion as string}</Badge> : null}
                 </div>
               </div>
               <button onClick={async () => { await supabase.from("copy_swipes").delete().eq("id", s.id as string); qc.invalidateQueries({ queryKey: ["copy_swipes"] }); }} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
