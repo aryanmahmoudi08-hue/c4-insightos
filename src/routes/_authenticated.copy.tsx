@@ -455,12 +455,12 @@ function SwipesTab() {
   });
 
   const save = async (row: Record<string, unknown>) => {
-    const payload = { title: row.title as string, copy_type: row.copy_type as string, angle: (row.angle as string) || null, emotion: (row.emotion as string) || null, body: row.body as string, source: (row.source as string) || null, tags: row.tags ?? [] };
-    if (row.id) await supabase.from("copy_swipes").update(payload).eq("id", row.id as string);
+    const payload = { title: row.title as string, copy_type: row.copy_type as string, angle: (row.angle as string) || null, emotion: (row.emotion as string) || null, body: row.body as string, source: (row.source as string) || null, tags: (row.tags ?? []) as string[] };
+    if (row.id) await (supabase.from("copy_swipes") as never as { update: (p: unknown) => { eq: (k: string, v: string) => Promise<unknown> } }).update(payload).eq("id", row.id as string);
     else {
       const { data: m } = await supabase.from("memberships").select("org_id").limit(1).maybeSingle();
       if (!m?.org_id) return toast.error("No workspace");
-      await supabase.from("copy_swipes").insert({ ...payload, org_id: m.org_id });
+      await (supabase.from("copy_swipes") as never as { insert: (p: unknown) => Promise<unknown> }).insert({ ...payload, org_id: m.org_id });
     }
     qc.invalidateQueries({ queryKey: ["copy_swipes"] });
     setEditing(null);
