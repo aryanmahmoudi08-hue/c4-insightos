@@ -211,6 +211,51 @@ export function AppSidebar() {
               </button>
               {copyOpen && (
                 <div className="space-y-0.5">
+                  {copyGenItems.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setGenOpen(o => !o)}
+                        className={cn(
+                          "group flex w-full items-center gap-2.5 rounded-md py-2 pl-8 pr-2.5 text-sm transition-colors",
+                          generateActive
+                            ? "text-sidebar-foreground"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                        )}
+                      >
+                        <Wand2 className="h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left truncate">Generate</span>
+                        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", genOpen && "rotate-180")} />
+                      </button>
+                      {genOpen && (
+                        <div className="space-y-0.5">
+                          {copyGenItems.map(it => {
+                            const Icon = it.icon;
+                            const active = loc.pathname === "/copy" &&
+                              typeof loc.search === "string" &&
+                              loc.search.includes(`cat=${it.search?.cat}`);
+                            return (
+                              <Link
+                                key={it.label}
+                                to={it.to}
+                                search={it.search as never}
+                                onClick={closeMobile}
+                                className={cn(
+                                  "group flex items-center gap-2.5 rounded-md py-1.5 pl-14 pr-2.5 text-sm transition-colors",
+                                  active
+                                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                    : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                                )}
+                              >
+                                <Icon className="h-3.5 w-3.5 shrink-0" />
+                                <span className="flex-1 truncate">{it.label}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
                   {copyItems.map(it => renderItem(it, true))}
                 </div>
               )}
