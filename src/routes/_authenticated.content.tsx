@@ -291,9 +291,17 @@ function ContentIntel() {
 
 
           <TabsContent value="calendar">
-            <div className="rounded-lg border border-border bg-card p-3">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => shiftMonth(-1)} className="h-8 w-8 p-0">‹</Button>
+                  <div className="display-serif text-lg min-w-[180px] text-center">{monthLabel}</div>
+                  <Button size="sm" variant="outline" onClick={() => shiftMonth(1)} className="h-8 w-8 p-0">›</Button>
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); setCursor(d); }}>Today</Button>
+              </div>
               <div className="grid grid-cols-7 gap-1 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => <div key={d} className="p-1 text-center">{d}</div>)}
+                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => <div key={d} className="p-1 text-center font-semibold">{d}</div>)}
               </div>
               <div className="space-y-1">
                 {calendar.map((week, wi) => (
@@ -303,8 +311,12 @@ function ContentIntel() {
                       const isToday = slot.date === today;
                       const dayNum = Number(slot.date.slice(8, 10));
                       return (
-                        <div key={slot.date} className={`min-h-[72px] rounded border ${isToday ? "border-primary bg-primary/5" : "border-border bg-card"} p-1.5 text-[11px]`}>
-                          <div className={`font-mono mb-1 ${isToday ? "text-primary font-semibold" : "text-muted-foreground"}`}>{dayNum}</div>
+                        <div key={slot.date} className={`min-h-[96px] rounded-md border p-1.5 text-[11px] transition ${
+                          isToday ? "border-primary bg-primary/5 ring-1 ring-primary/40" :
+                          slot.inMonth ? "border-border bg-card hover:bg-muted/20" :
+                          "border-border/40 bg-muted/10 text-muted-foreground/50"
+                        }`}>
+                          <div className={`font-mono mb-1 text-xs ${isToday ? "text-primary font-bold" : slot.inMonth ? "text-foreground/80" : "text-muted-foreground/40"}`}>{dayNum}</div>
                           <div className="space-y-0.5">
                             {slot.pieces.slice(0, 3).map(p => {
                               const m = (p.content_metrics ?? [])[0];
@@ -316,11 +328,10 @@ function ContentIntel() {
                                 <button key={p.id} onClick={() => setOverviewFor(p)} className="w-full flex items-center gap-1 rounded px-1 py-0.5 hover:bg-accent/10 text-left" title={p.title ?? ""}>
                                   <span className={`rounded px-1 py-px text-[9px] font-mono uppercase ${stageCls}`}>{stage}</span>
                                   <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground"><Eye className="h-2.5 w-2.5" />{m?.views ?? 0}</span>
-                                  <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground"><Heart className="h-2.5 w-2.5" />{m?.likes ?? 0}</span>
                                 </button>
                               );
                             })}
-                            {slot.pieces.length > 3 && <div className="text-muted-foreground">+{slot.pieces.length - 3}</div>}
+                            {slot.pieces.length > 3 && <div className="text-muted-foreground text-[10px] pl-1">+{slot.pieces.length - 3} more</div>}
                           </div>
                         </div>
                       );
@@ -330,6 +341,7 @@ function ContentIntel() {
               </div>
             </div>
           </TabsContent>
+
         </Tabs>
       </div>
       <SlidesPanel orgId={orgId} contentId={slidesFor} onClose={() => setSlidesFor(null)} />
