@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Video, Layers, Pencil, ExternalLink, Trash2, Sparkles, ChevronRight, ChevronDown, Eye, Heart } from "lucide-react";
+import { Plus, Video, Layers, Pencil, ExternalLink, Trash2, Sparkles, ChevronRight, ChevronDown, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeContent } from "@/lib/analyze-content.functions";
