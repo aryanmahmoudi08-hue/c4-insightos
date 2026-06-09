@@ -143,31 +143,38 @@ function ContentIntel() {
     setOpen(true);
   };
 
-  // Weekly calendar grid (last 6 weeks)
+  // Real month-grid calendar with month/year navigation.
+  const [cursor, setCursor] = useState(() => {
+    const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d;
+  });
   const calendar = useMemo(() => {
-    const today = new Date();
-    const day = today.getDay(); // Sun=0
-    const start = new Date(today); start.setDate(today.getDate() - day - 35); // 6 weeks back, Sunday
-    const weeks: { date: string; pieces: PieceRow[] }[][] = [];
-    for (let w = 0; w < 6; w++) {
-      const week: { date: string; pieces: PieceRow[] }[] = [];
-      for (let d = 0; d < 7; d++) {
-        const dt = new Date(start.getTime() + (w * 7 + d) * 86400e3);
-        const iso = dt.toISOString().slice(0, 10);
-        week.push({ date: iso, pieces: [] });
-      }
-      weeks.push(week);
+    const year = cursor.getFullYear();
+    const month = cursor.getMonth();
+    const first = new Date(year, month, 1);
+    const lead = first.getDay(); // 0=Sun
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const totalCells = Math.ceil((lead + daysInMonth) / 7) * 7;
+    const cells: { date: string; inMonth: boolean; pieces: PieceRow[] }[] = [];
+    for (let i = 0; i < totalCells; i++) {
+      const dt = new Date(year, month, i - lead + 1);
+      const iso = dt.toISOString().slice(0, 10);
+      cells.push({ date: iso, inMonth: dt.getMonth() === month, pieces: [] });
     }
     for (const p of pieces ?? []) {
       if (!p.posted_at) continue;
       const iso = p.posted_at.slice(0, 10);
-      for (const week of weeks) {
-        const slot = week.find(s => s.date === iso);
-        if (slot) { slot.pieces.push(p); break; }
-      }
+      const slot = cells.find(c => c.date === iso);
+      if (slot) slot.pieces.push(p);
     }
+    const weeks: typeof cells[] = [];
+    for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
     return weeks;
-  }, [pieces]);
+  }, [pieces, cursor]);
+  const monthLabel = cursor.toLocaleString("default", { month: "long", year: "numeric" });
+  const shiftMonth = (delta: number) => {
+    setCursor(c => { const n = new Date(c); n.setMonth(c.getMonth() + delta); return n; });
+  };
+
 
   return (
     <>
