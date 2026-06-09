@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Video, Layers, Pencil, ExternalLink, Trash2, Sparkles, ChevronRight, ChevronDown, Eye, Heart } from "lucide-react";
+import { Plus, Video, Layers, Pencil, ExternalLink, Trash2, Sparkles, ChevronRight, ChevronDown, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeContent } from "@/lib/analyze-content.functions";
@@ -143,31 +143,38 @@ function ContentIntel() {
     setOpen(true);
   };
 
-  // Weekly calendar grid (last 6 weeks)
+  // Real month-grid calendar with month/year navigation.
+  const [cursor, setCursor] = useState(() => {
+    const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d;
+  });
   const calendar = useMemo(() => {
-    const today = new Date();
-    const day = today.getDay(); // Sun=0
-    const start = new Date(today); start.setDate(today.getDate() - day - 35); // 6 weeks back, Sunday
-    const weeks: { date: string; pieces: PieceRow[] }[][] = [];
-    for (let w = 0; w < 6; w++) {
-      const week: { date: string; pieces: PieceRow[] }[] = [];
-      for (let d = 0; d < 7; d++) {
-        const dt = new Date(start.getTime() + (w * 7 + d) * 86400e3);
-        const iso = dt.toISOString().slice(0, 10);
-        week.push({ date: iso, pieces: [] });
-      }
-      weeks.push(week);
+    const year = cursor.getFullYear();
+    const month = cursor.getMonth();
+    const first = new Date(year, month, 1);
+    const lead = first.getDay(); // 0=Sun
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const totalCells = Math.ceil((lead + daysInMonth) / 7) * 7;
+    const cells: { date: string; inMonth: boolean; pieces: PieceRow[] }[] = [];
+    for (let i = 0; i < totalCells; i++) {
+      const dt = new Date(year, month, i - lead + 1);
+      const iso = dt.toISOString().slice(0, 10);
+      cells.push({ date: iso, inMonth: dt.getMonth() === month, pieces: [] });
     }
     for (const p of pieces ?? []) {
       if (!p.posted_at) continue;
       const iso = p.posted_at.slice(0, 10);
-      for (const week of weeks) {
-        const slot = week.find(s => s.date === iso);
-        if (slot) { slot.pieces.push(p); break; }
-      }
+      const slot = cells.find(c => c.date === iso);
+      if (slot) slot.pieces.push(p);
     }
+    const weeks: typeof cells[] = [];
+    for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
     return weeks;
-  }, [pieces]);
+  }, [pieces, cursor]);
+  const monthLabel = cursor.toLocaleString("default", { month: "long", year: "numeric" });
+  const shiftMonth = (delta: number) => {
+    setCursor(c => { const n = new Date(c); n.setMonth(c.getMonth() + delta); return n; });
+  };
+
 
   return (
     <>
@@ -284,9 +291,17 @@ function ContentIntel() {
 
 
           <TabsContent value="calendar">
-            <div className="rounded-lg border border-border bg-card p-3">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => shiftMonth(-1)} className="h-8 w-8 p-0">‹</Button>
+                  <div className="display-serif text-lg min-w-[180px] text-center">{monthLabel}</div>
+                  <Button size="sm" variant="outline" onClick={() => shiftMonth(1)} className="h-8 w-8 p-0">›</Button>
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); setCursor(d); }}>Today</Button>
+              </div>
               <div className="grid grid-cols-7 gap-1 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => <div key={d} className="p-1 text-center">{d}</div>)}
+                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => <div key={d} className="p-1 text-center font-semibold">{d}</div>)}
               </div>
               <div className="space-y-1">
                 {calendar.map((week, wi) => (
@@ -296,8 +311,12 @@ function ContentIntel() {
                       const isToday = slot.date === today;
                       const dayNum = Number(slot.date.slice(8, 10));
                       return (
-                        <div key={slot.date} className={`min-h-[72px] rounded border ${isToday ? "border-primary bg-primary/5" : "border-border bg-card"} p-1.5 text-[11px]`}>
-                          <div className={`font-mono mb-1 ${isToday ? "text-primary font-semibold" : "text-muted-foreground"}`}>{dayNum}</div>
+                        <div key={slot.date} className={`min-h-[96px] rounded-md border p-1.5 text-[11px] transition ${
+                          isToday ? "border-primary bg-primary/5 ring-1 ring-primary/40" :
+                          slot.inMonth ? "border-border bg-card hover:bg-muted/20" :
+                          "border-border/40 bg-muted/10 text-muted-foreground/50"
+                        }`}>
+                          <div className={`font-mono mb-1 text-xs ${isToday ? "text-primary font-bold" : slot.inMonth ? "text-foreground/80" : "text-muted-foreground/40"}`}>{dayNum}</div>
                           <div className="space-y-0.5">
                             {slot.pieces.slice(0, 3).map(p => {
                               const m = (p.content_metrics ?? [])[0];
@@ -309,11 +328,10 @@ function ContentIntel() {
                                 <button key={p.id} onClick={() => setOverviewFor(p)} className="w-full flex items-center gap-1 rounded px-1 py-0.5 hover:bg-accent/10 text-left" title={p.title ?? ""}>
                                   <span className={`rounded px-1 py-px text-[9px] font-mono uppercase ${stageCls}`}>{stage}</span>
                                   <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground"><Eye className="h-2.5 w-2.5" />{m?.views ?? 0}</span>
-                                  <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground"><Heart className="h-2.5 w-2.5" />{m?.likes ?? 0}</span>
                                 </button>
                               );
                             })}
-                            {slot.pieces.length > 3 && <div className="text-muted-foreground">+{slot.pieces.length - 3}</div>}
+                            {slot.pieces.length > 3 && <div className="text-muted-foreground text-[10px] pl-1">+{slot.pieces.length - 3} more</div>}
                           </div>
                         </div>
                       );
@@ -323,6 +341,7 @@ function ContentIntel() {
               </div>
             </div>
           </TabsContent>
+
         </Tabs>
       </div>
       <SlidesPanel orgId={orgId} contentId={slidesFor} onClose={() => setSlidesFor(null)} />

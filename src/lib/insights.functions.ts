@@ -179,10 +179,22 @@ export const generateAiInsights = createServerFn({ method: "POST" })
 
     const sys = `You are the analytics co-pilot for C4 InsightOS — a creator-led sales BI platform.
 You receive a 28-day metrics snapshot plus 4 weekly buckets and detected trend patterns.
-Return 3-5 sharp, specific insights that drive revenue. Prioritize TREND PATTERNS (multi-week direction) over single-point snapshots.
-Each insight must reference a concrete number AND end with one actionable recommendation.
-Respond ONLY with valid JSON matching this shape:
-{ "insights": [{ "title": "string (max 60 chars)", "body": "string (2-3 sentences)", "module": "executive|content|attribution|setter|closer", "recommendation": "string (1 sentence, imperative)", "confidence": 0.0-1.0 }] }`;
+
+Your job is to produce TWO separate lists:
+
+1. "bottlenecks" — every meaningful metric that is BELOW where it should be, broken, declining, or capping revenue. Be exhaustive. If show rate < 70%, that's a bottleneck. If close rate < 25% (high-ticket), that's a bottleneck. If hook retention < 40%, content leads flat, cash flat or down, top closer carrying everything alone — call it out. Rank by revenue impact (biggest leak first).
+2. "double_down" — every metric that's outperforming, climbing, or punching above weight. What's working that we should pour more fuel on. Be specific about WHY it's working.
+
+Each item must reference a concrete number, explain the why in 1-2 sentences, and end with one actionable recommendation.
+Module field options: executive|content|attribution|setter|closer|offer|funnel.
+
+Respond ONLY with valid JSON:
+{
+  "bottlenecks": [{ "title": "string (max 60 chars)", "body": "string (2-3 sentences with the number)", "module": "...", "recommendation": "string (1 imperative sentence)", "confidence": 0.0-1.0 }],
+  "double_down": [{ "title": "...", "body": "...", "module": "...", "recommendation": "...", "confidence": 0.0-1.0 }]
+}
+
+Aim for 3-6 items per list. If a list genuinely has nothing, return an empty array — don't pad.`;
 
     const weekTable = metrics.weeks.map(w => {
       const sr = w.totalCalls ? ((w.showed / w.totalCalls) * 100).toFixed(0) : "0";
@@ -207,7 +219,7 @@ ${weekTable}
 Detected trend patterns:
 ${metrics.trends.length ? metrics.trends.map(t => `- ${t}`).join("\n") : "- no multi-week directional patterns detected"}
 
-Generate insights now. Lead with trend-based observations if any exist.`;
+Produce the bottlenecks and double_down lists now.`;
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -224,24 +236,32 @@ Generate insights now. Lead with trend-based observations if any exist.`;
     }
     const json = await res.json();
     const content = json.choices?.[0]?.message?.content ?? "{}";
-    let parsed: { insights: AiInsight[] };
+    let parsed: { bottlenecks?: AiInsight[]; double_down?: AiInsight[]; insights?: AiInsight[] };
     try { parsed = JSON.parse(content); } catch { throw new Error("AI returned invalid JSON"); }
-    const insights = Array.isArray(parsed.insights) ? parsed.insights.slice(0, 6) : [];
-    if (insights.length === 0) return { inserted: 0 };
 
-    const rows = insights.map((i) => ({
-      org_id: orgId,
-      module: i.module || "executive",
-      title: String(i.title || "Insight").slice(0, 120),
-      body: String(i.body || ""),
-      recommendation: i.recommendation ? String(i.recommendation) : null,
-      confidence: Math.min(1, Math.max(0, Number(i.confidence) || 0.5)),
-      source_refs: [{ snapshot: metrics as unknown as Record<string, unknown> }] as never,
-      generated_by: "gemini-2.5-flash",
-    }));
-    // Wipe prior un-dismissed insights so "Generate" always shows the latest take.
+    const tagRows = (arr: AiInsight[] | undefined, kind: "bottleneck" | "double_down") =>
+      (Array.isArray(arr) ? arr.slice(0, 8) : []).map((i) => ({
+        org_id: orgId,
+        module: `${kind}:${i.module || "executive"}`,
+        title: String(i.title || "Insight").slice(0, 120),
+        body: String(i.body || ""),
+        recommendation: i.recommendation ? String(i.recommendation) : null,
+        confidence: Math.min(1, Math.max(0, Number(i.confidence) || 0.5)),
+        source_refs: [{ snapshot: metrics as unknown as Record<string, unknown> }] as never,
+        generated_by: "gemini-2.5-flash",
+      }));
+
+    const rows = [
+      ...tagRows(parsed.bottlenecks, "bottleneck"),
+      ...tagRows(parsed.double_down, "double_down"),
+      // back-compat: if model returned old single "insights" array, store unclassified
+      ...tagRows(parsed.insights, "bottleneck"),
+    ];
+    if (rows.length === 0) return { inserted: 0 };
+
     await supabase.from("ai_insights").delete().eq("org_id", orgId).eq("dismissed", false).eq("saved", false);
     const { error } = await supabase.from("ai_insights").insert(rows as never);
     if (error) throw error;
     return { inserted: rows.length };
   });
+

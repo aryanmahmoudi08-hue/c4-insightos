@@ -1,79 +1,61 @@
-This is a large multi-area change. Grouping into 4 shippable batches so each can be verified before the next. Confirm the batch order (or re-prioritize) and I'll start with Batch 1.
+# Big build pass — what gets done
+
+This is a lot of distinct work. Here's the order I'll ship it in. Approve and I run it straight through (no further check-ins unless something blocks).
+
+## Quick answer first — what is the Swipes section for?
+
+The **Swipe library** is a paste-bin for proven copy you find in the wild — competitor emails that converted you, scripts from ads you stopped scrolling for, hooks from creators in your niche. You drop them in with a tag ("hook", "vsl-open", "pricing reveal", etc.) and the generator pulls from them as reference fuel when writing new copy. It's a private vault of "things that already worked" so the AI stops hallucinating and starts remixing what's proven. If you don't want it, I'll cut it and fold the best examples directly into the per-client knowledge.
+
+## 1. Content pipeline + Discord automation
+- Add a `status` column to `content_pieces`: `idea → drafting → review → ready_to_post → posted`.
+- Content Tracker becomes a 5-column kanban; drag/edit until it lands in **Ready to post**.
+- On move to `ready_to_post`: server fn dispatches to a Discord webhook, payload = full script + hooks + caption.
+- **Per-copy-type channels**: one webhook URL per category (Content, Email/SMS, Long-form, DMs). Stored in `webhook_subscriptions` with a `category` field. Single sidebar dropdown in the app shows where each type routes. Admin-only is enforced on Discord's side via channel permissions — I'll include setup notes in the connect screen.
+
+## 2. Sidebar restructure
+- **Sales Tracking** dropdown now contains: Leads, Sales Team (sub-dropdown: DM Setter, Inbound Dialer, Closer), Attribution, Traffic, Pre-close.
+- Move Leads out of top-level into Sales Tracking.
+- DM Setter / Inbound Dialer / Closer collapse into a "Reps" sub-dropdown.
+
+## 3. CopyOS cleanup
+- **Story Sequences** promoted to its own top-level item under CopyOS (out of Long-form). Seeded with your own slide-by-slide data structure (`story_slides` already exists — I'll wire the UI and prefill 3 starter sequences from the methodology).
+- **Client DNA** locked to a single client per workspace (one website = one voice). Removes the picker, becomes a single profile page.
+- **Swipes** — keep or cut based on your answer above; defaulting to keep with a clearer "what goes here" empty state.
+
+## 4. AI Insights revamp
+Currently outputs 3–5 generic insights. Rebuild as two stacked panels:
+- **Bottlenecks** — every metric below target, ranked by revenue impact, with the specific lever to pull.
+- **Double down** — every metric trending up or outperforming, with "do more of this" prescriptions.
+Each card shows the number, the trend arrow, the why, and the next action. Generated weekly + on-demand.
+
+## 5. Client onboarding form — visual diagnostic
+After submission, each answer gets outlined:
+- **Green** = matches a "doing well" signal in their data
+- **Red** = matches a current bottleneck
+- Neutral = no signal yet
+Driven by mapping onboarding question IDs → metric thresholds.
+
+## 6. Content Calendar — real calendar
+Replace the list view with a month grid (header: « Month YYYY », day cells with content chips, click a day to add/view). Week / month toggle. Drag posts between days.
+
+## 7. Dashboard glow-up (the big visual lift)
+Across Dashboard, Insights, Attribution, Sales modules:
+- Denser KPI tiles with sparklines + WoW delta chips
+- Gradient borders on hero metrics, subtle inner glow on positive trends
+- Real chart components (area gradients, not flat bars) using the existing chart primitives
+- Sticky module headers with quick-filter chips
+- Section dividers + consistent card hierarchy so every page reads like the same product
 
 ---
 
-## Batch 1 — Quick wins (UI + ingest fixes)
+## Order of execution
+1. Sidebar restructure (fastest visible win)
+2. Story Sequences + Client DNA single-client lock
+3. Content pipeline statuses + kanban
+4. Discord per-channel routing
+5. Calendar grid
+6. Insights revamp
+7. Onboarding green/red outlines
+8. Dashboard visual pass (last — touches everything)
 
-**#2 — Drop `_cents` requirement in ingest**
-Already supported: schemas accept `cash_collected`, `contract_value`, `deposit`, `total_revenue` as plain dollar numbers. Will document and double-check the Typeform route (`src/routes/api/public/typeform.ts`) accepts the same shape so n8n/Typeform never has to send `_cents`.
-
-**#8 — Content table: show Title only (drop the "– Hook")**
-Edit `_authenticated.content.tsx` table column back to title only. Hook still visible in the expanded row + overview panel.
-
-**#9 — Move "Sales Tracking" dropdown directly under "Main Hub" in sidebar**
-Edit `src/components/app-sidebar.tsx`: render the Sales Tracking collapsible right after Main Hub (before Content Tracker / Attribution).
-
-**#1 — Main Hub: wire Calls Booked / Showed / Offers Made / Closes from sales team data**
-Currently those tiles read only from `calls`. Will also sum `setter_activity` (`calls_on_calendar`, `live_calls`, `closes`) so the numbers populate when data comes from setter day logs instead of individual call rows. Same pattern as the cash-collected sync already in place.
-
-**#10 — "Generate AI Insights" should wipe and re-create**
-Update the insights server fn to `DELETE` the org's existing `ai_insights` rows (or mark dismissed) before generating, and broaden the prompt to include sales-team funnel data + fulfillment signals so it surfaces system-wide bottlenecks.
-
----
-
-## Batch 2 — Clients, Onboarding & Fulfillment
-
-**#3 — Editable Clients & Onboarding pages**
-Add inline edit (Dialog with form) on `_authenticated.clients.tsx` and `_authenticated.onboarding.tsx` for all key fields.
-
-**#5 — Clients schema additions**
-Migration to add: `phone`, `invested_to_date_cents`, `expected_next_payment_cents`, `expected_next_payment_date`. Update the Client form:
-- Always shows contract value, invested-to-date, next expected payment + date.
-- Renewal date input is only visible when `payment_plan = true`. If unchecked (PIF), `renewal_date` is cleared on save.
-
-**#6 — Pre-close summary section on Client**
-New `clients.pre_close_summary` text + `clients.pre_close_raw` jsonb. Add a "Generate Pre-Close Summary" button on the client detail that pulls related `messages` (Instagram DMs) + the matching `calls.call_summary` / `key_moment` and runs them through Lovable AI to produce a 1-paragraph summary stored on the client row.
-
-**#7 — Fulfillment dropdown (new sidebar group)**
-New sidebar section "Fulfillment" with one page: **Client Results**. For each active client, pulls their Typeform application answers + `onboarding_responses` + AI-generated "goals & current state" summary, and displays a tracker so the offer owner can mark progress toward those goals. Reuses Lovable AI Gateway, no new keys.
-
----
-
-## Batch 3 — Role-based access (#4) — biggest piece
-
-**Schema (migration):**
-- `app_role` enum already exists (`owner`, `admin`, etc.) — extend with: `setter`, `closer`, `sales_manager`, `growth_ops`.
-- New table `membership_requests` (org_id, email, full_name, requested_role, status: pending/approved/rejected, decided_by, decided_at).
-- RLS: anyone signed-in can insert a request for an org; only org admins/owners can read/update; on approve → insert into `memberships` with the requested role.
-
-**Sign-up flow:**
-- New route `/request-access`: collects name, email, role, and the **admin's email** of the org they want to join. Looks up org by admin email → creates a `membership_requests` row.
-- Admin sees a "Pending requests" panel on `/team` with Approve / Reject buttons.
-
-**Route gating (front-end):**
-- New helper `useRole()` returns the user's role in the current org.
-- Sidebar filters items by role:
-  - **setter / closer**: Main Hub, Sales Tracking, Clients, Onboarding (read-only)
-  - **sales_manager**: above + can edit sales sections
-  - **growth_ops / admin / owner**: full access
-- Hide edit buttons / disable mutations for non-managers via the same role check.
-
-**Note:** This is the largest batch. Mutations also need server-side enforcement via `has_org_role` in RLS — I'll add policies that restrict UPDATE/DELETE on key tables to manager+ roles.
-
----
-
-## Batch 4 — Polish & verify
-
-- Walk through each flow end-to-end in preview.
-- Confirm Typeform → Clients pipeline still works without `_cents`.
-- Confirm role-gated sidebar renders correctly for a test setter account.
-
----
-
-### Questions before I start
-
-1. **Order:** Start with Batch 1 (quick wins) and ship it, then Batch 2, etc.? Or do you want roles (#4) first since it blocks giving teammates access?
-2. **#4 admin identification:** Should "admin email" on the request form be the workspace owner's login email, or do you want a dedicated invite code per org?
-3. **#7 Fulfillment:** Just one "Client Results" page to start, or do you have other fulfillment views in mind (e.g. milestones, deliverables)?
-
-Reply with order + answers and I'll start Batch 1 immediately.
+Reply **go** and I run the whole list. If you want Swipes cut, say "cut swipes" and I'll fold it into Client DNA references instead.
