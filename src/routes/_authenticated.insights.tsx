@@ -157,39 +157,92 @@ function Insights() {
           )}
         </div>
 
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30 flex-wrap gap-2">
-            <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-accent" /><div className="text-sm font-semibold">Gemini grounded insights</div></div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => weeklyReport.mutate()} disabled={weeklyReport.isPending}>{weeklyReport.isPending ? "Sending…" : "Send weekly report"}</Button>
-              <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>{run.isPending ? "Analyzing…" : "Generate insights"}</Button>
-            </div>
-          </div>
-          <div className="divide-y divide-border">
-            {(aiInsights ?? []).map((i) => (
-              <div key={i.id} className="px-4 py-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold">{i.title}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{i.body}</div>
-                    {i.recommendation && <div className="text-xs mt-1.5"><span className="text-accent uppercase tracking-wide text-[10px] font-semibold mr-1.5">action</span>{i.recommendation}</div>}
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-[10px] uppercase tracking-wider rounded bg-muted px-1.5 py-0.5">{i.module}</span>
-                      <span className="text-[10px] font-mono text-muted-foreground">conf {Math.round(Number(i.confidence) * 100)}%</span>
-                      <span className="text-[10px] text-muted-foreground">{new Date(i.created_at).toLocaleString()}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button title="Save" onClick={() => save.mutate(i.id)} className="text-muted-foreground hover:text-foreground"><Bookmark className={`h-4 w-4 ${i.saved ? "fill-current text-accent" : ""}`} /></button>
-                    <button title="Dismiss" onClick={() => dismiss.mutate(i.id)} className="text-muted-foreground hover:text-destructive"><X className="h-4 w-4" /></button>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {(!aiInsights || aiInsights.length === 0) && <div className="p-8 text-center text-sm text-muted-foreground">No AI insights yet. Click <span className="text-foreground">Generate insights</span> to run grounded analysis on your last 30 days.</div>}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="text-sm text-muted-foreground">Grounded analysis on the last 30 days of revenue, calls, content, and rep activity.</div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => weeklyReport.mutate()} disabled={weeklyReport.isPending}>{weeklyReport.isPending ? "Sending…" : "Send weekly report"}</Button>
+            <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>{run.isPending ? "Analyzing…" : "Regenerate analysis"}</Button>
           </div>
         </div>
+
+        {(() => {
+          const all = aiInsights ?? [];
+          const bottlenecks = all.filter(i => String(i.module ?? "").startsWith("bottleneck"));
+          const doubleDown = all.filter(i => String(i.module ?? "").startsWith("double_down"));
+          const unclassified = all.filter(i => !String(i.module ?? "").includes(":"));
+
+          const renderCard = (i: typeof all[number], tone: "bottleneck" | "double_down") => (
+            <div key={i.id} className={`rounded-lg border p-3.5 transition ${tone === "bottleneck" ? "border-destructive/30 bg-destructive/[0.04] hover:border-destructive/50" : "border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/[0.04] hover:border-[color:var(--color-success)]/50"}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    {tone === "bottleneck" ? <TrendingDown className="h-4 w-4 text-destructive shrink-0" /> : <TrendingUp className="h-4 w-4 text-[color:var(--color-success)] shrink-0" />}
+                    <div className="text-sm font-semibold">{i.title}</div>
+                  </div>
+                  <div className="text-xs text-muted-foreground leading-relaxed">{i.body}</div>
+                  {i.recommendation && (
+                    <div className="text-xs mt-2 rounded-md bg-background/60 px-2.5 py-1.5 border border-border/60">
+                      <span className={`uppercase tracking-wide text-[10px] font-semibold mr-1.5 ${tone === "bottleneck" ? "text-destructive" : "text-[color:var(--color-success)]"}`}>action</span>
+                      {i.recommendation}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <span className="text-[10px] uppercase tracking-wider rounded bg-muted px-1.5 py-0.5">{String(i.module ?? "").split(":")[1] || i.module}</span>
+                    <span className="text-[10px] font-mono text-muted-foreground">conf {Math.round(Number(i.confidence) * 100)}%</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button title="Save" onClick={() => save.mutate(i.id)} className="text-muted-foreground hover:text-foreground"><Bookmark className={`h-4 w-4 ${i.saved ? "fill-current text-accent" : ""}`} /></button>
+                  <button title="Dismiss" onClick={() => dismiss.mutate(i.id)} className="text-muted-foreground hover:text-destructive"><X className="h-4 w-4" /></button>
+                </div>
+              </div>
+            </div>
+          );
+
+          return (
+            <div className="grid lg:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-destructive/30 bg-card overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-destructive/10">
+                  <div className="flex items-center gap-2">
+                    <TrendingDown className="h-4 w-4 text-destructive" />
+                    <div className="text-sm font-semibold">Current bottlenecks</div>
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">what's leaking revenue</span>
+                  </div>
+                  <span className="text-xs font-mono text-destructive">{bottlenecks.length + unclassified.length}</span>
+                </div>
+                <div className="p-3 space-y-2 max-h-[640px] overflow-y-auto">
+                  {[...bottlenecks, ...unclassified].map(i => renderCard(i, "bottleneck"))}
+                  {bottlenecks.length + unclassified.length === 0 && (
+                    <div className="p-6 text-center text-sm text-muted-foreground">
+                      No bottlenecks surfaced. Hit <span className="text-foreground">Regenerate analysis</span> to scan again.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-[color:var(--color-success)]/30 bg-card overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-[color:var(--color-success)]/10">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-[color:var(--color-success)]" />
+                    <div className="text-sm font-semibold">Double down on these</div>
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">what's working — pour fuel</span>
+                  </div>
+                  <span className="text-xs font-mono text-[color:var(--color-success)]">{doubleDown.length}</span>
+                </div>
+                <div className="p-3 space-y-2 max-h-[640px] overflow-y-auto">
+                  {doubleDown.map(i => renderCard(i, "double_down"))}
+                  {doubleDown.length === 0 && (
+                    <div className="p-6 text-center text-sm text-muted-foreground">
+                      No wins surfaced yet. Generate analysis once you have a few weeks of data.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </>
   );
 }
+
