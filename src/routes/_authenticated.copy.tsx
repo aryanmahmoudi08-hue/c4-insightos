@@ -83,10 +83,11 @@ const CATEGORIES: Record<string, {
     bgGradient: "from-violet-500/15 via-violet-500/5 to-transparent",
     icon: BookOpen,
     types: [
-      { value: "story_sequence", label: "Full 5-part sequence", icon: BookOpen, desc: "Backstory · journey · enemy reveal · new opportunity · CTA." },
-      { value: "story_sequence", label: "3-part mini arc", icon: BookOpen, desc: "Tighter 3-beat arc for warm audiences." },
-      { value: "story_sequence", label: "Origin story", icon: BookOpen, desc: "Single piece — the founding story that justifies the offer." },
+      { value: "story_sequence_full", label: "Full 5-part sequence", icon: BookOpen, desc: "Backstory · journey · enemy reveal · new opportunity · CTA." },
+      { value: "story_sequence_mini", label: "3-part mini arc", icon: BookOpen, desc: "Tighter 3-beat arc for warm audiences." },
+      { value: "story_sequence_origin", label: "Origin story", icon: BookOpen, desc: "Single piece — the founding story that justifies the offer." },
     ],
+
     fields: [
       { key: "hero_state", label: "Where the hero is right now", placeholder: "The painful before-state your reader recognises themselves in" },
       { key: "turning_point", label: "Turning point / new opportunity", placeholder: "What changed? What did they discover?" },
