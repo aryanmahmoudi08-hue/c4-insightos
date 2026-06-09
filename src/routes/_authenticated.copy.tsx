@@ -60,14 +60,13 @@ const CATEGORIES: Record<string, {
   },
   long: {
     label: "Long-form",
-    blurb: "Sales pages, VSLs, story sequences, and lead magnets engineered around a Big Domino.",
+    blurb: "Sales pages, VSLs, and lead magnets engineered around one Big Domino — the single belief the reader must accept to buy.",
     accent: "border-amber-500/40",
     bgGradient: "from-amber-500/15 via-amber-500/5 to-transparent",
     icon: BookOpen,
     types: [
       { value: "sales_page", label: "Sales page", icon: ScrollText, desc: "Full long-form sales letter — promise to CTA." },
       { value: "vsl_script", label: "VSL script", icon: Clapperboard, desc: "Spoken VSL with opener, mechanism, proof, stack, close." },
-      { value: "story_sequence", label: "Story sequence", icon: BookOpen, desc: "Backstory → journey → new opportunity arc, 3-5 parts." },
       { value: "lead_magnet", label: "Lead magnet", icon: FileText, desc: "Front-end PDF/guide that pre-sells the next step." },
     ],
     fields: [
@@ -75,6 +74,25 @@ const CATEGORIES: Record<string, {
       { key: "mechanism", label: "Mechanism / unique angle", placeholder: "Why this works when nothing else has" },
       { key: "objections", label: "Top objections to crush", placeholder: "It's too expensive, I've tried this before, won't work for me…", rows: 3 },
       { key: "brief", label: "Offer details", placeholder: "Price, what's included, deadline, bonuses…", rows: 4 },
+    ],
+  },
+  story: {
+    label: "Story Sequences",
+    blurb: "Multi-part backstory → journey → new opportunity arcs. Pull the reader through 3-5 connected pieces until the buy feels inevitable.",
+    accent: "border-violet-500/40",
+    bgGradient: "from-violet-500/15 via-violet-500/5 to-transparent",
+    icon: BookOpen,
+    types: [
+      { value: "story_sequence", label: "Full 5-part sequence", icon: BookOpen, desc: "Backstory · journey · enemy reveal · new opportunity · CTA." },
+      { value: "story_sequence", label: "3-part mini arc", icon: BookOpen, desc: "Tighter 3-beat arc for warm audiences." },
+      { value: "story_sequence", label: "Origin story", icon: BookOpen, desc: "Single piece — the founding story that justifies the offer." },
+    ],
+    fields: [
+      { key: "hero_state", label: "Where the hero is right now", placeholder: "The painful before-state your reader recognises themselves in" },
+      { key: "turning_point", label: "Turning point / new opportunity", placeholder: "What changed? What did they discover?" },
+      { key: "enemy", label: "The enemy / villain to name", placeholder: "What/who is to blame for the reader's current pain?" },
+      { key: "promised_land", label: "Promised land", placeholder: "What the hero (and the reader) gets on the other side", rows: 2 },
+      { key: "brief", label: "Offer it leads to", placeholder: "What we want them to do at the end of the sequence", rows: 3 },
     ],
   },
   email: {
@@ -87,7 +105,6 @@ const CATEGORIES: Record<string, {
       { value: "email_single", label: "Single email", icon: Mail, desc: "One inbox-ready email with subject + preview text." },
       { value: "email_sequence", label: "Email sequence (5)", icon: Mail, desc: "5-email indoctrination or promo arc." },
       { value: "sms", label: "SMS broadcast", icon: Smartphone, desc: "1-3 SMS variants under 160 chars." },
-      { value: "dm_outreach", label: "DM outreach", icon: MessageSquare, desc: "Cold/warm DM openers that don't feel like cold DMs." },
     ],
     fields: [
       { key: "subject_goal", label: "Subject line goal", placeholder: "Open the email — curiosity / urgency / pattern interrupt" },
@@ -96,6 +113,7 @@ const CATEGORIES: Record<string, {
     ],
   },
 };
+
 
 const ALL_TYPES = Object.values(CATEGORIES).flatMap(c => c.types);
 

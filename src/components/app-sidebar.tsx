@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard, Video, GitBranch, MessageSquare, PhoneCall, Users, BadgeCheck,
   TrendingUp, Sparkles, Settings, LogOut, Bell, Search, Brain, Activity, PhoneIncoming,
-  ChevronDown, Briefcase, UserPlus, Menu, X, Wand2,
+  ChevronDown, Briefcase, UserPlus, Menu, X, Wand2, BookOpen, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,33 +26,37 @@ const TOP_NAV: NavItem[] = [
   { to: "/dashboard", label: "Main Hub", icon: LayoutDashboard },
 ];
 
-const MID_NAV: NavItem[] = [
-  { to: "/leads", label: "Leads", icon: Users },
-  { to: "/attribution", label: "Attribution", icon: GitBranch },
+// Reps sub-group inside Sales Tracking
+const REPS_NAV: NavItem[] = [
+  { to: "/dm-setter", label: "DM Setter", icon: MessageSquare },
+  { to: "/inbound-dialer", label: "Inbound Dialer", icon: PhoneIncoming },
+  { to: "/closer", label: "Closer", icon: PhoneCall },
 ];
 
-// Nested sub-dropdown inside CopyOS — the three writing surfaces.
+// Sales Tracking dropdown — Leads + Reps + the rest
+const SALES_NAV: NavItem[] = [
+  { to: "/leads", label: "Leads", icon: Users },
+  { to: "/team", label: "Team Members", icon: Users },
+  { to: "/hiring", label: "Hiring", icon: UserPlus },
+  { to: "/attribution", label: "Attribution", icon: GitBranch },
+  { to: "/traffic", label: "Traffic", icon: TrendingUp },
+];
+
+// Generate sub-dropdown inside CopyOS
 const COPY_GENERATE_NAV: NavItem[] = [
   { to: "/copy", label: "Content", icon: Video, search: { tab: "generate", cat: "content" } },
-  { to: "/copy", label: "Long-form", icon: Brain, search: { tab: "generate", cat: "long" } },
+  { to: "/copy", label: "Long-form", icon: BookOpen, search: { tab: "generate", cat: "long" } },
   { to: "/copy", label: "Email / SMS", icon: MessageSquare, search: { tab: "generate", cat: "email" } },
 ];
 
-// Everything else inside the CopyOS group.
+// CopyOS top-level items (excluding the nested Generate)
 const COPY_OS_NAV: NavItem[] = [
+  { to: "/copy", label: "Story Sequences", icon: Layers, search: { tab: "generate", cat: "story" } },
   { to: "/content", label: "Content Tracker", icon: Video },
   { to: "/copy", label: "Review", icon: BadgeCheck, search: { tab: "review" } },
   { to: "/copy", label: "Angle bank", icon: Sparkles, search: { tab: "angles" } },
   { to: "/copy", label: "Swipe library", icon: Activity, search: { tab: "swipes" } },
   { to: "/copy", label: "Client DNA", icon: Users, search: { tab: "clients" } },
-];
-
-const SALES_TEAM: NavItem[] = [
-  { to: "/team", label: "Team Members", icon: Users },
-  { to: "/hiring", label: "Hiring", icon: UserPlus },
-  { to: "/dm-setter", label: "DM Setter", icon: MessageSquare },
-  { to: "/inbound-dialer", label: "Inbound Dialer", icon: PhoneIncoming },
-  { to: "/closer", label: "Closer", icon: PhoneCall },
 ];
 
 const FULFILLMENT_NAV: NavItem[] = [
@@ -62,13 +66,11 @@ const FULFILLMENT_NAV: NavItem[] = [
 ];
 
 const BOTTOM_NAV: NavItem[] = [
-  { to: "/traffic", label: "Traffic", icon: TrendingUp },
   { to: "/insights", label: "AI Insights", icon: Sparkles },
   { to: "/events", label: "Event Bus", icon: Activity },
 ];
 
-// Routes a non-manager (setter/closer) is allowed to see. Anything outside this
-// list is hidden from the sidebar for those roles.
+// Routes a non-manager (setter/closer) is allowed to see.
 const RESTRICTED_ALLOW = new Set([
   "/dashboard", "/team", "/dm-setter", "/inbound-dialer", "/closer",
   "/clients", "/onboarding", "/fulfillment",
@@ -81,26 +83,36 @@ export function AppSidebar() {
   const { canManage } = useRole();
   const filterByRole = (items: NavItem[]) =>
     canManage ? items : items.filter(it => RESTRICTED_ALLOW.has(it.to));
-  const salesItems = filterByRole(SALES_TEAM);
-  const midItems = filterByRole(MID_NAV);
+
+  const repsItems = filterByRole(REPS_NAV);
+  const salesItems = filterByRole(SALES_NAV);
   const fulfillmentItems = filterByRole(FULFILLMENT_NAV);
   const bottomItems = filterByRole(BOTTOM_NAV);
-  const salesActive = salesItems.some(it => loc.pathname.startsWith(it.to));
+  const copyItems = filterByRole(COPY_OS_NAV);
+  const copyGenItems = filterByRole(COPY_GENERATE_NAV);
+
+  const repsActive = repsItems.some(it => loc.pathname.startsWith(it.to));
+  const salesActive = repsActive || salesItems.some(it => loc.pathname.startsWith(it.to));
+  const copyActive = loc.pathname.startsWith("/copy") || loc.pathname.startsWith("/content");
+  const generateActive = loc.pathname.startsWith("/copy");
+
   const [salesOpen, setSalesOpen] = useState(salesActive);
+  const [repsOpen, setRepsOpen] = useState(repsActive);
+  const [copyOpen, setCopyOpen] = useState(copyActive);
+  const [genOpen, setGenOpen] = useState(generateActive);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const closeMobile = () => setMobileOpen(false);
 
-  const copyItems = filterByRole(COPY_OS_NAV);
-  const copyGenItems = filterByRole(COPY_GENERATE_NAV);
-  const copyActive = loc.pathname.startsWith("/copy") || loc.pathname.startsWith("/content");
-  const [copyOpen, setCopyOpen] = useState(copyActive);
-  const generateActive = loc.pathname.startsWith("/copy");
-  const [genOpen, setGenOpen] = useState<boolean>(generateActive);
-
-  const renderItem = (it: NavItem, nested = false) => {
-    const active = loc.pathname === it.to || (it.to !== "/" && loc.pathname.startsWith(it.to));
+  const renderItem = (it: NavItem, nested = false, depth = 0) => {
+    const searchObj = (loc.search ?? {}) as Record<string, unknown>;
+    const matchesSearch = it.search
+      ? Object.entries(it.search).every(([k, v]) => String(searchObj[k] ?? "") === v)
+      : true;
+    const pathActive = loc.pathname === it.to || (it.to !== "/" && loc.pathname.startsWith(it.to));
+    const active = pathActive && matchesSearch;
     const Icon = it.icon;
+    const pl = depth === 0 ? "px-2.5" : depth === 1 ? "pl-8 pr-2.5" : "pl-14 pr-2.5";
     return (
       <Link
         key={`${it.to}-${it.label}`}
@@ -108,22 +120,38 @@ export function AppSidebar() {
         search={it.search as never}
         onClick={closeMobile}
         className={cn(
-          "group flex items-center gap-2.5 rounded-md py-2 text-sm transition-colors",
-          nested ? "pl-8 pr-2.5" : "px-2.5",
+          "group flex items-center gap-2.5 rounded-md py-1.5 text-sm transition-colors",
+          pl,
           active
             ? "bg-sidebar-accent text-sidebar-accent-foreground"
             : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+          nested && depth >= 2 && "py-1",
         )}
       >
-        <Icon className="h-4 w-4 shrink-0" />
+        <Icon className={cn("shrink-0", depth >= 2 ? "h-3.5 w-3.5" : "h-4 w-4")} />
         <span className="flex-1 truncate">{it.label}</span>
       </Link>
     );
   };
 
+  const sectionBtn = (label: string, Icon: typeof LayoutDashboard, open: boolean, isActive: boolean, onClick: () => void, depth = 0) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group flex w-full items-center gap-2.5 rounded-md py-2 text-sm transition-colors",
+        depth === 0 ? "px-2.5" : "pl-8 pr-2.5 py-1.5",
+        isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="flex-1 text-left truncate">{label}</span>
+      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
+    </button>
+  );
+
   return (
     <>
-      {/* Mobile hamburger */}
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
@@ -132,13 +160,8 @@ export function AppSidebar() {
       >
         <Menu className="h-4 w-4" />
       </button>
-      {/* Backdrop */}
       {mobileOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/60 md:hidden"
-          onClick={closeMobile}
-          aria-hidden
-        />
+        <div className="fixed inset-0 z-30 bg-black/60 md:hidden" onClick={closeMobile} aria-hidden />
       )}
       <aside
         className={cn(
@@ -166,99 +189,55 @@ export function AppSidebar() {
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {TOP_NAV.map(it => renderItem(it))}
 
-          {salesItems.length > 0 && (
+          {(salesItems.length > 0 || repsItems.length > 0) && (
             <>
-              <button
-                type="button"
-                onClick={() => setSalesOpen(o => !o)}
-                className={cn(
-                  "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-                  salesActive
-                    ? "text-sidebar-foreground"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-                )}
-              >
-                <Briefcase className="h-4 w-4 shrink-0" />
-                <span className="flex-1 text-left truncate">Sales Tracking</span>
-                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", salesOpen && "rotate-180")} />
-              </button>
+              {sectionBtn("Sales Tracking", Briefcase, salesOpen, salesActive, () => setSalesOpen(o => !o))}
               {salesOpen && (
                 <div className="space-y-0.5">
-                  {salesItems.map(it => renderItem(it, true))}
-                </div>
-              )}
-            </>
-          )}
-
-          {midItems.map(it => renderItem(it))}
-
-          {copyItems.length > 0 && (
-            <>
-              <button
-                type="button"
-                onClick={() => setCopyOpen(o => !o)}
-                className={cn(
-                  "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-                  copyActive
-                    ? "text-sidebar-foreground"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-                )}
-              >
-                <Sparkles className="h-4 w-4 shrink-0" />
-                <span className="flex-1 text-left truncate">CopyOS</span>
-                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", copyOpen && "rotate-180")} />
-              </button>
-              {copyOpen && (
-                <div className="space-y-0.5">
-                  {copyGenItems.length > 0 && (
+                  {/* Leads first */}
+                  {salesItems.filter(it => it.to === "/leads").map(it => renderItem(it, true, 1))}
+                  {/* Reps sub-dropdown */}
+                  {repsItems.length > 0 && (
                     <>
-                      <button
-                        type="button"
-                        onClick={() => setGenOpen((o: boolean) => !o)}
-                        className={cn(
-                          "group flex w-full items-center gap-2.5 rounded-md py-2 pl-8 pr-2.5 text-sm transition-colors",
-                          generateActive
-                            ? "text-sidebar-foreground"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-                        )}
-                      >
-                        <Wand2 className="h-4 w-4 shrink-0" />
-                        <span className="flex-1 text-left truncate">Generate</span>
-                        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", genOpen && "rotate-180")} />
-                      </button>
-                      {genOpen && (
+                      {sectionBtn("Reps", Users, repsOpen, repsActive, () => setRepsOpen(o => !o), 1)}
+                      {repsOpen && (
                         <div className="space-y-0.5">
-                          {copyGenItems.map(it => {
-                            const Icon = it.icon;
-                            const searchObj = (loc.search ?? {}) as Record<string, unknown>;
-                            const active = loc.pathname === "/copy" && searchObj.cat === it.search?.cat;
-                            return (
-                              <Link
-                                key={it.label}
-                                to={it.to}
-                                search={it.search as never}
-                                onClick={closeMobile}
-                                className={cn(
-                                  "group flex items-center gap-2.5 rounded-md py-1.5 pl-14 pr-2.5 text-sm transition-colors",
-                                  active
-                                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                                    : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-                                )}
-                              >
-                                <Icon className="h-3.5 w-3.5 shrink-0" />
-                                <span className="flex-1 truncate">{it.label}</span>
-                              </Link>
-                            );
-                          })}
+                          {repsItems.map(it => renderItem(it, true, 2))}
                         </div>
                       )}
                     </>
                   )}
-                  {copyItems.map(it => renderItem(it, true))}
+                  {/* Everything else */}
+                  {salesItems.filter(it => it.to !== "/leads").map(it => renderItem(it, true, 1))}
                 </div>
               )}
             </>
           )}
+
+          {copyItems.length > 0 && (
+            <>
+              {sectionBtn("CopyOS", Sparkles, copyOpen, copyActive, () => setCopyOpen(o => !o))}
+              {copyOpen && (
+                <div className="space-y-0.5">
+                  {copyGenItems.length > 0 && (
+                    <>
+                      {sectionBtn("Generate", Wand2, genOpen, generateActive && !copyItems.some(it => {
+                        const sObj = (loc.search ?? {}) as Record<string, unknown>;
+                        return it.search ? Object.entries(it.search).every(([k, v]) => String(sObj[k] ?? "") === v) : false;
+                      }), () => setGenOpen(o => !o), 1)}
+                      {genOpen && (
+                        <div className="space-y-0.5">
+                          {copyGenItems.map(it => renderItem(it, true, 2))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {copyItems.map(it => renderItem(it, true, 1))}
+                </div>
+              )}
+            </>
+          )}
+
           {fulfillmentItems.length > 0 && (
             <>
               <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Fulfillment</div>
