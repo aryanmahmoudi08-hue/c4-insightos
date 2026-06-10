@@ -51,7 +51,7 @@ const COPY_GENERATE_NAV: NavItem[] = [
 
 // CopyOS top-level items (excluding the nested Generate)
 const COPY_OS_NAV: NavItem[] = [
-  { to: "/copy", label: "Story Sequences", icon: Layers, search: { tab: "generate", cat: "story" } },
+  { to: "/sequences", label: "Story Sequences", icon: Layers },
   { to: "/content", label: "Content Tracker", icon: Video },
   { to: "/copy", label: "Review", icon: BadgeCheck, search: { tab: "review" } },
   { to: "/copy", label: "Angle bank", icon: Sparkles, search: { tab: "angles" } },

@@ -877,6 +877,7 @@ export type Database = {
           created_at: string
           emotion: string | null
           id: string
+          image_urls: string[]
           org_id: string
           source: string | null
           tags: string[]
@@ -890,6 +891,7 @@ export type Database = {
           created_at?: string
           emotion?: string | null
           id?: string
+          image_urls?: string[]
           org_id: string
           source?: string | null
           tags?: string[]
@@ -903,6 +905,7 @@ export type Database = {
           created_at?: string
           emotion?: string | null
           id?: string
+          image_urls?: string[]
           org_id?: string
           source?: string | null
           tags?: string[]
@@ -1605,6 +1608,146 @@ export type Database = {
         }
         Relationships: []
       }
+      outreach_lists: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          name: string
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          name: string
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          name?: string
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outreach_lists_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outreach_messages: {
+        Row: {
+          body: string
+          created_at: string
+          error: string | null
+          id: string
+          kind: string
+          list_id: string | null
+          org_id: string
+          scheduled_for: string | null
+          sent_at: string | null
+          status: string
+          subject: string | null
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          kind: string
+          list_id?: string | null
+          org_id: string
+          scheduled_for?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string | null
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          kind?: string
+          list_id?: string | null
+          org_id?: string
+          scheduled_for?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outreach_messages_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "outreach_lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outreach_messages_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outreach_recipients: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          list_id: string
+          org_id: string
+          phone: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          list_id: string
+          org_id: string
+          phone?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          list_id?: string
+          org_id?: string
+          phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outreach_recipients_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "outreach_lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outreach_recipients_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount_cents: number
@@ -1928,6 +2071,69 @@ export type Database = {
             columns: ["slide_id"]
             isOneToOne: false
             referencedRelation: "story_slides"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      story_sequences: {
+        Row: {
+          client_id: string | null
+          created_at: string
+          day_of_week: number
+          id: string
+          notes: string | null
+          org_id: string
+          posted_at: string | null
+          scheduled_for: string | null
+          slides: Json
+          status: string
+          template_key: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          client_id?: string | null
+          created_at?: string
+          day_of_week: number
+          id?: string
+          notes?: string | null
+          org_id: string
+          posted_at?: string | null
+          scheduled_for?: string | null
+          slides?: Json
+          status?: string
+          template_key: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string | null
+          created_at?: string
+          day_of_week?: number
+          id?: string
+          notes?: string | null
+          org_id?: string
+          posted_at?: string | null
+          scheduled_for?: string | null
+          slides?: Json
+          status?: string
+          template_key?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "story_sequences_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "copy_clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "story_sequences_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
