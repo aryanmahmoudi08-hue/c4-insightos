@@ -241,7 +241,7 @@ function Closer() {
     <>
       <TopBar title="Closer Dashboard" subtitle="Calls, offers, deposits, cash collected — per-call tracking" showDateRange />
       <div className="p-4 md:p-6 space-y-4">
-        <DashboardBar title="CLOSER DASHBOARD" accent="destructive" />
+        <DashboardBar title="CLOSER DASHBOARD" accent="primary" />
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
