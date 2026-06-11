@@ -635,6 +635,7 @@ export type Database = {
           notes: string | null
           org_id: string
           pain_point: string | null
+          pipeline_status: string
           platform: Database["public"]["Enums"]["content_platform"]
           posted_at: string | null
           source_connector: string | null
@@ -662,6 +663,7 @@ export type Database = {
           notes?: string | null
           org_id: string
           pain_point?: string | null
+          pipeline_status?: string
           platform: Database["public"]["Enums"]["content_platform"]
           posted_at?: string | null
           source_connector?: string | null
@@ -689,6 +691,7 @@ export type Database = {
           notes?: string | null
           org_id?: string
           pain_point?: string | null
+          pipeline_status?: string
           platform?: Database["public"]["Enums"]["content_platform"]
           posted_at?: string | null
           source_connector?: string | null
