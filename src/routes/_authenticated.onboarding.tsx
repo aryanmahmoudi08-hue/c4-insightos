@@ -12,8 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Brain, MessageSquareQuote, Sparkles, Cloud, Pencil, Save, Search } from "lucide-react";
+import { Plus, Brain, MessageSquareQuote, Sparkles, Cloud, Pencil, Save, Search, TrendingDown, TrendingUp, Wand2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { analyzeIntake } from "@/lib/intake-insights.functions";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({ component: Onboarding });
 
@@ -41,6 +43,19 @@ function topPhrases(texts: string[], n = 2, limit = 20): { phrase: string; count
 
 type QType = "short" | "long" | "choice";
 type Section = "sales" | "fulfillment" | "logistics";
+type Signal = "bottleneck" | "double_down" | null;
+
+const BOTTLENECK_KEYS = new Set(["objections_before", "join_sooner", "fear", "tried_before", "biggest_bottleneck", "current_pain"]);
+const DOUBLE_DOWN_KEYS = new Set(["first_touchpoint", "pivotal_moment", "beliefs_shifted", "content_type_helped", "why_us", "wins_so_far", "desired_identity"]);
+const signalFor = (k: string): Signal => BOTTLENECK_KEYS.has(k) ? "bottleneck" : DOUBLE_DOWN_KEYS.has(k) ? "double_down" : null;
+const signalClass = (s: Signal) =>
+  s === "bottleneck" ? "border-l-2 border-l-destructive pl-3"
+  : s === "double_down" ? "border-l-2 border-l-success pl-3"
+  : "";
+const signalBadge = (s: Signal) =>
+  s === "bottleneck" ? <span className="inline-flex items-center gap-1 rounded bg-destructive/10 text-destructive px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"><TrendingDown className="h-2.5 w-2.5" />Bottleneck</span>
+  : s === "double_down" ? <span className="inline-flex items-center gap-1 rounded bg-success/10 text-success px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"><TrendingUp className="h-2.5 w-2.5" />Double down</span>
+  : null;
 const QUESTIONS: { key: string; q: string; type: QType; options?: string[]; section: Section }[] = [
   // --- Sales psychology (feeds content/coaching) ---
   { section: "sales", key: "name", q: "Name", type: "short" },
@@ -96,6 +111,13 @@ function Onboarding() {
   const [editMode, setEditMode] = useState(false);
   const [editDraft, setEditDraft] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
+  const [insightsByResp, setInsightsByResp] = useState<Record<string, { bottlenecks: { title: string; body: string; recommendation: string }[]; double_down: { title: string; body: string; recommendation: string }[] }>>({});
+  const analyzeFn = useServerFn(analyzeIntake);
+  const analyzeMut = useMutation({
+    mutationFn: (id: string) => analyzeFn({ data: { responseId: id } }),
+    onSuccess: (res, id) => { setInsightsByResp(m => ({ ...m, [id]: res })); toast.success("AI insights ready"); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
 
   const { data: responses } = useQuery({
     queryKey: ["onboarding", orgId],
@@ -185,9 +207,14 @@ function Onboarding() {
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-accent">{SECTION_META[sec].label}</div>
                       <div className="text-[11px] text-muted-foreground">{SECTION_META[sec].hint}</div>
                     </div>
-                    {QUESTIONS.filter(q => q.section === sec).map(q => (
-                      <div key={q.key} className="space-y-1.5">
-                        <Label className="text-xs leading-snug">{q.q}</Label>
+                    {QUESTIONS.filter(q => q.section === sec).map(q => {
+                      const sig = signalFor(q.key);
+                      return (
+                      <div key={q.key} className={`space-y-1.5 ${signalClass(sig)}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <Label className="text-xs leading-snug">{q.q}</Label>
+                          {signalBadge(sig)}
+                        </div>
                         {q.type === "short" && <Input name={q.key} maxLength={500} />}
                         {q.type === "long" && <Textarea name={q.key} rows={3} maxLength={2000} />}
                         {q.type === "choice" && (
@@ -199,7 +226,7 @@ function Onboarding() {
                           </Select>
                         )}
                       </div>
-                    ))}
+                    );})}
                   </div>
                 ))}
                 <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "Saving…" : "Submit intake"}</Button>
@@ -262,15 +289,70 @@ function Onboarding() {
                           </Button>
                         )}
                       </div>
+
+
+
+                      {/* AI insights */}
+                      <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            <Sparkles className="h-3.5 w-3.5 text-accent" /> AI insights from this intake
+                          </div>
+                          <Button size="sm" variant="outline" disabled={analyzeMut.isPending} onClick={() => analyzeMut.mutate(r.id)}>
+                            {analyzeMut.isPending && analyzeMut.variables === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                            {insightsByResp[r.id] ? "Re-analyze" : "Analyze"}
+                          </Button>
+                        </div>
+                        {insightsByResp[r.id] ? (
+                          <div className="grid md:grid-cols-2 gap-3">
+                            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-destructive">
+                                <TrendingDown className="h-3 w-3" /> Bottlenecks to fix
+                              </div>
+                              {insightsByResp[r.id].bottlenecks.length === 0 && <div className="text-xs text-muted-foreground italic">None surfaced.</div>}
+                              {insightsByResp[r.id].bottlenecks.map((i, idx) => (
+                                <div key={idx} className="space-y-1">
+                                  <div className="text-xs font-semibold">{i.title}</div>
+                                  <div className="text-[11px] text-muted-foreground leading-relaxed">{i.body}</div>
+                                  <div className="text-[11px] text-destructive"><span className="font-semibold">Fix: </span>{i.recommendation}</div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="rounded-md border border-success/30 bg-success/5 p-3 space-y-2">
+                              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-success">
+                                <TrendingUp className="h-3 w-3" /> Double down on
+                              </div>
+                              {insightsByResp[r.id].double_down.length === 0 && <div className="text-xs text-muted-foreground italic">None surfaced.</div>}
+                              {insightsByResp[r.id].double_down.map((i, idx) => (
+                                <div key={idx} className="space-y-1">
+                                  <div className="text-xs font-semibold">{i.title}</div>
+                                  <div className="text-[11px] text-muted-foreground leading-relaxed">{i.body}</div>
+                                  <div className="text-[11px] text-success"><span className="font-semibold">Amplify: </span>{i.recommendation}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            Click <span className="font-semibold">Analyze</span> to extract fixable bottlenecks (red questions) and high-leverage patterns to double down on (green questions) from this client's answers.
+                          </div>
+                        )}
+                      </div>
+
                       {(["sales","fulfillment","logistics"] as Section[]).map(sec => (
                         <div key={sec} className="space-y-2 pt-2">
                           <div className="border-t border-border pt-3">
                             <div className="text-[11px] font-semibold uppercase tracking-wider text-accent">{SECTION_META[sec].label}</div>
                             <div className="text-[11px] text-muted-foreground">{SECTION_META[sec].hint}</div>
                           </div>
-                          {QUESTIONS.filter(q => q.section === sec).map(q => (
-                            <div key={q.key} className="space-y-1">
-                              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{q.q}</div>
+                          {QUESTIONS.filter(q => q.section === sec).map(q => {
+                            const sig = signalFor(q.key);
+                            return (
+                            <div key={q.key} className={`space-y-1 ${signalClass(sig)}`}>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{q.q}</div>
+                                {signalBadge(sig)}
+                              </div>
                               {editMode ? (
                                 q.type === "long"
                                   ? <Textarea rows={3} value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
@@ -281,10 +363,10 @@ function Onboarding() {
                                       </Select>
                                     : <Input value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
                               ) : (
-                                ans[q.key] ? <div className="rounded bg-muted/30 p-3 text-sm whitespace-pre-wrap">{ans[q.key]}</div> : <div className="text-xs text-muted-foreground italic">—</div>
+                                ans[q.key] ? <div className={`rounded p-3 text-sm whitespace-pre-wrap ${sig === "bottleneck" ? "bg-destructive/5" : sig === "double_down" ? "bg-success/5" : "bg-muted/30"}`}>{ans[q.key]}</div> : <div className="text-xs text-muted-foreground italic">—</div>
                               )}
                             </div>
-                          ))}
+                          );})}
                         </div>
                       ))}
                     </div>
