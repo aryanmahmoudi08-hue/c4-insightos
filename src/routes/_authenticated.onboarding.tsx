@@ -12,8 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Brain, MessageSquareQuote, Sparkles, Cloud, Pencil, Save, Search } from "lucide-react";
+import { Plus, Brain, MessageSquareQuote, Sparkles, Cloud, Pencil, Save, Search, TrendingDown, TrendingUp, Wand2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { analyzeIntake } from "@/lib/intake-insights.functions";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({ component: Onboarding });
 
