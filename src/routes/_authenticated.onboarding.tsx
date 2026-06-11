@@ -289,7 +289,8 @@ function Onboarding() {
                           </Button>
                         )}
                       </div>
-                      </div>
+
+
 
                       {/* AI insights */}
                       <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
