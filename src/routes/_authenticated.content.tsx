@@ -25,10 +25,18 @@ type Angle = Database["public"]["Enums"]["content_angle"];
 type PieceRow = {
   id: string; title: string | null; platform: Platform; hook: string | null;
   angle: Angle | null; posted_at: string | null; url: string | null;
-  funnel_stage: string | null; body: string | null;
+  funnel_stage: string | null; body: string | null; pipeline_status: string;
   content_metrics: { views: number | null; likes: number | null; leads_generated: number | null; closes: number | null;
     cash_collected_cents: number | null; hook_retention_pct: number | null }[] | null;
 };
+
+const PIPELINE: { key: string; label: string; tone: string }[] = [
+  { key: "draft", label: "Draft", tone: "bg-muted text-muted-foreground" },
+  { key: "in_review", label: "In Review", tone: "bg-amber-500/15 text-amber-400" },
+  { key: "approved", label: "Approved", tone: "bg-blue-500/15 text-blue-400" },
+  { key: "ready_to_post", label: "Ready to Post", tone: "bg-emerald-500/15 text-emerald-400" },
+  { key: "posted", label: "Posted", tone: "bg-primary/15 text-primary" },
+];
 
 type Prefill = { id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; funnel_stage?: string; transcript?: string; views?: number; leads?: number; retention?: number };
 
