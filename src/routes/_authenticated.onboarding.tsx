@@ -200,9 +200,14 @@ function Onboarding() {
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-accent">{SECTION_META[sec].label}</div>
                       <div className="text-[11px] text-muted-foreground">{SECTION_META[sec].hint}</div>
                     </div>
-                    {QUESTIONS.filter(q => q.section === sec).map(q => (
-                      <div key={q.key} className="space-y-1.5">
-                        <Label className="text-xs leading-snug">{q.q}</Label>
+                    {QUESTIONS.filter(q => q.section === sec).map(q => {
+                      const sig = signalFor(q.key);
+                      return (
+                      <div key={q.key} className={`space-y-1.5 ${signalClass(sig)}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <Label className="text-xs leading-snug">{q.q}</Label>
+                          {signalBadge(sig)}
+                        </div>
                         {q.type === "short" && <Input name={q.key} maxLength={500} />}
                         {q.type === "long" && <Textarea name={q.key} rows={3} maxLength={2000} />}
                         {q.type === "choice" && (
@@ -214,7 +219,7 @@ function Onboarding() {
                           </Select>
                         )}
                       </div>
-                    ))}
+                    );})}
                   </div>
                 ))}
                 <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "Saving…" : "Submit intake"}</Button>
