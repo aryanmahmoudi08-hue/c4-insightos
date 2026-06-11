@@ -15,8 +15,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { generateCopyFn, reviewCopyFn, suggestAnglesFn, extractFingerprintFn } from "@/lib/copy-os.functions";
 import {
   Sparkles, Wand2, Search, Plus, Trash2, FileText, Video, Mail, BookOpen, MessageSquare,
-  Flame, Megaphone, Clapperboard, Music, Smartphone, ScrollText,
+  Flame, Megaphone, Clapperboard, Music, Smartphone, ScrollText, ImagePlus, X,
 } from "lucide-react";
+import { useRef } from "react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/copy")({
