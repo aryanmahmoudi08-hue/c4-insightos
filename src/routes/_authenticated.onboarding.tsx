@@ -111,6 +111,13 @@ function Onboarding() {
   const [editMode, setEditMode] = useState(false);
   const [editDraft, setEditDraft] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
+  const [insightsByResp, setInsightsByResp] = useState<Record<string, { bottlenecks: { title: string; body: string; recommendation: string }[]; double_down: { title: string; body: string; recommendation: string }[] }>>({});
+  const analyzeFn = useServerFn(analyzeIntake);
+  const analyzeMut = useMutation({
+    mutationFn: (id: string) => analyzeFn({ data: { responseId: id } }),
+    onSuccess: (res, id) => { setInsightsByResp(m => ({ ...m, [id]: res })); toast.success("AI insights ready"); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
 
   const { data: responses } = useQuery({
     queryKey: ["onboarding", orgId],
