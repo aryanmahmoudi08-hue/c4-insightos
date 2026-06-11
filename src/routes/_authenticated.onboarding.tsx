@@ -288,9 +288,14 @@ function Onboarding() {
                             <div className="text-[11px] font-semibold uppercase tracking-wider text-accent">{SECTION_META[sec].label}</div>
                             <div className="text-[11px] text-muted-foreground">{SECTION_META[sec].hint}</div>
                           </div>
-                          {QUESTIONS.filter(q => q.section === sec).map(q => (
-                            <div key={q.key} className="space-y-1">
-                              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{q.q}</div>
+                          {QUESTIONS.filter(q => q.section === sec).map(q => {
+                            const sig = signalFor(q.key);
+                            return (
+                            <div key={q.key} className={`space-y-1 ${signalClass(sig)}`}>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{q.q}</div>
+                                {signalBadge(sig)}
+                              </div>
                               {editMode ? (
                                 q.type === "long"
                                   ? <Textarea rows={3} value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
@@ -301,10 +306,10 @@ function Onboarding() {
                                       </Select>
                                     : <Input value={draft[q.key] ?? ""} onChange={(e) => setEditDraft(d => ({ ...d, [q.key]: e.target.value }))} />
                               ) : (
-                                ans[q.key] ? <div className="rounded bg-muted/30 p-3 text-sm whitespace-pre-wrap">{ans[q.key]}</div> : <div className="text-xs text-muted-foreground italic">—</div>
+                                ans[q.key] ? <div className={`rounded p-3 text-sm whitespace-pre-wrap ${sig === "bottleneck" ? "bg-destructive/5" : sig === "double_down" ? "bg-success/5" : "bg-muted/30"}`}>{ans[q.key]}</div> : <div className="text-xs text-muted-foreground italic">—</div>
                               )}
                             </div>
-                          ))}
+                          );})}
                         </div>
                       ))}
                     </div>
