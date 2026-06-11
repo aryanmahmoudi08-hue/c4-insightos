@@ -462,11 +462,38 @@ function ClientsTab() {
   );
 }
 
+function SwipeImage({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    supabase.storage.from("copy-swipes").createSignedUrl(path, 3600).then(({ data }) => {
+      if (active && data?.signedUrl) setUrl(data.signedUrl);
+    });
+    return () => { active = false; };
+  }, [path]);
+  if (!url) return <div className="aspect-square bg-muted rounded animate-pulse" />;
+  return <img src={url} alt="swipe" className="aspect-square object-cover rounded border border-border" />;
+}
+
+async function uploadSwipeImages(files: File[], orgId: string): Promise<string[]> {
+  const paths: string[] = [];
+  for (const f of files) {
+    if (!f.type.startsWith("image/")) continue;
+    const ext = f.name.split(".").pop() || "png";
+    const path = `${orgId}/${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from("copy-swipes").upload(path, f, { contentType: f.type });
+    if (error) { toast.error(`Upload failed: ${error.message}`); continue; }
+    paths.push(path);
+  }
+  return paths;
+}
+
 function SwipesTab() {
   const qc = useQueryClient();
   const { data: swipes = [] } = useSwipes();
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const filtered = swipes.filter((s: Record<string, unknown>) => {
     if (!q) return true;
@@ -475,7 +502,13 @@ function SwipesTab() {
   });
 
   const save = async (row: Record<string, unknown>) => {
-    const payload = { title: row.title as string, copy_type: row.copy_type as string, angle: (row.angle as string) || null, emotion: (row.emotion as string) || null, body: row.body as string, source: (row.source as string) || null, tags: (row.tags ?? []) as string[] };
+    const payload = {
+      title: row.title as string, copy_type: row.copy_type as string,
+      angle: (row.angle as string) || null, emotion: (row.emotion as string) || null,
+      body: row.body as string, source: (row.source as string) || null,
+      tags: (row.tags ?? []) as string[],
+      image_urls: (row.image_urls ?? []) as string[],
+    };
     if (row.id) await (supabase.from("copy_swipes") as never as { update: (p: unknown) => { eq: (k: string, v: string) => Promise<unknown> } }).update(payload).eq("id", row.id as string);
     else {
       const { data: m } = await supabase.from("memberships").select("org_id").limit(1).maybeSingle();
@@ -486,10 +519,39 @@ function SwipesTab() {
     setEditing(null);
   };
 
+  const handleFiles = async (files: File[]) => {
+    if (!editing || files.length === 0) return;
+    const { data: m } = await supabase.from("memberships").select("org_id").limit(1).maybeSingle();
+    if (!m?.org_id) return toast.error("No workspace");
+    const paths = await uploadSwipeImages(files, m.org_id);
+    if (paths.length === 0) return;
+    const existing = (editing.image_urls ?? []) as string[];
+    setEditing({ ...editing, image_urls: [...existing, ...paths] });
+    toast.success(`${paths.length} image${paths.length > 1 ? "s" : ""} added`);
+  };
+
+  const onPaste = async (e: React.ClipboardEvent) => {
+    const files: File[] = [];
+    for (const item of Array.from(e.clipboardData.items)) {
+      if (item.kind === "file") {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) { e.preventDefault(); await handleFiles(files); }
+  };
+
+  const onDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) await handleFiles(files);
+  };
+
   if (editing) {
     const e = editing;
+    const images = (e.image_urls ?? []) as string[];
     return (
-      <Card className="p-4 space-y-3 max-w-2xl">
+      <Card className="p-4 space-y-3 max-w-2xl" onPaste={onPaste} onDragOver={ev => ev.preventDefault()} onDrop={onDrop}>
         <Input placeholder="Title" value={(e.title as string) ?? ""} onChange={ev => setEditing({ ...e, title: ev.target.value })} />
         <div className="grid grid-cols-3 gap-2">
           <Select value={(e.copy_type as string) ?? ""} onValueChange={v => setEditing({ ...e, copy_type: v })}>
@@ -499,8 +561,38 @@ function SwipesTab() {
           <Input placeholder="Angle" value={(e.angle as string) ?? ""} onChange={ev => setEditing({ ...e, angle: ev.target.value })} />
           <Input placeholder="Emotion (urgency, curiosity…)" value={(e.emotion as string) ?? ""} onChange={ev => setEditing({ ...e, emotion: ev.target.value })} />
         </div>
-        <Textarea rows={8} placeholder="Swipe body" value={(e.body as string) ?? ""} onChange={ev => setEditing({ ...e, body: ev.target.value })} />
+        <Textarea rows={8} placeholder="Swipe body (paste copy here — or paste images directly into this card)" value={(e.body as string) ?? ""} onChange={ev => setEditing({ ...e, body: ev.target.value })} />
         <Input placeholder="Source (optional)" value={(e.source as string) ?? ""} onChange={ev => setEditing({ ...e, source: ev.target.value })} />
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-muted-foreground">Reference images · paste, drag, or upload</div>
+            <Button size="sm" variant="outline" type="button" onClick={() => fileRef.current?.click()}>
+              <ImagePlus className="h-3.5 w-3.5 mr-1" />Upload
+            </Button>
+            <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
+              onChange={ev => { const fs = Array.from(ev.target.files ?? []); handleFiles(fs); ev.target.value = ""; }} />
+          </div>
+          {images.length === 0 ? (
+            <div className="border-2 border-dashed border-border rounded-md p-6 text-center text-xs text-muted-foreground">
+              Drop or paste screenshots here (story examples, hooks, ads…)
+            </div>
+          ) : (
+            <div className="grid grid-cols-4 gap-2">
+              {images.map((p) => (
+                <div key={p} className="relative group">
+                  <SwipeImage path={p} />
+                  <button type="button"
+                    onClick={() => setEditing({ ...e, image_urls: images.filter(x => x !== p) })}
+                    className="absolute top-1 right-1 bg-background/80 rounded-full p-0.5 opacity-0 group-hover:opacity-100">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="flex gap-2"><Button onClick={() => save(e)}>Save</Button><Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button></div>
       </Card>
     );
@@ -510,10 +602,12 @@ function SwipesTab() {
     <div className="space-y-3">
       <div className="flex gap-2">
         <Input placeholder="Search swipes…" value={q} onChange={e => setQ(e.target.value)} />
-        <Button size="sm" onClick={() => setEditing({ copy_type: "email_single" })}><Plus className="h-4 w-4 mr-1" />Add swipe</Button>
+        <Button size="sm" onClick={() => setEditing({ copy_type: "email_single", image_urls: [] })}><Plus className="h-4 w-4 mr-1" />Add swipe</Button>
       </div>
       <div className="grid sm:grid-cols-2 gap-3">
-        {filtered.map((s: Record<string, unknown>) => (
+        {filtered.map((s: Record<string, unknown>) => {
+          const imgs = ((s.image_urls ?? []) as string[]);
+          return (
           <Card key={s.id as string} className="p-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -522,19 +616,26 @@ function SwipesTab() {
                   <Badge variant="outline" className="text-[10px]">{s.copy_type as string}</Badge>
                   {s.angle ? <Badge variant="outline" className="text-[10px]">{s.angle as string}</Badge> : null}
                   {s.emotion ? <Badge variant="outline" className="text-[10px]">{s.emotion as string}</Badge> : null}
+                  {imgs.length > 0 ? <Badge variant="outline" className="text-[10px]"><ImagePlus className="h-2.5 w-2.5 mr-0.5" />{imgs.length}</Badge> : null}
                 </div>
               </div>
               <button onClick={async () => { await supabase.from("copy_swipes").delete().eq("id", s.id as string); qc.invalidateQueries({ queryKey: ["copy_swipes"] }); }} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
             </div>
-            <div className="text-xs text-muted-foreground mt-2 line-clamp-4 whitespace-pre-wrap">{s.body as string}</div>
+            {imgs.length > 0 && (
+              <div className="grid grid-cols-4 gap-1 mt-2">
+                {imgs.slice(0, 4).map(p => <SwipeImage key={p} path={p} />)}
+              </div>
+            )}
+            {s.body ? <div className="text-xs text-muted-foreground mt-2 line-clamp-4 whitespace-pre-wrap">{s.body as string}</div> : null}
             <Button size="sm" variant="ghost" className="mt-2" onClick={() => setEditing(s)}>Edit</Button>
           </Card>
-        ))}
+        );})}
         {filtered.length === 0 && <div className="text-sm text-muted-foreground col-span-full">No swipes match.</div>}
       </div>
     </div>
   );
 }
+
 
 function ReviewTab() {
   const { data: clients = [] } = useClients();
