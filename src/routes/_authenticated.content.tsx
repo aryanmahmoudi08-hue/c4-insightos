@@ -25,10 +25,18 @@ type Angle = Database["public"]["Enums"]["content_angle"];
 type PieceRow = {
   id: string; title: string | null; platform: Platform; hook: string | null;
   angle: Angle | null; posted_at: string | null; url: string | null;
-  funnel_stage: string | null; body: string | null;
+  funnel_stage: string | null; body: string | null; pipeline_status: string;
   content_metrics: { views: number | null; likes: number | null; leads_generated: number | null; closes: number | null;
     cash_collected_cents: number | null; hook_retention_pct: number | null }[] | null;
 };
+
+const PIPELINE: { key: string; label: string; tone: string }[] = [
+  { key: "draft", label: "Draft", tone: "bg-muted text-muted-foreground" },
+  { key: "in_review", label: "In Review", tone: "bg-amber-500/15 text-amber-400" },
+  { key: "approved", label: "Approved", tone: "bg-blue-500/15 text-blue-400" },
+  { key: "ready_to_post", label: "Ready to Post", tone: "bg-emerald-500/15 text-emerald-400" },
+  { key: "posted", label: "Posted", tone: "bg-primary/15 text-primary" },
+];
 
 type Prefill = { id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; funnel_stage?: string; transcript?: string; views?: number; leads?: number; retention?: number };
 
@@ -56,13 +64,28 @@ function ContentIntel() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("content_pieces")
-        .select("id, title, platform, hook, angle, posted_at, url, funnel_stage, body, content_metrics(views, likes, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
+        .select("id, title, platform, hook, angle, posted_at, url, funnel_stage, body, pipeline_status, content_metrics(views, likes, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
         .eq("org_id", orgId!)
         .order("posted_at", { ascending: false, nullsFirst: false })
-        .limit(50);
+        .limit(200);
       if (error) throw error;
       return data as unknown as PieceRow[];
     },
+  });
+
+  const moveStatus = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const patch: { pipeline_status: string; posted_at?: string } = { pipeline_status: status };
+      if (status === "posted") patch.posted_at = new Date().toISOString();
+      const { error } = await supabase.from("content_pieces").update(patch).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["content"] });
+      if (vars.status === "ready_to_post") toast.success("Marked ready · automation will notify the team channel");
+      else toast.success("Moved to " + (PIPELINE.find(p => p.key === vars.status)?.label ?? vars.status));
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
   const save = useMutation({
@@ -191,11 +214,70 @@ function ContentIntel() {
           </Dialog>
         </div>
 
-        <Tabs defaultValue="table">
+        <Tabs defaultValue="pipeline">
           <TabsList>
+            <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
             <TabsTrigger value="table">Table</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="pipeline">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+              {PIPELINE.map((col, colIdx) => {
+                const items = (pieces ?? []).filter(p => (p.pipeline_status ?? "draft") === col.key);
+                return (
+                  <div key={col.key} className="rounded-lg border border-border bg-card flex flex-col min-h-[300px]">
+                    <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${col.tone}`}>{col.label}</span>
+                        <span className="text-[11px] text-muted-foreground">{items.length}</span>
+                      </div>
+                    </div>
+                    <div className="p-2 space-y-2 flex-1 overflow-y-auto max-h-[70vh]">
+                      {items.length === 0 && (
+                        <div className="text-[11px] text-muted-foreground italic text-center py-6">Empty</div>
+                      )}
+                      {items.map(p => (
+                        <div key={p.id} className="rounded-md border border-border bg-background p-2.5 space-y-1.5 hover:border-accent/40 transition-colors">
+                          <div className="flex items-start justify-between gap-2">
+                            <button onClick={() => setOverviewFor(p)} className="text-xs font-medium leading-snug text-left hover:text-accent line-clamp-2">{p.title || "(untitled)"}</button>
+                            {p.funnel_stage && (
+                              <span className={`shrink-0 inline-block rounded px-1 py-0.5 text-[9px] font-mono uppercase ${
+                                p.funnel_stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
+                                p.funnel_stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
+                                p.funnel_stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" :
+                                "bg-muted text-muted-foreground"
+                              }`}>{p.funnel_stage}</span>
+                            )}
+                          </div>
+                          {p.hook && <div className="text-[11px] text-muted-foreground line-clamp-2">{p.hook}</div>}
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-[10px] uppercase text-muted-foreground">{p.platform}</span>
+                            <div className="flex gap-1">
+                              {colIdx > 0 && (
+                                <button title="Move back"
+                                  onClick={() => moveStatus.mutate({ id: p.id, status: PIPELINE[colIdx - 1].key })}
+                                  className="text-[10px] text-muted-foreground hover:text-foreground px-1">←</button>
+                              )}
+                              {colIdx < PIPELINE.length - 1 && (
+                                <button title={colIdx === PIPELINE.length - 2 ? "Mark ready · alerts team" : "Advance"}
+                                  onClick={() => moveStatus.mutate({ id: p.id, status: PIPELINE[colIdx + 1].key })}
+                                  className="text-[10px] text-accent hover:text-accent/80 px-1 font-semibold">→</button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-3">
+              Tip: when a piece moves to <span className="font-mono">Ready to Post</span> the team's posting-channel automation will fire. New ideas land in <span className="font-mono">Draft</span> by default — log content above to start the pipeline.
+            </p>
+          </TabsContent>
+
 
           <TabsContent value="table">
             <div className="rounded-lg border border-border bg-card overflow-x-auto">
