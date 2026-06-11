@@ -43,6 +43,19 @@ function topPhrases(texts: string[], n = 2, limit = 20): { phrase: string; count
 
 type QType = "short" | "long" | "choice";
 type Section = "sales" | "fulfillment" | "logistics";
+type Signal = "bottleneck" | "double_down" | null;
+
+const BOTTLENECK_KEYS = new Set(["objections_before", "join_sooner", "fear", "tried_before", "biggest_bottleneck", "current_pain"]);
+const DOUBLE_DOWN_KEYS = new Set(["first_touchpoint", "pivotal_moment", "beliefs_shifted", "content_type_helped", "why_us", "wins_so_far", "desired_identity"]);
+const signalFor = (k: string): Signal => BOTTLENECK_KEYS.has(k) ? "bottleneck" : DOUBLE_DOWN_KEYS.has(k) ? "double_down" : null;
+const signalClass = (s: Signal) =>
+  s === "bottleneck" ? "border-l-2 border-l-destructive pl-3"
+  : s === "double_down" ? "border-l-2 border-l-success pl-3"
+  : "";
+const signalBadge = (s: Signal) =>
+  s === "bottleneck" ? <span className="inline-flex items-center gap-1 rounded bg-destructive/10 text-destructive px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"><TrendingDown className="h-2.5 w-2.5" />Bottleneck</span>
+  : s === "double_down" ? <span className="inline-flex items-center gap-1 rounded bg-success/10 text-success px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"><TrendingUp className="h-2.5 w-2.5" />Double down</span>
+  : null;
 const QUESTIONS: { key: string; q: string; type: QType; options?: string[]; section: Section }[] = [
   // --- Sales psychology (feeds content/coaching) ---
   { section: "sales", key: "name", q: "Name", type: "short" },
