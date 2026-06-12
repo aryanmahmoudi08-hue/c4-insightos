@@ -15,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plus, Brain, MessageSquareQuote, Sparkles, Cloud, Pencil, Save, Search, TrendingDown, TrendingUp, Wand2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { analyzeIntake } from "@/lib/intake-insights.functions";
+import { analyzeIntake, analyzeIntakesAggregate } from "@/lib/intake-insights.functions";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({ component: Onboarding });
 
