@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { connectWorkspaceConnector, disconnectWorkspaceConnector } from "@/lib/connectors.functions";
+import { WebhookChannels } from "@/components/webhook-channels";
 
 export const Route = createFileRoute("/_authenticated/connectors")({ component: Connectors });
 
