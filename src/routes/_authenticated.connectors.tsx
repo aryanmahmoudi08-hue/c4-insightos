@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { connectWorkspaceConnector, disconnectWorkspaceConnector } from "@/lib/connectors.functions";
+import { WebhookChannels } from "@/components/webhook-channels";
 
 export const Route = createFileRoute("/_authenticated/connectors")({ component: Connectors });
 
@@ -118,6 +119,7 @@ function Connectors() {
             You can also keep logging data manually via the <span className="text-foreground">Log day / Log call</span> buttons.
           </p>
         </div>
+        <WebhookChannels />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {(registry ?? []).map((c) => {
             const conn = stateFor(c.id);

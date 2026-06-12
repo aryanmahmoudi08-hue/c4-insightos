@@ -157,6 +157,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "call_objections_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "lead_attribution_v"
+            referencedColumns: ["call_id"]
+          },
+          {
             foreignKeyName: "call_objections_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
@@ -239,6 +246,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "calls_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_attribution_v"
+            referencedColumns: ["lead_id"]
+          },
           {
             foreignKeyName: "calls_lead_id_fkey"
             columns: ["lead_id"]
@@ -338,6 +352,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "clients_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_attribution_v"
+            referencedColumns: ["lead_id"]
+          },
           {
             foreignKeyName: "clients_lead_id_fkey"
             columns: ["lead_id"]
@@ -755,6 +776,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "conversations_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_attribution_v"
+            referencedColumns: ["lead_id"]
+          },
           {
             foreignKeyName: "conversations_lead_id_fkey"
             columns: ["lead_id"]
@@ -1207,6 +1235,13 @@ export type Database = {
             foreignKeyName: "lead_content_touches_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_attribution_v"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_content_touches_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -1248,6 +1283,13 @@ export type Database = {
           payload?: Json
         }
         Relationships: [
+          {
+            foreignKeyName: "lead_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_attribution_v"
+            referencedColumns: ["lead_id"]
+          },
           {
             foreignKeyName: "lead_events_lead_id_fkey"
             columns: ["lead_id"]
@@ -1801,6 +1843,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "calls"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "lead_attribution_v"
+            referencedColumns: ["call_id"]
           },
           {
             foreignKeyName: "payments_client_id_fkey"
@@ -2388,6 +2437,7 @@ export type Database = {
       webhook_subscriptions: {
         Row: {
           active: boolean
+          category: string | null
           channel: string
           created_at: string
           event_types: string[]
@@ -2400,6 +2450,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          category?: string | null
           channel?: string
           created_at?: string
           event_types?: string[]
@@ -2412,6 +2463,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          category?: string | null
           channel?: string
           created_at?: string
           event_types?: string[]
@@ -2434,7 +2486,49 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      lead_attribution_v: {
+        Row: {
+          call_cash_cents: number | null
+          call_closed: boolean | null
+          call_id: string | null
+          call_scheduled_for: string | null
+          call_showed: boolean | null
+          closer_name: string | null
+          email: string | null
+          first_touch_content_id: string | null
+          first_touch_hook: string | null
+          first_touch_platform:
+            | Database["public"]["Enums"]["content_platform"]
+            | null
+          first_touch_title: string | null
+          full_name: string | null
+          handle: string | null
+          last_payment_at: string | null
+          lead_created_at: string | null
+          lead_id: string | null
+          org_id: string | null
+          payments_total_cents: number | null
+          setter_name: string | null
+          source_connector: string | null
+          status: Database["public"]["Enums"]["lead_status"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_first_touch_content_id_fkey"
+            columns: ["first_touch_content_id"]
+            isOneToOne: false
+            referencedRelation: "content_pieces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       approve_membership_request: {
