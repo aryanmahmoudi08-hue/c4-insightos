@@ -242,7 +242,58 @@ function Onboarding() {
           </Dialog>
         </div>
 
+        {/* 30-day aggregate AI insights */}
+        <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Sparkles className="h-4 w-4 text-accent" /> 30-day intake insights
+              </div>
+              <div className="text-[11px] text-muted-foreground">Averages responses across the last 30 days · what to double down on · what bottlenecks to fix</div>
+            </div>
+            <Button size="sm" variant="outline" disabled={aggregateMut.isPending} onClick={() => aggregateMut.mutate()}>
+              {aggregateMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+              {aggInsights ? "Re-analyze 30d" : "Analyze last 30 days"}
+            </Button>
+          </div>
+          {aggInsights && (
+            aggInsights.sampleSize === 0 ? (
+              <div className="text-xs text-muted-foreground italic">No intakes in the last 30 days yet.</div>
+            ) : (
+              <div className="grid md:grid-cols-2 gap-3">
+                <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-destructive">
+                    <TrendingDown className="h-3 w-3" /> Bottlenecks across {aggInsights.sampleSize} intakes
+                  </div>
+                  {aggInsights.bottlenecks.length === 0 && <div className="text-xs text-muted-foreground italic">None surfaced.</div>}
+                  {aggInsights.bottlenecks.map((i, idx) => (
+                    <div key={idx} className="space-y-1">
+                      <div className="text-xs font-semibold">{i.title}</div>
+                      <div className="text-[11px] text-muted-foreground leading-relaxed">{i.body}</div>
+                      <div className="text-[11px] text-destructive"><span className="font-semibold">Fix: </span>{i.recommendation}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-md border border-success/30 bg-success/5 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-success">
+                    <TrendingUp className="h-3 w-3" /> Double down across {aggInsights.sampleSize} intakes
+                  </div>
+                  {aggInsights.double_down.length === 0 && <div className="text-xs text-muted-foreground italic">None surfaced.</div>}
+                  {aggInsights.double_down.map((i, idx) => (
+                    <div key={idx} className="space-y-1">
+                      <div className="text-xs font-semibold">{i.title}</div>
+                      <div className="text-[11px] text-muted-foreground leading-relaxed">{i.body}</div>
+                      <div className="text-[11px] text-success"><span className="font-semibold">Amplify: </span>{i.recommendation}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          )}
+        </div>
+
         <Tabs defaultValue="intakes">
+
           <TabsList>
             <TabsTrigger value="intakes">Intakes · {responses?.length ?? 0}</TabsTrigger>
             <TabsTrigger value="themes"><Cloud className="h-3.5 w-3.5 mr-1" />Themes</TabsTrigger>
