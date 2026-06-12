@@ -242,20 +242,23 @@ function Onboarding() {
           </Dialog>
         </div>
 
-        {/* 30-day aggregate AI insights */}
-        <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-          <div className="flex items-center justify-between">
+        {/* 30-day aggregate AI insights — across ALL intakes */}
+        <div className="rounded-lg border-2 border-accent/40 bg-gradient-to-br from-accent/5 to-card p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold">
-                <Sparkles className="h-4 w-4 text-accent" /> 30-day intake insights
+                <Sparkles className="h-4 w-4 text-accent" /> 30-day pattern analysis · ALL clients
               </div>
-              <div className="text-[11px] text-muted-foreground">Averages responses across the last 30 days · what to double down on · what bottlenecks to fix</div>
+              <div className="text-[11px] text-muted-foreground">
+                Aggregates answers from <span className="font-semibold text-foreground">every intake</span> submitted in the last 30 days. Finds repeating bottlenecks to fix and winning patterns to amplify across your whole client base — not one person.
+              </div>
             </div>
-            <Button size="sm" variant="outline" disabled={aggregateMut.isPending} onClick={() => aggregateMut.mutate()}>
+            <Button size="sm" disabled={aggregateMut.isPending} onClick={() => aggregateMut.mutate()}>
               {aggregateMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-              {aggInsights ? "Re-analyze 30d" : "Analyze last 30 days"}
+              {aggInsights ? "Re-analyze all 30d intakes" : "Analyze all intakes (30d)"}
             </Button>
           </div>
+
           {aggInsights && (
             aggInsights.sampleSize === 0 ? (
               <div className="text-xs text-muted-foreground italic">No intakes in the last 30 days yet.</div>
