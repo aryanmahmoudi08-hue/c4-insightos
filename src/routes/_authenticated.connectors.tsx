@@ -119,6 +119,7 @@ function Connectors() {
             You can also keep logging data manually via the <span className="text-foreground">Log day / Log call</span> buttons.
           </p>
         </div>
+        <WebhookChannels />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {(registry ?? []).map((c) => {
             const conn = stateFor(c.id);
