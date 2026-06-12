@@ -15,6 +15,7 @@ import { Plus, Video, Layers, Pencil, ExternalLink, Trash2, Sparkles, ChevronRig
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeContent } from "@/lib/analyze-content.functions";
+import { dispatchContentReady } from "@/lib/dispatch.functions";
 import { coachContentFn } from "@/lib/coach-content.functions";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import type { Database } from "@/integrations/supabase/types";
