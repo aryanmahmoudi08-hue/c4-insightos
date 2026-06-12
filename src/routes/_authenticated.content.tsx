@@ -74,16 +74,20 @@ function ContentIntel() {
     },
   });
 
+  const dispatchReadyFn = useServerFn(dispatchContentReady);
   const moveStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const patch: { pipeline_status: string; posted_at?: string } = { pipeline_status: status };
       if (status === "posted") patch.posted_at = new Date().toISOString();
       const { error } = await supabase.from("content_pieces").update(patch).eq("id", id);
       if (error) throw error;
+      if (status === "ready_to_post") {
+        try { await dispatchReadyFn({ data: { contentId: id } }); } catch (e) { console.warn("dispatch failed", e); }
+      }
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["content"] });
-      if (vars.status === "ready_to_post") toast.success("Marked ready · automation will notify the team channel");
+      if (vars.status === "ready_to_post") toast.success("Marked ready · script sent to the matching admin channel");
       else toast.success("Moved to " + (PIPELINE.find(p => p.key === vars.status)?.label ?? vars.status));
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
