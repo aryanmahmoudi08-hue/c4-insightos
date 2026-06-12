@@ -45,8 +45,8 @@ type QType = "short" | "long" | "choice";
 type Section = "sales" | "fulfillment" | "logistics";
 type Signal = "bottleneck" | "double_down" | null;
 
-const BOTTLENECK_KEYS = new Set(["objections_before", "join_sooner", "fear", "tried_before", "biggest_bottleneck", "current_pain"]);
-const DOUBLE_DOWN_KEYS = new Set(["first_touchpoint", "pivotal_moment", "beliefs_shifted", "content_type_helped", "why_us", "wins_so_far", "desired_identity"]);
+const BOTTLENECK_KEYS = new Set(["objections_before", "join_sooner", "fear"]);
+const DOUBLE_DOWN_KEYS = new Set(["first_touchpoint", "pivotal_moment", "beliefs_shifted", "content_type_helped"]);
 const signalFor = (k: string): Signal => BOTTLENECK_KEYS.has(k) ? "bottleneck" : DOUBLE_DOWN_KEYS.has(k) ? "double_down" : null;
 const signalClass = (s: Signal) =>
   s === "bottleneck" ? "border-l-2 border-l-destructive pl-3"
