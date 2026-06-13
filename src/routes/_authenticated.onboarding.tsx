@@ -310,7 +310,7 @@ function Onboarding() {
 
           {aggInsights && (
             aggInsights.sampleSize === 0 ? (
-              <div className="text-xs text-muted-foreground italic">No intakes in the last 30 days yet.</div>
+              <div className="text-xs text-muted-foreground italic">No intakes in this range yet.</div>
             ) : (
               <div className="grid md:grid-cols-2 gap-3">
                 <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-2">
