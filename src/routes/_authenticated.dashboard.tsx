@@ -186,18 +186,27 @@ function Dashboard() {
     <>
       <TopBar title="Executive Command Center" subtitle="Real-time KPIs across content, attribution, and sales" showDateRange />
       <div className="p-4 md:p-6 space-y-4">
-        <DashboardBar title="EXECUTIVE COMMAND CENTER" accent="primary" />
+        <SlimHeader
+          icon={<Activity className="h-4 w-4" />}
+          title="Executive Command Center"
+          subtitle="Real-time KPIs across content, attribution, and sales"
+          accent="accent"
+          right={
+            <span className="text-[11px] font-mono text-muted-foreground">
+              {isLoading ? "syncing…" : `${range.from} → ${range.to} · vs prior ${Math.max(1, Math.round((new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400e3) + 1)}d`}
+            </span>
+          }
+        />
 
-        <div className="flex items-center justify-end gap-3 flex-wrap">
-          <div className="text-xs text-muted-foreground font-mono">{isLoading ? "syncing…" : `${range.from} → ${range.to} · vs prior ${Math.max(1, Math.round((new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400e3) + 1)}d`}</div>
-        </div>
-
+        {/* Weekly digest */}
+        <WeeklyDigest pace={stats?.pace} curr={c} prev={p} />
 
         {/* Pace predictor */}
         <PaceCard pace={stats?.pace} />
 
-        {/* Hero KPI grid with WoW deltas */}
+        {/* Hero KPI grid with WoW deltas + sparklines */}
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+
           <DeltaKpi label="CASH COLLECTED" value={money(c?.cash ?? 0)} curr={c?.cash ?? 0} prev={p?.cash ?? 0} tone="money" />
           <DeltaKpi label="CONTRACT VALUE" value={money(c?.contractValue ?? 0)} curr={c?.contractValue ?? 0} prev={p?.contractValue ?? 0} tone="money" />
           <DeltaKpi label="NEW LEADS" value={fmt(c?.newLeads ?? 0)} curr={c?.newLeads ?? 0} prev={p?.newLeads ?? 0} />
