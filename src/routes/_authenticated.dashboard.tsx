@@ -3,12 +3,16 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
-import { DashboardBar } from "@/components/kpi-tile";
 import { useDateRange } from "@/hooks/use-date-range";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, Sparkles, TrendingUp, TrendingDown, Minus, Target } from "lucide-react";
+import { ArrowUpRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, Activity, Calendar, Inbox } from "lucide-react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import { Sparkline } from "@/components/sparkline";
+import { SlimHeader } from "@/components/slim-header";
+import { EmptyState } from "@/components/empty-state";
+
 
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: Dashboard });
 
@@ -123,27 +127,43 @@ function Dashboard() {
 
       // Daily series
       const seriesDays = Math.min(60, days);
-      const series: { d: string; cash: number; leads: number }[] = [];
+      type SeriesPoint = { d: string; cash: number; leads: number; views: number; calls: number; showed: number; offers: number; closed: number; contractValue: number };
+      const series: SeriesPoint[] = [];
       const fromTime = new Date(range.from).getTime();
       for (let i = 0; i < seriesDays; i++) {
         const dt = new Date(fromTime + i * 86400e3);
-        series.push({ d: dt.toISOString().slice(5, 10), cash: 0, leads: 0 });
+        series.push({ d: dt.toISOString().slice(5, 10), cash: 0, leads: 0, views: 0, calls: 0, showed: 0, offers: 0, closed: 0, contractValue: 0 });
       }
-      const [seriesPays, seriesLeads, seriesCalls, seriesSetters] = await Promise.all([
+      const [seriesPays, seriesLeads, seriesCalls, seriesSetters, seriesContent] = await Promise.all([
         supabase.from("payments").select("amount_cents, collected_at").eq("org_id", orgId!).gte("collected_at", fromISO).lte("collected_at", toISO),
         supabase.from("leads").select("created_at").eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO),
-        supabase.from("calls").select("cash_collected_cents, created_at").eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO),
-        supabase.from("setter_activity").select("cash_collected_cents, activity_date").eq("org_id", orgId!).gte("activity_date", range.from).lte("activity_date", range.to),
+        supabase.from("calls").select("showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at").eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO),
+        supabase.from("setter_activity").select("cash_collected_cents, calls_on_calendar, sets, live_calls, closes, activity_date").eq("org_id", orgId!).gte("activity_date", range.from).lte("activity_date", range.to),
+        supabase.from("content_metrics").select("views, captured_at").eq("org_id", orgId!).gte("captured_at", fromISO).lte("captured_at", toISO),
       ]);
       const idx = (iso?: string | null) => { if (!iso) return -1; const k = iso.slice(5, 10); return series.findIndex(s => s.d === k); };
-      // Per-day: prefer max of payments vs (calls + setter) to avoid double-counting same dollars
       const payByDay = new Map<number, number>();
       const reportedByDay = new Map<number, number>();
       for (const p of seriesPays.data ?? []) { const i = idx(p.collected_at); if (i >= 0) payByDay.set(i, (payByDay.get(i) ?? 0) + (p.amount_cents ?? 0)); }
-      for (const c of seriesCalls.data ?? []) { const i = idx(c.created_at); if (i >= 0) reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (c.cash_collected_cents ?? 0)); }
-      for (const a of seriesSetters.data ?? []) { const i = idx(a.activity_date); if (i >= 0) reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (a.cash_collected_cents ?? 0)); }
+      for (const cc of seriesCalls.data ?? []) {
+        const i = idx(cc.created_at); if (i < 0) continue;
+        reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (cc.cash_collected_cents ?? 0));
+        series[i].calls += 1;
+        if (cc.showed) series[i].showed += 1;
+        if (cc.offer_made || cc.closed) series[i].offers += 1;
+        if (cc.closed) series[i].closed += 1;
+        series[i].contractValue += cc.contract_value_cents ?? 0;
+      }
+      for (const a of seriesSetters.data ?? []) {
+        const i = idx(a.activity_date); if (i < 0) continue;
+        reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (a.cash_collected_cents ?? 0));
+        series[i].calls = Math.max(series[i].calls, a.calls_on_calendar ?? a.sets ?? 0);
+        series[i].showed = Math.max(series[i].showed, a.live_calls ?? 0);
+        series[i].closed = Math.max(series[i].closed, a.closes ?? 0);
+      }
       for (let i = 0; i < series.length; i++) series[i].cash = Math.max(payByDay.get(i) ?? 0, reportedByDay.get(i) ?? 0);
       for (const l of seriesLeads.data ?? []) { const i = idx(l.created_at); if (i >= 0) series[i].leads += 1; }
+      for (const m of seriesContent.data ?? []) { const i = idx(m.captured_at); if (i >= 0) series[i].views += m.views ?? 0; }
 
       // Funnel with conversion percentages
       const funnel = [
@@ -169,6 +189,7 @@ function Dashboard() {
         contentAttribution: contentAttribution.data ?? [],
         pace: { monthCash, projection, dayOfMonth, daysInMonth, dailyPace },
       };
+
     },
   });
 
@@ -182,26 +203,34 @@ function Dashboard() {
     <>
       <TopBar title="Executive Command Center" subtitle="Real-time KPIs across content, attribution, and sales" showDateRange />
       <div className="p-4 md:p-6 space-y-4">
-        <DashboardBar title="EXECUTIVE COMMAND CENTER" accent="primary" />
+        <SlimHeader
+          icon={<Activity className="h-4 w-4" />}
+          title="Executive Command Center"
+          subtitle="Real-time KPIs across content, attribution, and sales"
+          accent="accent"
+          right={
+            <span className="text-[11px] font-mono text-muted-foreground">
+              {isLoading ? "syncing…" : `${range.from} → ${range.to} · vs prior ${Math.max(1, Math.round((new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400e3) + 1)}d`}
+            </span>
+          }
+        />
 
-        <div className="flex items-center justify-end gap-3 flex-wrap">
-          <div className="text-xs text-muted-foreground font-mono">{isLoading ? "syncing…" : `${range.from} → ${range.to} · vs prior ${Math.max(1, Math.round((new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400e3) + 1)}d`}</div>
-        </div>
-
+        {/* Weekly digest */}
+        <WeeklyDigest pace={stats?.pace} curr={c} prev={p} />
 
         {/* Pace predictor */}
         <PaceCard pace={stats?.pace} />
 
-        {/* Hero KPI grid with WoW deltas */}
+        {/* Hero KPI grid with WoW deltas + sparklines */}
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-          <DeltaKpi label="CASH COLLECTED" value={money(c?.cash ?? 0)} curr={c?.cash ?? 0} prev={p?.cash ?? 0} tone="money" />
-          <DeltaKpi label="CONTRACT VALUE" value={money(c?.contractValue ?? 0)} curr={c?.contractValue ?? 0} prev={p?.contractValue ?? 0} tone="money" />
-          <DeltaKpi label="NEW LEADS" value={fmt(c?.newLeads ?? 0)} curr={c?.newLeads ?? 0} prev={p?.newLeads ?? 0} />
-          <DeltaKpi label="TOTAL VIEWS" value={fmt(c?.views ?? 0)} curr={c?.views ?? 0} prev={p?.views ?? 0} />
-          <DeltaKpi label="CALLS BOOKED" value={fmt(c?.totalCalls ?? 0)} curr={c?.totalCalls ?? 0} prev={p?.totalCalls ?? 0} />
-          <DeltaKpi label="SHOWED" value={fmt(c?.showed ?? 0)} curr={c?.showed ?? 0} prev={p?.showed ?? 0} hint={showRate} />
-          <DeltaKpi label="OFFERS MADE" value={fmt(c?.offers ?? 0)} curr={c?.offers ?? 0} prev={p?.offers ?? 0} hint={offerRate} />
-          <DeltaKpi label="CLOSES" value={fmt(c?.closed ?? 0)} curr={c?.closed ?? 0} prev={p?.closed ?? 0} hint={closeRate} tone="rate" />
+          <DeltaKpi label="CASH COLLECTED" value={money(c?.cash ?? 0)} curr={c?.cash ?? 0} prev={p?.cash ?? 0} tone="money" spark={(stats?.series ?? []).map(s => s.cash)} />
+          <DeltaKpi label="CONTRACT VALUE" value={money(c?.contractValue ?? 0)} curr={c?.contractValue ?? 0} prev={p?.contractValue ?? 0} tone="money" spark={(stats?.series ?? []).map(s => s.contractValue)} />
+          <DeltaKpi label="NEW LEADS" value={fmt(c?.newLeads ?? 0)} curr={c?.newLeads ?? 0} prev={p?.newLeads ?? 0} spark={(stats?.series ?? []).map(s => s.leads)} />
+          <DeltaKpi label="TOTAL VIEWS" value={fmt(c?.views ?? 0)} curr={c?.views ?? 0} prev={p?.views ?? 0} spark={(stats?.series ?? []).map(s => s.views)} />
+          <DeltaKpi label="CALLS BOOKED" value={fmt(c?.totalCalls ?? 0)} curr={c?.totalCalls ?? 0} prev={p?.totalCalls ?? 0} spark={(stats?.series ?? []).map(s => s.calls)} />
+          <DeltaKpi label="SHOWED" value={fmt(c?.showed ?? 0)} curr={c?.showed ?? 0} prev={p?.showed ?? 0} hint={showRate} spark={(stats?.series ?? []).map(s => s.showed)} />
+          <DeltaKpi label="OFFERS MADE" value={fmt(c?.offers ?? 0)} curr={c?.offers ?? 0} prev={p?.offers ?? 0} hint={offerRate} spark={(stats?.series ?? []).map(s => s.offers)} />
+          <DeltaKpi label="CLOSES" value={fmt(c?.closed ?? 0)} curr={c?.closed ?? 0} prev={p?.closed ?? 0} hint={closeRate} tone="rate" spark={(stats?.series ?? []).map(s => s.closed)} />
         </div>
 
         {/* Charts row */}
@@ -216,48 +245,31 @@ function Dashboard() {
             </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={stats?.series ?? []}>
+                <AreaChart data={stats?.series ?? []} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="cashGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="oklch(0.66 0.18 258)" stopOpacity={0.6} />
                       <stop offset="100%" stopColor="oklch(0.66 0.18 258)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.28 0.02 265 / 0.5)" />
-                  <XAxis dataKey="d" stroke="oklch(0.65 0.02 260)" fontSize={10} />
-                  <YAxis stroke="oklch(0.65 0.02 260)" fontSize={10} tickFormatter={(v) => "$" + Math.round(v / 100)} />
-                  <Tooltip contentStyle={{ background: "oklch(0.18 0.015 265)", border: "1px solid oklch(0.28 0.02 265)", borderRadius: 8, fontSize: 12 }}
-                    formatter={(v: number) => money(v)} />
+                  <CartesianGrid strokeDasharray="2 4" stroke="oklch(0.28 0.02 265 / 0.4)" vertical={false} />
+                  <XAxis dataKey="d" stroke="oklch(0.65 0.02 260)" fontSize={10} tickLine={false} axisLine={{ stroke: "oklch(0.28 0.02 265 / 0.5)" }} />
+                  <YAxis stroke="oklch(0.65 0.02 260)" fontSize={10} tickLine={false} axisLine={false} width={48} tickFormatter={(v) => "$" + Math.round(v / 100)} />
+                  <Tooltip
+                    cursor={{ stroke: "oklch(0.66 0.18 258 / 0.4)", strokeWidth: 1 }}
+                    contentStyle={{ background: "oklch(0.18 0.015 265)", border: "1px solid oklch(0.28 0.02 265)", borderRadius: 8, fontSize: 12, padding: "6px 10px" }}
+                    labelStyle={{ color: "oklch(0.65 0.02 260)", fontSize: 10, marginBottom: 2 }}
+                    formatter={(v: number) => [money(v), "Cash"]}
+                  />
                   <Area type="monotone" dataKey="cash" stroke="oklch(0.66 0.18 258)" fill="url(#cashGrad)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          <div className="rounded-lg border border-border bg-card p-4">
-            <div className="mb-3">
-              <div className="text-sm font-semibold">Funnel · stage conversion</div>
-              <div className="text-xs text-muted-foreground">% = conversion from previous stage</div>
-            </div>
-            <div className="space-y-1.5">
-              {(stats?.funnel ?? []).map((f, i) => {
-                const max = stats?.funnel[0]?.value ?? 1;
-                const width = Math.max(4, Math.round((f.value / Math.max(1, max)) * 100));
-                return (
-                  <div key={f.stage} className="space-y-0.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-medium">{f.stage}</span>
-                      <span className="font-mono text-muted-foreground">{fmt(f.value)} {f.conv && <span className="text-accent ml-1">{f.conv}</span>}</span>
-                    </div>
-                    <div className="h-6 rounded bg-muted/30 overflow-hidden">
-                      <div className="h-full rounded" style={{ width: `${width}%`, background: `oklch(${0.72 - i * 0.05} ${0.18 - i * 0.02} ${258 + i * 6})` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <FunnelCard funnel={stats?.funnel ?? []} />
         </div>
+
 
         {/* Content-to-cash attribution strip */}
         <ContentToCashStrip rows={stats?.contentAttribution ?? []} />
@@ -289,7 +301,9 @@ function Dashboard() {
                   </div>
                 </div>
               ))}
-              {(!stats?.alerts || stats.alerts.length === 0) && <div className="p-6 text-center text-xs text-muted-foreground">No open alerts. All systems nominal.</div>}
+              {(!stats?.alerts || stats.alerts.length === 0) && (
+                <EmptyState icon={<Inbox className="h-4 w-4" />} title="All systems nominal" description="No open alerts in this range." />
+              )}
             </div>
           </div>
 
@@ -309,7 +323,14 @@ function Dashboard() {
                   <div className="text-[10px] uppercase tracking-wider text-accent mt-1">{i.module}</div>
                 </div>
               ))}
-              {(!stats?.insights || stats.insights.length === 0) && <div className="p-6 text-center text-xs text-muted-foreground">No insights yet. Generate from the AI Insights module.</div>}
+              {(!stats?.insights || stats.insights.length === 0) && (
+                <EmptyState
+                  icon={<Sparkles className="h-4 w-4" />}
+                  title="No insights yet"
+                  description="Generate signals from the AI Insights module."
+                  action={<Link to="/insights" className="text-xs text-primary hover:underline">Open AI Insights →</Link>}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -318,10 +339,11 @@ function Dashboard() {
   );
 }
 
-function DeltaKpi({ label, value, curr, prev, hint, tone = "default" }: { label: string; value: string; curr: number; prev: number; hint?: string; tone?: "default" | "money" | "rate" }) {
+function DeltaKpi({ label, value, curr, prev, hint, tone = "default", spark }: { label: string; value: string; curr: number; prev: number; hint?: string; tone?: "default" | "money" | "rate"; spark?: number[] }) {
   const delta = prev > 0 ? ((curr - prev) / prev) * 100 : (curr > 0 ? 100 : 0);
   const Icon = delta > 1 ? TrendingUp : delta < -1 ? TrendingDown : Minus;
   const deltaTone = delta > 1 ? "text-[color:var(--color-success)]" : delta < -1 ? "text-destructive" : "text-muted-foreground";
+  const sparkStroke = delta > 1 ? "oklch(0.72 0.18 155)" : delta < -1 ? "oklch(0.65 0.22 25)" : "oklch(0.65 0.02 260)";
   return (
     <div className="rounded-md border border-border bg-card overflow-hidden flex flex-col">
       <div className={cn(
@@ -330,16 +352,117 @@ function DeltaKpi({ label, value, curr, prev, hint, tone = "default" }: { label:
         tone === "rate" && "bg-accent/10 text-accent",
         tone === "default" && "bg-muted/40 text-muted-foreground",
       )}>{label}</div>
-      <div className="flex-1 grid place-items-center px-3 py-3 min-h-[64px]">
+      <div className="flex-1 grid place-items-center px-3 py-3 min-h-[72px]">
         <div className="font-mono text-xl font-bold tabular-nums">{value}</div>
-        <div className={`flex items-center gap-1 text-[10px] font-mono ${deltaTone} mt-0.5`}>
-          <Icon className="h-3 w-3" />{Math.abs(delta).toFixed(0)}% vs prior
+        <div className="flex items-center gap-2 mt-1">
+          <span className={`flex items-center gap-1 text-[10px] font-mono ${deltaTone}`}>
+            <Icon className="h-3 w-3" />{Math.abs(delta).toFixed(0)}%
+          </span>
+          {spark && spark.length > 1 && (
+            <span style={{ color: sparkStroke }}>
+              <Sparkline data={spark} width={56} height={16} stroke={sparkStroke} fill={sparkStroke} strokeWidth={1.25} />
+            </span>
+          )}
         </div>
         {hint && <div className="text-[10px] text-muted-foreground">{hint}</div>}
       </div>
     </div>
   );
 }
+
+function WeeklyDigest({ pace, curr, prev }: { pace?: { monthCash: number; projection: number; dailyPace: number }; curr?: { cash: number; newLeads: number; closed: number; views: number }; prev?: { cash: number; newLeads: number; closed: number; views: number } }) {
+  if (!curr) return null;
+  const winners: string[] = [];
+  const losers: string[] = [];
+  const cmp = (label: string, c: number, p: number, fmtFn: (n: number) => string) => {
+    if (p === 0 && c === 0) return;
+    const delta = p > 0 ? ((c - p) / p) * 100 : 100;
+    const txt = `${label} ${fmtFn(c)} (${delta >= 0 ? "+" : ""}${delta.toFixed(0)}%)`;
+    if (delta >= 5) winners.push(txt);
+    else if (delta <= -5) losers.push(txt);
+  };
+  cmp("Cash", curr.cash, prev?.cash ?? 0, money);
+  cmp("Leads", curr.newLeads, prev?.newLeads ?? 0, fmt);
+  cmp("Closes", curr.closed, prev?.closed ?? 0, fmt);
+  cmp("Views", curr.views, prev?.views ?? 0, fmt);
+  return (
+    <div className="rounded-lg border border-border bg-gradient-to-br from-accent/10 via-card to-card p-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <div className="grid h-8 w-8 place-items-center rounded-md bg-accent/15 text-accent"><Calendar className="h-4 w-4" /></div>
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Period digest</div>
+            <div className="text-sm font-medium">vs prior period of equal length</div>
+          </div>
+        </div>
+        {pace && (
+          <div className="text-[11px] font-mono text-muted-foreground">
+            Month pace · <span className="text-foreground font-semibold">{money(pace.projection)}</span> projected · {money(pace.dailyPace)}/day
+          </div>
+        )}
+      </div>
+      <div className="mt-3 grid sm:grid-cols-2 gap-3">
+        <div className="rounded-md border border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/5 p-3 space-y-1">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-success)] flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Wins</div>
+          {winners.length === 0 ? <div className="text-[11px] text-muted-foreground italic">No metrics up &gt;5% vs prior.</div>
+            : <ul className="text-[11px] space-y-0.5">{winners.map((w, i) => <li key={i} className="font-mono">• {w}</li>)}</ul>}
+        </div>
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-1">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-destructive flex items-center gap-1"><TrendingDown className="h-3 w-3" /> Pressure</div>
+          {losers.length === 0 ? <div className="text-[11px] text-muted-foreground italic">Nothing falling &gt;5% vs prior.</div>
+            : <ul className="text-[11px] space-y-0.5">{losers.map((w, i) => <li key={i} className="font-mono">• {w}</li>)}</ul>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FunnelCard({ funnel }: { funnel: { stage: string; value: number; conv: string | null }[] }) {
+  const [logScale, setLogScale] = useState(true);
+  const max = funnel[0]?.value ?? 1;
+  const scale = (v: number) => {
+    if (v <= 0) return 4;
+    if (logScale) {
+      const lv = Math.log10(v + 1);
+      const lm = Math.log10(max + 1) || 1;
+      return Math.max(6, Math.round((lv / lm) * 100));
+    }
+    return Math.max(4, Math.round((v / Math.max(1, max)) * 100));
+  };
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div>
+          <div className="text-sm font-semibold">Funnel · stage conversion</div>
+          <div className="text-xs text-muted-foreground">% = conversion from previous stage</div>
+        </div>
+        <button onClick={() => setLogScale(s => !s)}
+          className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:bg-muted/50">
+          {logScale ? "LOG" : "LINEAR"}
+        </button>
+      </div>
+      <div className="space-y-1.5">
+        {funnel.map((f, i) => {
+          const width = scale(f.value);
+          return (
+            <div key={f.stage} className="space-y-0.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-medium">{f.stage}</span>
+                <span className="font-mono text-muted-foreground">{fmt(f.value)} {f.conv && <span className="text-accent ml-1">{f.conv}</span>}</span>
+              </div>
+              <div className="h-6 rounded bg-muted/30 overflow-hidden">
+                <div className="h-full rounded transition-all" style={{ width: `${width}%`, background: `oklch(${0.72 - i * 0.05} ${0.18 - i * 0.02} ${258 + i * 6})` }} />
+              </div>
+            </div>
+          );
+        })}
+        {funnel.length === 0 && <EmptyState icon={<Activity className="h-4 w-4" />} title="No funnel data" description="Log views, leads and calls to see stage drop-off." />}
+      </div>
+    </div>
+  );
+}
+
+
 
 function PaceCard({ pace }: { pace?: { monthCash: number; projection: number; dayOfMonth: number; daysInMonth: number; dailyPace: number } }) {
   if (!pace) return null;

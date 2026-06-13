@@ -113,6 +113,30 @@ function Onboarding() {
   const [query, setQuery] = useState("");
   const [insightsByResp, setInsightsByResp] = useState<Record<string, { bottlenecks: { title: string; body: string; recommendation: string }[]; double_down: { title: string; body: string; recommendation: string }[] }>>({});
   const [aggInsights, setAggInsights] = useState<{ bottlenecks: { title: string; body: string; recommendation: string }[]; double_down: { title: string; body: string; recommendation: string }[]; sampleSize?: number } | null>(null);
+  const today = () => new Date().toISOString().slice(0, 10);
+  const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+  const mtdFrom = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); };
+  type AggPreset = "today" | "3d" | "7d" | "30d" | "mtd" | "all" | "custom";
+  const [aggPreset, setAggPreset] = useState<AggPreset>("30d");
+  const [aggFrom, setAggFrom] = useState<string>(daysAgo(29));
+  const [aggTo, setAggTo] = useState<string>(today());
+  const computeRange = (p: AggPreset): { from: string; to: string; label: string } => {
+    if (p === "today") return { from: today(), to: today(), label: "Today" };
+    if (p === "3d") return { from: daysAgo(2), to: today(), label: "Last 3d" };
+    if (p === "7d") return { from: daysAgo(6), to: today(), label: "Last 7d" };
+    if (p === "30d") return { from: daysAgo(29), to: today(), label: "Last 30d" };
+    if (p === "mtd") return { from: mtdFrom(), to: today(), label: "MTD" };
+    if (p === "all") return { from: "2000-01-01", to: today(), label: "All time" };
+    return { from: aggFrom, to: aggTo, label: "Custom" };
+  };
+  const setPreset = (p: AggPreset) => {
+    setAggPreset(p);
+    if (p !== "custom") {
+      const r = computeRange(p);
+      setAggFrom(r.from); setAggTo(r.to);
+    }
+  };
+  const activeRange = computeRange(aggPreset);
   const analyzeFn = useServerFn(analyzeIntake);
   const aggregateFn = useServerFn(analyzeIntakesAggregate);
   const analyzeMut = useMutation({
@@ -121,10 +145,11 @@ function Onboarding() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
   const aggregateMut = useMutation({
-    mutationFn: () => aggregateFn({ data: { days: 30 } }),
+    mutationFn: () => aggregateFn({ data: { from: activeRange.from, to: activeRange.to } }),
     onSuccess: (res) => { setAggInsights(res); toast.success(`Analyzed ${res.sampleSize ?? 0} intakes`); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
+
 
   const { data: responses } = useQuery({
     queryKey: ["onboarding", orgId],
@@ -242,26 +267,50 @@ function Onboarding() {
           </Dialog>
         </div>
 
-        {/* 30-day aggregate AI insights — across ALL intakes */}
+        {/* Aggregate AI insights — across ALL intakes in selected range */}
         <div className="rounded-lg border-2 border-accent/40 bg-gradient-to-br from-accent/5 to-card p-4 space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-semibold">
-                <Sparkles className="h-4 w-4 text-accent" /> 30-day pattern analysis · ALL clients
+                <Sparkles className="h-4 w-4 text-accent" /> Pattern analysis · ALL clients
               </div>
               <div className="text-[11px] text-muted-foreground">
-                Aggregates answers from <span className="font-semibold text-foreground">every intake</span> submitted in the last 30 days. Finds repeating bottlenecks to fix and winning patterns to amplify across your whole client base — not one person.
+                Aggregates answers from <span className="font-semibold text-foreground">every intake</span> in the selected range. Finds repeating bottlenecks to fix and winning patterns to amplify across your client base.
               </div>
             </div>
             <Button size="sm" disabled={aggregateMut.isPending} onClick={() => aggregateMut.mutate()}>
               {aggregateMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-              {aggInsights ? "Re-analyze all 30d intakes" : "Analyze all intakes (30d)"}
+              {aggInsights ? "Re-analyze" : `Analyze (${activeRange.label})`}
             </Button>
           </div>
 
+          {/* Range picker — matches the main dashboard one */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex rounded-md border border-border bg-card overflow-hidden">
+              {([
+                ["today", "Today"], ["3d", "3d"], ["7d", "7d"], ["30d", "30d"], ["mtd", "MTD"], ["all", "All"], ["custom", "Custom"],
+              ] as [AggPreset, string][]).map(([k, label]) => (
+                <button key={k} onClick={() => setPreset(k)}
+                  className={`px-2.5 py-1 text-xs ${aggPreset === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/50"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {aggPreset === "custom" && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-muted-foreground">From</span>
+                <Input type="date" value={aggFrom} className="h-7 w-36 text-xs" onChange={(e) => setAggFrom(e.target.value)} />
+                <span className="text-muted-foreground">To</span>
+                <Input type="date" value={aggTo} className="h-7 w-36 text-xs" onChange={(e) => setAggTo(e.target.value)} />
+              </div>
+            )}
+            <span className="text-[11px] text-muted-foreground font-mono">{activeRange.from} → {activeRange.to}</span>
+          </div>
+
+
           {aggInsights && (
             aggInsights.sampleSize === 0 ? (
-              <div className="text-xs text-muted-foreground italic">No intakes in the last 30 days yet.</div>
+              <div className="text-xs text-muted-foreground italic">No intakes in this range yet.</div>
             ) : (
               <div className="grid md:grid-cols-2 gap-3">
                 <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-2">

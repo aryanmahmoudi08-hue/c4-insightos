@@ -94,23 +94,37 @@ Produce the JSON now.`;
 
 export const analyzeIntakesAggregate = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { days?: number }) => input ?? {})
+  .inputValidator((input: { days?: number; from?: string; to?: string }) => input ?? {})
   .handler(async ({ data, context }): Promise<IntakeInsightsResult> => {
-    const days = data?.days ?? 30;
     const { supabase, userId } = context;
     const { data: m } = await supabase.from("memberships").select("org_id").eq("user_id", userId).limit(1).maybeSingle();
     if (!m) throw new Error("No workspace");
 
-    const since = new Date(Date.now() - days * 86400e3).toISOString();
+    let fromISO: string;
+    let toISO: string;
+    let windowLabel: string;
+    if (data?.from && data?.to) {
+      fromISO = `${data.from}T00:00:00`;
+      toISO = `${data.to}T23:59:59`;
+      windowLabel = `${data.from} → ${data.to}`;
+    } else {
+      const days = data?.days ?? 30;
+      fromISO = new Date(Date.now() - days * 86400e3).toISOString();
+      toISO = new Date().toISOString();
+      windowLabel = `last ${days} days`;
+    }
+
     const { data: rows, error } = await supabase
       .from("onboarding_responses")
       .select("responses, created_at")
       .eq("org_id", m.org_id)
-      .gte("created_at", since);
+      .gte("created_at", fromISO)
+      .lte("created_at", toISO);
     if (error) throw error;
     if (!rows || rows.length === 0) {
       return { bottlenecks: [], double_down: [], sampleSize: 0 };
     }
+
 
     const collect = (key: string) => rows
       .map(r => ((r.responses ?? {}) as Record<string, string>)[key])
@@ -125,7 +139,7 @@ export const analyzeIntakesAggregate = createServerFn({ method: "POST" })
       `--- ${QUESTION_TEXT[k]} ---\n${collect(k) || "(no answers)"}`
     ).join("\n\n");
 
-    const sys = `You analyze the last ${days} days of client onboarding intakes for a high-ticket coaching business.
+    const sys = `You analyze client onboarding intakes (${windowLabel}) for a high-ticket coaching business.
 You will receive grouped answers across ALL clients in the window. Find PATTERNS — repeated objections, common touchpoints, recurring beliefs that shifted, content types that keep showing up.
 
 Output two lists:
@@ -142,7 +156,7 @@ Respond ONLY with valid JSON:
   "double_down": [{ "title": "...", "body": "...", "recommendation": "..." }]
 }`;
 
-    const userMsg = `Sample size: ${rows.length} intakes in the last ${days} days.
+    const userMsg = `Sample size: ${rows.length} intakes (${windowLabel}).
 
 === BOTTLENECK QUESTIONS ===
 ${bottleneckBlock}
