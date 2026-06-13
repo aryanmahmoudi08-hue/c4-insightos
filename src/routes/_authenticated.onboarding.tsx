@@ -113,6 +113,30 @@ function Onboarding() {
   const [query, setQuery] = useState("");
   const [insightsByResp, setInsightsByResp] = useState<Record<string, { bottlenecks: { title: string; body: string; recommendation: string }[]; double_down: { title: string; body: string; recommendation: string }[] }>>({});
   const [aggInsights, setAggInsights] = useState<{ bottlenecks: { title: string; body: string; recommendation: string }[]; double_down: { title: string; body: string; recommendation: string }[]; sampleSize?: number } | null>(null);
+  const today = () => new Date().toISOString().slice(0, 10);
+  const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+  const mtdFrom = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); };
+  type AggPreset = "today" | "3d" | "7d" | "30d" | "mtd" | "all" | "custom";
+  const [aggPreset, setAggPreset] = useState<AggPreset>("30d");
+  const [aggFrom, setAggFrom] = useState<string>(daysAgo(29));
+  const [aggTo, setAggTo] = useState<string>(today());
+  const computeRange = (p: AggPreset): { from: string; to: string; label: string } => {
+    if (p === "today") return { from: today(), to: today(), label: "Today" };
+    if (p === "3d") return { from: daysAgo(2), to: today(), label: "Last 3d" };
+    if (p === "7d") return { from: daysAgo(6), to: today(), label: "Last 7d" };
+    if (p === "30d") return { from: daysAgo(29), to: today(), label: "Last 30d" };
+    if (p === "mtd") return { from: mtdFrom(), to: today(), label: "MTD" };
+    if (p === "all") return { from: "2000-01-01", to: today(), label: "All time" };
+    return { from: aggFrom, to: aggTo, label: "Custom" };
+  };
+  const setPreset = (p: AggPreset) => {
+    setAggPreset(p);
+    if (p !== "custom") {
+      const r = computeRange(p);
+      setAggFrom(r.from); setAggTo(r.to);
+    }
+  };
+  const activeRange = computeRange(aggPreset);
   const analyzeFn = useServerFn(analyzeIntake);
   const aggregateFn = useServerFn(analyzeIntakesAggregate);
   const analyzeMut = useMutation({
@@ -121,10 +145,11 @@ function Onboarding() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
   const aggregateMut = useMutation({
-    mutationFn: () => aggregateFn({ data: { days: 30 } }),
+    mutationFn: () => aggregateFn({ data: { from: activeRange.from, to: activeRange.to } }),
     onSuccess: (res) => { setAggInsights(res); toast.success(`Analyzed ${res.sampleSize ?? 0} intakes`); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
+
 
   const { data: responses } = useQuery({
     queryKey: ["onboarding", orgId],
