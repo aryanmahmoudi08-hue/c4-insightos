@@ -3,12 +3,16 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
-import { DashboardBar } from "@/components/kpi-tile";
 import { useDateRange } from "@/hooks/use-date-range";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, Sparkles, TrendingUp, TrendingDown, Minus, Target } from "lucide-react";
+import { ArrowUpRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, Activity, Calendar, Inbox } from "lucide-react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import { Sparkline } from "@/components/sparkline";
+import { SlimHeader } from "@/components/slim-header";
+import { EmptyState } from "@/components/empty-state";
+
 
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: Dashboard });
 
