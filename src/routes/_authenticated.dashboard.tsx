@@ -127,27 +127,43 @@ function Dashboard() {
 
       // Daily series
       const seriesDays = Math.min(60, days);
-      const series: { d: string; cash: number; leads: number }[] = [];
+      type SeriesPoint = { d: string; cash: number; leads: number; views: number; calls: number; showed: number; offers: number; closed: number; contractValue: number };
+      const series: SeriesPoint[] = [];
       const fromTime = new Date(range.from).getTime();
       for (let i = 0; i < seriesDays; i++) {
         const dt = new Date(fromTime + i * 86400e3);
-        series.push({ d: dt.toISOString().slice(5, 10), cash: 0, leads: 0 });
+        series.push({ d: dt.toISOString().slice(5, 10), cash: 0, leads: 0, views: 0, calls: 0, showed: 0, offers: 0, closed: 0, contractValue: 0 });
       }
-      const [seriesPays, seriesLeads, seriesCalls, seriesSetters] = await Promise.all([
+      const [seriesPays, seriesLeads, seriesCalls, seriesSetters, seriesContent] = await Promise.all([
         supabase.from("payments").select("amount_cents, collected_at").eq("org_id", orgId!).gte("collected_at", fromISO).lte("collected_at", toISO),
         supabase.from("leads").select("created_at").eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO),
-        supabase.from("calls").select("cash_collected_cents, created_at").eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO),
-        supabase.from("setter_activity").select("cash_collected_cents, activity_date").eq("org_id", orgId!).gte("activity_date", range.from).lte("activity_date", range.to),
+        supabase.from("calls").select("showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at").eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO),
+        supabase.from("setter_activity").select("cash_collected_cents, calls_on_calendar, sets, live_calls, closes, activity_date").eq("org_id", orgId!).gte("activity_date", range.from).lte("activity_date", range.to),
+        supabase.from("content_metrics").select("views, captured_at").eq("org_id", orgId!).gte("captured_at", fromISO).lte("captured_at", toISO),
       ]);
       const idx = (iso?: string | null) => { if (!iso) return -1; const k = iso.slice(5, 10); return series.findIndex(s => s.d === k); };
-      // Per-day: prefer max of payments vs (calls + setter) to avoid double-counting same dollars
       const payByDay = new Map<number, number>();
       const reportedByDay = new Map<number, number>();
       for (const p of seriesPays.data ?? []) { const i = idx(p.collected_at); if (i >= 0) payByDay.set(i, (payByDay.get(i) ?? 0) + (p.amount_cents ?? 0)); }
-      for (const c of seriesCalls.data ?? []) { const i = idx(c.created_at); if (i >= 0) reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (c.cash_collected_cents ?? 0)); }
-      for (const a of seriesSetters.data ?? []) { const i = idx(a.activity_date); if (i >= 0) reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (a.cash_collected_cents ?? 0)); }
+      for (const cc of seriesCalls.data ?? []) {
+        const i = idx(cc.created_at); if (i < 0) continue;
+        reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (cc.cash_collected_cents ?? 0));
+        series[i].calls += 1;
+        if (cc.showed) series[i].showed += 1;
+        if (cc.offer_made || cc.closed) series[i].offers += 1;
+        if (cc.closed) series[i].closed += 1;
+        series[i].contractValue += cc.contract_value_cents ?? 0;
+      }
+      for (const a of seriesSetters.data ?? []) {
+        const i = idx(a.activity_date); if (i < 0) continue;
+        reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (a.cash_collected_cents ?? 0));
+        series[i].calls = Math.max(series[i].calls, a.calls_on_calendar ?? a.sets ?? 0);
+        series[i].showed = Math.max(series[i].showed, a.live_calls ?? 0);
+        series[i].closed = Math.max(series[i].closed, a.closes ?? 0);
+      }
       for (let i = 0; i < series.length; i++) series[i].cash = Math.max(payByDay.get(i) ?? 0, reportedByDay.get(i) ?? 0);
       for (const l of seriesLeads.data ?? []) { const i = idx(l.created_at); if (i >= 0) series[i].leads += 1; }
+      for (const m of seriesContent.data ?? []) { const i = idx(m.captured_at); if (i >= 0) series[i].views += m.views ?? 0; }
 
       // Funnel with conversion percentages
       const funnel = [
@@ -173,6 +189,7 @@ function Dashboard() {
         contentAttribution: contentAttribution.data ?? [],
         pace: { monthCash, projection, dayOfMonth, daysInMonth, dailyPace },
       };
+
     },
   });
 
