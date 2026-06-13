@@ -267,22 +267,46 @@ function Onboarding() {
           </Dialog>
         </div>
 
-        {/* 30-day aggregate AI insights — across ALL intakes */}
+        {/* Aggregate AI insights — across ALL intakes in selected range */}
         <div className="rounded-lg border-2 border-accent/40 bg-gradient-to-br from-accent/5 to-card p-4 space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-semibold">
-                <Sparkles className="h-4 w-4 text-accent" /> 30-day pattern analysis · ALL clients
+                <Sparkles className="h-4 w-4 text-accent" /> Pattern analysis · ALL clients
               </div>
               <div className="text-[11px] text-muted-foreground">
-                Aggregates answers from <span className="font-semibold text-foreground">every intake</span> submitted in the last 30 days. Finds repeating bottlenecks to fix and winning patterns to amplify across your whole client base — not one person.
+                Aggregates answers from <span className="font-semibold text-foreground">every intake</span> in the selected range. Finds repeating bottlenecks to fix and winning patterns to amplify across your client base.
               </div>
             </div>
             <Button size="sm" disabled={aggregateMut.isPending} onClick={() => aggregateMut.mutate()}>
               {aggregateMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-              {aggInsights ? "Re-analyze all 30d intakes" : "Analyze all intakes (30d)"}
+              {aggInsights ? "Re-analyze" : `Analyze (${activeRange.label})`}
             </Button>
           </div>
+
+          {/* Range picker — matches the main dashboard one */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex rounded-md border border-border bg-card overflow-hidden">
+              {([
+                ["today", "Today"], ["3d", "3d"], ["7d", "7d"], ["30d", "30d"], ["mtd", "MTD"], ["all", "All"], ["custom", "Custom"],
+              ] as [AggPreset, string][]).map(([k, label]) => (
+                <button key={k} onClick={() => setPreset(k)}
+                  className={`px-2.5 py-1 text-xs ${aggPreset === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/50"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {aggPreset === "custom" && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-muted-foreground">From</span>
+                <Input type="date" value={aggFrom} className="h-7 w-36 text-xs" onChange={(e) => setAggFrom(e.target.value)} />
+                <span className="text-muted-foreground">To</span>
+                <Input type="date" value={aggTo} className="h-7 w-36 text-xs" onChange={(e) => setAggTo(e.target.value)} />
+              </div>
+            )}
+            <span className="text-[11px] text-muted-foreground font-mono">{activeRange.from} → {activeRange.to}</span>
+          </div>
+
 
           {aggInsights && (
             aggInsights.sampleSize === 0 ? (
