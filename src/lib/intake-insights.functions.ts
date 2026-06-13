@@ -139,7 +139,7 @@ export const analyzeIntakesAggregate = createServerFn({ method: "POST" })
       `--- ${QUESTION_TEXT[k]} ---\n${collect(k) || "(no answers)"}`
     ).join("\n\n");
 
-    const sys = `You analyze the last ${days} days of client onboarding intakes for a high-ticket coaching business.
+    const sys = `You analyze client onboarding intakes (${windowLabel}) for a high-ticket coaching business.
 You will receive grouped answers across ALL clients in the window. Find PATTERNS — repeated objections, common touchpoints, recurring beliefs that shifted, content types that keep showing up.
 
 Output two lists:
@@ -156,7 +156,7 @@ Respond ONLY with valid JSON:
   "double_down": [{ "title": "...", "body": "...", "recommendation": "..." }]
 }`;
 
-    const userMsg = `Sample size: ${rows.length} intakes in the last ${days} days.
+    const userMsg = `Sample size: ${rows.length} intakes (${windowLabel}).
 
 === BOTTLENECK QUESTIONS ===
 ${bottleneckBlock}
