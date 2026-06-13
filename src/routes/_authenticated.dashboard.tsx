@@ -223,15 +223,14 @@ function Dashboard() {
 
         {/* Hero KPI grid with WoW deltas + sparklines */}
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-
-          <DeltaKpi label="CASH COLLECTED" value={money(c?.cash ?? 0)} curr={c?.cash ?? 0} prev={p?.cash ?? 0} tone="money" />
-          <DeltaKpi label="CONTRACT VALUE" value={money(c?.contractValue ?? 0)} curr={c?.contractValue ?? 0} prev={p?.contractValue ?? 0} tone="money" />
-          <DeltaKpi label="NEW LEADS" value={fmt(c?.newLeads ?? 0)} curr={c?.newLeads ?? 0} prev={p?.newLeads ?? 0} />
-          <DeltaKpi label="TOTAL VIEWS" value={fmt(c?.views ?? 0)} curr={c?.views ?? 0} prev={p?.views ?? 0} />
-          <DeltaKpi label="CALLS BOOKED" value={fmt(c?.totalCalls ?? 0)} curr={c?.totalCalls ?? 0} prev={p?.totalCalls ?? 0} />
-          <DeltaKpi label="SHOWED" value={fmt(c?.showed ?? 0)} curr={c?.showed ?? 0} prev={p?.showed ?? 0} hint={showRate} />
-          <DeltaKpi label="OFFERS MADE" value={fmt(c?.offers ?? 0)} curr={c?.offers ?? 0} prev={p?.offers ?? 0} hint={offerRate} />
-          <DeltaKpi label="CLOSES" value={fmt(c?.closed ?? 0)} curr={c?.closed ?? 0} prev={p?.closed ?? 0} hint={closeRate} tone="rate" />
+          <DeltaKpi label="CASH COLLECTED" value={money(c?.cash ?? 0)} curr={c?.cash ?? 0} prev={p?.cash ?? 0} tone="money" spark={(stats?.series ?? []).map(s => s.cash)} />
+          <DeltaKpi label="CONTRACT VALUE" value={money(c?.contractValue ?? 0)} curr={c?.contractValue ?? 0} prev={p?.contractValue ?? 0} tone="money" spark={(stats?.series ?? []).map(s => s.contractValue)} />
+          <DeltaKpi label="NEW LEADS" value={fmt(c?.newLeads ?? 0)} curr={c?.newLeads ?? 0} prev={p?.newLeads ?? 0} spark={(stats?.series ?? []).map(s => s.leads)} />
+          <DeltaKpi label="TOTAL VIEWS" value={fmt(c?.views ?? 0)} curr={c?.views ?? 0} prev={p?.views ?? 0} spark={(stats?.series ?? []).map(s => s.views)} />
+          <DeltaKpi label="CALLS BOOKED" value={fmt(c?.totalCalls ?? 0)} curr={c?.totalCalls ?? 0} prev={p?.totalCalls ?? 0} spark={(stats?.series ?? []).map(s => s.calls)} />
+          <DeltaKpi label="SHOWED" value={fmt(c?.showed ?? 0)} curr={c?.showed ?? 0} prev={p?.showed ?? 0} hint={showRate} spark={(stats?.series ?? []).map(s => s.showed)} />
+          <DeltaKpi label="OFFERS MADE" value={fmt(c?.offers ?? 0)} curr={c?.offers ?? 0} prev={p?.offers ?? 0} hint={offerRate} spark={(stats?.series ?? []).map(s => s.offers)} />
+          <DeltaKpi label="CLOSES" value={fmt(c?.closed ?? 0)} curr={c?.closed ?? 0} prev={p?.closed ?? 0} hint={closeRate} tone="rate" spark={(stats?.series ?? []).map(s => s.closed)} />
         </div>
 
         {/* Charts row */}
@@ -246,48 +245,31 @@ function Dashboard() {
             </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={stats?.series ?? []}>
+                <AreaChart data={stats?.series ?? []} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="cashGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="oklch(0.66 0.18 258)" stopOpacity={0.6} />
                       <stop offset="100%" stopColor="oklch(0.66 0.18 258)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.28 0.02 265 / 0.5)" />
-                  <XAxis dataKey="d" stroke="oklch(0.65 0.02 260)" fontSize={10} />
-                  <YAxis stroke="oklch(0.65 0.02 260)" fontSize={10} tickFormatter={(v) => "$" + Math.round(v / 100)} />
-                  <Tooltip contentStyle={{ background: "oklch(0.18 0.015 265)", border: "1px solid oklch(0.28 0.02 265)", borderRadius: 8, fontSize: 12 }}
-                    formatter={(v: number) => money(v)} />
+                  <CartesianGrid strokeDasharray="2 4" stroke="oklch(0.28 0.02 265 / 0.4)" vertical={false} />
+                  <XAxis dataKey="d" stroke="oklch(0.65 0.02 260)" fontSize={10} tickLine={false} axisLine={{ stroke: "oklch(0.28 0.02 265 / 0.5)" }} />
+                  <YAxis stroke="oklch(0.65 0.02 260)" fontSize={10} tickLine={false} axisLine={false} width={48} tickFormatter={(v) => "$" + Math.round(v / 100)} />
+                  <Tooltip
+                    cursor={{ stroke: "oklch(0.66 0.18 258 / 0.4)", strokeWidth: 1 }}
+                    contentStyle={{ background: "oklch(0.18 0.015 265)", border: "1px solid oklch(0.28 0.02 265)", borderRadius: 8, fontSize: 12, padding: "6px 10px" }}
+                    labelStyle={{ color: "oklch(0.65 0.02 260)", fontSize: 10, marginBottom: 2 }}
+                    formatter={(v: number) => [money(v), "Cash"]}
+                  />
                   <Area type="monotone" dataKey="cash" stroke="oklch(0.66 0.18 258)" fill="url(#cashGrad)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          <div className="rounded-lg border border-border bg-card p-4">
-            <div className="mb-3">
-              <div className="text-sm font-semibold">Funnel · stage conversion</div>
-              <div className="text-xs text-muted-foreground">% = conversion from previous stage</div>
-            </div>
-            <div className="space-y-1.5">
-              {(stats?.funnel ?? []).map((f, i) => {
-                const max = stats?.funnel[0]?.value ?? 1;
-                const width = Math.max(4, Math.round((f.value / Math.max(1, max)) * 100));
-                return (
-                  <div key={f.stage} className="space-y-0.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-medium">{f.stage}</span>
-                      <span className="font-mono text-muted-foreground">{fmt(f.value)} {f.conv && <span className="text-accent ml-1">{f.conv}</span>}</span>
-                    </div>
-                    <div className="h-6 rounded bg-muted/30 overflow-hidden">
-                      <div className="h-full rounded" style={{ width: `${width}%`, background: `oklch(${0.72 - i * 0.05} ${0.18 - i * 0.02} ${258 + i * 6})` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <FunnelCard funnel={stats?.funnel ?? []} />
         </div>
+
 
         {/* Content-to-cash attribution strip */}
         <ContentToCashStrip rows={stats?.contentAttribution ?? []} />
