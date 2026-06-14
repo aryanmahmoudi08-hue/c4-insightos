@@ -6,6 +6,7 @@ import { TopBar } from "@/components/app-sidebar";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Briefcase, Target, TrendingUp, Search } from "lucide-react";
+import { ClientWins } from "@/components/client-wins";
 
 export const Route = createFileRoute("/_authenticated/fulfillment")({ component: Fulfillment });
 
