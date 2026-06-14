@@ -12,6 +12,20 @@ async function orgIdFor(supabase: any, userId: string): Promise<string> {
 async function loadClient(supabase: any, orgId: string, clientId: string | null | undefined) {
   if (!clientId) return null;
   const { data } = await supabase.from("copy_clients").select("*").eq("id", clientId).eq("org_id", orgId).maybeSingle();
+  if (!data) return null;
+  // Pull recent student wins (any org-wide wins if not tied to this copy client) for proof / social context
+  const { data: wins } = await supabase
+    .from("client_wins")
+    .select("title, body, magnitude, occurred_at")
+    .eq("org_id", orgId)
+    .order("occurred_at", { ascending: false })
+    .limit(20);
+  if (wins?.length) {
+    const winsBlock = wins
+      .map((w: any) => `• [${w.magnitude}] ${w.title}${w.body ? ` — ${w.body.slice(0, 200)}` : ""}`)
+      .join("\n");
+    data.notes = `${data.notes ?? ""}\n\nRECENT STUDENT WINS (use as proof / receipts when relevant):\n${winsBlock}`.trim();
+  }
   return data;
 }
 
