@@ -123,12 +123,24 @@ function Fulfillment() {
                 <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
                   <TrendingUp className="h-3 w-3" /> Progress checkpoints
                 </div>
-                <p className="text-xs text-muted-foreground">Use the Clients page to update health score + renewal stage as progress milestones are hit. Future: per-goal trackers.</p>
+                <p className="text-xs text-muted-foreground">Use the Clients page to update health score + renewal stage as progress milestones are hit.</p>
+              </div>
+
+              <div className="rounded-md border border-border p-3">
+                <ClientWins clientId={activeClient.id} clientName={activeClient.full_name} />
               </div>
             </>
           )}
         </div>
       </div>
+
+      {!activeClient && (
+        <div className="px-6 pb-6">
+          <div className="rounded-lg border border-border bg-card p-4">
+            <ClientWins />
+          </div>
+        </div>
+      )}
     </>
   );
 }
