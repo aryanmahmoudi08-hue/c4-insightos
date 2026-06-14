@@ -269,6 +269,63 @@ export type Database = {
           },
         ]
       }
+      client_wins: {
+        Row: {
+          body: string | null
+          client_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          magnitude: string
+          occurred_at: string
+          org_id: string
+          screenshot_url: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          magnitude?: string
+          occurred_at?: string
+          org_id: string
+          screenshot_url?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          magnitude?: string
+          occurred_at?: string
+          org_id?: string
+          screenshot_url?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_wins_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_wins_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           contract_value_cents: number | null
@@ -1306,8 +1363,61 @@ export type Database = {
           },
         ]
       }
+      lead_notes: {
+        Row: {
+          author_id: string | null
+          body: string
+          created_at: string
+          id: string
+          kind: string
+          lead_id: string
+          org_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          kind?: string
+          lead_id: string
+          org_id: string
+        }
+        Update: {
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          lead_id?: string
+          org_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_notes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_attribution_v"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_notes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_notes_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
+          application_data: Json
           assigned_setter_id: string | null
           beliefs: string | null
           created_at: string
@@ -1321,6 +1431,7 @@ export type Database = {
           handle: string | null
           id: string
           intent_score: number | null
+          notes: string | null
           objections_raised: string[] | null
           org_id: string
           phone: string | null
@@ -1331,6 +1442,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          application_data?: Json
           assigned_setter_id?: string | null
           beliefs?: string | null
           created_at?: string
@@ -1344,6 +1456,7 @@ export type Database = {
           handle?: string | null
           id?: string
           intent_score?: number | null
+          notes?: string | null
           objections_raised?: string[] | null
           org_id: string
           phone?: string | null
@@ -1354,6 +1467,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          application_data?: Json
           assigned_setter_id?: string | null
           beliefs?: string | null
           created_at?: string
@@ -1367,6 +1481,7 @@ export type Database = {
           handle?: string | null
           id?: string
           intent_score?: number | null
+          notes?: string | null
           objections_raised?: string[] | null
           org_id?: string
           phone?: string | null
@@ -1941,6 +2056,44 @@ export type Database = {
           },
           {
             foreignKeyName: "raw_payloads_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      role_permissions: {
+        Row: {
+          can_edit: boolean
+          can_view: boolean
+          id: string
+          org_id: string
+          resource: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at: string
+        }
+        Insert: {
+          can_edit?: boolean
+          can_view?: boolean
+          id?: string
+          org_id: string
+          resource: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+        }
+        Update: {
+          can_edit?: boolean
+          can_view?: boolean
+          id?: string
+          org_id?: string
+          resource?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_permissions_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
