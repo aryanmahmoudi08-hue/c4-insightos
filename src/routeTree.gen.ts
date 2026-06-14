@@ -16,6 +16,7 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.
 import { Route as AuthenticatedTrafficRouteImport } from './routes/_authenticated.traffic'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
 import { Route as AuthenticatedSequencesRouteImport } from './routes/_authenticated.sequences'
+import { Route as AuthenticatedPermissionsRouteImport } from './routes/_authenticated.permissions'
 import { Route as AuthenticatedOutreachRouteImport } from './routes/_authenticated.outreach'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated.onboarding'
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated.leads'
@@ -69,6 +70,12 @@ const AuthenticatedSequencesRoute = AuthenticatedSequencesRouteImport.update({
   path: '/sequences',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedPermissionsRoute =
+  AuthenticatedPermissionsRouteImport.update({
+    id: '/permissions',
+    path: '/permissions',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedOutreachRoute = AuthenticatedOutreachRouteImport.update({
   id: '/outreach',
   path: '/outreach',
@@ -183,6 +190,7 @@ export interface FileRoutesByFullPath {
   '/leads': typeof AuthenticatedLeadsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/outreach': typeof AuthenticatedOutreachRoute
+  '/permissions': typeof AuthenticatedPermissionsRoute
   '/sequences': typeof AuthenticatedSequencesRoute
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
@@ -208,6 +216,7 @@ export interface FileRoutesByTo {
   '/leads': typeof AuthenticatedLeadsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/outreach': typeof AuthenticatedOutreachRoute
+  '/permissions': typeof AuthenticatedPermissionsRoute
   '/sequences': typeof AuthenticatedSequencesRoute
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
@@ -236,6 +245,7 @@ export interface FileRoutesById {
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/outreach': typeof AuthenticatedOutreachRoute
+  '/_authenticated/permissions': typeof AuthenticatedPermissionsRoute
   '/_authenticated/sequences': typeof AuthenticatedSequencesRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/traffic': typeof AuthenticatedTrafficRoute
@@ -265,6 +275,7 @@ export interface FileRouteTypes {
     | '/leads'
     | '/onboarding'
     | '/outreach'
+    | '/permissions'
     | '/sequences'
     | '/team'
     | '/traffic'
@@ -290,6 +301,7 @@ export interface FileRouteTypes {
     | '/leads'
     | '/onboarding'
     | '/outreach'
+    | '/permissions'
     | '/sequences'
     | '/team'
     | '/traffic'
@@ -317,6 +329,7 @@ export interface FileRouteTypes {
     | '/_authenticated/leads'
     | '/_authenticated/onboarding'
     | '/_authenticated/outreach'
+    | '/_authenticated/permissions'
     | '/_authenticated/sequences'
     | '/_authenticated/team'
     | '/_authenticated/traffic'
@@ -382,6 +395,13 @@ declare module '@tanstack/react-router' {
       path: '/sequences'
       fullPath: '/sequences'
       preLoaderRoute: typeof AuthenticatedSequencesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/permissions': {
+      id: '/_authenticated/permissions'
+      path: '/permissions'
+      fullPath: '/permissions'
+      preLoaderRoute: typeof AuthenticatedPermissionsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/outreach': {
@@ -530,6 +550,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedOutreachRoute: typeof AuthenticatedOutreachRoute
+  AuthenticatedPermissionsRoute: typeof AuthenticatedPermissionsRoute
   AuthenticatedSequencesRoute: typeof AuthenticatedSequencesRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedTrafficRoute: typeof AuthenticatedTrafficRoute
@@ -553,6 +574,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedOutreachRoute: AuthenticatedOutreachRoute,
+  AuthenticatedPermissionsRoute: AuthenticatedPermissionsRoute,
   AuthenticatedSequencesRoute: AuthenticatedSequencesRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedTrafficRoute: AuthenticatedTrafficRoute,

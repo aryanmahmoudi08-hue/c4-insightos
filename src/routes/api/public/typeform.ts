@@ -58,12 +58,54 @@ export const Route = createFileRoute("/api/public/typeform")({
           if (key) answers[String(key)] = answerValue(answer);
         }
 
-        const { data: intake, error: intakeError } = await supabaseAdmin
-          .from("onboarding_responses")
-          .insert({ org_id: connection.org_id, responses: answers, submitted_at: new Date().toISOString() })
-          .select("id")
-          .maybeSingle();
-        if (intakeError) { console.error("[typeform] intake insert", intakeError); return Response.json({ error: "Request could not be processed" }, { status: 500 }); }
+        const pick = (...keys: string[]) => { for (const k of keys) { if (answers[k]) return answers[k]; } return ""; };
+        const application_data = {
+          experience: pick("experience"),
+          work_school: pick("work_school", "work", "school"),
+          focus: pick("focus"),
+          goal: pick("goal"),
+          candidate_fit: pick("candidate_fit", "fit"),
+          serious_status: pick("serious_status", "serious"),
+          time: pick("time"),
+          income: pick("income"),
+          capital: pick("capital"),
+          credit: pick("credit"),
+          commitment: pick("commitment"),
+        };
+        const full_name = [pick("first_name"), pick("last_name")].filter(Boolean).join(" ").trim() || pick("name", "full_name") || null;
+        const email = pick("email") || null;
+        const phone = pick("phone") || null;
+        const handle = pick("handle", "instagram", "ig") || null;
+        const isApplication = Object.values(application_data).some(Boolean) || (connection.config as any)?.kind === "application";
+
+        let leadId: string | null = null;
+        let intakeId: string | null = null;
+        if (isApplication) {
+          const { data: lead, error: leadErr } = await supabaseAdmin
+            .from("leads")
+            .insert({
+              org_id: connection.org_id,
+              full_name, email, phone, handle,
+              status: "dm_received" as any,
+              source_connector: "typeform",
+              application_data,
+              qualification_notes: pick("candidate_fit"),
+            } as any)
+            .select("id")
+            .maybeSingle();
+          if (leadErr) { console.error("[typeform] lead insert", leadErr); return Response.json({ error: "Could not save application" }, { status: 500 }); }
+          leadId = lead?.id ?? null;
+          // Default status to opt_in (text) since enum may not include it yet
+          if (leadId) await (supabaseAdmin as any).from("leads").update({ status: "opt_in" }).eq("id", leadId);
+        } else {
+          const { data: intake, error: intakeError } = await supabaseAdmin
+            .from("onboarding_responses")
+            .insert({ org_id: connection.org_id, responses: answers, submitted_at: new Date().toISOString() })
+            .select("id")
+            .maybeSingle();
+          if (intakeError) { console.error("[typeform] intake insert", intakeError); return Response.json({ error: "Request could not be processed" }, { status: 500 }); }
+          intakeId = intake?.id ?? null;
+        }
 
         await supabaseAdmin.from("raw_payloads").insert({
           org_id: connection.org_id,
@@ -74,22 +116,23 @@ export const Route = createFileRoute("/api/public/typeform")({
           payload,
           processed_at: new Date().toISOString(),
         });
+        const eventType = isApplication ? "lead.application_submitted" : "onboarding.submitted";
         await supabaseAdmin.from("events").insert({
           org_id: connection.org_id,
-          event_type: "onboarding.submitted",
-          subject_type: "onboarding_response",
-          subject_id: intake?.id ?? null,
-          payload: { answers, source: "typeform" },
+          event_type: eventType,
+          subject_type: isApplication ? "lead" : "onboarding_response",
+          subject_id: leadId ?? intakeId,
+          payload: { answers, application_data, source: "typeform" },
         });
 
-        await dispatchEvent(connection.org_id, "onboarding.submitted", {
-          answers,
-          source: "typeform",
+        await dispatchEvent(connection.org_id, eventType, {
+          answers, application_data, source: "typeform",
+          lead_id: leadId,
           response_id: formResponse.token ?? formResponse.response_id ?? null,
           submitted_at: new Date().toISOString(),
         });
 
-        return Response.json({ ok: true });
+        return Response.json({ ok: true, lead_id: leadId, intake_id: intakeId });
       },
     },
   },
