@@ -421,3 +421,88 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
     </Tabs>
   );
 }
+
+function LeadInsightsPanel({ orgId }: { orgId?: string }) {
+  const run = useServerFn(analyzeLeads);
+  const [data, setData] = useState<{ bottlenecks: any[]; double_down: any[]; priority_leads: any[]; sampleSize: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [range, setRange] = useState<"1d" | "3d" | "7d" | "30d" | "all">("30d");
+
+  const generate = async () => {
+    if (!orgId) return;
+    setLoading(true);
+    try {
+      const now = new Date();
+      const days: Record<string, number | null> = { "1d": 1, "3d": 3, "7d": 7, "30d": 30, "all": null };
+      const d = days[range];
+      const from = d ? new Date(now.getTime() - d * 86400000).toISOString() : undefined;
+      const out = await run({ data: { orgId, from, to: now.toISOString() } });
+      setData(out as any);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to generate");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-accent/30 bg-gradient-to-br from-accent/5 to-transparent p-4 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-accent" />
+          <div>
+            <div className="text-sm font-semibold">Lead AI Insights</div>
+            <div className="text-[11px] text-muted-foreground">Bottlenecks, double-downs, and today's diamond leads</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <select value={range} onChange={(e) => setRange(e.target.value as any)} className="h-8 rounded border border-input bg-background px-2 text-xs">
+            <option value="1d">Last 24h</option>
+            <option value="3d">Last 3 days</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="all">All time</option>
+          </select>
+          <Button size="sm" onClick={generate} disabled={loading || !orgId}>
+            {loading ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Analyzing…</> : <><Sparkles className="h-3.5 w-3.5 mr-1.5" /> Generate</>}
+          </Button>
+        </div>
+      </div>
+      {data && (
+        <div className="grid md:grid-cols-3 gap-3">
+          <div className="rounded border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+            <div className="text-[10px] uppercase tracking-wider text-destructive font-semibold flex items-center gap-1.5"><AlertTriangle className="h-3 w-3" /> Bottlenecks</div>
+            {data.bottlenecks.map((b, i) => (
+              <div key={i} className="text-xs space-y-0.5">
+                <div className="font-medium">{b.title}</div>
+                <div className="text-muted-foreground">{b.body}</div>
+                <div className="text-accent text-[11px]">→ {b.recommendation}</div>
+              </div>
+            ))}
+          </div>
+          <div className="rounded border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-2">
+            <div className="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5"><TrendingUp className="h-3 w-3" /> Double down</div>
+            {data.double_down.map((b, i) => (
+              <div key={i} className="text-xs space-y-0.5">
+                <div className="font-medium">{b.title}</div>
+                <div className="text-muted-foreground">{b.body}</div>
+                <div className="text-accent text-[11px]">→ {b.recommendation}</div>
+              </div>
+            ))}
+          </div>
+          <div className="rounded border border-cyan-500/30 bg-cyan-500/5 p-3 space-y-2">
+            <div className="text-[10px] uppercase tracking-wider text-cyan-600 dark:text-cyan-300 font-semibold flex items-center gap-1.5"><Gem className="h-3 w-3" /> Priority leads</div>
+            {data.priority_leads.map((p, i) => (
+              <div key={i} className="text-xs space-y-0.5">
+                <div className="font-medium">💎 {p.name}</div>
+                <div className="text-muted-foreground">{p.reason}</div>
+              </div>
+            ))}
+            {data.priority_leads.length === 0 && <div className="text-xs text-muted-foreground italic">No standout leads yet.</div>}
+          </div>
+        </div>
+      )}
+      {data && <div className="text-[10px] text-muted-foreground">Based on {data.sampleSize} lead{data.sampleSize === 1 ? "" : "s"}.</div>}
+    </div>
+  );
+}
