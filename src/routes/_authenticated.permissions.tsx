@@ -14,7 +14,7 @@ export const Route = createFileRoute("/_authenticated/permissions")({ component:
 const RESOURCES = [
   { key: "dashboard", label: "Main Hub" },
   { key: "leads", label: "Leads CRM" },
-  { key: "outreach", label: "Email / SMS" },
+  { key: "outreach", label: "Messaging (Email & SMS)" },
   { key: "team", label: "Team Members" },
   { key: "hiring", label: "Hiring" },
   { key: "attribution", label: "Attribution" },
