@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg, useAuth } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
@@ -10,8 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useMemo, useState } from "react";
-import { Search, Users, MessageSquare, PhoneCall, Film, StickyNote } from "lucide-react";
+import { Search, Users, MessageSquare, PhoneCall, Film, StickyNote, Gem, Sparkles, AlertTriangle, TrendingUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { analyzeLeads } from "@/lib/lead-insights.functions";
 
 export const Route = createFileRoute("/_authenticated/leads")({ component: Leads });
 
@@ -22,6 +24,9 @@ type LeadRow = {
   handle: string | null;
   phone: string | null;
   status: string;
+  pipeline_stage: string | null;
+  priority: string;
+  precall_video_watched: boolean;
   intent_score: number | null;
   engagement_score: number | null;
   estimated_close_probability: number | null;
@@ -32,6 +37,22 @@ type LeadRow = {
   notes: string | null;
   created_at: string;
 };
+
+const PIPELINE_STAGES = [
+  { v: "", label: "—" },
+  { v: "cold", label: "Cold", chip: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
+  { v: "warm", label: "Warm", chip: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+  { v: "hot", label: "Hot", chip: "bg-orange-500/15 text-orange-600 dark:text-orange-400" },
+  { v: "diamond", label: "💎 Diamond", chip: "bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 font-semibold" },
+];
+const stageChip = (v: string | null) => PIPELINE_STAGES.find(s => s.v === (v ?? ""))?.chip ?? "bg-muted text-muted-foreground";
+
+const PRIORITY_OPTIONS = [
+  { v: "low", label: "Low" },
+  { v: "normal", label: "Normal" },
+  { v: "high", label: "High" },
+  { v: "diamond", label: "💎 Diamond" },
+];
 
 // Status dropdown options (Opt-In is the first/default)
 const STATUS_OPTIONS = [
