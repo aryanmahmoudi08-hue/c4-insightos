@@ -124,7 +124,7 @@ function Leads() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
-        .select("id, full_name, email, handle, phone, status, intent_score, engagement_score, estimated_close_probability, source_connector, first_touch_content_id, qualification_notes, application_data, notes, created_at")
+        .select("id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, first_touch_content_id, qualification_notes, application_data, notes, created_at")
         .eq("org_id", orgId!)
         .order("created_at", { ascending: false })
         .limit(500);
@@ -133,12 +133,12 @@ function Leads() {
     },
   });
 
-  const updateStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await (supabase as any).from("leads").update({ status }).eq("id", id);
+  const updateLead = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Record<string, unknown> }) => {
+      const { error } = await (supabase as any).from("leads").update(patch).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["leads", orgId] }); toast.success("Status updated"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["leads", orgId] }); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -158,20 +158,23 @@ function Leads() {
       total: all.length,
       booked: all.filter(l => l.status === "call_booked" || l.status === "rescheduling").length,
       closed: all.filter(l => l.status === "closed" || l.status === "lt_closed").length,
-      followUp: all.filter(l => l.status === "follow_up_short" || l.status === "follow_up_long").length,
+      diamond: all.filter(l => l.priority === "diamond" || l.pipeline_stage === "diamond").length,
     };
   }, [leads]);
 
   return (
     <>
-      <TopBar title="Leads CRM" subtitle="Full pipeline · application fields · notes" />
+      <TopBar title="Leads CRM" subtitle="Pipeline stage · priority · pre-call vid tracking · notes" />
       <div className="p-6 space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Total leads" value={stats.total} icon={<Users className="h-4 w-4" />} />
           <StatCard label="Call booked" value={stats.booked} accent="warning" />
           <StatCard label="Closed" value={stats.closed} accent="success" />
-          <StatCard label="Follow up" value={stats.followUp} accent="primary" />
+          <StatCard label="💎 Diamond leads" value={stats.diamond} accent="accent" />
         </div>
+
+        <LeadInsightsPanel orgId={orgId} />
+
 
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative flex-1 max-w-md">
