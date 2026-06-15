@@ -6,9 +6,10 @@ import { useRole } from "@/hooks/use-role";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
 import { TeamRosterPanel } from "@/components/team-roster-panel";
+import { MemberPermissionsDialog } from "@/components/member-permissions-dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, Check, X, UserPlus } from "lucide-react";
+import { Users, Check, X, UserPlus, Shield } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
@@ -22,6 +23,7 @@ function Team() {
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const [pendingRoles, setPendingRoles] = useState<Record<string, string>>({});
+  const [permTarget, setPermTarget] = useState<{ userId: string; name: string } | null>(null);
 
   const { data: requests } = useQuery({
     queryKey: ["membership-requests", orgId],
@@ -169,7 +171,9 @@ function Team() {
             <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr><th className="text-left p-3">Member</th><th className="text-left p-3">Role</th>
                 <th className="text-right p-3 font-mono">Booked</th><th className="text-right p-3 font-mono">Shown</th>
-                <th className="text-right p-3 font-mono">Closes</th><th className="text-right p-3 font-mono">Cash 30d</th></tr>
+                <th className="text-right p-3 font-mono">Closes</th><th className="text-right p-3 font-mono">Cash 30d</th>
+                {isAdmin && <th className="text-right p-3">Access</th>}
+              </tr>
             </thead>
             <tbody>
               {byUser.map(m => (
@@ -183,13 +187,26 @@ function Team() {
                   <td className="p-3 text-right font-mono">{m.shown}</td>
                   <td className="p-3 text-right font-mono">{m.closes}</td>
                   <td className="p-3 text-right font-mono text-[color:var(--color-success)]">${m.cash.toLocaleString()}</td>
+                  {isAdmin && (
+                    <td className="p-3 text-right">
+                      <Button size="sm" variant="outline" onClick={() => setPermTarget({ userId: m.user_id, name: m.profiles?.display_name ?? m.user_id.slice(0,8) })}>
+                        <Shield className="h-3.5 w-3.5 mr-1.5" /> Permissions
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               ))}
-              {byUser.length === 0 && <tr><td colSpan={6} className="p-10 text-center text-sm text-muted-foreground">No team members yet.</td></tr>}
+              {byUser.length === 0 && <tr><td colSpan={isAdmin ? 7 : 6} className="p-10 text-center text-sm text-muted-foreground">No team members yet.</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
+      <MemberPermissionsDialog
+        open={!!permTarget}
+        onOpenChange={(o) => { if (!o) setPermTarget(null); }}
+        userId={permTarget?.userId ?? null}
+        displayName={permTarget?.name ?? ""}
+      />
     </>
   );
 }
