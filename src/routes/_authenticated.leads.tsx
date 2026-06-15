@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg, useAuth } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
@@ -10,8 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useMemo, useState } from "react";
-import { Search, Users, MessageSquare, PhoneCall, Film, StickyNote } from "lucide-react";
+import { Search, Users, MessageSquare, PhoneCall, Film, StickyNote, Gem, Sparkles, AlertTriangle, TrendingUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { analyzeLeads } from "@/lib/lead-insights.functions";
 
 export const Route = createFileRoute("/_authenticated/leads")({ component: Leads });
 
@@ -22,6 +24,9 @@ type LeadRow = {
   handle: string | null;
   phone: string | null;
   status: string;
+  pipeline_stage: string | null;
+  priority: string;
+  precall_video_watched: boolean;
   intent_score: number | null;
   engagement_score: number | null;
   estimated_close_probability: number | null;
@@ -32,6 +37,22 @@ type LeadRow = {
   notes: string | null;
   created_at: string;
 };
+
+const PIPELINE_STAGES = [
+  { v: "", label: "—" },
+  { v: "cold", label: "Cold", chip: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
+  { v: "warm", label: "Warm", chip: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+  { v: "hot", label: "Hot", chip: "bg-orange-500/15 text-orange-600 dark:text-orange-400" },
+  { v: "diamond", label: "💎 Diamond", chip: "bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 font-semibold" },
+];
+const stageChip = (v: string | null) => PIPELINE_STAGES.find(s => s.v === (v ?? ""))?.chip ?? "bg-muted text-muted-foreground";
+
+const PRIORITY_OPTIONS = [
+  { v: "low", label: "Low" },
+  { v: "normal", label: "Normal" },
+  { v: "high", label: "High" },
+  { v: "diamond", label: "💎 Diamond" },
+];
 
 // Status dropdown options (Opt-In is the first/default)
 const STATUS_OPTIONS = [
@@ -103,7 +124,7 @@ function Leads() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
-        .select("id, full_name, email, handle, phone, status, intent_score, engagement_score, estimated_close_probability, source_connector, first_touch_content_id, qualification_notes, application_data, notes, created_at")
+        .select("id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, first_touch_content_id, qualification_notes, application_data, notes, created_at")
         .eq("org_id", orgId!)
         .order("created_at", { ascending: false })
         .limit(500);
@@ -112,12 +133,12 @@ function Leads() {
     },
   });
 
-  const updateStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await (supabase as any).from("leads").update({ status }).eq("id", id);
+  const updateLead = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Record<string, unknown> }) => {
+      const { error } = await (supabase as any).from("leads").update(patch).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["leads", orgId] }); toast.success("Status updated"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["leads", orgId] }); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -137,20 +158,23 @@ function Leads() {
       total: all.length,
       booked: all.filter(l => l.status === "call_booked" || l.status === "rescheduling").length,
       closed: all.filter(l => l.status === "closed" || l.status === "lt_closed").length,
-      followUp: all.filter(l => l.status === "follow_up_short" || l.status === "follow_up_long").length,
+      diamond: all.filter(l => l.priority === "diamond" || l.pipeline_stage === "diamond").length,
     };
   }, [leads]);
 
   return (
     <>
-      <TopBar title="Leads CRM" subtitle="Full pipeline · application fields · notes" />
+      <TopBar title="Leads CRM" subtitle="Pipeline stage · priority · pre-call vid tracking · notes" />
       <div className="p-6 space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Total leads" value={stats.total} icon={<Users className="h-4 w-4" />} />
           <StatCard label="Call booked" value={stats.booked} accent="warning" />
           <StatCard label="Closed" value={stats.closed} accent="success" />
-          <StatCard label="Follow up" value={stats.followUp} accent="primary" />
+          <StatCard label="💎 Diamond leads" value={stats.diamond} accent="accent" />
         </div>
+
+        <LeadInsightsPanel orgId={orgId} />
+
 
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative flex-1 max-w-md">
@@ -169,8 +193,11 @@ function Leads() {
             <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground sticky top-0">
               <tr>
                 <th className="text-left p-2.5 min-w-[110px]">Date / Time</th>
+                <th className="text-left p-2.5 min-w-[60px]">💎</th>
                 <th className="text-left p-2.5 min-w-[160px]">Name</th>
+                <th className="text-left p-2.5 min-w-[120px]">Stage</th>
                 <th className="text-left p-2.5 min-w-[220px]">Lead Status</th>
+                <th className="text-center p-2.5 min-w-[90px]">Pre-call vid</th>
                 {APP_COLS.map(c => <th key={c.key} className={`text-left p-2.5 ${c.width ?? ""}`}>{c.label}</th>)}
                 <th className="text-left p-2.5 min-w-[140px]">Contact</th>
                 <th className="text-left p-2.5 min-w-[130px]">Handle</th>
@@ -180,23 +207,55 @@ function Leads() {
               {view.map(l => {
                 const t = tone(l.status);
                 const app = l.application_data ?? {};
+                const isDiamond = l.priority === "diamond" || l.pipeline_stage === "diamond";
                 return (
-                  <tr key={l.id} className={`border-t border-border cursor-pointer transition-colors ${t.row || "hover:bg-muted/30"}`} onClick={() => setSelected(l)}>
+                  <tr key={l.id} className={`border-t border-border cursor-pointer transition-colors ${isDiamond ? "bg-cyan-500/5 hover:bg-cyan-500/10" : (t.row || "hover:bg-muted/30")}`} onClick={() => setSelected(l)}>
                     <td className="p-2.5 text-xs text-muted-foreground whitespace-nowrap">
                       {new Date(l.created_at).toLocaleDateString()}<br />
                       <span className="text-[10px]">{new Date(l.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                     </td>
+                    <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={l.priority ?? "normal"}
+                        onChange={(e) => updateLead.mutate({ id: l.id, patch: { priority: e.target.value } })}
+                        className="h-7 rounded px-1 text-[11px] bg-transparent border border-border cursor-pointer"
+                        title="Priority"
+                      >
+                        {PRIORITY_OPTIONS.map(p => <option key={p.v} value={p.v}>{p.label}</option>)}
+                      </select>
+                    </td>
                     <td className="p-2.5">
-                      <div className="font-medium">{l.full_name || l.handle || l.email || "(no name)"}</div>
+                      <div className="font-medium flex items-center gap-1.5">
+                        {isDiamond && <Gem className="h-3.5 w-3.5 text-cyan-500 shrink-0" />}
+                        {l.full_name || l.handle || l.email || "(no name)"}
+                      </div>
+                    </td>
+                    <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={l.pipeline_stage ?? ""}
+                        onChange={(e) => updateLead.mutate({ id: l.id, patch: { pipeline_stage: e.target.value || null } })}
+                        className={`h-7 rounded px-2 text-[11px] font-medium border-0 cursor-pointer ${stageChip(l.pipeline_stage)}`}
+                      >
+                        {PIPELINE_STAGES.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
+                      </select>
                     </td>
                     <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
                       <select
                         value={l.status}
-                        onChange={(e) => updateStatus.mutate({ id: l.id, status: e.target.value })}
+                        onChange={(e) => updateLead.mutate({ id: l.id, patch: { status: e.target.value } })}
                         className={`h-7 rounded px-2 text-[11px] font-medium border-0 cursor-pointer ${t.chip}`}
                       >
                         {STATUS_OPTIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
                       </select>
+                    </td>
+                    <td className="p-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => updateLead.mutate({ id: l.id, patch: { precall_video_watched: !l.precall_video_watched } })}
+                        className={`h-7 w-12 rounded text-[10px] font-semibold uppercase tracking-wider transition-colors ${l.precall_video_watched ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground hover:bg-muted/70"}`}
+                        title={l.precall_video_watched ? "Watched" : "Mark as watched"}
+                      >
+                        {l.precall_video_watched ? "✓ Yes" : "No"}
+                      </button>
                     </td>
                     {APP_COLS.map(c => (
                       <td key={c.key} className="p-2.5 text-xs">
@@ -210,7 +269,7 @@ function Leads() {
                   </tr>
                 );
               })}
-              {view.length === 0 && <tr><td colSpan={3 + APP_COLS.length + 2} className="p-10 text-center text-sm text-muted-foreground">No leads match.</td></tr>}
+              {view.length === 0 && <tr><td colSpan={6 + APP_COLS.length + 2} className="p-10 text-center text-sm text-muted-foreground">No leads match.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -360,5 +419,90 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
         </div>
       </TabsContent>
     </Tabs>
+  );
+}
+
+function LeadInsightsPanel({ orgId }: { orgId?: string }) {
+  const run = useServerFn(analyzeLeads);
+  const [data, setData] = useState<{ bottlenecks: any[]; double_down: any[]; priority_leads: any[]; sampleSize: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [range, setRange] = useState<"1d" | "3d" | "7d" | "30d" | "all">("30d");
+
+  const generate = async () => {
+    if (!orgId) return;
+    setLoading(true);
+    try {
+      const now = new Date();
+      const days: Record<string, number | null> = { "1d": 1, "3d": 3, "7d": 7, "30d": 30, "all": null };
+      const d = days[range];
+      const from = d ? new Date(now.getTime() - d * 86400000).toISOString() : undefined;
+      const out = await run({ data: { orgId, from, to: now.toISOString() } });
+      setData(out as any);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to generate");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-accent/30 bg-gradient-to-br from-accent/5 to-transparent p-4 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-accent" />
+          <div>
+            <div className="text-sm font-semibold">Lead AI Insights</div>
+            <div className="text-[11px] text-muted-foreground">Bottlenecks, double-downs, and today's diamond leads</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <select value={range} onChange={(e) => setRange(e.target.value as any)} className="h-8 rounded border border-input bg-background px-2 text-xs">
+            <option value="1d">Last 24h</option>
+            <option value="3d">Last 3 days</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="all">All time</option>
+          </select>
+          <Button size="sm" onClick={generate} disabled={loading || !orgId}>
+            {loading ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Analyzing…</> : <><Sparkles className="h-3.5 w-3.5 mr-1.5" /> Generate</>}
+          </Button>
+        </div>
+      </div>
+      {data && (
+        <div className="grid md:grid-cols-3 gap-3">
+          <div className="rounded border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+            <div className="text-[10px] uppercase tracking-wider text-destructive font-semibold flex items-center gap-1.5"><AlertTriangle className="h-3 w-3" /> Bottlenecks</div>
+            {data.bottlenecks.map((b, i) => (
+              <div key={i} className="text-xs space-y-0.5">
+                <div className="font-medium">{b.title}</div>
+                <div className="text-muted-foreground">{b.body}</div>
+                <div className="text-accent text-[11px]">→ {b.recommendation}</div>
+              </div>
+            ))}
+          </div>
+          <div className="rounded border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-2">
+            <div className="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5"><TrendingUp className="h-3 w-3" /> Double down</div>
+            {data.double_down.map((b, i) => (
+              <div key={i} className="text-xs space-y-0.5">
+                <div className="font-medium">{b.title}</div>
+                <div className="text-muted-foreground">{b.body}</div>
+                <div className="text-accent text-[11px]">→ {b.recommendation}</div>
+              </div>
+            ))}
+          </div>
+          <div className="rounded border border-cyan-500/30 bg-cyan-500/5 p-3 space-y-2">
+            <div className="text-[10px] uppercase tracking-wider text-cyan-600 dark:text-cyan-300 font-semibold flex items-center gap-1.5"><Gem className="h-3 w-3" /> Priority leads</div>
+            {data.priority_leads.map((p, i) => (
+              <div key={i} className="text-xs space-y-0.5">
+                <div className="font-medium">💎 {p.name}</div>
+                <div className="text-muted-foreground">{p.reason}</div>
+              </div>
+            ))}
+            {data.priority_leads.length === 0 && <div className="text-xs text-muted-foreground italic">No standout leads yet.</div>}
+          </div>
+        </div>
+      )}
+      {data && <div className="text-[10px] text-muted-foreground">Based on {data.sampleSize} lead{data.sampleSize === 1 ? "" : "s"}.</div>}
+    </div>
   );
 }

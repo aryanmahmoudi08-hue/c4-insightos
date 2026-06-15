@@ -36,7 +36,7 @@ const REPS_NAV: NavItem[] = [
 // Sales Tracking dropdown — Leads + Reps + the rest
 const SALES_NAV: NavItem[] = [
   { to: "/leads", label: "Leads", icon: Users },
-  { to: "/outreach", label: "Outreach", icon: MessageSquare },
+  { to: "/outreach", label: "Messaging (Email & SMS)", icon: MessageSquare },
   { to: "/team", label: "Team Members", icon: Users },
   { to: "/hiring", label: "Hiring", icon: UserPlus },
   { to: "/attribution", label: "Attribution", icon: GitBranch },
