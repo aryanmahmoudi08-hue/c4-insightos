@@ -193,8 +193,11 @@ function Leads() {
             <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground sticky top-0">
               <tr>
                 <th className="text-left p-2.5 min-w-[110px]">Date / Time</th>
+                <th className="text-left p-2.5 min-w-[60px]">💎</th>
                 <th className="text-left p-2.5 min-w-[160px]">Name</th>
+                <th className="text-left p-2.5 min-w-[120px]">Stage</th>
                 <th className="text-left p-2.5 min-w-[220px]">Lead Status</th>
+                <th className="text-center p-2.5 min-w-[90px]">Pre-call vid</th>
                 {APP_COLS.map(c => <th key={c.key} className={`text-left p-2.5 ${c.width ?? ""}`}>{c.label}</th>)}
                 <th className="text-left p-2.5 min-w-[140px]">Contact</th>
                 <th className="text-left p-2.5 min-w-[130px]">Handle</th>
@@ -204,23 +207,55 @@ function Leads() {
               {view.map(l => {
                 const t = tone(l.status);
                 const app = l.application_data ?? {};
+                const isDiamond = l.priority === "diamond" || l.pipeline_stage === "diamond";
                 return (
-                  <tr key={l.id} className={`border-t border-border cursor-pointer transition-colors ${t.row || "hover:bg-muted/30"}`} onClick={() => setSelected(l)}>
+                  <tr key={l.id} className={`border-t border-border cursor-pointer transition-colors ${isDiamond ? "bg-cyan-500/5 hover:bg-cyan-500/10" : (t.row || "hover:bg-muted/30")}`} onClick={() => setSelected(l)}>
                     <td className="p-2.5 text-xs text-muted-foreground whitespace-nowrap">
                       {new Date(l.created_at).toLocaleDateString()}<br />
                       <span className="text-[10px]">{new Date(l.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                     </td>
+                    <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={l.priority ?? "normal"}
+                        onChange={(e) => updateLead.mutate({ id: l.id, patch: { priority: e.target.value } })}
+                        className="h-7 rounded px-1 text-[11px] bg-transparent border border-border cursor-pointer"
+                        title="Priority"
+                      >
+                        {PRIORITY_OPTIONS.map(p => <option key={p.v} value={p.v}>{p.label}</option>)}
+                      </select>
+                    </td>
                     <td className="p-2.5">
-                      <div className="font-medium">{l.full_name || l.handle || l.email || "(no name)"}</div>
+                      <div className="font-medium flex items-center gap-1.5">
+                        {isDiamond && <Gem className="h-3.5 w-3.5 text-cyan-500 shrink-0" />}
+                        {l.full_name || l.handle || l.email || "(no name)"}
+                      </div>
+                    </td>
+                    <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={l.pipeline_stage ?? ""}
+                        onChange={(e) => updateLead.mutate({ id: l.id, patch: { pipeline_stage: e.target.value || null } })}
+                        className={`h-7 rounded px-2 text-[11px] font-medium border-0 cursor-pointer ${stageChip(l.pipeline_stage)}`}
+                      >
+                        {PIPELINE_STAGES.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
+                      </select>
                     </td>
                     <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
                       <select
                         value={l.status}
-                        onChange={(e) => updateStatus.mutate({ id: l.id, status: e.target.value })}
+                        onChange={(e) => updateLead.mutate({ id: l.id, patch: { status: e.target.value } })}
                         className={`h-7 rounded px-2 text-[11px] font-medium border-0 cursor-pointer ${t.chip}`}
                       >
                         {STATUS_OPTIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
                       </select>
+                    </td>
+                    <td className="p-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => updateLead.mutate({ id: l.id, patch: { precall_video_watched: !l.precall_video_watched } })}
+                        className={`h-7 w-12 rounded text-[10px] font-semibold uppercase tracking-wider transition-colors ${l.precall_video_watched ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground hover:bg-muted/70"}`}
+                        title={l.precall_video_watched ? "Watched" : "Mark as watched"}
+                      >
+                        {l.precall_video_watched ? "✓ Yes" : "No"}
+                      </button>
                     </td>
                     {APP_COLS.map(c => (
                       <td key={c.key} className="p-2.5 text-xs">
@@ -234,7 +269,7 @@ function Leads() {
                   </tr>
                 );
               })}
-              {view.length === 0 && <tr><td colSpan={3 + APP_COLS.length + 2} className="p-10 text-center text-sm text-muted-foreground">No leads match.</td></tr>}
+              {view.length === 0 && <tr><td colSpan={6 + APP_COLS.length + 2} className="p-10 text-center text-sm text-muted-foreground">No leads match.</td></tr>}
             </tbody>
           </table>
         </div>
