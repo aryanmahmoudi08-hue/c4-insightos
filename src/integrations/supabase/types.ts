@@ -1435,6 +1435,10 @@ export type Database = {
           objections_raised: string[] | null
           org_id: string
           phone: string | null
+          pipeline_stage: string | null
+          precall_assets_sent_at: string | null
+          precall_video_watched: boolean
+          priority: string
           qualification_notes: string | null
           source_connector: string | null
           status: Database["public"]["Enums"]["lead_status"]
@@ -1460,6 +1464,10 @@ export type Database = {
           objections_raised?: string[] | null
           org_id: string
           phone?: string | null
+          pipeline_stage?: string | null
+          precall_assets_sent_at?: string | null
+          precall_video_watched?: boolean
+          priority?: string
           qualification_notes?: string | null
           source_connector?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
@@ -1485,6 +1493,10 @@ export type Database = {
           objections_raised?: string[] | null
           org_id?: string
           phone?: string | null
+          pipeline_stage?: string | null
+          precall_assets_sent_at?: string | null
+          precall_video_watched?: boolean
+          priority?: string
           qualification_notes?: string | null
           source_connector?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
@@ -1511,6 +1523,44 @@ export type Database = {
             columns: ["traffic_source_id"]
             isOneToOne: false
             referencedRelation: "traffic_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_permissions: {
+        Row: {
+          can_edit: boolean
+          can_view: boolean
+          id: string
+          org_id: string
+          resource: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          can_edit?: boolean
+          can_view?: boolean
+          id?: string
+          org_id: string
+          resource: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          can_edit?: boolean
+          can_view?: boolean
+          id?: string
+          org_id?: string
+          resource?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_permissions_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
