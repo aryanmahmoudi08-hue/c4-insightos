@@ -316,6 +316,12 @@ function Closer() {
           <KpiTile label="OFFER RATE" value={pct(offers, showed)} tone="rate" />
           <KpiTile label="CASH COLLECTED RATE" value={pct(cashCents, revCents)} tone="rate" hint={`${downsells} downsells`} />
           <KpiTile label="AVG CASH PER CALL CLOSED" value={fmtMoney(avgCashPerClosed)} tone="money" />
+          <KpiTile
+            label={member === ALL_MEMBERS ? "PAYOUT OWED (10% · ALL CLOSERS)" : `PAYOUT OWED · ${member.toUpperCase()} (10%)`}
+            value={fmtMoney(cashCents * 0.10)}
+            tone="money"
+            hint="10% of cash collected in range"
+          />
         </div>
 
         {/* Insight tabs */}

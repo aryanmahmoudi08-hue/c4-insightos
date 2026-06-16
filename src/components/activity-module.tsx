@@ -229,7 +229,14 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         </div>
 
         {/* KPI Grid */}
-        {isDialer ? (
+        {(() => {
+          const payoutLabel = member === ALL_MEMBERS
+            ? `PAYOUT OWED (5% · ALL ${isDialer ? "DIALERS" : "SETTERS"})`
+            : `PAYOUT OWED · ${member.toUpperCase()} (5%)`;
+          const payoutTile = (
+            <KpiTile label={payoutLabel} value={fmtMoney(cashCents * 0.05)} tone="money" hint="5% of cash collected in range" />
+          );
+          return isDialer ? (
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
             <KpiTile label="TOTAL DIALS" value={dials} />
             <KpiTile label="TOTAL CONNECTIONS" value={conns} />
@@ -246,6 +253,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             <KpiTile label="PICKUP RATE" value={pct(conns, dials)} tone="rate" />
             <KpiTile label="QUALIFIED CONVO RATE" value={pct(qualified, conns)} tone="rate" />
             <KpiTile label="SET RATE" value={pct(sets, qualified)} tone="rate" />
+            {payoutTile}
           </div>
         ) : (
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
@@ -261,8 +269,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             <KpiTile label="AVERAGE CLOSE RATE" value={pct(closes, showed)} tone="rate" />
             <KpiTile label="TOTAL CASH COLLECTED" value={fmtMoney(cashCents)} tone="money" />
             <KpiTile label="TOTAL REVENUE GENERATED" value={fmtMoney(revCents)} tone="money" />
+            {payoutTile}
           </div>
-        )}
+        );
+        })()}
 
         {/* Insights row: Objection frequency + Momentum + Scorecard */}
         <Tabs defaultValue="objections">
