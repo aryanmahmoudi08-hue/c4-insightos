@@ -75,7 +75,7 @@ const BOTTOM_NAV: NavItem[] = [
 // Routes a non-manager (setter/closer) is allowed to see.
 const RESTRICTED_ALLOW = new Set([
   "/dashboard", "/team", "/dm-setter", "/inbound-dialer", "/closer",
-  "/clients", "/onboarding", "/fulfillment",
+  "/clients", "/onboarding", "/fulfillment", "/vsl",
 ]);
 
 export function AppSidebar() {
