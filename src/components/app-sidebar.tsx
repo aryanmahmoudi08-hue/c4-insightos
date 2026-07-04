@@ -64,6 +64,7 @@ const FULFILLMENT_NAV: NavItem[] = [
   { to: "/clients", label: "Clients", icon: BadgeCheck },
   { to: "/onboarding", label: "Onboarding", icon: Brain },
   { to: "/fulfillment", label: "Client Results", icon: BadgeCheck },
+  { to: "/vsl", label: "VSL Analytics", icon: Video },
 ];
 
 const BOTTOM_NAV: NavItem[] = [
