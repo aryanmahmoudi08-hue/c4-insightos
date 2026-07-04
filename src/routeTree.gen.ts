@@ -13,6 +13,7 @@ import { Route as RequestAccessRouteImport } from './routes/request-access'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.index'
+import { Route as AuthenticatedVslRouteImport } from './routes/_authenticated.vsl'
 import { Route as AuthenticatedTrafficRouteImport } from './routes/_authenticated.traffic'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
 import { Route as AuthenticatedSequencesRouteImport } from './routes/_authenticated.sequences'
@@ -53,6 +54,11 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedVslRoute = AuthenticatedVslRouteImport.update({
+  id: '/vsl',
+  path: '/vsl',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedTrafficRoute = AuthenticatedTrafficRouteImport.update({
@@ -194,6 +200,7 @@ export interface FileRoutesByFullPath {
   '/sequences': typeof AuthenticatedSequencesRoute
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
+  '/vsl': typeof AuthenticatedVslRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
 }
@@ -220,6 +227,7 @@ export interface FileRoutesByTo {
   '/sequences': typeof AuthenticatedSequencesRoute
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
+  '/vsl': typeof AuthenticatedVslRoute
   '/': typeof AuthenticatedIndexRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
@@ -249,6 +257,7 @@ export interface FileRoutesById {
   '/_authenticated/sequences': typeof AuthenticatedSequencesRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/traffic': typeof AuthenticatedTrafficRoute
+  '/_authenticated/vsl': typeof AuthenticatedVslRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
@@ -279,6 +288,7 @@ export interface FileRouteTypes {
     | '/sequences'
     | '/team'
     | '/traffic'
+    | '/vsl'
     | '/api/public/typeform'
     | '/api/public/ingest/$token'
   fileRoutesByTo: FileRoutesByTo
@@ -305,6 +315,7 @@ export interface FileRouteTypes {
     | '/sequences'
     | '/team'
     | '/traffic'
+    | '/vsl'
     | '/'
     | '/api/public/typeform'
     | '/api/public/ingest/$token'
@@ -333,6 +344,7 @@ export interface FileRouteTypes {
     | '/_authenticated/sequences'
     | '/_authenticated/team'
     | '/_authenticated/traffic'
+    | '/_authenticated/vsl'
     | '/_authenticated/'
     | '/api/public/typeform'
     | '/api/public/ingest/$token'
@@ -374,6 +386,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/vsl': {
+      id: '/_authenticated/vsl'
+      path: '/vsl'
+      fullPath: '/vsl'
+      preLoaderRoute: typeof AuthenticatedVslRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/traffic': {
@@ -554,6 +573,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSequencesRoute: typeof AuthenticatedSequencesRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedTrafficRoute: typeof AuthenticatedTrafficRoute
+  AuthenticatedVslRoute: typeof AuthenticatedVslRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
@@ -578,6 +598,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSequencesRoute: AuthenticatedSequencesRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedTrafficRoute: AuthenticatedTrafficRoute,
+  AuthenticatedVslRoute: AuthenticatedVslRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 

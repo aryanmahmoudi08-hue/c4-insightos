@@ -64,6 +64,7 @@ const FULFILLMENT_NAV: NavItem[] = [
   { to: "/clients", label: "Clients", icon: BadgeCheck },
   { to: "/onboarding", label: "Onboarding", icon: Brain },
   { to: "/fulfillment", label: "Client Results", icon: BadgeCheck },
+  { to: "/vsl", label: "VSL Analytics", icon: Video },
 ];
 
 const BOTTOM_NAV: NavItem[] = [
@@ -74,7 +75,7 @@ const BOTTOM_NAV: NavItem[] = [
 // Routes a non-manager (setter/closer) is allowed to see.
 const RESTRICTED_ALLOW = new Set([
   "/dashboard", "/team", "/dm-setter", "/inbound-dialer", "/closer",
-  "/clients", "/onboarding", "/fulfillment",
+  "/clients", "/onboarding", "/fulfillment", "/vsl",
 ]);
 
 export function AppSidebar() {
