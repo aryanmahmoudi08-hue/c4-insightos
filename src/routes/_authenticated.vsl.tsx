@@ -72,7 +72,7 @@ function VslPage() {
                 <EmptyState
                   icon={<Video className="h-6 w-6" />}
                   title={`No ${KIND_LABEL[k]} yet`}
-                  body="Create one, paste its Wistia sheet, and start tracking play rate, retention, and drop-off timestamps."
+                  description="Create one, paste its Wistia sheet, and start tracking play rate, retention, and drop-off timestamps."
                 />
               )}
               {grouped[k].map((v: any) => <VslCard key={v.id} vsl={v} />)}
