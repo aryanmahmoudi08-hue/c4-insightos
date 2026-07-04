@@ -331,8 +331,6 @@ function ScriptTranscriptEditor({ vsl }: { vsl: any }) {
       const r: any = await trans({ data: { vsl_id: vsl.id, filename: file.name, mime: file.type || "audio/mpeg", base64 } });
       toast.success(`Transcribed ${r.lines} lines`);
       qc.invalidateQueries({ queryKey: ["vsls"] });
-      // pull fresh transcript
-      const fresh = (await fetch("/")).ok; void fresh; // no-op; triggering vsls refetch below
     } catch (e: any) { toast.error(e.message || "Transcription failed"); }
     finally { setUploading(false); }
   };
