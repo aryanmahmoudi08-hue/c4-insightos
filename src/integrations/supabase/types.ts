@@ -2576,6 +2576,116 @@ export type Database = {
           },
         ]
       }
+      vsl_metric_snapshots: {
+        Row: {
+          avg_percent_watched: number
+          captured_at: string
+          engagement_json: Json | null
+          id: string
+          org_id: string
+          page_loads: number
+          play_rate: number
+          source: string
+          total_plays: number
+          unique_viewers: number
+          video_name: string | null
+          vsl_id: string
+        }
+        Insert: {
+          avg_percent_watched?: number
+          captured_at?: string
+          engagement_json?: Json | null
+          id?: string
+          org_id: string
+          page_loads?: number
+          play_rate?: number
+          source?: string
+          total_plays?: number
+          unique_viewers?: number
+          video_name?: string | null
+          vsl_id: string
+        }
+        Update: {
+          avg_percent_watched?: number
+          captured_at?: string
+          engagement_json?: Json | null
+          id?: string
+          org_id?: string
+          page_loads?: number
+          play_rate?: number
+          source?: string
+          total_plays?: number
+          unique_viewers?: number
+          video_name?: string | null
+          vsl_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vsl_metric_snapshots_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vsl_metric_snapshots_vsl_id_fkey"
+            columns: ["vsl_id"]
+            isOneToOne: false
+            referencedRelation: "vsls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vsls: {
+        Row: {
+          created_at: string
+          id: string
+          kind: Database["public"]["Enums"]["vsl_kind"]
+          name: string
+          notes: string
+          org_id: string
+          script: string
+          sheet_url: string | null
+          transcript_json: Json
+          updated_at: string
+          wistia_video_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: Database["public"]["Enums"]["vsl_kind"]
+          name: string
+          notes?: string
+          org_id: string
+          script?: string
+          sheet_url?: string | null
+          transcript_json?: Json
+          updated_at?: string
+          wistia_video_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["vsl_kind"]
+          name?: string
+          notes?: string
+          org_id?: string
+          script?: string
+          sheet_url?: string | null
+          transcript_json?: Json
+          updated_at?: string
+          wistia_video_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vsls_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhook_deliveries: {
         Row: {
           attempt: number
@@ -2843,6 +2953,7 @@ export type Database = {
         | "traffic_source"
         | "client"
       payment_status: "paid" | "pending" | "failed" | "refunded" | "partial"
+      vsl_kind: "main" | "webinar" | "post_booking"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3052,6 +3163,7 @@ export const Constants = {
         "client",
       ],
       payment_status: ["paid", "pending", "failed", "refunded", "partial"],
+      vsl_kind: ["main", "webinar", "post_booking"],
     },
   },
 } as const
