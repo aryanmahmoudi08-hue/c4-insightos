@@ -75,23 +75,41 @@ function ContentIntel() {
   });
 
   const dispatchReadyFn = useServerFn(dispatchContentReady);
+  type SchedulePatch = {
+    scheduled_date: string; scheduled_time: string; post_format: string;
+    repurpose_plan: string; voice_notes: string; why_it_works: string; posting_instructions: string;
+  };
+  const [schedulingFor, setSchedulingFor] = useState<PieceRow | null>(null);
   const moveStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const patch: { pipeline_status: string; posted_at?: string } = { pipeline_status: status };
+    mutationFn: async ({ id, status, schedule }: { id: string; status: string; schedule?: SchedulePatch }) => {
+      const patch: Partial<Database["public"]["Tables"]["content_pieces"]["Update"]> = { pipeline_status: status };
       if (status === "posted") patch.posted_at = new Date().toISOString();
+      if (schedule) {
+        patch.scheduled_date = schedule.scheduled_date || null;
+        patch.scheduled_time = schedule.scheduled_time || null;
+        patch.post_format = schedule.post_format || null;
+        patch.repurpose_plan = schedule.repurpose_plan || null;
+        patch.voice_notes = schedule.voice_notes || null;
+        patch.why_it_works = schedule.why_it_works || null;
+        patch.posting_instructions = schedule.posting_instructions || null;
+      }
       const { error } = await supabase.from("content_pieces").update(patch).eq("id", id);
       if (error) throw error;
+
       if (status === "ready_to_post") {
         try { await dispatchReadyFn({ data: { contentId: id } }); } catch (e) { console.warn("dispatch failed", e); }
       }
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["content"] });
-      if (vars.status === "ready_to_post") toast.success("Marked ready · script sent to the matching admin channel");
+      qc.invalidateQueries({ queryKey: ["content-schedule"] });
+      setSchedulingFor(null);
+      if (vars.status === "ready_to_post") toast.success("Scheduled · added to the Content Calendar and sent to the admin channel");
       else toast.success("Moved to " + (PIPELINE.find(p => p.key === vars.status)?.label ?? vars.status));
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
+
 
   const save = useMutation({
     mutationFn: async (form: FormData) => {
@@ -265,10 +283,15 @@ function ContentIntel() {
                                   className="text-[10px] text-muted-foreground hover:text-foreground px-1">←</button>
                               )}
                               {colIdx < PIPELINE.length - 1 && (
-                                <button title={colIdx === PIPELINE.length - 2 ? "Mark ready · alerts team" : "Advance"}
-                                  onClick={() => moveStatus.mutate({ id: p.id, status: PIPELINE[colIdx + 1].key })}
+                                <button title={PIPELINE[colIdx + 1].key === "ready_to_post" ? "Schedule it · lands on the client calendar" : "Advance"}
+                                  onClick={() => {
+                                    const next = PIPELINE[colIdx + 1].key;
+                                    if (next === "ready_to_post") setSchedulingFor(p);
+                                    else moveStatus.mutate({ id: p.id, status: next });
+                                  }}
                                   className="text-[10px] text-accent hover:text-accent/80 px-1 font-semibold">→</button>
                               )}
+
                             </div>
                           </div>
                         </div>
@@ -433,9 +456,119 @@ function ContentIntel() {
       </div>
       <SlidesPanel orgId={orgId} contentId={slidesFor} onClose={() => setSlidesFor(null)} />
       <OverviewPanel piece={overviewFor} onClose={() => setOverviewFor(null)} onEdit={(p) => { setOverviewFor(null); edit(p); }} />
+      <ScheduleDialog
+        piece={schedulingFor}
+        pending={moveStatus.isPending}
+        onClose={() => setSchedulingFor(null)}
+        onConfirm={(schedule) => schedulingFor && moveStatus.mutate({ id: schedulingFor.id, status: "ready_to_post", schedule })}
+      />
     </>
   );
 }
+
+const FORMATS = [
+  { key: "short_form", label: "Short-form (Reel / TikTok / Short)" },
+  { key: "long_form", label: "Long-form (YouTube / podcast)" },
+  { key: "long_to_short", label: "Long-form → cut into clips" },
+  { key: "story", label: "Story sequence" },
+  { key: "carousel", label: "Carousel / post" },
+  { key: "email", label: "Email / SMS" },
+];
+
+function ScheduleDialog({
+  piece, pending, onClose, onConfirm,
+}: {
+  piece: PieceRow | null; pending: boolean; onClose: () => void;
+  onConfirm: (s: { scheduled_date: string; scheduled_time: string; post_format: string; repurpose_plan: string; voice_notes: string; why_it_works: string; posting_instructions: string }) => void;
+}) {
+  const tomorrow = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+  const guessFormat = (pl?: Platform) =>
+    pl === "youtube" || pl === "vsl" ? "long_form"
+      : pl === "story_sequence" ? "story"
+      : pl === "email" ? "email"
+      : pl === "carousel" || pl === "post" ? "carousel"
+      : "short_form";
+
+  const [date, setDate] = useState(tomorrow);
+  const [time, setTime] = useState("18:00");
+  const [format, setFormat] = useState(guessFormat(piece?.platform));
+  const [repurpose, setRepurpose] = useState("");
+  const [voice, setVoice] = useState("");
+  const [why, setWhy] = useState("");
+  const [instr, setInstr] = useState("");
+
+  // Re-seed when a different card is opened.
+  const [seeded, setSeeded] = useState<string | null>(null);
+  if (piece && seeded !== piece.id) {
+    setSeeded(piece.id);
+    setDate(tomorrow); setTime("18:00"); setFormat(guessFormat(piece.platform));
+    setRepurpose(""); setVoice(""); setWhy(""); setInstr("");
+  }
+
+  return (
+    <Dialog open={!!piece} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Schedule this post</DialogTitle>
+        </DialogHeader>
+        {piece && (
+          <div className="space-y-3">
+            <div className="rounded-md border border-border bg-muted/20 p-2.5">
+              <div className="text-xs font-medium">{piece.title || "(untitled)"}</div>
+              {piece.hook && <div className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2 italic">"{piece.hook}"</div>}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Post on</Label>
+                <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">At</Label>
+                <Input type="time" value={time} onChange={e => setTime(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Format</Label>
+              <Select value={format} onValueChange={setFormat}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {FORMATS.map(f => <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">How it should sound (voice / delivery notes)</Label>
+              <Textarea rows={2} value={voice} onChange={e => setVoice(e.target.value)} placeholder="Calm, matter-of-fact, no hype. Talk to camera, walking." />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Repurpose plan</Label>
+              <Textarea rows={2} value={repurpose} onChange={e => setRepurpose(e.target.value)} placeholder="Cut 3 clips from 4:10, 8:30, 12:05 → Reels next week." />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Why this works</Label>
+              <Textarea rows={2} value={why} onChange={e => setWhy(e.target.value)} placeholder="Proof angle for solution-aware viewers — mirrors the top objection from intakes." />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Posting instructions</Label>
+              <Textarea rows={2} value={instr} onChange={e => setInstr(e.target.value)} placeholder="Caption + first comment, pin the CTA, reply to DMs within the hour." />
+            </div>
+            <Button className="w-full" disabled={pending || !date}
+              onClick={() => onConfirm({ scheduled_date: date, scheduled_time: time, post_format: format, repurpose_plan: repurpose, voice_notes: voice, why_it_works: why, posting_instructions: instr })}>
+              {pending ? "Scheduling…" : "Confirm · add to client calendar"}
+            </Button>
+            <p className="text-[11px] text-muted-foreground">
+              This moves the piece to <span className="font-mono">Ready to Post</span>, drops it on the Content Calendar for that day/time, and pings the admin channel with the script.
+            </p>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 
 function ContentForm({ prefill, onSubmit, pending }: { prefill: Prefill | null; onSubmit: (fd: FormData) => void; pending: boolean }) {
   const [title, setTitle] = useState(prefill?.title ?? "");

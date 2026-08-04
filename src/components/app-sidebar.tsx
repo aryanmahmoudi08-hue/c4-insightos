@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard, Video, GitBranch, MessageSquare, PhoneCall, Users, BadgeCheck,
   TrendingUp, Sparkles, Settings, LogOut, Bell, Search, Brain, Activity, PhoneIncoming,
-  ChevronDown, Briefcase, UserPlus, Menu, X, Wand2, BookOpen, Layers,
+  ChevronDown, Briefcase, UserPlus, Menu, X, Wand2, BookOpen, Layers, CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,15 +50,21 @@ const COPY_GENERATE_NAV: NavItem[] = [
   { to: "/copy", label: "Email / SMS", icon: MessageSquare, search: { tab: "generate", cat: "email" } },
 ];
 
+// ContentOS — the client-facing posting engine (separate from CopyOS generation)
+const CONTENT_OS_NAV: NavItem[] = [
+  { to: "/content-calendar", label: "Content Calendar", icon: CalendarDays },
+  { to: "/content", label: "Content Intelligence", icon: Video },
+  { to: "/sequences", label: "Story Sequences", icon: Layers },
+];
+
 // CopyOS top-level items (excluding the nested Generate)
 const COPY_OS_NAV: NavItem[] = [
-  { to: "/sequences", label: "Story Sequences", icon: Layers },
-  { to: "/content", label: "Content Tracker", icon: Video },
   { to: "/copy", label: "Review", icon: BadgeCheck, search: { tab: "review" } },
   { to: "/copy", label: "Angle bank", icon: Sparkles, search: { tab: "angles" } },
   { to: "/copy", label: "Swipe library", icon: Activity, search: { tab: "swipes" } },
   { to: "/copy", label: "Client DNA", icon: Users, search: { tab: "clients" } },
 ];
+
 
 const FULFILLMENT_NAV: NavItem[] = [
   { to: "/clients", label: "Clients", icon: BadgeCheck },
@@ -75,7 +81,8 @@ const BOTTOM_NAV: NavItem[] = [
 // Routes a non-manager (setter/closer) is allowed to see.
 const RESTRICTED_ALLOW = new Set([
   "/dashboard", "/team", "/dm-setter", "/inbound-dialer", "/closer",
-  "/clients", "/onboarding", "/fulfillment", "/vsl",
+  "/clients", "/onboarding", "/fulfillment", "/vsl", "/content-calendar",
+
 ]);
 
 export function AppSidebar() {
@@ -92,16 +99,20 @@ export function AppSidebar() {
   const bottomItems = filterByRole(BOTTOM_NAV);
   const copyItems = filterByRole(COPY_OS_NAV);
   const copyGenItems = filterByRole(COPY_GENERATE_NAV);
+  const contentItems = filterByRole(CONTENT_OS_NAV);
 
   const repsActive = repsItems.some(it => loc.pathname.startsWith(it.to));
   const salesActive = repsActive || salesItems.some(it => loc.pathname.startsWith(it.to));
-  const copyActive = loc.pathname.startsWith("/copy") || loc.pathname.startsWith("/content");
+  const contentActive = contentItems.some(it => loc.pathname.startsWith(it.to));
+  const copyActive = loc.pathname.startsWith("/copy");
   const generateActive = loc.pathname.startsWith("/copy");
 
   const [salesOpen, setSalesOpen] = useState(salesActive);
   const [repsOpen, setRepsOpen] = useState(repsActive);
+  const [contentOpen, setContentOpen] = useState(contentActive);
   const [copyOpen, setCopyOpen] = useState(copyActive);
   const [genOpen, setGenOpen] = useState(generateActive);
+
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const closeMobile = () => setMobileOpen(false);
@@ -215,6 +226,18 @@ export function AppSidebar() {
               )}
             </>
           )}
+
+          {contentItems.length > 0 && (
+            <>
+              {sectionBtn("ContentOS", CalendarDays, contentOpen, contentActive, () => setContentOpen(o => !o))}
+              {contentOpen && (
+                <div className="space-y-0.5">
+                  {contentItems.map(it => renderItem(it, true, 1))}
+                </div>
+              )}
+            </>
+          )}
+
 
           {copyItems.length > 0 && (
             <>
