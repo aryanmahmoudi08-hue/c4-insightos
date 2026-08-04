@@ -82,7 +82,7 @@ function ContentIntel() {
   const [schedulingFor, setSchedulingFor] = useState<PieceRow | null>(null);
   const moveStatus = useMutation({
     mutationFn: async ({ id, status, schedule }: { id: string; status: string; schedule?: SchedulePatch }) => {
-      const patch: Record<string, unknown> = { pipeline_status: status };
+      const patch: Partial<Database["public"]["Tables"]["content_pieces"]["Update"]> = { pipeline_status: status };
       if (status === "posted") patch.posted_at = new Date().toISOString();
       if (schedule) {
         patch.scheduled_date = schedule.scheduled_date || null;
@@ -95,6 +95,7 @@ function ContentIntel() {
       }
       const { error } = await supabase.from("content_pieces").update(patch).eq("id", id);
       if (error) throw error;
+
       if (status === "ready_to_post") {
         try { await dispatchReadyFn({ data: { contentId: id } }); } catch (e) { console.warn("dispatch failed", e); }
       }
