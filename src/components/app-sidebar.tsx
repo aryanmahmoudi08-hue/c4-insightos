@@ -98,16 +98,20 @@ export function AppSidebar() {
   const bottomItems = filterByRole(BOTTOM_NAV);
   const copyItems = filterByRole(COPY_OS_NAV);
   const copyGenItems = filterByRole(COPY_GENERATE_NAV);
+  const contentItems = filterByRole(CONTENT_OS_NAV);
 
   const repsActive = repsItems.some(it => loc.pathname.startsWith(it.to));
   const salesActive = repsActive || salesItems.some(it => loc.pathname.startsWith(it.to));
-  const copyActive = loc.pathname.startsWith("/copy") || loc.pathname.startsWith("/content");
+  const contentActive = contentItems.some(it => loc.pathname.startsWith(it.to));
+  const copyActive = loc.pathname.startsWith("/copy");
   const generateActive = loc.pathname.startsWith("/copy");
 
   const [salesOpen, setSalesOpen] = useState(salesActive);
   const [repsOpen, setRepsOpen] = useState(repsActive);
+  const [contentOpen, setContentOpen] = useState(contentActive);
   const [copyOpen, setCopyOpen] = useState(copyActive);
   const [genOpen, setGenOpen] = useState(generateActive);
+
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const closeMobile = () => setMobileOpen(false);
