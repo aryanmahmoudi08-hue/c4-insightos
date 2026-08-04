@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard, Video, GitBranch, MessageSquare, PhoneCall, Users, BadgeCheck,
   TrendingUp, Sparkles, Settings, LogOut, Bell, Search, Brain, Activity, PhoneIncoming,
-  ChevronDown, Briefcase, UserPlus, Menu, X, Wand2, BookOpen, Layers,
+  ChevronDown, Briefcase, UserPlus, Menu, X, Wand2, BookOpen, Layers, CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
