@@ -50,15 +50,21 @@ const COPY_GENERATE_NAV: NavItem[] = [
   { to: "/copy", label: "Email / SMS", icon: MessageSquare, search: { tab: "generate", cat: "email" } },
 ];
 
+// ContentOS — the client-facing posting engine (separate from CopyOS generation)
+const CONTENT_OS_NAV: NavItem[] = [
+  { to: "/content-calendar", label: "Content Calendar", icon: CalendarDays },
+  { to: "/content", label: "Content Intelligence", icon: Video },
+  { to: "/sequences", label: "Story Sequences", icon: Layers },
+];
+
 // CopyOS top-level items (excluding the nested Generate)
 const COPY_OS_NAV: NavItem[] = [
-  { to: "/sequences", label: "Story Sequences", icon: Layers },
-  { to: "/content", label: "Content Tracker", icon: Video },
   { to: "/copy", label: "Review", icon: BadgeCheck, search: { tab: "review" } },
   { to: "/copy", label: "Angle bank", icon: Sparkles, search: { tab: "angles" } },
   { to: "/copy", label: "Swipe library", icon: Activity, search: { tab: "swipes" } },
   { to: "/copy", label: "Client DNA", icon: Users, search: { tab: "clients" } },
 ];
+
 
 const FULFILLMENT_NAV: NavItem[] = [
   { to: "/clients", label: "Clients", icon: BadgeCheck },
