@@ -226,6 +226,18 @@ export function AppSidebar() {
             </>
           )}
 
+          {contentItems.length > 0 && (
+            <>
+              {sectionBtn("ContentOS", CalendarDays, contentOpen, contentActive, () => setContentOpen(o => !o))}
+              {contentOpen && (
+                <div className="space-y-0.5">
+                  {contentItems.map(it => renderItem(it, true, 1))}
+                </div>
+              )}
+            </>
+          )}
+
+
           {copyItems.length > 0 && (
             <>
               {sectionBtn("CopyOS", Sparkles, copyOpen, copyActive, () => setCopyOpen(o => !o))}
