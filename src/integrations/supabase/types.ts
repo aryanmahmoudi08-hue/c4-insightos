@@ -715,13 +715,20 @@ export type Database = {
           pain_point: string | null
           pipeline_status: string
           platform: Database["public"]["Enums"]["content_platform"]
+          post_format: string | null
           posted_at: string | null
+          posting_instructions: string | null
+          repurpose_plan: string | null
+          scheduled_date: string | null
+          scheduled_time: string | null
           source_connector: string | null
           thumbnail_url: string | null
           title: string | null
           topic: string | null
           updated_at: string
           url: string | null
+          voice_notes: string | null
+          why_it_works: string | null
         }
         Insert: {
           angle?: Database["public"]["Enums"]["content_angle"] | null
@@ -743,13 +750,20 @@ export type Database = {
           pain_point?: string | null
           pipeline_status?: string
           platform: Database["public"]["Enums"]["content_platform"]
+          post_format?: string | null
           posted_at?: string | null
+          posting_instructions?: string | null
+          repurpose_plan?: string | null
+          scheduled_date?: string | null
+          scheduled_time?: string | null
           source_connector?: string | null
           thumbnail_url?: string | null
           title?: string | null
           topic?: string | null
           updated_at?: string
           url?: string | null
+          voice_notes?: string | null
+          why_it_works?: string | null
         }
         Update: {
           angle?: Database["public"]["Enums"]["content_angle"] | null
@@ -771,13 +785,20 @@ export type Database = {
           pain_point?: string | null
           pipeline_status?: string
           platform?: Database["public"]["Enums"]["content_platform"]
+          post_format?: string | null
           posted_at?: string | null
+          posting_instructions?: string | null
+          repurpose_plan?: string | null
+          scheduled_date?: string | null
+          scheduled_time?: string | null
           source_connector?: string | null
           thumbnail_url?: string | null
           title?: string | null
           topic?: string | null
           updated_at?: string
           url?: string | null
+          voice_notes?: string | null
+          why_it_works?: string | null
         }
         Relationships: [
           {
