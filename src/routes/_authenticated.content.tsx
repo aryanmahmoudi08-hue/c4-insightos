@@ -283,10 +283,15 @@ function ContentIntel() {
                                   className="text-[10px] text-muted-foreground hover:text-foreground px-1">←</button>
                               )}
                               {colIdx < PIPELINE.length - 1 && (
-                                <button title={colIdx === PIPELINE.length - 2 ? "Mark ready · alerts team" : "Advance"}
-                                  onClick={() => moveStatus.mutate({ id: p.id, status: PIPELINE[colIdx + 1].key })}
+                                <button title={PIPELINE[colIdx + 1].key === "ready_to_post" ? "Schedule it · lands on the client calendar" : "Advance"}
+                                  onClick={() => {
+                                    const next = PIPELINE[colIdx + 1].key;
+                                    if (next === "ready_to_post") setSchedulingFor(p);
+                                    else moveStatus.mutate({ id: p.id, status: next });
+                                  }}
                                   className="text-[10px] text-accent hover:text-accent/80 px-1 font-semibold">→</button>
                               )}
+
                             </div>
                           </div>
                         </div>
