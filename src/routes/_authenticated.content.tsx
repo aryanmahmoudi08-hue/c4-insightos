@@ -75,10 +75,24 @@ function ContentIntel() {
   });
 
   const dispatchReadyFn = useServerFn(dispatchContentReady);
+  type SchedulePatch = {
+    scheduled_date: string; scheduled_time: string; post_format: string;
+    repurpose_plan: string; voice_notes: string; why_it_works: string; posting_instructions: string;
+  };
+  const [schedulingFor, setSchedulingFor] = useState<PieceRow | null>(null);
   const moveStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const patch: { pipeline_status: string; posted_at?: string } = { pipeline_status: status };
+    mutationFn: async ({ id, status, schedule }: { id: string; status: string; schedule?: SchedulePatch }) => {
+      const patch: Record<string, unknown> = { pipeline_status: status };
       if (status === "posted") patch.posted_at = new Date().toISOString();
+      if (schedule) {
+        patch.scheduled_date = schedule.scheduled_date || null;
+        patch.scheduled_time = schedule.scheduled_time || null;
+        patch.post_format = schedule.post_format || null;
+        patch.repurpose_plan = schedule.repurpose_plan || null;
+        patch.voice_notes = schedule.voice_notes || null;
+        patch.why_it_works = schedule.why_it_works || null;
+        patch.posting_instructions = schedule.posting_instructions || null;
+      }
       const { error } = await supabase.from("content_pieces").update(patch).eq("id", id);
       if (error) throw error;
       if (status === "ready_to_post") {
@@ -87,11 +101,14 @@ function ContentIntel() {
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["content"] });
-      if (vars.status === "ready_to_post") toast.success("Marked ready · script sent to the matching admin channel");
+      qc.invalidateQueries({ queryKey: ["content-schedule"] });
+      setSchedulingFor(null);
+      if (vars.status === "ready_to_post") toast.success("Scheduled · added to the Content Calendar and sent to the admin channel");
       else toast.success("Moved to " + (PIPELINE.find(p => p.key === vars.status)?.label ?? vars.status));
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
+
 
   const save = useMutation({
     mutationFn: async (form: FormData) => {
