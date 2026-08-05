@@ -3,6 +3,7 @@ import {
   LayoutDashboard, Video, GitBranch, MessageSquare, PhoneCall, Users, BadgeCheck,
   TrendingUp, Sparkles, Settings, LogOut, Bell, Search, Brain, Activity, PhoneIncoming,
   ChevronDown, Briefcase, UserPlus, Menu, X, Wand2, BookOpen, Layers, CalendarDays,
+  ShieldCheck, Plug, Sun, Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +14,7 @@ import { useState } from "react";
 import c4Logo from "@/assets/c4-logo.png";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { useDateRange } from "@/hooks/use-date-range";
+import { useTheme } from "@/hooks/use-theme";
 
 type NavItem = {
   to: string;
@@ -81,7 +83,7 @@ const BOTTOM_NAV: NavItem[] = [
 // Routes a non-manager (setter/closer) is allowed to see.
 const RESTRICTED_ALLOW = new Set([
   "/dashboard", "/team", "/dm-setter", "/inbound-dialer", "/closer",
-  "/clients", "/onboarding", "/fulfillment", "/vsl", "/content-calendar",
+  "/clients", "/onboarding", "/fulfillment", "/vsl", "/content-calendar", "/settings",
 
 ]);
 
@@ -89,7 +91,8 @@ export function AppSidebar() {
   const loc = useLocation();
   const nav = useNavigate();
   const { data: org } = useCurrentOrg();
-  const { canManage } = useRole();
+  const { canManage, isAdmin } = useRole();
+  const { theme, toggle } = useTheme();
   const filterByRole = (items: NavItem[]) =>
     canManage ? items : items.filter(it => RESTRICTED_ALLOW.has(it.to));
 
@@ -275,13 +278,24 @@ export function AppSidebar() {
               {bottomItems.map(it => renderItem(it))}
             </>
           )}
+
+          <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">General</div>
+          {renderItem({ to: "/settings", label: "Settings", icon: Settings })}
+          {isAdmin && renderItem({ to: "/permissions", label: "Access control", icon: ShieldCheck })}
+          {isAdmin && renderItem({ to: "/connectors", label: "Connectors", icon: Plug })}
         </nav>
-        <div className="border-t border-sidebar-border p-2">
+        <div className="border-t border-sidebar-border p-2 space-y-1">
+          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sidebar-foreground/80"
+            onClick={toggle}>
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </Button>
           <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sidebar-foreground/80"
             onClick={async () => { await supabase.auth.signOut(); nav({ to: "/login" }); }}>
             <LogOut className="h-4 w-4" /> Sign out
           </Button>
         </div>
+
       </aside>
     </>
   );
@@ -312,7 +326,10 @@ export function TopBar({ title, subtitle, showDateRange = false }: { title: stri
               className="h-8 w-72 rounded-md border border-input bg-input/40 pl-8 pr-3 text-xs outline-none focus:ring-1 focus:ring-ring" />
           </form>
           <Button variant="ghost" size="icon" className="h-8 w-8 hidden sm:inline-flex"><Bell className="h-4 w-4" /></Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 hidden sm:inline-flex"><Settings className="h-4 w-4" /></Button>
+          <ThemeToggle />
+          <Button asChild variant="ghost" size="icon" className="h-8 w-8 hidden sm:inline-flex">
+            <Link to="/settings" aria-label="Settings"><Settings className="h-4 w-4" /></Link>
+          </Button>
         </div>
       </div>
       {showDateRange && (
@@ -322,5 +339,15 @@ export function TopBar({ title, subtitle, showDateRange = false }: { title: stri
       )}
       <div className="rule-gold mt-4 -mx-4 md:-mx-6" />
     </div>
+  );
+}
+
+export function ThemeToggle() {
+  const { theme, toggle } = useTheme();
+  return (
+    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggle}
+      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+      {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+    </Button>
   );
 }

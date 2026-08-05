@@ -16,6 +16,7 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.
 import { Route as AuthenticatedVslRouteImport } from './routes/_authenticated.vsl'
 import { Route as AuthenticatedTrafficRouteImport } from './routes/_authenticated.traffic'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
 import { Route as AuthenticatedSequencesRouteImport } from './routes/_authenticated.sequences'
 import { Route as AuthenticatedPermissionsRouteImport } from './routes/_authenticated.permissions'
 import { Route as AuthenticatedOutreachRouteImport } from './routes/_authenticated.outreach'
@@ -70,6 +71,11 @@ const AuthenticatedTrafficRoute = AuthenticatedTrafficRouteImport.update({
 const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
   id: '/team',
   path: '/team',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedSequencesRoute = AuthenticatedSequencesRouteImport.update({
@@ -206,6 +212,7 @@ export interface FileRoutesByFullPath {
   '/outreach': typeof AuthenticatedOutreachRoute
   '/permissions': typeof AuthenticatedPermissionsRoute
   '/sequences': typeof AuthenticatedSequencesRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/vsl': typeof AuthenticatedVslRoute
@@ -234,6 +241,7 @@ export interface FileRoutesByTo {
   '/outreach': typeof AuthenticatedOutreachRoute
   '/permissions': typeof AuthenticatedPermissionsRoute
   '/sequences': typeof AuthenticatedSequencesRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/team': typeof AuthenticatedTeamRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/vsl': typeof AuthenticatedVslRoute
@@ -265,6 +273,7 @@ export interface FileRoutesById {
   '/_authenticated/outreach': typeof AuthenticatedOutreachRoute
   '/_authenticated/permissions': typeof AuthenticatedPermissionsRoute
   '/_authenticated/sequences': typeof AuthenticatedSequencesRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/traffic': typeof AuthenticatedTrafficRoute
   '/_authenticated/vsl': typeof AuthenticatedVslRoute
@@ -297,6 +306,7 @@ export interface FileRouteTypes {
     | '/outreach'
     | '/permissions'
     | '/sequences'
+    | '/settings'
     | '/team'
     | '/traffic'
     | '/vsl'
@@ -325,6 +335,7 @@ export interface FileRouteTypes {
     | '/outreach'
     | '/permissions'
     | '/sequences'
+    | '/settings'
     | '/team'
     | '/traffic'
     | '/vsl'
@@ -355,6 +366,7 @@ export interface FileRouteTypes {
     | '/_authenticated/outreach'
     | '/_authenticated/permissions'
     | '/_authenticated/sequences'
+    | '/_authenticated/settings'
     | '/_authenticated/team'
     | '/_authenticated/traffic'
     | '/_authenticated/vsl'
@@ -420,6 +432,13 @@ declare module '@tanstack/react-router' {
       path: '/team'
       fullPath: '/team'
       preLoaderRoute: typeof AuthenticatedTeamRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/sequences': {
@@ -592,6 +611,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedOutreachRoute: typeof AuthenticatedOutreachRoute
   AuthenticatedPermissionsRoute: typeof AuthenticatedPermissionsRoute
   AuthenticatedSequencesRoute: typeof AuthenticatedSequencesRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedTrafficRoute: typeof AuthenticatedTrafficRoute
   AuthenticatedVslRoute: typeof AuthenticatedVslRoute
@@ -618,6 +638,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedOutreachRoute: AuthenticatedOutreachRoute,
   AuthenticatedPermissionsRoute: AuthenticatedPermissionsRoute,
   AuthenticatedSequencesRoute: AuthenticatedSequencesRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedTrafficRoute: AuthenticatedTrafficRoute,
   AuthenticatedVslRoute: AuthenticatedVslRoute,

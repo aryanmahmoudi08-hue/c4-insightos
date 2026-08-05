@@ -50,7 +50,7 @@ function LoginPage() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       <div className="relative hidden lg:flex flex-col justify-between overflow-hidden border-r border-border bg-sidebar p-10">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,oklch(0.66_0.18_258/.18),transparent_60%),radial-gradient(circle_at_80%_80%,oklch(0.62_0.22_295/.15),transparent_55%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,oklch(1_0_0/.07),transparent_60%),radial-gradient(circle_at_80%_80%,oklch(1_0_0/.05),transparent_55%)]" />
         <div className="relative flex items-center gap-2">
           <div className="grid h-9 w-9 place-items-center rounded-md bg-gradient-to-br from-primary to-accent font-mono text-sm font-bold text-primary-foreground">C4</div>
           <div className="font-semibold">InsightOS</div>
