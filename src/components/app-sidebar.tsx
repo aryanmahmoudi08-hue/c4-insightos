@@ -275,13 +275,24 @@ export function AppSidebar() {
               {bottomItems.map(it => renderItem(it))}
             </>
           )}
+
+          <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">General</div>
+          {renderItem({ to: "/settings", label: "Settings", icon: Settings })}
+          {isAdmin && renderItem({ to: "/permissions", label: "Access control", icon: ShieldCheck })}
+          {isAdmin && renderItem({ to: "/connectors", label: "Connectors", icon: Plug })}
         </nav>
-        <div className="border-t border-sidebar-border p-2">
+        <div className="border-t border-sidebar-border p-2 space-y-1">
+          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sidebar-foreground/80"
+            onClick={toggle}>
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </Button>
           <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sidebar-foreground/80"
             onClick={async () => { await supabase.auth.signOut(); nav({ to: "/login" }); }}>
             <LogOut className="h-4 w-4" /> Sign out
           </Button>
         </div>
+
       </aside>
     </>
   );
