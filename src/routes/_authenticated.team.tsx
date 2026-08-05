@@ -23,7 +23,7 @@ function Team() {
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const [pendingRoles, setPendingRoles] = useState<Record<string, string>>({});
-  const [permTarget, setPermTarget] = useState<{ userId: string; name: string } | null>(null);
+  const [permTarget, setPermTarget] = useState<{ userId: string; name: string; role: string } | null>(null);
 
   const { data: requests } = useQuery({
     queryKey: ["membership-requests", orgId],
@@ -189,8 +189,8 @@ function Team() {
                   <td className="p-3 text-right font-mono text-[color:var(--color-success)]">${m.cash.toLocaleString()}</td>
                   {isAdmin && (
                     <td className="p-3 text-right">
-                      <Button size="sm" variant="outline" onClick={() => setPermTarget({ userId: m.user_id, name: m.profiles?.display_name ?? m.user_id.slice(0,8) })}>
-                        <Shield className="h-3.5 w-3.5 mr-1.5" /> Permissions
+                      <Button size="sm" variant="outline" onClick={() => setPermTarget({ userId: m.user_id, name: m.profiles?.display_name ?? m.user_id.slice(0,8), role: m.role })}>
+                        <Shield className="h-3.5 w-3.5 mr-1.5" /> Access
                       </Button>
                     </td>
                   )}
@@ -206,6 +206,7 @@ function Team() {
         onOpenChange={(o) => { if (!o) setPermTarget(null); }}
         userId={permTarget?.userId ?? null}
         displayName={permTarget?.name ?? ""}
+        role={permTarget?.role ?? "viewer"}
       />
     </>
   );
