@@ -879,49 +879,100 @@ export type Database = {
       }
       copy_clients: {
         Row: {
+          age: number | null
           avatar_research: Json
+          avatar_url: string | null
+          bio: string | null
+          business_stage: string | null
           competitors: string | null
+          content_pillars: string | null
           created_at: string
           display_name: string
+          dream_outcome: string | null
+          goals: string | null
           id: string
+          instagram_followers: number | null
+          instagram_handle: string | null
+          location: string | null
+          monthly_revenue_cents: number | null
           niche: string | null
           notes: string | null
           offer_details: Json
+          offer_price_cents: number | null
           org_id: string
+          proof_assets: string | null
           sacred_cows: string | null
+          tiktok_followers: number | null
+          tiktok_handle: string | null
           updated_at: string
           voice_fingerprint: Json | null
           voice_transcripts: string | null
+          youtube_handle: string | null
+          youtube_subscribers: number | null
         }
         Insert: {
+          age?: number | null
           avatar_research?: Json
+          avatar_url?: string | null
+          bio?: string | null
+          business_stage?: string | null
           competitors?: string | null
+          content_pillars?: string | null
           created_at?: string
           display_name: string
+          dream_outcome?: string | null
+          goals?: string | null
           id?: string
+          instagram_followers?: number | null
+          instagram_handle?: string | null
+          location?: string | null
+          monthly_revenue_cents?: number | null
           niche?: string | null
           notes?: string | null
           offer_details?: Json
+          offer_price_cents?: number | null
           org_id: string
+          proof_assets?: string | null
           sacred_cows?: string | null
+          tiktok_followers?: number | null
+          tiktok_handle?: string | null
           updated_at?: string
           voice_fingerprint?: Json | null
           voice_transcripts?: string | null
+          youtube_handle?: string | null
+          youtube_subscribers?: number | null
         }
         Update: {
+          age?: number | null
           avatar_research?: Json
+          avatar_url?: string | null
+          bio?: string | null
+          business_stage?: string | null
           competitors?: string | null
+          content_pillars?: string | null
           created_at?: string
           display_name?: string
+          dream_outcome?: string | null
+          goals?: string | null
           id?: string
+          instagram_followers?: number | null
+          instagram_handle?: string | null
+          location?: string | null
+          monthly_revenue_cents?: number | null
           niche?: string | null
           notes?: string | null
           offer_details?: Json
+          offer_price_cents?: number | null
           org_id?: string
+          proof_assets?: string | null
           sacred_cows?: string | null
+          tiktok_followers?: number | null
+          tiktok_handle?: string | null
           updated_at?: string
           voice_fingerprint?: Json | null
           voice_transcripts?: string | null
+          youtube_handle?: string | null
+          youtube_subscribers?: number | null
         }
         Relationships: []
       }
@@ -1022,6 +1073,87 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      daily_wins: {
+        Row: {
+          blocker: string | null
+          client_id: string | null
+          created_at: string
+          energy_score: number | null
+          financial_amount_cents: number | null
+          financial_source: string | null
+          id: string
+          org_id: string
+          priority: string
+          proof_url: string | null
+          student_name: string
+          tomorrow_needle_mover: string | null
+          updated_at: string
+          win_date: string
+          win_description: string
+          win_types: string[]
+          work_done: string | null
+          yesterday_commitment: string | null
+          yesterday_status: string
+        }
+        Insert: {
+          blocker?: string | null
+          client_id?: string | null
+          created_at?: string
+          energy_score?: number | null
+          financial_amount_cents?: number | null
+          financial_source?: string | null
+          id?: string
+          org_id: string
+          priority?: string
+          proof_url?: string | null
+          student_name: string
+          tomorrow_needle_mover?: string | null
+          updated_at?: string
+          win_date?: string
+          win_description: string
+          win_types?: string[]
+          work_done?: string | null
+          yesterday_commitment?: string | null
+          yesterday_status?: string
+        }
+        Update: {
+          blocker?: string | null
+          client_id?: string | null
+          created_at?: string
+          energy_score?: number | null
+          financial_amount_cents?: number | null
+          financial_source?: string | null
+          id?: string
+          org_id?: string
+          priority?: string
+          proof_url?: string | null
+          student_name?: string
+          tomorrow_needle_mover?: string | null
+          updated_at?: string
+          win_date?: string
+          win_description?: string
+          win_types?: string[]
+          work_done?: string | null
+          yesterday_commitment?: string | null
+          yesterday_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_wins_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_wins_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dashboard_widgets: {
         Row: {
@@ -1153,13 +1285,17 @@ export type Database = {
       hiring_applicants: {
         Row: {
           ai_reasoning: string | null
+          ai_recommended_stage: string | null
           ai_score: number | null
+          ai_transcript_summary: string | null
           applied_at: string
           created_at: string
           email: string | null
           full_name: string
           id: string
           last_shown_at: string | null
+          loom_transcript: string | null
+          loom_url: string | null
           niche: string | null
           notes: string | null
           org_id: string
@@ -1173,13 +1309,17 @@ export type Database = {
         }
         Insert: {
           ai_reasoning?: string | null
+          ai_recommended_stage?: string | null
           ai_score?: number | null
+          ai_transcript_summary?: string | null
           applied_at?: string
           created_at?: string
           email?: string | null
           full_name: string
           id?: string
           last_shown_at?: string | null
+          loom_transcript?: string | null
+          loom_url?: string | null
           niche?: string | null
           notes?: string | null
           org_id: string
@@ -1193,13 +1333,17 @@ export type Database = {
         }
         Update: {
           ai_reasoning?: string | null
+          ai_recommended_stage?: string | null
           ai_score?: number | null
+          ai_transcript_summary?: string | null
           applied_at?: string
           created_at?: string
           email?: string | null
           full_name?: string
           id?: string
           last_shown_at?: string | null
+          loom_transcript?: string | null
+          loom_url?: string | null
           niche?: string | null
           notes?: string | null
           org_id?: string
@@ -2529,6 +2673,62 @@ export type Database = {
           },
         ]
       }
+      team_calendars: {
+        Row: {
+          active: boolean
+          calendar_id: string | null
+          color: string | null
+          created_at: string
+          embed_url: string | null
+          ical_url: string | null
+          id: string
+          member_name: string
+          org_id: string
+          provider: string
+          role: string
+          timezone: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          calendar_id?: string | null
+          color?: string | null
+          created_at?: string
+          embed_url?: string | null
+          ical_url?: string | null
+          id?: string
+          member_name: string
+          org_id: string
+          provider?: string
+          role?: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          calendar_id?: string | null
+          color?: string | null
+          created_at?: string
+          embed_url?: string | null
+          ical_url?: string | null
+          id?: string
+          member_name?: string
+          org_id?: string
+          provider?: string
+          role?: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_calendars_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       team_members: {
         Row: {
           active: boolean
@@ -2811,6 +3011,62 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "webhook_subscriptions_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_blocks: {
+        Row: {
+          block_date: string
+          created_at: string
+          created_by: string | null
+          end_time: string | null
+          id: string
+          kind: string
+          member_name: string
+          notes: string | null
+          org_id: string
+          role: string | null
+          start_time: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          block_date: string
+          created_at?: string
+          created_by?: string | null
+          end_time?: string | null
+          id?: string
+          kind?: string
+          member_name: string
+          notes?: string | null
+          org_id: string
+          role?: string | null
+          start_time?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          block_date?: string
+          created_at?: string
+          created_by?: string | null
+          end_time?: string | null
+          id?: string
+          kind?: string
+          member_name?: string
+          notes?: string | null
+          org_id?: string
+          role?: string | null
+          start_time?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_blocks_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
