@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, TrendingUp, Target, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
+
 
 export const Route = createFileRoute("/_authenticated/traffic")({ component: Traffic });
 
