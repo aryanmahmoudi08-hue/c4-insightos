@@ -16,6 +16,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.index'
 import { Route as AuthenticatedVslRouteImport } from './routes/_authenticated.vsl'
 import { Route as AuthenticatedTrafficRouteImport } from './routes/_authenticated.traffic'
+import { Route as AuthenticatedTeamCalendarRouteImport } from './routes/_authenticated.team-calendar'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
 import { Route as AuthenticatedSequencesRouteImport } from './routes/_authenticated.sequences'
@@ -74,6 +75,12 @@ const AuthenticatedTrafficRoute = AuthenticatedTrafficRouteImport.update({
   path: '/traffic',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedTeamCalendarRoute =
+  AuthenticatedTeamCalendarRouteImport.update({
+    id: '/team-calendar',
+    path: '/team-calendar',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -221,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/sequences': typeof AuthenticatedSequencesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/vsl': typeof AuthenticatedVslRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
@@ -251,6 +259,7 @@ export interface FileRoutesByTo {
   '/sequences': typeof AuthenticatedSequencesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/vsl': typeof AuthenticatedVslRoute
   '/': typeof AuthenticatedIndexRoute
@@ -284,6 +293,7 @@ export interface FileRoutesById {
   '/_authenticated/sequences': typeof AuthenticatedSequencesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
+  '/_authenticated/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/_authenticated/traffic': typeof AuthenticatedTrafficRoute
   '/_authenticated/vsl': typeof AuthenticatedVslRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
@@ -318,6 +328,7 @@ export interface FileRouteTypes {
     | '/sequences'
     | '/settings'
     | '/team'
+    | '/team-calendar'
     | '/traffic'
     | '/vsl'
     | '/api/public/typeform'
@@ -348,6 +359,7 @@ export interface FileRouteTypes {
     | '/sequences'
     | '/settings'
     | '/team'
+    | '/team-calendar'
     | '/traffic'
     | '/vsl'
     | '/'
@@ -380,6 +392,7 @@ export interface FileRouteTypes {
     | '/_authenticated/sequences'
     | '/_authenticated/settings'
     | '/_authenticated/team'
+    | '/_authenticated/team-calendar'
     | '/_authenticated/traffic'
     | '/_authenticated/vsl'
     | '/_authenticated/'
@@ -445,6 +458,13 @@ declare module '@tanstack/react-router' {
       path: '/traffic'
       fullPath: '/traffic'
       preLoaderRoute: typeof AuthenticatedTrafficRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/team-calendar': {
+      id: '/_authenticated/team-calendar'
+      path: '/team-calendar'
+      fullPath: '/team-calendar'
+      preLoaderRoute: typeof AuthenticatedTeamCalendarRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/team': {
@@ -633,6 +653,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSequencesRoute: typeof AuthenticatedSequencesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
+  AuthenticatedTeamCalendarRoute: typeof AuthenticatedTeamCalendarRoute
   AuthenticatedTrafficRoute: typeof AuthenticatedTrafficRoute
   AuthenticatedVslRoute: typeof AuthenticatedVslRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
@@ -660,6 +681,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSequencesRoute: AuthenticatedSequencesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
+  AuthenticatedTeamCalendarRoute: AuthenticatedTeamCalendarRoute,
   AuthenticatedTrafficRoute: AuthenticatedTrafficRoute,
   AuthenticatedVslRoute: AuthenticatedVslRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
