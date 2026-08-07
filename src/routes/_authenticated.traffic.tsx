@@ -112,6 +112,7 @@ function Traffic() {
       }
       const closeRate = matched.length ? (won / matched.length) * 100 : 0;
       const avgDeal = dealCount ? totalDealCents / dealCount : 0;
+      const revenuePerLead = matched.length ? (totalDealCents + ltvCents) / matched.length : 0;
       // Score: close rate (%) × avg deal ($, in thousands) — surfaces revenue-efficient channels
       const score = closeRate * (avgDeal / 100000);
       return {
@@ -123,6 +124,8 @@ function Traffic() {
         closeRate: Number(closeRate.toFixed(1)),
         avgDeal: Math.round(avgDeal / 100),
         ltv: Math.round(ltvCents / 100),
+        revenue: Math.round((totalDealCents + ltvCents) / 100),
+        revenuePerLead: Math.round(revenuePerLead / 100),
         score: Number(score.toFixed(2)),
       };
     });
