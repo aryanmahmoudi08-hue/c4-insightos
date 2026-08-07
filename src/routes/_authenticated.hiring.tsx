@@ -273,7 +273,27 @@ function Hiring() {
                 <div className="rounded-md border border-border bg-muted/20 p-3">
                   <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">AI score · {editing.ai_score?.toFixed(1) ?? "—"}/10</div>
                   <div className="text-xs">{editing.ai_reasoning ?? "No reasoning yet."}</div>
+                  {editing.ai_transcript_summary && (
+                    <p className="mt-2 border-t border-border pt-2 text-xs leading-relaxed text-muted-foreground">{editing.ai_transcript_summary}</p>
+                  )}
+                  {editing.ai_recommended_stage && (
+                    <div className="mt-2 flex items-center gap-2 text-[11px]">
+                      <span className="text-muted-foreground">AI recommends</span>
+                      <span className="rounded bg-primary/15 px-1.5 py-0.5 font-semibold uppercase tracking-wider text-primary">
+                        {STAGES.find(s => s.key === editing.ai_recommended_stage)?.label ?? editing.ai_recommended_stage}
+                      </span>
+                      {editing.stage !== editing.ai_recommended_stage && (
+                        <Button size="sm" variant="outline" className="h-6 text-[10px]"
+                          onClick={() => update.mutate({ id: editing.id, patch: { stage: editing.ai_recommended_stage as string, last_shown_at: new Date().toISOString() } })}>
+                          Apply
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
+
+                <LoomGrader applicant={editing} onGraded={() => { qc.invalidateQueries({ queryKey: ["hiring"] }); setEditing(null); }} />
+
                 <div className="space-y-1.5">
                   <Label className="text-xs">Stage</Label>
                   <Select value={editing.stage} onValueChange={(v) => update.mutate({ id: editing.id, patch: { stage: v, last_shown_at: new Date().toISOString() } })}>
