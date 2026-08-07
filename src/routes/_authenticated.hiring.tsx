@@ -11,8 +11,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Users, Star, Trash2, Pencil, CheckSquare, Square } from "lucide-react";
+import { Plus, Search, Users, Star, Trash2, Pencil, CheckSquare, Square, Video, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { gradeLoomFn } from "@/lib/hiring.functions";
 
 export const Route = createFileRoute("/_authenticated/hiring")({ component: Hiring });
 
@@ -44,6 +46,10 @@ type Applicant = {
   notes: string | null;
   last_shown_at: string | null;
   applied_at: string;
+  loom_url?: string | null;
+  loom_transcript?: string | null;
+  ai_recommended_stage?: string | null;
+  ai_transcript_summary?: string | null;
 };
 
 // Heuristic AI-style scorer. Replace with Lovable AI call later if desired.
