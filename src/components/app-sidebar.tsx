@@ -40,6 +40,7 @@ const SALES_NAV: NavItem[] = [
   { to: "/leads", label: "Leads", icon: Users },
   { to: "/outreach", label: "Messaging (Email & SMS)", icon: MessageSquare },
   { to: "/team", label: "Team Members", icon: Users },
+  { to: "/team-calendar", label: "Team Calendars", icon: CalendarDays },
   { to: "/hiring", label: "Hiring", icon: UserPlus },
   { to: "/attribution", label: "Attribution", icon: GitBranch },
   { to: "/traffic", label: "Traffic", icon: TrendingUp },
@@ -50,13 +51,13 @@ const COPY_GENERATE_NAV: NavItem[] = [
   { to: "/copy", label: "Content", icon: Video, search: { tab: "generate", cat: "content" } },
   { to: "/copy", label: "Long-form", icon: BookOpen, search: { tab: "generate", cat: "long" } },
   { to: "/copy", label: "Email / SMS", icon: MessageSquare, search: { tab: "generate", cat: "email" } },
+  { to: "/sequences", label: "Story Sequences", icon: Layers },
 ];
 
 // ContentOS — the client-facing posting engine (separate from CopyOS generation)
 const CONTENT_OS_NAV: NavItem[] = [
   { to: "/content-calendar", label: "Content Calendar", icon: CalendarDays },
   { to: "/content", label: "Content Intelligence", icon: Video },
-  { to: "/sequences", label: "Story Sequences", icon: Layers },
 ];
 
 // CopyOS top-level items (excluding the nested Generate)
@@ -82,9 +83,8 @@ const BOTTOM_NAV: NavItem[] = [
 
 // Routes a non-manager (setter/closer) is allowed to see.
 const RESTRICTED_ALLOW = new Set([
-  "/dashboard", "/team", "/dm-setter", "/inbound-dialer", "/closer",
+  "/dashboard", "/team", "/team-calendar", "/dm-setter", "/inbound-dialer", "/closer",
   "/clients", "/onboarding", "/fulfillment", "/vsl", "/content-calendar", "/settings",
-
 ]);
 
 export function AppSidebar() {

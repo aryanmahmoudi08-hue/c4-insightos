@@ -357,106 +357,239 @@ function GenerateTab() {
   );
 }
 
+function ClientAvatar({ path, onPick }: { path: string | null; onPick: (f: File) => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!path) { setUrl(null); return; }
+    let live = true;
+    supabase.storage.from("copy-swipes").createSignedUrl(path, 3600).then(({ data }) => {
+      if (live && data?.signedUrl) setUrl(data.signedUrl);
+    });
+    return () => { live = false; };
+  }, [path]);
+  return (
+    <label className="group relative h-24 w-24 shrink-0 cursor-pointer overflow-hidden rounded-xl border border-border bg-muted/40 grid place-items-center">
+      {url
+        ? <img src={url} alt="Client photo" className="h-full w-full object-cover" />
+        : <div className="text-center text-[10px] text-muted-foreground px-2"><ImagePlus className="h-5 w-5 mx-auto mb-1" />Add photo</div>}
+      <input type="file" accept="image/*" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(f); }} />
+      <span className="absolute inset-x-0 bottom-0 hidden bg-background/80 py-0.5 text-center text-[9px] uppercase tracking-wider group-hover:block">Change</span>
+    </label>
+  );
+}
+
+/** Client DNA — one client, one always-open profile. No list, no edit click. */
 function ClientsTab() {
   const qc = useQueryClient();
-  const { data: clients = [] } = useClients();
-  const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
+  const { data: clients = [], isLoading } = useClients();
   const fpFn = useServerFn(extractFingerprintFn);
+  const [form, setForm] = useState<Record<string, unknown> | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const save = async (row: Record<string, unknown>) => {
+  const client = clients[0] as Record<string, unknown> | undefined;
+
+  useEffect(() => {
+    if (isLoading) return;
+    setForm(client ? { ...client } : { display_name: "", offer_details: {}, avatar_research: {} });
+  }, [client?.id, isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const set = (k: string, v: unknown) => setForm((f) => ({ ...(f ?? {}), [k]: v }));
+
+  const num = (v: unknown) => {
+    const n = parseInt(String(v ?? "").replace(/[^\d]/g, ""), 10);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const save = async () => {
+    const f = form;
+    if (!f) return;
+    if (!String(f.display_name ?? "").trim()) return toast.error("Client name is required.");
+    setSaving(true);
     const payload = {
-      display_name: row.display_name as string, niche: (row.niche as string) || null,
-      sacred_cows: (row.sacred_cows as string) || null, competitors: (row.competitors as string) || null,
-      voice_transcripts: (row.voice_transcripts as string) || null, notes: (row.notes as string) || null,
-      offer_details: (row.offer_details ?? {}) as never, avatar_research: (row.avatar_research ?? {}) as never,
+      display_name: String(f.display_name).trim(),
+      niche: (f.niche as string) || null,
+      bio: (f.bio as string) || null,
+      location: (f.location as string) || null,
+      age: num(f.age),
+      avatar_url: (f.avatar_url as string) || null,
+      instagram_handle: (f.instagram_handle as string) || null,
+      instagram_followers: num(f.instagram_followers),
+      tiktok_handle: (f.tiktok_handle as string) || null,
+      tiktok_followers: num(f.tiktok_followers),
+      youtube_handle: (f.youtube_handle as string) || null,
+      youtube_subscribers: num(f.youtube_subscribers),
+      business_stage: (f.business_stage as string) || null,
+      monthly_revenue_cents: f.monthly_revenue_cents == null || f.monthly_revenue_cents === "" ? null : Math.round(Number(String(f.monthly_revenue_cents).replace(/[^\d.]/g, "")) * 100),
+      offer_price_cents: f.offer_price_cents == null || f.offer_price_cents === "" ? null : Math.round(Number(String(f.offer_price_cents).replace(/[^\d.]/g, "")) * 100),
+      content_pillars: (f.content_pillars as string) || null,
+      goals: (f.goals as string) || null,
+      dream_outcome: (f.dream_outcome as string) || null,
+      proof_assets: (f.proof_assets as string) || null,
+      sacred_cows: (f.sacred_cows as string) || null,
+      competitors: (f.competitors as string) || null,
+      voice_transcripts: (f.voice_transcripts as string) || null,
+      notes: (f.notes as string) || null,
+      offer_details: (f.offer_details ?? {}) as never,
+      avatar_research: (f.avatar_research ?? {}) as never,
     };
-    if (row.id) {
-      const { error } = await (supabase.from("copy_clients") as never as { update: (p: unknown) => { eq: (k: string, v: string) => Promise<{ error: { message: string } | null }> } }).update(payload).eq("id", row.id as string);
-      if (error) return toast.error(error.message);
+    const table = supabase.from("copy_clients") as never as {
+      update: (p: unknown) => { eq: (k: string, v: string) => Promise<{ error: { message: string } | null }> };
+      insert: (p: unknown) => Promise<{ error: { message: string } | null }>;
+    };
+    let error: { message: string } | null = null;
+    if (f.id) {
+      ({ error } = await table.update(payload).eq("id", f.id as string));
     } else {
       const { data: m } = await supabase.from("memberships").select("org_id").limit(1).maybeSingle();
-      if (!m?.org_id) return toast.error("No workspace");
-      const { error } = await (supabase.from("copy_clients") as never as { insert: (p: unknown) => Promise<{ error: { message: string } | null }> }).insert({ ...payload, org_id: m.org_id });
-      if (error) return toast.error(error.message);
+      if (!m?.org_id) { setSaving(false); return toast.error("No workspace"); }
+      ({ error } = await table.insert({ ...payload, org_id: m.org_id }));
     }
+    setSaving(false);
+    if (error) return toast.error(error.message);
     qc.invalidateQueries({ queryKey: ["copy_clients"] });
-    setEditing(null);
-    toast.success("Saved");
+    toast.success("Client DNA saved.");
   };
 
-  const del = async (id: string) => {
-    if (!confirm("Delete this client DNA?")) return;
-    await supabase.from("copy_clients").delete().eq("id", id);
-    qc.invalidateQueries({ queryKey: ["copy_clients"] });
+  const pickAvatar = async (file: File) => {
+    const { data: m } = await supabase.from("memberships").select("org_id").limit(1).maybeSingle();
+    if (!m?.org_id) return toast.error("No workspace");
+    const ext = file.name.split(".").pop() || "png";
+    const path = `${m.org_id}/avatars/${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from("copy-swipes").upload(path, file, { contentType: file.type });
+    if (error) return toast.error(error.message);
+    set("avatar_url", path);
+    toast.success("Photo attached — hit save.");
   };
 
-  if (editing) {
-    const e = editing as Record<string, unknown> & { _offer_text?: string; _avatar_text?: string };
-    return (
-      <Card className="p-4 space-y-3 max-w-3xl">
-        <div className="grid sm:grid-cols-2 gap-3">
-          <div><label className="text-xs text-muted-foreground">Name</label><Input value={(e.display_name as string) ?? ""} onChange={ev => setEditing({ ...e, display_name: ev.target.value })} /></div>
-          <div><label className="text-xs text-muted-foreground">Niche</label><Input value={(e.niche as string) ?? ""} onChange={ev => setEditing({ ...e, niche: ev.target.value })} /></div>
+  if (!form) return <div className="text-sm text-muted-foreground">Loading client DNA…</div>;
+  const e = form as Record<string, unknown> & { _offer_text?: string; _avatar_text?: string };
+  const socials = [
+    { key: "instagram_handle", count: "instagram_followers", label: "Instagram", unit: "followers" },
+    { key: "tiktok_handle", count: "tiktok_followers", label: "TikTok", unit: "followers" },
+    { key: "youtube_handle", count: "youtube_subscribers", label: "YouTube", unit: "subscribers" },
+  ];
+
+  return (
+    <div className="space-y-4 max-w-4xl">
+      {/* Profile header — always open, no edit click */}
+      <Card className="p-5">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <ClientAvatar path={(e.avatar_url as string) ?? null} onPick={pickAvatar} />
+          <div className="flex-1 space-y-3">
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <label className="text-xs text-muted-foreground">Client name</label>
+                <Input value={(e.display_name as string) ?? ""} onChange={ev => set("display_name", ev.target.value)} placeholder="Who we write for" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Age</label>
+                <Input value={String(e.age ?? "")} onChange={ev => set("age", ev.target.value)} placeholder="27" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs text-muted-foreground">Niche</label>
+                <Input value={(e.niche as string) ?? ""} onChange={ev => set("niche", ev.target.value)} placeholder="e.g. high-ticket coaching for gym owners" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Location</label>
+                <Input value={(e.location as string) ?? ""} onChange={ev => set("location", ev.target.value)} placeholder="Toronto, CA" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Short bio — who he is in one paragraph</label>
+              <Textarea rows={2} value={(e.bio as string) ?? ""} onChange={ev => set("bio", ev.target.value)} placeholder="Background, credibility, what he's known for" />
+            </div>
+          </div>
         </div>
+      </Card>
+
+      {/* Reach + business */}
+      <Card className="p-5 space-y-3">
+        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Reach & business</div>
+        <div className="grid sm:grid-cols-3 gap-3">
+          {socials.map(s => (
+            <div key={s.key} className="rounded-md border border-border p-3 space-y-2">
+              <div className="text-xs font-medium">{s.label}</div>
+              <Input value={(e[s.key] as string) ?? ""} onChange={ev => set(s.key, ev.target.value)} placeholder="@handle" />
+              <Input value={String(e[s.count] ?? "")} onChange={ev => set(s.count, ev.target.value)} placeholder={s.unit} />
+            </div>
+          ))}
+        </div>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Business stage</label>
+            <Input value={(e.business_stage as string) ?? ""} onChange={ev => set("business_stage", ev.target.value)} placeholder="Pre-offer / $10k mo / scaling" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Monthly revenue ($)</label>
+            <Input value={e.monthly_revenue_cents != null && typeof e.monthly_revenue_cents === "number" ? String((e.monthly_revenue_cents as number) / 100) : String(e.monthly_revenue_cents ?? "")}
+              onChange={ev => set("monthly_revenue_cents", ev.target.value)} placeholder="25000" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Offer price ($)</label>
+            <Input value={e.offer_price_cents != null && typeof e.offer_price_cents === "number" ? String((e.offer_price_cents as number) / 100) : String(e.offer_price_cents ?? "")}
+              onChange={ev => set("offer_price_cents", ev.target.value)} placeholder="5000" />
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Content pillars</label>
+            <Textarea rows={2} value={(e.content_pillars as string) ?? ""} onChange={ev => set("content_pillars", ev.target.value)} placeholder="The 3-5 themes he posts about" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Proof / receipts we can cite</label>
+            <Textarea rows={2} value={(e.proof_assets as string) ?? ""} onChange={ev => set("proof_assets", ev.target.value)} placeholder="Student results, screenshots, numbers, credentials" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">His goals (next 90 days)</label>
+            <Textarea rows={2} value={(e.goals as string) ?? ""} onChange={ev => set("goals", ev.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Dream outcome (12 months)</label>
+            <Textarea rows={2} value={(e.dream_outcome as string) ?? ""} onChange={ev => set("dream_outcome", ev.target.value)} />
+          </div>
+        </div>
+      </Card>
+
+      {/* Persuasion DNA */}
+      <Card className="p-5 space-y-3">
+        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Persuasion DNA</div>
         <div><label className="text-xs text-muted-foreground">Offer details (promise, mechanism, price, objections)</label>
           <Textarea rows={3} value={e._offer_text ?? JSON.stringify(e.offer_details ?? {}, null, 2)} onChange={ev => {
-            try { setEditing({ ...e, offer_details: JSON.parse(ev.target.value), _offer_text: ev.target.value }); }
-            catch { setEditing({ ...e, _offer_text: ev.target.value }); }
+            try { setForm({ ...e, offer_details: JSON.parse(ev.target.value), _offer_text: ev.target.value }); }
+            catch { setForm({ ...e, _offer_text: ev.target.value }); }
           }} placeholder='{"promise":"...","mechanism":"...","price":"...","objections":["..."]}' />
         </div>
         <div><label className="text-xs text-muted-foreground">Avatar — dreams, fears, suspicions, past failures, enemies</label>
           <Textarea rows={3} value={e._avatar_text ?? JSON.stringify(e.avatar_research ?? {}, null, 2)} onChange={ev => {
-            try { setEditing({ ...e, avatar_research: JSON.parse(ev.target.value), _avatar_text: ev.target.value }); }
-            catch { setEditing({ ...e, _avatar_text: ev.target.value }); }
+            try { setForm({ ...e, avatar_research: JSON.parse(ev.target.value), _avatar_text: ev.target.value }); }
+            catch { setForm({ ...e, _avatar_text: ev.target.value }); }
           }} placeholder='{"dreams":"...","fears":"...","suspicions":"...","past_failures":"...","enemies":"..."}' />
         </div>
-        <div><label className="text-xs text-muted-foreground">Sacred cows they kill</label>
-          <Textarea rows={2} value={(e.sacred_cows as string) ?? ""} onChange={ev => setEditing({ ...e, sacred_cows: ev.target.value })} /></div>
-        <div><label className="text-xs text-muted-foreground">Competitors / enemies</label>
-          <Textarea rows={2} value={(e.competitors as string) ?? ""} onChange={ev => setEditing({ ...e, competitors: ev.target.value })} /></div>
-        <div><label className="text-xs text-muted-foreground">Voice transcripts (paste their existing video transcripts)</label>
-          <Textarea rows={6} value={(e.voice_transcripts as string) ?? ""} onChange={ev => setEditing({ ...e, voice_transcripts: ev.target.value })} /></div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div><label className="text-xs text-muted-foreground">Sacred cows he kills</label>
+            <Textarea rows={2} value={(e.sacred_cows as string) ?? ""} onChange={ev => set("sacred_cows", ev.target.value)} /></div>
+          <div><label className="text-xs text-muted-foreground">Competitors / enemies</label>
+            <Textarea rows={2} value={(e.competitors as string) ?? ""} onChange={ev => set("competitors", ev.target.value)} /></div>
+        </div>
+        <div><label className="text-xs text-muted-foreground">Voice transcripts (paste his existing video transcripts)</label>
+          <Textarea rows={6} value={(e.voice_transcripts as string) ?? ""} onChange={ev => set("voice_transcripts", ev.target.value)} /></div>
         <div><label className="text-xs text-muted-foreground">Notes</label>
-          <Textarea rows={2} value={(e.notes as string) ?? ""} onChange={ev => setEditing({ ...e, notes: ev.target.value })} /></div>
+          <Textarea rows={2} value={(e.notes as string) ?? ""} onChange={ev => set("notes", ev.target.value)} /></div>
         {e.voice_fingerprint ? (
           <div className="text-xs"><Badge variant="outline">Voice fingerprint extracted</Badge>
-            <pre className="mt-1 text-[10px] text-muted-foreground bg-muted/30 p-2 rounded max-h-32 overflow-auto">{JSON.stringify(e.voice_fingerprint, null, 2)}</pre></div>
+            <pre className="mt-1 max-h-32 overflow-auto rounded bg-muted/30 p-2 text-[10px] text-muted-foreground">{JSON.stringify(e.voice_fingerprint, null, 2)}</pre></div>
         ) : null}
-        <div className="flex gap-2">
-          <Button onClick={() => save(e)}>Save</Button>
-          <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
-          {e.id && e.voice_transcripts ? (
-            <Button variant="outline" onClick={async () => {
-              try { const fp = await fpFn({ data: { client_id: e.id as string } }); setEditing({ ...e, voice_fingerprint: fp }); toast.success("Voice fingerprint extracted"); qc.invalidateQueries({ queryKey: ["copy_clients"] }); }
-              catch (err: unknown) { toast.error((err as Error)?.message ?? "Failed"); }
-            }}>Extract voice fingerprint</Button>
-          ) : null}
-        </div>
       </Card>
-    );
-  }
 
-  return (
-    <div className="space-y-3">
-      <Button size="sm" onClick={() => setEditing({ display_name: "", offer_details: {}, avatar_research: {} })}><Plus className="h-4 w-4 mr-1" />New client DNA</Button>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {clients.map(c => (
-          <Card key={c.id} className="p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="font-medium truncate">{c.display_name}</div>
-                {c.niche && <div className="text-xs text-muted-foreground truncate">{c.niche}</div>}
-              </div>
-              <button onClick={() => del(c.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
-            </div>
-            <div className="flex gap-1 mt-2 flex-wrap">
-              {c.voice_fingerprint && <Badge variant="outline" className="text-[10px]">Voice ✓</Badge>}
-              {c.avatar_research && Object.keys(c.avatar_research).length > 0 && <Badge variant="outline" className="text-[10px]">Avatar ✓</Badge>}
-            </div>
-            <Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => setEditing(c as never)}>Edit</Button>
-          </Card>
-        ))}
-        {clients.length === 0 && <div className="text-sm text-muted-foreground col-span-full">No clients yet. Add one to start writing in their voice.</div>}
+      <div className="sticky bottom-4 flex flex-wrap gap-2 rounded-lg border border-border bg-card/95 p-3 backdrop-blur">
+        <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save client DNA"}</Button>
+        {e.id && e.voice_transcripts ? (
+          <Button variant="outline" onClick={async () => {
+            try { const fp = await fpFn({ data: { client_id: e.id as string } }); setForm({ ...e, voice_fingerprint: fp }); toast.success("Voice fingerprint extracted"); qc.invalidateQueries({ queryKey: ["copy_clients"] }); }
+            catch (err: unknown) { toast.error((err as Error)?.message ?? "Failed"); }
+          }}>Extract voice fingerprint</Button>
+        ) : null}
       </div>
     </div>
   );

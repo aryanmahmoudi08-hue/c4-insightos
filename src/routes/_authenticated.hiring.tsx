@@ -11,8 +11,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Users, Star, Trash2, Pencil, CheckSquare, Square } from "lucide-react";
+import { Plus, Search, Users, Star, Trash2, Pencil, CheckSquare, Square, Video, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { gradeLoomFn } from "@/lib/hiring.functions";
 
 export const Route = createFileRoute("/_authenticated/hiring")({ component: Hiring });
 
@@ -44,6 +46,10 @@ type Applicant = {
   notes: string | null;
   last_shown_at: string | null;
   applied_at: string;
+  loom_url?: string | null;
+  loom_transcript?: string | null;
+  ai_recommended_stage?: string | null;
+  ai_transcript_summary?: string | null;
 };
 
 // Heuristic AI-style scorer. Replace with Lovable AI call later if desired.
@@ -267,7 +273,27 @@ function Hiring() {
                 <div className="rounded-md border border-border bg-muted/20 p-3">
                   <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">AI score · {editing.ai_score?.toFixed(1) ?? "—"}/10</div>
                   <div className="text-xs">{editing.ai_reasoning ?? "No reasoning yet."}</div>
+                  {editing.ai_transcript_summary && (
+                    <p className="mt-2 border-t border-border pt-2 text-xs leading-relaxed text-muted-foreground">{editing.ai_transcript_summary}</p>
+                  )}
+                  {editing.ai_recommended_stage && (
+                    <div className="mt-2 flex items-center gap-2 text-[11px]">
+                      <span className="text-muted-foreground">AI recommends</span>
+                      <span className="rounded bg-primary/15 px-1.5 py-0.5 font-semibold uppercase tracking-wider text-primary">
+                        {STAGES.find(s => s.key === editing.ai_recommended_stage)?.label ?? editing.ai_recommended_stage}
+                      </span>
+                      {editing.stage !== editing.ai_recommended_stage && (
+                        <Button size="sm" variant="outline" className="h-6 text-[10px]"
+                          onClick={() => update.mutate({ id: editing.id, patch: { stage: editing.ai_recommended_stage as string, last_shown_at: new Date().toISOString() } })}>
+                          Apply
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
+
+                <LoomGrader applicant={editing} onGraded={() => { qc.invalidateQueries({ queryKey: ["hiring"] }); setEditing(null); }} />
+
                 <div className="space-y-1.5">
                   <Label className="text-xs">Stage</Label>
                   <Select value={editing.stage} onValueChange={(v) => update.mutate({ id: editing.id, patch: { stage: v, last_shown_at: new Date().toISOString() } })}>
@@ -316,5 +342,39 @@ function ApplicantForm({ onSubmit, pending }: { onSubmit: (f: FormData) => void;
       <div className="space-y-1.5"><Label>Notes (perf signals, availability)</Label><Textarea name="notes" rows={3} /></div>
       <Button type="submit" className="w-full" disabled={pending}>{pending ? "Scoring…" : "Add & auto-score"}</Button>
     </form>
+  );
+}
+
+/** AI watches the video application by reading its transcript, then routes the applicant. */
+function LoomGrader({ applicant, onGraded }: { applicant: Applicant; onGraded: () => void }) {
+  const grade = useServerFn(gradeLoomFn);
+  const [url, setUrl] = useState(applicant.loom_url ?? "");
+  const [transcript, setTranscript] = useState(applicant.loom_transcript ?? "");
+
+  const m = useMutation({
+    mutationFn: () => grade({ data: {
+      applicant_id: applicant.id,
+      loom_url: url.trim() || null,
+      transcript: transcript.trim() || null,
+    }}),
+    onSuccess: (r) => { toast.success(`Graded ${r.score}/10 → ${r.stage.replace("_", " ")}`); onGraded(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="rounded-md border border-border p-3 space-y-2">
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
+        <Video className="h-3.5 w-3.5" /> Video application
+      </div>
+      <Input placeholder="https://www.loom.com/share/…" value={url} onChange={(e) => setUrl(e.target.value)} />
+      <Textarea rows={4} placeholder="Paste the Loom transcript here (Loom → … → Copy transcript). If left blank we'll try to read it from the share link."
+        value={transcript} onChange={(e) => setTranscript(e.target.value)} />
+      <div className="flex items-center gap-2">
+        <Button size="sm" disabled={m.isPending || (!url.trim() && !transcript.trim())} onClick={() => m.mutate()}>
+          {m.isPending ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Watching…</> : <><Sparkles className="h-3.5 w-3.5 mr-1.5" />Grade & route from video</>}
+        </Button>
+        {url.trim() && <a href={url} target="_blank" rel="noreferrer" className="text-[11px] text-muted-foreground hover:text-foreground">Open Loom</a>}
+      </div>
+    </div>
   );
 }

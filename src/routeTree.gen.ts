@@ -11,10 +11,12 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as RequestAccessRouteImport } from './routes/request-access'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as DailyWinRouteImport } from './routes/daily-win'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.index'
 import { Route as AuthenticatedVslRouteImport } from './routes/_authenticated.vsl'
 import { Route as AuthenticatedTrafficRouteImport } from './routes/_authenticated.traffic'
+import { Route as AuthenticatedTeamCalendarRouteImport } from './routes/_authenticated.team-calendar'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
 import { Route as AuthenticatedSequencesRouteImport } from './routes/_authenticated.sequences'
@@ -49,6 +51,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DailyWinRoute = DailyWinRouteImport.update({
+  id: '/daily-win',
+  path: '/daily-win',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
@@ -68,6 +75,12 @@ const AuthenticatedTrafficRoute = AuthenticatedTrafficRouteImport.update({
   path: '/traffic',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedTeamCalendarRoute =
+  AuthenticatedTeamCalendarRouteImport.update({
+    id: '/team-calendar',
+    path: '/team-calendar',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -191,6 +204,7 @@ const ApiPublicIngestTokenRoute = ApiPublicIngestTokenRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
   '/request-access': typeof RequestAccessRoute
   '/attribution': typeof AuthenticatedAttributionRoute
@@ -214,12 +228,14 @@ export interface FileRoutesByFullPath {
   '/sequences': typeof AuthenticatedSequencesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/vsl': typeof AuthenticatedVslRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
 }
 export interface FileRoutesByTo {
+  '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
   '/request-access': typeof RequestAccessRoute
   '/attribution': typeof AuthenticatedAttributionRoute
@@ -243,6 +259,7 @@ export interface FileRoutesByTo {
   '/sequences': typeof AuthenticatedSequencesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/vsl': typeof AuthenticatedVslRoute
   '/': typeof AuthenticatedIndexRoute
@@ -252,6 +269,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
   '/request-access': typeof RequestAccessRoute
   '/_authenticated/attribution': typeof AuthenticatedAttributionRoute
@@ -275,6 +293,7 @@ export interface FileRoutesById {
   '/_authenticated/sequences': typeof AuthenticatedSequencesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
+  '/_authenticated/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/_authenticated/traffic': typeof AuthenticatedTrafficRoute
   '/_authenticated/vsl': typeof AuthenticatedVslRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
@@ -285,6 +304,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/daily-win'
     | '/login'
     | '/request-access'
     | '/attribution'
@@ -308,12 +328,14 @@ export interface FileRouteTypes {
     | '/sequences'
     | '/settings'
     | '/team'
+    | '/team-calendar'
     | '/traffic'
     | '/vsl'
     | '/api/public/typeform'
     | '/api/public/ingest/$token'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/daily-win'
     | '/login'
     | '/request-access'
     | '/attribution'
@@ -337,6 +359,7 @@ export interface FileRouteTypes {
     | '/sequences'
     | '/settings'
     | '/team'
+    | '/team-calendar'
     | '/traffic'
     | '/vsl'
     | '/'
@@ -345,6 +368,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_authenticated'
+    | '/daily-win'
     | '/login'
     | '/request-access'
     | '/_authenticated/attribution'
@@ -368,6 +392,7 @@ export interface FileRouteTypes {
     | '/_authenticated/sequences'
     | '/_authenticated/settings'
     | '/_authenticated/team'
+    | '/_authenticated/team-calendar'
     | '/_authenticated/traffic'
     | '/_authenticated/vsl'
     | '/_authenticated/'
@@ -377,6 +402,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  DailyWinRoute: typeof DailyWinRoute
   LoginRoute: typeof LoginRoute
   RequestAccessRoute: typeof RequestAccessRoute
   ApiPublicTypeformRoute: typeof ApiPublicTypeformRoute
@@ -397,6 +423,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/daily-win': {
+      id: '/daily-win'
+      path: '/daily-win'
+      fullPath: '/daily-win'
+      preLoaderRoute: typeof DailyWinRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -425,6 +458,13 @@ declare module '@tanstack/react-router' {
       path: '/traffic'
       fullPath: '/traffic'
       preLoaderRoute: typeof AuthenticatedTrafficRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/team-calendar': {
+      id: '/_authenticated/team-calendar'
+      path: '/team-calendar'
+      fullPath: '/team-calendar'
+      preLoaderRoute: typeof AuthenticatedTeamCalendarRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/team': {
@@ -613,6 +653,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSequencesRoute: typeof AuthenticatedSequencesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
+  AuthenticatedTeamCalendarRoute: typeof AuthenticatedTeamCalendarRoute
   AuthenticatedTrafficRoute: typeof AuthenticatedTrafficRoute
   AuthenticatedVslRoute: typeof AuthenticatedVslRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
@@ -640,6 +681,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSequencesRoute: AuthenticatedSequencesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
+  AuthenticatedTeamCalendarRoute: AuthenticatedTeamCalendarRoute,
   AuthenticatedTrafficRoute: AuthenticatedTrafficRoute,
   AuthenticatedVslRoute: AuthenticatedVslRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
@@ -651,6 +693,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  DailyWinRoute: DailyWinRoute,
   LoginRoute: LoginRoute,
   RequestAccessRoute: RequestAccessRoute,
   ApiPublicTypeformRoute: ApiPublicTypeformRoute,

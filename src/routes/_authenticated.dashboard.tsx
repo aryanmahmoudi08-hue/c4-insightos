@@ -12,6 +12,7 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianG
 import { Sparkline } from "@/components/sparkline";
 import { SlimHeader } from "@/components/slim-header";
 import { EmptyState } from "@/components/empty-state";
+import { HubMetrics, HubQuickLinks } from "@/components/hub-metrics";
 
 
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: Dashboard });
@@ -232,6 +233,12 @@ function Dashboard() {
           <DeltaKpi label="OFFERS MADE" value={fmt(c?.offers ?? 0)} curr={c?.offers ?? 0} prev={p?.offers ?? 0} hint={offerRate} spark={(stats?.series ?? []).map(s => s.offers)} />
           <DeltaKpi label="CLOSES" value={fmt(c?.closed ?? 0)} curr={c?.closed ?? 0} prev={p?.closed ?? 0} hint={closeRate} tone="rate" spark={(stats?.series ?? []).map(s => s.closed)} />
         </div>
+
+        {/* Full-funnel operating metrics — traffic, VSL, applications, rep efficiency, client momentum */}
+        <HubMetrics />
+        <HubQuickLinks />
+
+
 
         {/* Charts row */}
         <div className="grid gap-4 lg:grid-cols-3">
