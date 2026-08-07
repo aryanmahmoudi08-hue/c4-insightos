@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as RequestAccessRouteImport } from './routes/request-access'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as DailyWinRouteImport } from './routes/daily-win'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.index'
 import { Route as AuthenticatedVslRouteImport } from './routes/_authenticated.vsl'
@@ -47,6 +48,11 @@ const RequestAccessRoute = RequestAccessRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DailyWinRoute = DailyWinRouteImport.update({
+  id: '/daily-win',
+  path: '/daily-win',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -191,6 +197,7 @@ const ApiPublicIngestTokenRoute = ApiPublicIngestTokenRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
   '/request-access': typeof RequestAccessRoute
   '/attribution': typeof AuthenticatedAttributionRoute
@@ -220,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
 }
 export interface FileRoutesByTo {
+  '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
   '/request-access': typeof RequestAccessRoute
   '/attribution': typeof AuthenticatedAttributionRoute
@@ -252,6 +260,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
   '/request-access': typeof RequestAccessRoute
   '/_authenticated/attribution': typeof AuthenticatedAttributionRoute
@@ -285,6 +294,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/daily-win'
     | '/login'
     | '/request-access'
     | '/attribution'
@@ -314,6 +324,7 @@ export interface FileRouteTypes {
     | '/api/public/ingest/$token'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/daily-win'
     | '/login'
     | '/request-access'
     | '/attribution'
@@ -345,6 +356,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_authenticated'
+    | '/daily-win'
     | '/login'
     | '/request-access'
     | '/_authenticated/attribution'
@@ -377,6 +389,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  DailyWinRoute: typeof DailyWinRoute
   LoginRoute: typeof LoginRoute
   RequestAccessRoute: typeof RequestAccessRoute
   ApiPublicTypeformRoute: typeof ApiPublicTypeformRoute
@@ -397,6 +410,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/daily-win': {
+      id: '/daily-win'
+      path: '/daily-win'
+      fullPath: '/daily-win'
+      preLoaderRoute: typeof DailyWinRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -651,6 +671,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  DailyWinRoute: DailyWinRoute,
   LoginRoute: LoginRoute,
   RequestAccessRoute: RequestAccessRoute,
   ApiPublicTypeformRoute: ApiPublicTypeformRoute,
@@ -659,13 +680,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
