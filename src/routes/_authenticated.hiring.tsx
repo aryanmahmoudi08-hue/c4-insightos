@@ -344,3 +344,37 @@ function ApplicantForm({ onSubmit, pending }: { onSubmit: (f: FormData) => void;
     </form>
   );
 }
+
+/** AI watches the video application by reading its transcript, then routes the applicant. */
+function LoomGrader({ applicant, onGraded }: { applicant: Applicant; onGraded: () => void }) {
+  const grade = useServerFn(gradeLoomFn);
+  const [url, setUrl] = useState(applicant.loom_url ?? "");
+  const [transcript, setTranscript] = useState(applicant.loom_transcript ?? "");
+
+  const m = useMutation({
+    mutationFn: () => grade({ data: {
+      applicant_id: applicant.id,
+      loom_url: url.trim() || null,
+      transcript: transcript.trim() || null,
+    }}),
+    onSuccess: (r) => { toast.success(`Graded ${r.score}/10 → ${r.stage.replace("_", " ")}`); onGraded(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="rounded-md border border-border p-3 space-y-2">
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
+        <Video className="h-3.5 w-3.5" /> Video application
+      </div>
+      <Input placeholder="https://www.loom.com/share/…" value={url} onChange={(e) => setUrl(e.target.value)} />
+      <Textarea rows={4} placeholder="Paste the Loom transcript here (Loom → … → Copy transcript). If left blank we'll try to read it from the share link."
+        value={transcript} onChange={(e) => setTranscript(e.target.value)} />
+      <div className="flex items-center gap-2">
+        <Button size="sm" disabled={m.isPending || (!url.trim() && !transcript.trim())} onClick={() => m.mutate()}>
+          {m.isPending ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Watching…</> : <><Sparkles className="h-3.5 w-3.5 mr-1.5" />Grade & route from video</>}
+        </Button>
+        {url.trim() && <a href={url} target="_blank" rel="noreferrer" className="text-[11px] text-muted-foreground hover:text-foreground">Open Loom</a>}
+      </div>
+    </div>
+  );
+}
