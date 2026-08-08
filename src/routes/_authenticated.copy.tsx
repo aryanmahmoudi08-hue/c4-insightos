@@ -408,11 +408,24 @@ function GenerateTab() {
         </Card>
 
         <Card className="p-4">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <div className="text-xs uppercase tracking-wider text-muted-foreground">Output</div>
-            {output && (
-              <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(output); toast.success("Copied"); }}>Copy</Button>
-            )}
+            <div className="flex items-center gap-1.5">
+              {isContent && output && (
+                <div className="flex items-center gap-1 mr-1">
+                  <Badge variant="outline" className="text-[10px]">{MECHANISMS[mechanism].label}</Badge>
+                  <Badge variant="outline" className="text-[10px]">{variations.find(v => v.value === variation)?.label}</Badge>
+                </div>
+              )}
+              {output && (
+                <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(output); toast.success("Copied"); }}>Copy</Button>
+              )}
+              {output && (
+                <Button size="sm" variant="outline" disabled={savePipeline.isPending} onClick={() => savePipeline.mutate()}>
+                  {savePipeline.isPending ? "Saving…" : "Save to Pipeline"}
+                </Button>
+              )}
+            </div>
           </div>
           {output ? (
             <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed">{output}</pre>
@@ -422,6 +435,7 @@ function GenerateTab() {
             </div>
           )}
         </Card>
+
       </div>
     </div>
   );
