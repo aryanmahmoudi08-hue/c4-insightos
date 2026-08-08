@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { useRef } from "react";
 import { cn } from "@/lib/utils";
+import { MECHANISMS, MECHANISM_KEYS, JOURNEY_STAGES, type MechanismKey } from "@/lib/content-mechanisms";
+import { useCurrentOrg } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/_authenticated/copy")({
   component: CopyOSPage,
