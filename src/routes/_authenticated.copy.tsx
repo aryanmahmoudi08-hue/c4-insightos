@@ -321,6 +321,57 @@ function GenerateTab() {
             <Input value={angle} onChange={e => setAngle(e.target.value)} placeholder="Hot take, contrarian angle, story angle…" />
           </div>
 
+          {isContent && (
+            <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Conversion mechanism (drives the whole generation)</div>
+              <div className="grid grid-cols-2 gap-2">
+                {MECHANISM_KEYS.map(k => {
+                  const mk = MECHANISMS[k];
+                  const active = k === mechanism;
+                  return (
+                    <button key={k} type="button" title={mk.purpose} onClick={() => setMechanism(k as MechanismKey)}
+                      className={cn("text-left rounded-md border p-2.5 transition", active ? "border-primary bg-primary/5 ring-1 ring-primary/40" : "border-border hover:bg-card")}>
+                      <div className="text-sm font-medium">{mk.label}</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{mk.purpose}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground">Variation</label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {variations.map(v => {
+                    const active = v.value === variation;
+                    return (
+                      <button key={v.value} type="button" title={v.hint} onClick={() => setVariation(v.value)}
+                        className={cn("text-left rounded-md border p-2.5 transition", active ? "border-primary bg-primary/5 ring-1 ring-primary/40" : "border-border hover:bg-card")}>
+                        <div className="text-xs font-medium">{v.label}</div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{v.hint}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground">Lead Journey stage (optional)</label>
+                <Select value={journeyStage} onValueChange={setJourneyStage}>
+                  <SelectTrigger><SelectValue placeholder="(let the AI assume warming)" /></SelectTrigger>
+                  <SelectContent>
+                    {JOURNEY_STAGES.map(s => <SelectItem key={s.value} value={s.value}>{s.label} — {s.hint}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground">Prospect's current #1 question / concern / fear</label>
+                <Textarea rows={2} value={objection} onChange={e => setObjection(e.target.value)}
+                  placeholder="e.g. “I've tried agencies before and got nothing” — the AI pre-handles this inside the script." />
+              </div>
+            </div>
+          )}
+
           {/* Category-tailored fields */}
           {cat.fields.map(f => (
             <div key={f.key}>
