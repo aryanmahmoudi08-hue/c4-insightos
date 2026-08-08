@@ -194,6 +194,18 @@ function GenerateTab() {
   const [selectedSwipes, setSelectedSwipes] = useState<string[]>([]);
   const [output, setOutput] = useState("");
 
+  // 4 Conversion Mechanisms strategy layer (Content category only)
+  const isContent = catKey === "content";
+  const [mechanism, setMechanism] = useState<MechanismKey>("educational");
+  const [variation, setVariation] = useState<string>(MECHANISMS.educational.variations[0].value);
+  const [journeyStage, setJourneyStage] = useState<string>("");
+  const [objection, setObjection] = useState("");
+  const variations = MECHANISMS[mechanism].variations;
+  useEffect(() => {
+    if (!variations.some(v => v.value === variation)) setVariation(variations[0].value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mechanism]);
+
   // Reset per-category fields when category changes.
   useEffect(() => { setFields({}); setOutput(""); }, [catKey]);
 
@@ -210,10 +222,15 @@ function GenerateTab() {
       client_id: clientId || null, copy_type: copyType as never,
       goal: goal || null, angle: angle || null, brief: briefBlob || null,
       swipe_ids: selectedSwipes,
+      mechanism: isContent ? mechanism : null,
+      variation: isContent ? variation : null,
+      journey_stage: isContent && journeyStage ? journeyStage : null,
+      objection: isContent && objection ? objection : null,
     }}),
     onSuccess: (r) => { setOutput(r.output); toast.success("Generated."); },
     onError: (e: unknown) => toast.error((e as Error)?.message ?? "Failed"),
   });
+
 
   return (
     <div className="space-y-4">
