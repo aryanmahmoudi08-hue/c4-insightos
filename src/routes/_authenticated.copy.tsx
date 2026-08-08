@@ -233,6 +233,58 @@ function GenerateTab() {
     onError: (e: unknown) => toast.error((e as Error)?.message ?? "Failed"),
   });
 
+  // Save the generated piece into the content pipeline, tagged with mechanism + variation.
+  const { data: org } = useCurrentOrg();
+  const orgId = (org as { org_id?: string } | undefined)?.org_id;
+  const qcGen = useQueryClient();
+  const platformFor = (t: string) =>
+    t === "youtube_hook" ? "youtube" : t === "long_form_reel" || t === "short_form_script" || t === "short_form_hook" ? "reel" : "other";
+
+  const tagPiece = async (contentId: string, category: string, name: string) => {
+    const { data: existing } = await supabase.from("tags").select("id")
+      .eq("org_id", orgId!).eq("category", category).eq("name", name).maybeSingle();
+    let tagId = existing?.id as string | undefined;
+    if (!tagId) {
+      const { data: created, error } = await supabase.from("tags")
+        .insert({ org_id: orgId!, category, name }).select("id").single();
+      if (error) throw error;
+      tagId = created.id as string;
+    }
+    await supabase.from("taggables").insert({ tag_id: tagId, taggable_type: "content_piece", taggable_id: contentId });
+  };
+
+  const savePipeline = useMutation({
+    mutationFn: async () => {
+      if (!orgId) throw new Error("No workspace");
+      const firstLine = output.split("\n").map(l => l.replace(/^[#*\-\s]+/, "").trim()).find(Boolean) ?? "Untitled";
+      const mechLabel = MECHANISMS[mechanism].label;
+      const varLabel = variations.find(v => v.value === variation)?.label ?? variation;
+      const { data: piece, error } = await supabase.from("content_pieces").insert({
+        org_id: orgId,
+        title: firstLine.slice(0, 120),
+        platform: platformFor(copyType) as never,
+        hook: null,
+        body: output,
+        topic: fields.brief || null,
+        pipeline_status: "draft",
+        notes: isContent
+          ? `Mechanism: ${mechLabel} · Variation: ${varLabel}${journeyStage ? ` · Stage: ${journeyStage}` : ""}${objection ? `\nObjection pre-handled: ${objection}` : ""}`
+          : null,
+      }).select("id").single();
+      if (error) throw error;
+      if (isContent) {
+        await tagPiece(piece.id as string, "mechanism", mechLabel);
+        await tagPiece(piece.id as string, "variation", varLabel);
+      }
+      return piece.id as string;
+    },
+    onSuccess: () => {
+      qcGen.invalidateQueries({ queryKey: ["content"] });
+      toast.success("Saved to the content pipeline as a draft.");
+    },
+    onError: (e: unknown) => toast.error((e as Error)?.message ?? "Failed to save"),
+  });
+
 
   return (
     <div className="space-y-4">
