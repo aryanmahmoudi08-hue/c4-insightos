@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { useRef } from "react";
 import { cn } from "@/lib/utils";
+import { MECHANISMS, MECHANISM_KEYS, JOURNEY_STAGES, type MechanismKey } from "@/lib/content-mechanisms";
+import { useCurrentOrg } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/_authenticated/copy")({
   component: CopyOSPage,
@@ -194,6 +196,18 @@ function GenerateTab() {
   const [selectedSwipes, setSelectedSwipes] = useState<string[]>([]);
   const [output, setOutput] = useState("");
 
+  // 4 Conversion Mechanisms strategy layer (Content category only)
+  const isContent = catKey === "content";
+  const [mechanism, setMechanism] = useState<MechanismKey>("educational");
+  const [variation, setVariation] = useState<string>(MECHANISMS.educational.variations[0].value);
+  const [journeyStage, setJourneyStage] = useState<string>("");
+  const [objection, setObjection] = useState("");
+  const variations = MECHANISMS[mechanism].variations;
+  useEffect(() => {
+    if (!variations.some(v => v.value === variation)) setVariation(variations[0].value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mechanism]);
+
   // Reset per-category fields when category changes.
   useEffect(() => { setFields({}); setOutput(""); }, [catKey]);
 
@@ -210,10 +224,67 @@ function GenerateTab() {
       client_id: clientId || null, copy_type: copyType as never,
       goal: goal || null, angle: angle || null, brief: briefBlob || null,
       swipe_ids: selectedSwipes,
+      mechanism: isContent ? mechanism : null,
+      variation: isContent ? variation : null,
+      journey_stage: isContent && journeyStage ? journeyStage : null,
+      objection: isContent && objection ? objection : null,
     }}),
     onSuccess: (r) => { setOutput(r.output); toast.success("Generated."); },
     onError: (e: unknown) => toast.error((e as Error)?.message ?? "Failed"),
   });
+
+  // Save the generated piece into the content pipeline, tagged with mechanism + variation.
+  const { data: org } = useCurrentOrg();
+  const orgId = (org as { org_id?: string } | undefined)?.org_id;
+  const qcGen = useQueryClient();
+  const platformFor = (t: string) =>
+    t === "youtube_hook" ? "youtube" : t === "long_form_reel" || t === "short_form_script" || t === "short_form_hook" ? "reel" : "other";
+
+  const tagPiece = async (contentId: string, category: string, name: string) => {
+    const { data: existing } = await supabase.from("tags").select("id")
+      .eq("org_id", orgId!).eq("category", category).eq("name", name).maybeSingle();
+    let tagId = existing?.id as string | undefined;
+    if (!tagId) {
+      const { data: created, error } = await supabase.from("tags")
+        .insert({ org_id: orgId!, category, name }).select("id").single();
+      if (error) throw error;
+      tagId = created.id as string;
+    }
+    await supabase.from("taggables").insert({ tag_id: tagId, taggable_type: "content_piece", taggable_id: contentId });
+  };
+
+  const savePipeline = useMutation({
+    mutationFn: async () => {
+      if (!orgId) throw new Error("No workspace");
+      const firstLine = output.split("\n").map(l => l.replace(/^[#*\-\s]+/, "").trim()).find(Boolean) ?? "Untitled";
+      const mechLabel = MECHANISMS[mechanism].label;
+      const varLabel = variations.find(v => v.value === variation)?.label ?? variation;
+      const { data: piece, error } = await supabase.from("content_pieces").insert({
+        org_id: orgId,
+        title: firstLine.slice(0, 120),
+        platform: platformFor(copyType) as never,
+        hook: null,
+        body: output,
+        topic: fields.brief || null,
+        pipeline_status: "draft",
+        notes: isContent
+          ? `Mechanism: ${mechLabel} · Variation: ${varLabel}${journeyStage ? ` · Stage: ${journeyStage}` : ""}${objection ? `\nObjection pre-handled: ${objection}` : ""}`
+          : null,
+      }).select("id").single();
+      if (error) throw error;
+      if (isContent) {
+        await tagPiece(piece.id as string, "mechanism", mechLabel);
+        await tagPiece(piece.id as string, "variation", varLabel);
+      }
+      return piece.id as string;
+    },
+    onSuccess: () => {
+      qcGen.invalidateQueries({ queryKey: ["content"] });
+      toast.success("Saved to the content pipeline as a draft.");
+    },
+    onError: (e: unknown) => toast.error((e as Error)?.message ?? "Failed to save"),
+  });
+
 
   return (
     <div className="space-y-4">
@@ -302,6 +373,57 @@ function GenerateTab() {
             <Input value={angle} onChange={e => setAngle(e.target.value)} placeholder="Hot take, contrarian angle, story angle…" />
           </div>
 
+          {isContent && (
+            <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Conversion mechanism (drives the whole generation)</div>
+              <div className="grid grid-cols-2 gap-2">
+                {MECHANISM_KEYS.map(k => {
+                  const mk = MECHANISMS[k];
+                  const active = k === mechanism;
+                  return (
+                    <button key={k} type="button" title={mk.purpose} onClick={() => setMechanism(k as MechanismKey)}
+                      className={cn("text-left rounded-md border p-2.5 transition", active ? "border-primary bg-primary/5 ring-1 ring-primary/40" : "border-border hover:bg-card")}>
+                      <div className="text-sm font-medium">{mk.label}</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{mk.purpose}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground">Variation</label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {variations.map(v => {
+                    const active = v.value === variation;
+                    return (
+                      <button key={v.value} type="button" title={v.hint} onClick={() => setVariation(v.value)}
+                        className={cn("text-left rounded-md border p-2.5 transition", active ? "border-primary bg-primary/5 ring-1 ring-primary/40" : "border-border hover:bg-card")}>
+                        <div className="text-xs font-medium">{v.label}</div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{v.hint}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground">Lead Journey stage (optional)</label>
+                <Select value={journeyStage} onValueChange={setJourneyStage}>
+                  <SelectTrigger><SelectValue placeholder="(let the AI assume warming)" /></SelectTrigger>
+                  <SelectContent>
+                    {JOURNEY_STAGES.map(s => <SelectItem key={s.value} value={s.value}>{s.label} — {s.hint}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground">Prospect's current #1 question / concern / fear</label>
+                <Textarea rows={2} value={objection} onChange={e => setObjection(e.target.value)}
+                  placeholder="e.g. “I've tried agencies before and got nothing” — the AI pre-handles this inside the script." />
+              </div>
+            </div>
+          )}
+
           {/* Category-tailored fields */}
           {cat.fields.map(f => (
             <div key={f.key}>
@@ -338,11 +460,24 @@ function GenerateTab() {
         </Card>
 
         <Card className="p-4">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <div className="text-xs uppercase tracking-wider text-muted-foreground">Output</div>
-            {output && (
-              <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(output); toast.success("Copied"); }}>Copy</Button>
-            )}
+            <div className="flex items-center gap-1.5">
+              {isContent && output && (
+                <div className="flex items-center gap-1 mr-1">
+                  <Badge variant="outline" className="text-[10px]">{MECHANISMS[mechanism].label}</Badge>
+                  <Badge variant="outline" className="text-[10px]">{variations.find(v => v.value === variation)?.label}</Badge>
+                </div>
+              )}
+              {output && (
+                <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(output); toast.success("Copied"); }}>Copy</Button>
+              )}
+              {output && (
+                <Button size="sm" variant="outline" disabled={savePipeline.isPending} onClick={() => savePipeline.mutate()}>
+                  {savePipeline.isPending ? "Saving…" : "Save to Pipeline"}
+                </Button>
+              )}
+            </div>
           </div>
           {output ? (
             <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed">{output}</pre>
@@ -352,6 +487,7 @@ function GenerateTab() {
             </div>
           )}
         </Card>
+
       </div>
     </div>
   );

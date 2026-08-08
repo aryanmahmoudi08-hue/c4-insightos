@@ -2,6 +2,7 @@
 // prompt grounded in the full distilled KJ Rainey "Copy Elite" + "Digital
 // Persuasion" mentorship (see copy-os-knowledge.server.ts).
 import { KJ_KNOWLEDGE } from "./copy-os-knowledge.server";
+import { CONTENT_SYSTEM_CORE, mechanismBlock, PRODUCTION_BREAKDOWN_SPEC } from "./content-system-knowledge.server";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
@@ -96,9 +97,27 @@ export async function generateCopy(input: {
   brief?: string | null;
   client?: ClientDNA | null;
   swipes?: { title: string; body: string }[];
+  mechanism?: string | null;
+  variation?: string | null;
+  journey_stage?: string | null;
+  objection?: string | null;
 }): Promise<string> {
   const swipeBlock = (input.swipes ?? []).length
     ? `\n\nREFERENCE SWIPES (style only — do not copy verbatim):\n${input.swipes!.map(s => `--- ${s.title} ---\n${s.body}`).join("\n\n")}`
+    : "";
+
+  const mech = mechanismBlock(input.mechanism, input.variation);
+  const strategyBlock = mech
+    ? `\n\n=== CONVERSION MECHANISM FRAMEWORK (authoritative — obey exactly) ===
+${CONTENT_SYSTEM_CORE}
+
+${mech}
+
+LEAD JOURNEY STAGE: ${input.journey_stage ?? "(unspecified — assume warming)"}
+PROSPECT'S #1 QUESTION / CONCERN / FEAR (pre-handle this inside the content): ${input.objection ?? "(none supplied — infer the most likely one for this stage)"}
+=== END FRAMEWORK ===
+
+${PRODUCTION_BREAKDOWN_SPEC}`
     : "";
 
   const user = `Produce: ${input.copy_type}
@@ -107,9 +126,9 @@ Angle/hook direction: ${input.angle ?? "(suggest 1 strong angle, then write)"}
 Brief: ${input.brief ?? "(none)"}
 
 CLIENT DNA:
-${dnaBlock(input.client)}${swipeBlock}
+${dnaBlock(input.client)}${swipeBlock}${strategyBlock}
 
-Now write the copy. If the format calls for multiple variants (hooks, subject lines), provide 3-5. Otherwise write one tight piece. End with a "WHY THIS WORKS" section in 2-3 bullets referencing the framework levers used.`;
+Now write the copy.${mech ? " Follow the OUTPUT CONTRACT sections A-H exactly." : ` If the format calls for multiple variants (hooks, subject lines), provide 3-5. Otherwise write one tight piece. End with a "WHY THIS WORKS" section in 2-3 bullets referencing the framework levers used.`}`;
 
   const json = (await callGateway({
     model: "google/gemini-2.5-flash",
@@ -122,6 +141,7 @@ Now write the copy. If the format calls for multiple variants (hooks, subject li
   if (!out) throw new Error("Empty AI response");
   return out;
 }
+
 
 export async function reviewCopy(input: { copy: string; copy_type?: string | null; client?: ClientDNA | null }) {
   const user = `Grade this ${input.copy_type ?? "copy"} against KJ's frameworks. Give a 0-100 score, then specific line-by-line feedback. Be brutal.
