@@ -2,6 +2,7 @@
 // prompt grounded in the full distilled KJ Rainey "Copy Elite" + "Digital
 // Persuasion" mentorship (see copy-os-knowledge.server.ts).
 import { KJ_KNOWLEDGE } from "./copy-os-knowledge.server";
+import { CONTENT_SYSTEM_CORE, mechanismBlock, PRODUCTION_BREAKDOWN_SPEC } from "./content-system-knowledge.server";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
