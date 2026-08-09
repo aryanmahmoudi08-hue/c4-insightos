@@ -591,8 +591,11 @@ export type Database = {
           content_id: string
           cta_conversion_pct: number | null
           dms_generated: number | null
+          drop_off_rate_pct: number | null
           drop_off_seconds: number | null
+          engagement_rate_pct: number | null
           follower_view_ratio: number | null
+          follower_views: number | null
           followers_gained: number | null
           hook_retention_pct: number | null
           icp_attraction_score: number | null
@@ -600,6 +603,7 @@ export type Database = {
           leads_generated: number | null
           leads_per_1k_views: number | null
           likes: number | null
+          non_follower_views: number | null
           org_id: string
           profile_visits: number | null
           qualified_follower_ratio: number | null
@@ -624,8 +628,11 @@ export type Database = {
           content_id: string
           cta_conversion_pct?: number | null
           dms_generated?: number | null
+          drop_off_rate_pct?: number | null
           drop_off_seconds?: number | null
+          engagement_rate_pct?: number | null
           follower_view_ratio?: number | null
+          follower_views?: number | null
           followers_gained?: number | null
           hook_retention_pct?: number | null
           icp_attraction_score?: number | null
@@ -633,6 +640,7 @@ export type Database = {
           leads_generated?: number | null
           leads_per_1k_views?: number | null
           likes?: number | null
+          non_follower_views?: number | null
           org_id: string
           profile_visits?: number | null
           qualified_follower_ratio?: number | null
@@ -657,8 +665,11 @@ export type Database = {
           content_id?: string
           cta_conversion_pct?: number | null
           dms_generated?: number | null
+          drop_off_rate_pct?: number | null
           drop_off_seconds?: number | null
+          engagement_rate_pct?: number | null
           follower_view_ratio?: number | null
+          follower_views?: number | null
           followers_gained?: number | null
           hook_retention_pct?: number | null
           icp_attraction_score?: number | null
@@ -666,6 +677,7 @@ export type Database = {
           leads_generated?: number | null
           leads_per_1k_views?: number | null
           likes?: number | null
+          non_follower_views?: number | null
           org_id?: string
           profile_visits?: number | null
           qualified_follower_ratio?: number | null
@@ -710,6 +722,7 @@ export type Database = {
           hook: string | null
           hook_score: number | null
           id: string
+          mechanism: string | null
           notes: string | null
           org_id: string
           pain_point: string | null
@@ -727,6 +740,7 @@ export type Database = {
           topic: string | null
           updated_at: string
           url: string | null
+          variation: string | null
           voice_notes: string | null
           why_it_works: string | null
         }
@@ -745,6 +759,7 @@ export type Database = {
           hook?: string | null
           hook_score?: number | null
           id?: string
+          mechanism?: string | null
           notes?: string | null
           org_id: string
           pain_point?: string | null
@@ -762,6 +777,7 @@ export type Database = {
           topic?: string | null
           updated_at?: string
           url?: string | null
+          variation?: string | null
           voice_notes?: string | null
           why_it_works?: string | null
         }
@@ -780,6 +796,7 @@ export type Database = {
           hook?: string | null
           hook_score?: number | null
           id?: string
+          mechanism?: string | null
           notes?: string | null
           org_id?: string
           pain_point?: string | null
@@ -797,6 +814,7 @@ export type Database = {
           topic?: string | null
           updated_at?: string
           url?: string | null
+          variation?: string | null
           voice_notes?: string | null
           why_it_works?: string | null
         }
@@ -1242,6 +1260,65 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "events_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      faq_videos: {
+        Row: {
+          active: boolean
+          avg_watch_pct: number
+          clicks: number
+          created_at: string
+          id: string
+          mechanism: string | null
+          notes: string | null
+          org_id: string
+          plays: number
+          question: string | null
+          title: string
+          updated_at: string
+          video_url: string | null
+          wistia_video_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          avg_watch_pct?: number
+          clicks?: number
+          created_at?: string
+          id?: string
+          mechanism?: string | null
+          notes?: string | null
+          org_id: string
+          plays?: number
+          question?: string | null
+          title: string
+          updated_at?: string
+          video_url?: string | null
+          wistia_video_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          avg_watch_pct?: number
+          clicks?: number
+          created_at?: string
+          id?: string
+          mechanism?: string | null
+          notes?: string | null
+          org_id?: string
+          plays?: number
+          question?: string | null
+          title?: string
+          updated_at?: string
+          video_url?: string | null
+          wistia_video_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faq_videos_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1913,6 +1990,7 @@ export type Database = {
           client_id: string | null
           created_at: string
           id: string
+          mechanism_signals: Json
           org_id: string
           responses: Json
           share_token: string
@@ -1922,6 +2000,7 @@ export type Database = {
           client_id?: string | null
           created_at?: string
           id?: string
+          mechanism_signals?: Json
           org_id: string
           responses?: Json
           share_token?: string
@@ -1931,6 +2010,7 @@ export type Database = {
           client_id?: string | null
           created_at?: string
           id?: string
+          mechanism_signals?: Json
           org_id?: string
           responses?: Json
           share_token?: string
@@ -2437,6 +2517,79 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      setter_call_signals: {
+        Row: {
+          ai_summary: string | null
+          call_date: string
+          created_at: string
+          id: string
+          lead_id: string | null
+          limiting_beliefs: string[]
+          mechanism: string | null
+          notes: string | null
+          objections: string[]
+          org_id: string
+          setter_name: string
+          source: string
+          transcript: string | null
+          updated_at: string
+        }
+        Insert: {
+          ai_summary?: string | null
+          call_date?: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          limiting_beliefs?: string[]
+          mechanism?: string | null
+          notes?: string | null
+          objections?: string[]
+          org_id: string
+          setter_name: string
+          source?: string
+          transcript?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ai_summary?: string | null
+          call_date?: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          limiting_beliefs?: string[]
+          mechanism?: string | null
+          notes?: string | null
+          objections?: string[]
+          org_id?: string
+          setter_name?: string
+          source?: string
+          transcript?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "setter_call_signals_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_attribution_v"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "setter_call_signals_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "setter_call_signals_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       slide_metrics: {
         Row: {
