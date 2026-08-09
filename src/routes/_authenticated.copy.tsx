@@ -282,7 +282,7 @@ function GenerateTab() {
         topic: fields.brief || null,
         pipeline_status: "draft",
         notes: isContent
-          ? `Mechanism: ${mechLabel} · Variation: ${varLabel}${journeyStage ? ` · Stage: ${journeyStage}` : ""}${objection ? `\nObjection pre-handled: ${objection}` : ""}`
+          ? `Mechanism: ${mechLabel} · Variation: ${varLabel}${objection ? `\nObjection pre-handled: ${objection}` : ""}`
           : null,
       }).select("id").single();
       if (error) throw error;
@@ -420,15 +420,33 @@ function GenerateTab() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs text-muted-foreground">Lead Journey stage (optional)</label>
-                <Select value={journeyStage} onValueChange={setJourneyStage}>
-                  <SelectTrigger><SelectValue placeholder="(let the AI assume warming)" /></SelectTrigger>
-                  <SelectContent>
-                    {JOURNEY_STAGES.map(s => <SelectItem key={s.value} value={s.value}>{s.label} — {s.hint}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+              {varQuestions.length > 0 && (
+                <div className="space-y-2 rounded-md border border-border bg-background/40 p-2.5">
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    {variations.find(v => v.value === variation)?.label} inputs — tailored to this variation
+                  </div>
+                  {varQuestions.map(q => (
+                    <div key={q.key}>
+                      <label className="text-xs text-muted-foreground">{q.label}</label>
+                      {q.type === "select" ? (
+                        <Select value={varAnswers[q.key] ?? ""} onValueChange={(v) => setVarAnswers(s => ({ ...s, [q.key]: v }))}>
+                          <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                          <SelectContent>
+                            {(q.options ?? []).map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      ) : q.type === "textarea" ? (
+                        <Textarea rows={3} value={varAnswers[q.key] ?? ""} placeholder={q.placeholder}
+                          onChange={e => setVarAnswers(s => ({ ...s, [q.key]: e.target.value }))} />
+                      ) : (
+                        <Input value={varAnswers[q.key] ?? ""} placeholder={q.placeholder}
+                          onChange={e => setVarAnswers(s => ({ ...s, [q.key]: e.target.value }))} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
 
               <div>
                 <label className="text-xs text-muted-foreground">Prospect's current #1 question / concern / fear</label>
