@@ -19,7 +19,8 @@ import {
 } from "lucide-react";
 import { useRef } from "react";
 import { cn } from "@/lib/utils";
-import { MECHANISMS, MECHANISM_KEYS, JOURNEY_STAGES, type MechanismKey } from "@/lib/content-mechanisms";
+import { MECHANISMS, MECHANISM_KEYS, questionsFor, type MechanismKey } from "@/lib/content-mechanisms";
+import { contentDemandFn } from "@/lib/content-signals.functions";
 import { useCurrentOrg } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/_authenticated/copy")({
@@ -200,13 +201,24 @@ function GenerateTab() {
   const isContent = catKey === "content";
   const [mechanism, setMechanism] = useState<MechanismKey>("educational");
   const [variation, setVariation] = useState<string>(MECHANISMS.educational.variations[0].value);
-  const [journeyStage, setJourneyStage] = useState<string>("");
   const [objection, setObjection] = useState("");
+  const [varAnswers, setVarAnswers] = useState<Record<string, string>>({});
   const variations = MECHANISMS[mechanism].variations;
   useEffect(() => {
     if (!variations.some(v => v.value === variation)) setVariation(variations[0].value);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mechanism]);
+  useEffect(() => { setVarAnswers({}); }, [variation]);
+  const varQuestions = questionsFor(variation);
+
+  // How much of each mechanism the business currently needs (FAQ clicks + intakes + setting calls).
+  const demandFn = useServerFn(contentDemandFn);
+  const { data: demand } = useQuery({
+    queryKey: ["content-demand", 30],
+    enabled: isContent,
+    staleTime: 5 * 60_000,
+    queryFn: () => demandFn({ data: { days: 30 } }),
+  });
 
   // Reset per-category fields when category changes.
   useEffect(() => { setFields({}); setOutput(""); }, [catKey]);
@@ -226,7 +238,9 @@ function GenerateTab() {
       swipe_ids: selectedSwipes,
       mechanism: isContent ? mechanism : null,
       variation: isContent ? variation : null,
-      journey_stage: isContent && journeyStage ? journeyStage : null,
+      variation_answers: isContent && Object.keys(varAnswers).length
+        ? varQuestions.filter(q => varAnswers[q.key]?.trim()).map(q => `${q.label}: ${varAnswers[q.key]}`).join("\n")
+        : null,
       objection: isContent && objection ? objection : null,
     }}),
     onSuccess: (r) => { setOutput(r.output); toast.success("Generated."); },
