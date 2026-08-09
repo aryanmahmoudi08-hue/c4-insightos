@@ -389,20 +389,44 @@ function GenerateTab() {
 
           {isContent && (
             <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Conversion mechanism (drives the whole generation)</div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Conversion mechanism (drives the whole generation)</div>
+                {demand && <span className="text-[10px] text-muted-foreground">% = how much this format is needed right now</span>}
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 {MECHANISM_KEYS.map(k => {
                   const mk = MECHANISMS[k];
                   const active = k === mechanism;
+                  const pct = demand?.mix?.[k];
                   return (
                     <button key={k} type="button" title={mk.purpose} onClick={() => setMechanism(k as MechanismKey)}
                       className={cn("text-left rounded-md border p-2.5 transition", active ? "border-primary bg-primary/5 ring-1 ring-primary/40" : "border-border hover:bg-card")}>
-                      <div className="text-sm font-medium">{mk.label}</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-medium">{mk.label}</div>
+                        {pct != null && (
+                          <span className={cn("font-mono text-[10px] rounded px-1.5 py-0.5 border",
+                            pct >= 30 ? "border-[color:var(--color-success)]/50 text-[color:var(--color-success)]" : "border-border text-muted-foreground")}>
+                            {pct}%
+                          </span>
+                        )}
+                      </div>
+                      {pct != null && (
+                        <div className="mt-1 h-1 w-full rounded bg-muted overflow-hidden">
+                          <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                        </div>
+                      )}
                       <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{mk.purpose}</div>
                     </button>
                   );
                 })}
               </div>
+              {demand && demand.drivers.length > 0 && (
+                <div className="text-[10px] text-muted-foreground leading-relaxed">
+                  Demand from last 30d: {demand.counts.faq} FAQ videos · {demand.counts.setter_calls} setting-call signals · {demand.counts.intakes} client intakes.
+                  Top driver: <span className="text-foreground">{demand.drivers[0].source} — {demand.drivers[0].detail}</span>
+                </div>
+              )}
+
 
               <div>
                 <label className="text-xs text-muted-foreground">Variation</label>
