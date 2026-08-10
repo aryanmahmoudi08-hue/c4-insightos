@@ -3,8 +3,8 @@ import {
   LayoutDashboard, Video, GitBranch, MessageSquare, PhoneCall, Users, BadgeCheck,
   TrendingUp, Sparkles, Settings, LogOut, Bell, Search, Brain, Activity, PhoneIncoming,
   ChevronDown, Briefcase, UserPlus, Menu, X, Wand2, BookOpen, Layers, CalendarDays,
-  ShieldCheck, Plug, Sun, Moon,
-, Radar } from "lucide-react";
+  ShieldCheck, Plug, Sun, Moon, Radar,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
