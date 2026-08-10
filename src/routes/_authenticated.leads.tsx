@@ -4,16 +4,18 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg, useAuth } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
-import { StatCard } from "@/components/stat-card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useMemo, useState } from "react";
-import { Search, Users, MessageSquare, PhoneCall, Film, StickyNote, Gem, Sparkles, AlertTriangle, TrendingUp, Loader2 } from "lucide-react";
+import { Users, MessageSquare, PhoneCall, Film, StickyNote, Gem, Sparkles, AlertTriangle, TrendingUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { analyzeLeads } from "@/lib/lead-insights.functions";
+import { PageHero } from "@/components/page-hero";
+import { MetricCard } from "@/components/metric-card";
+import { GlassTableShell, TableSearch, FilterPills, Pagination, usePagination } from "@/components/glass-table";
+import { mockLeads, mockLeadInsights, withMockDelay } from "@/lib/dev-mock-data";
 
 export const Route = createFileRoute("/_authenticated/leads")({ component: Leads });
 
@@ -110,18 +112,28 @@ const APP_COLS: { key: string; label: string; width?: string }[] = [
   { key: "commitment", label: "Commit", width: "min-w-[80px]" },
 ];
 
+const BUCKET_STATUSES: Record<string, string[]> = {
+  active: ["opt_in", "rescheduling", "follow_up_short", "follow_up_long", "deposit"],
+  booked: ["call_booked"],
+  closed: ["closed", "lt_closed"],
+  lost: ["no_show", "no_close", "bad_fit", "disqualified", "cancelled", "ignore", "applied_qualified_no_book", "applied_unqualified_no_book"],
+};
+
 function Leads() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { devBypass } = useAuth();
   const qc = useQueryClient();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [bucket, setBucket] = useState<"all" | "active" | "booked" | "closed" | "lost">("all");
   const [selected, setSelected] = useState<LeadRow | null>(null);
 
   const { data: leads, isLoading: leadsLoading } = useQuery({
-    queryKey: ["leads", orgId],
+    queryKey: ["leads", orgId, devBypass],
     enabled: !!orgId,
     queryFn: async () => {
+      if (devBypass) return mockLeads() as unknown as LeadRow[];
       const { data, error } = await supabase
         .from("leads")
         .select("id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, first_touch_content_id, qualification_notes, application_data, notes, created_at")
@@ -145,12 +157,15 @@ function Leads() {
   const view = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (leads ?? []).filter(l => {
+      if (bucket !== "all" && !BUCKET_STATUSES[bucket].includes(l.status)) return false;
       if (statusFilter !== "all" && l.status !== statusFilter) return false;
       if (!q) return true;
       const hay = [l.full_name, l.email, l.handle, l.phone, l.notes, JSON.stringify(l.application_data ?? {})].join(" ").toLowerCase();
       return hay.includes(q);
     });
-  }, [leads, query, statusFilter]);
+  }, [leads, query, statusFilter, bucket]);
+
+  const { page, setPage, pageCount, paged, total, pageSize } = usePagination(view, 25);
 
   const stats = useMemo(() => {
     const all = leads ?? [];
@@ -166,31 +181,54 @@ function Leads() {
     <>
       <TopBar title="Leads CRM" subtitle="Pipeline stage · priority · pre-call vid tracking · notes" />
       <div className="p-6 space-y-5">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Total leads" value={stats.total} icon={<Users className="h-4 w-4" />} />
-          <StatCard label="Call booked" value={stats.booked} accent="warning" />
-          <StatCard label="Closed" value={stats.closed} accent="success" />
-          <StatCard label="💎 Diamond leads" value={stats.diamond} accent="accent" />
+        <PageHero
+          icon={<Users className="h-5 w-5" />}
+          eyebrow="Sales Tracking"
+          title="Leads CRM"
+          subtitle="Pipeline stage, priority, pre-call video tracking, and full activity notes."
+          status={[
+            { label: `${stats.total} total leads`, tone: "default" },
+            { label: `${stats.diamond} diamond`, tone: "accent" },
+            ...(stats.booked > 0 ? [{ label: `${stats.booked} awaiting show`, tone: "warning" as const }] : []),
+          ]}
+        />
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger-fade">
+          <MetricCard label="Total leads" value={stats.total} icon={<Users className="h-3 w-3" />} deltaPct={9} spark={[12, 15, 14, 18, 20, 19, 24]} />
+          <MetricCard label="Call booked" value={stats.booked} icon={<PhoneCall className="h-3 w-3" />} deltaPct={4} spark={[2, 3, 2, 4, 3, 4, 5]} sparkVariant="bar" tone="warning" />
+          <MetricCard label="Closed" value={stats.closed} icon={<Sparkles className="h-3 w-3" />} deltaPct={17} spark={[1, 1, 2, 1, 2, 3, 3]} sparkVariant="bar" tone="success" />
+          <MetricCard label="💎 Diamond leads" value={stats.diamond} icon={<Gem className="h-3 w-3" />} deltaPct={-2} spark={[3, 4, 3, 4, 4, 3, 4]} tone="accent" />
         </div>
 
         <LeadInsightsPanel orgId={orgId} />
 
+        <GlassTableShell
+          toolbar={
+            <>
+              <TableSearch value={query} onChange={setQuery} placeholder="Search name, handle, application…" />
+              <FilterPills
+                options={[
+                  { key: "all", label: "All", count: leads?.length ?? 0 },
+                  { key: "active", label: "Active" },
+                  { key: "booked", label: "Booked" },
+                  { key: "closed", label: "Closed" },
+                  { key: "lost", label: "Lost" },
+                ]}
+                value={bucket}
+                onChange={setBucket}
+              />
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-[11px]">
+                <option value="all">All statuses</option>
+                {STATUS_OPTIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
+              </select>
+              <div className="ml-auto text-[11px] text-muted-foreground">{view.length} / {leads?.length ?? 0}</div>
+            </>
+          }
+          footer={<Pagination page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize} />}
+        >
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Search name, handle, application…" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8 h-9" />
-          </div>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-xs">
-            <option value="all">All statuses</option>
-            {STATUS_OPTIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
-          </select>
-          <div className="text-xs text-muted-foreground">{view.length} / {leads?.length ?? 0}</div>
-        </div>
-
-        <div className="rounded-lg border border-border bg-card overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground sticky top-0">
+            <thead className="sticky-thead bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left p-2.5 min-w-[110px]">Date / Time</th>
                 <th className="text-left p-2.5 min-w-[60px]">💎</th>
@@ -204,7 +242,7 @@ function Leads() {
               </tr>
             </thead>
             <tbody>
-              {view.map(l => {
+              {paged.map(l => {
                 const t = tone(l.status);
                 const app = l.application_data ?? {};
                 const isDiamond = l.priority === "diamond" || l.pipeline_stage === "diamond";
@@ -273,7 +311,7 @@ function Leads() {
               {!leadsLoading && view.length === 0 && <tr><td colSpan={6 + APP_COLS.length + 2} className="p-10 text-center text-sm text-muted-foreground">No leads match.</td></tr>}
             </tbody>
           </table>
-        </div>
+        </GlassTableShell>
 
         <Dialog open={!!selected} onOpenChange={(o) => { if (!o) setSelected(null); }}>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -429,6 +467,7 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
 
 function LeadInsightsPanel({ orgId }: { orgId?: string }) {
   const run = useServerFn(analyzeLeads);
+  const { devBypass } = useAuth();
   const [data, setData] = useState<{ bottlenecks: any[]; double_down: any[]; priority_leads: any[]; sampleSize: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [range, setRange] = useState<"1d" | "3d" | "7d" | "30d" | "all">("30d");
@@ -437,6 +476,7 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
     if (!orgId) return;
     setLoading(true);
     try {
+      if (devBypass) { setData(await withMockDelay(mockLeadInsights())); return; }
       const now = new Date();
       const days: Record<string, number | null> = { "1d": 1, "3d": 3, "7d": 7, "30d": 30, "all": null };
       const d = days[range];

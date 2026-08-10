@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { mockLoomGrade, withMockDelay } from "@/lib/dev-mock-data";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
 import { useState, useMemo } from "react";
@@ -350,15 +351,19 @@ function ApplicantForm({ onSubmit, pending }: { onSubmit: (f: FormData) => void;
 /** AI watches the video application by reading its transcript, then routes the applicant. */
 function LoomGrader({ applicant, onGraded }: { applicant: Applicant; onGraded: () => void }) {
   const grade = useServerFn(gradeLoomFn);
+  const { devBypass } = useAuth();
   const [url, setUrl] = useState(applicant.loom_url ?? "");
   const [transcript, setTranscript] = useState(applicant.loom_transcript ?? "");
 
   const m = useMutation({
-    mutationFn: () => grade({ data: {
+    mutationFn: async () => {
+      if (devBypass) return withMockDelay(mockLoomGrade());
+      return grade({ data: {
       applicant_id: applicant.id,
       loom_url: url.trim() || null,
       transcript: transcript.trim() || null,
-    }}),
+    }});
+    },
     onSuccess: (r) => { toast.success(`Graded ${r.score}/10 → ${r.stage.replace("_", " ")}`); onGraded(); },
     onError: (e: Error) => toast.error(e.message),
   });

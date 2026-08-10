@@ -2,7 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { mockClients, mockPreCloseSummary, withMockDelay } from "@/lib/dev-mock-data";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
 import { useState, useMemo } from "react";
@@ -79,6 +80,7 @@ function atRiskReason(c: ClientRow): string | null {
 function Clients() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { devBypass } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ClientRow | null>(null);
@@ -88,9 +90,10 @@ function Clients() {
   const notifyStageChanged = useServerFn(notifyClientStageChangedFn);
 
   const { data: clients, isLoading: clientsLoading } = useQuery({
-    queryKey: ["clients", orgId],
+    queryKey: ["clients", orgId, devBypass],
     enabled: !!orgId,
     queryFn: async () => {
+      if (devBypass) return mockClients() as unknown as ClientRow[];
       const { data, error } = await supabase
         .from("clients")
         .select("id, full_name, email, phone, offer_name, start_date, contract_value_cents, invested_to_date_cents, expected_next_payment_cents, expected_next_payment_date, payment_plan, installments_remaining, installment_amount_cents, status, health_score, renewal_date, renewal_conv_started, renewal_stage, notes, pre_close_summary")
@@ -165,8 +168,17 @@ function Clients() {
   });
 
   const preClose = useMutation({
-    mutationFn: async (clientId: string) => generatePreClose({ data: { client_id: clientId, org_id: orgId! } }),
-    onSuccess: () => { toast.success("Pre-close summary generated"); qc.invalidateQueries({ queryKey: ["clients"] }); },
+    mutationFn: async (clientId: string) => {
+      if (devBypass) {
+        const r = await withMockDelay(mockPreCloseSummary());
+        // No real write happens under dev bypass — patch the cached mock row directly.
+        qc.setQueryData<ClientRow[]>(["clients", orgId, devBypass], (prev) =>
+          (prev ?? []).map((c) => (c.id === clientId ? { ...c, pre_close_summary: r.summary } : c)));
+        return r;
+      }
+      return generatePreClose({ data: { client_id: clientId, org_id: orgId! } });
+    },
+    onSuccess: () => { toast.success("Pre-close summary generated"); if (!devBypass) qc.invalidateQueries({ queryKey: ["clients"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 

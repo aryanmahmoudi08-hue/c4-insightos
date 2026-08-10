@@ -22,7 +22,9 @@ import { cn } from "@/lib/utils";
 import { MECHANISMS, MECHANISM_KEYS, questionsFor, type MechanismKey } from "@/lib/content-mechanisms";
 import { contentDemandFn } from "@/lib/content-signals.functions";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
-import { mockContentDemand } from "@/lib/dev-mock-data";
+import { mockContentDemand, mockClientDNA, mockGeneratedCopy, mockCopyReview, mockAngles, mockVoiceFingerprint, withMockDelay } from "@/lib/dev-mock-data";
+import { GaugeChart } from "@/components/gauge-chart";
+import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/copy")({
   component: CopyOSPage,
@@ -124,9 +126,11 @@ const CATEGORIES: Record<string, {
 const ALL_TYPES = Object.values(CATEGORIES).flatMap(c => c.types);
 
 function useClients() {
+  const { devBypass } = useAuth();
   return useQuery({
-    queryKey: ["copy_clients"],
-    queryFn: async () => {
+    queryKey: ["copy_clients", devBypass],
+    queryFn: async (): Promise<Record<string, any>[]> => {
+      if (devBypass) return [mockClientDNA()];
       const { data, error } = await supabase.from("copy_clients").select("*").order("created_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -235,7 +239,9 @@ function GenerateTab() {
 
   const genFn = useServerFn(generateCopyFn);
   const m = useMutation({
-    mutationFn: () => genFn({ data: {
+    mutationFn: async () => {
+      if (devBypass) return withMockDelay(mockGeneratedCopy(copyType));
+      return genFn({ data: {
       client_id: clientId || null, copy_type: copyType as never,
       goal: goal || null, angle: angle || null, brief: briefBlob || null,
       swipe_ids: selectedSwipes,
@@ -245,7 +251,8 @@ function GenerateTab() {
         ? varQuestions.filter(q => varAnswers[q.key]?.trim()).map(q => `${q.label}: ${varAnswers[q.key]}`).join("\n")
         : null,
       objection: isContent && objection ? objection : null,
-    }}),
+    }});
+    },
     onSuccess: (r) => { setOutput(r.output); toast.success("Generated."); },
     onError: (e: unknown) => toast.error((e as Error)?.message ?? "Failed"),
   });
@@ -577,6 +584,7 @@ function ClientAvatar({ path, onPick }: { path: string | null; onPick: (f: File)
 /** Client DNA — one client, one always-open profile. No list, no edit click. */
 function ClientsTab() {
   const qc = useQueryClient();
+  const { devBypass } = useAuth();
   const { data: clients = [], isLoading } = useClients();
   const fpFn = useServerFn(extractFingerprintFn);
   const [form, setForm] = useState<Record<string, unknown> | null>(null);
@@ -665,8 +673,50 @@ function ClientsTab() {
     { key: "youtube_handle", count: "youtube_subscribers", label: "YouTube", unit: "subscribers" },
   ];
 
+  // Positioning score — real completeness metric, not a fabricated "brand score".
+  const SCORE_FIELDS = ["niche", "bio", "location", "instagram_handle", "business_stage", "monthly_revenue_cents", "offer_price_cents", "content_pillars", "goals", "dream_outcome", "proof_assets", "sacred_cows", "competitors", "voice_transcripts"];
+  const filledCount = SCORE_FIELDS.filter(k => { const v = e[k]; return v !== null && v !== undefined && String(v).trim() !== ""; }).length;
+  const positioningScore = Math.round((filledCount / SCORE_FIELDS.length) * 100);
+  const totalReach = (Number(e.instagram_followers) || 0) + (Number(e.tiktok_followers) || 0) + (Number(e.youtube_subscribers) || 0);
+  const reachMax = Math.max(1, Number(e.instagram_followers) || 0, Number(e.tiktok_followers) || 0, Number(e.youtube_subscribers) || 0);
+  const reachRadar = socials.map(s => ({ channel: s.label, pct: Math.round(((Number(e[s.count]) || 0) / reachMax) * 100) }));
+
   return (
     <div className="space-y-4 max-w-4xl">
+      {/* Positioning snapshot — gauge + reach radar + parameter cards + asset badges */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-xl border border-border bg-card p-4 flex flex-col items-center justify-center">
+          <GaugeChart value={positioningScore} label="Profile completeness" tone="var(--accent)" />
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Reach by channel (relative)</div>
+          <ResponsiveContainer width="100%" height={140}>
+            <RadarChart data={reachRadar} outerRadius={55}>
+              <PolarGrid stroke="var(--border)" />
+              <PolarAngleAxis dataKey="channel" fontSize={10} stroke="var(--muted-foreground)" />
+              <Radar dataKey="pct" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.3} />
+            </RadarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="grid grid-cols-2 gap-3 content-start">
+          <div className="hover-lift rounded-lg border border-border bg-card p-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Total reach</div>
+            <div className="mt-1 font-mono text-lg font-semibold">{totalReach.toLocaleString()}</div>
+          </div>
+          <div className="hover-lift rounded-lg border border-border bg-card p-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Business stage</div>
+            <div className="mt-1 text-xs font-medium truncate">{(e.business_stage as string) || "—"}</div>
+          </div>
+          <div className="col-span-2 flex flex-wrap gap-1.5">
+            {e.voice_fingerprint ? <span className="badge-glass normal-case tracking-normal text-[color:var(--color-success)]"><span className="status-dot" />Voice fingerprint</span> : null}
+            {e.proof_assets ? <span className="badge-glass normal-case tracking-normal">Proof assets logged</span> : null}
+            {socials.filter(s => e[s.key]).map(s => (
+              <span key={s.key} className="badge-glass normal-case tracking-normal text-accent">{s.label}: {e[s.key] as string}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Profile header — always open, no edit click */}
       <Card className="p-5">
         <div className="flex flex-col sm:flex-row gap-4">
@@ -781,7 +831,12 @@ function ClientsTab() {
         <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save client DNA"}</Button>
         {e.id && e.voice_transcripts ? (
           <Button variant="outline" onClick={async () => {
-            try { const fp = await fpFn({ data: { client_id: e.id as string } }); setForm({ ...e, voice_fingerprint: fp }); toast.success("Voice fingerprint extracted"); qc.invalidateQueries({ queryKey: ["copy_clients"] }); }
+            try {
+              const fp = devBypass ? await withMockDelay(mockVoiceFingerprint()) : await fpFn({ data: { client_id: e.id as string } });
+              setForm({ ...e, voice_fingerprint: fp });
+              toast.success("Voice fingerprint extracted");
+              if (!devBypass) qc.invalidateQueries({ queryKey: ["copy_clients"] });
+            }
             catch (err: unknown) { toast.error((err as Error)?.message ?? "Failed"); }
           }}>Extract voice fingerprint</Button>
         ) : null}
@@ -966,6 +1021,7 @@ function SwipesTab() {
 
 
 function ReviewTab() {
+  const { devBypass } = useAuth();
   const { data: clients = [] } = useClients();
   const [clientId, setClientId] = useState("");
   const [copy, setCopy] = useState("");
@@ -975,7 +1031,10 @@ function ReviewTab() {
   } | null>(null);
   const reviewFn = useServerFn(reviewCopyFn);
   const m = useMutation({
-    mutationFn: () => reviewFn({ data: { copy, client_id: clientId || null } }),
+    mutationFn: async () => {
+      if (devBypass) return withMockDelay(mockCopyReview());
+      return reviewFn({ data: { copy, client_id: clientId || null } });
+    },
     onSuccess: (r) => setResult(r),
     onError: (e: unknown) => toast.error((e as Error)?.message ?? "Failed"),
   });
@@ -1012,12 +1071,16 @@ function ReviewTab() {
 }
 
 function AnglesTab() {
+  const { devBypass } = useAuth();
   const { data: clients = [] } = useClients();
   const [clientId, setClientId] = useState("");
   const [result, setResult] = useState<{ angles: { trigger: string; hook: string; big_domino: string }[] } | null>(null);
   const fn = useServerFn(suggestAnglesFn);
   const m = useMutation({
-    mutationFn: () => fn({ data: { client_id: clientId || null, count: 12 } }),
+    mutationFn: async () => {
+      if (devBypass) return withMockDelay(mockAngles());
+      return fn({ data: { client_id: clientId || null, count: 12 } });
+    },
     onSuccess: (r) => setResult(r),
     onError: (e: unknown) => toast.error((e as Error)?.message ?? "Failed"),
   });

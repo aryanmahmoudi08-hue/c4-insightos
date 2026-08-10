@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { mockIntakeInsights, withMockDelay } from "@/lib/dev-mock-data";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
 import { useState } from "react";
@@ -105,6 +106,7 @@ const SECTION_META: Record<Section, { label: string; hint: string }> = {
 function Onboarding() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { devBypass } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -143,12 +145,12 @@ function Onboarding() {
   const analyzeFn = useServerFn(analyzeIntake);
   const aggregateFn = useServerFn(analyzeIntakesAggregate);
   const analyzeMut = useMutation({
-    mutationFn: (id: string) => analyzeFn({ data: { responseId: id } }),
+    mutationFn: (id: string) => (devBypass ? withMockDelay(mockIntakeInsights()) : analyzeFn({ data: { responseId: id } })),
     onSuccess: (res, id) => { setInsightsByResp(m => ({ ...m, [id]: res })); toast.success("AI insights ready"); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
   const aggregateMut = useMutation({
-    mutationFn: () => aggregateFn({ data: { from: activeRange.from, to: activeRange.to } }),
+    mutationFn: () => (devBypass ? withMockDelay(mockIntakeInsights()) : aggregateFn({ data: { from: activeRange.from, to: activeRange.to } })),
     onSuccess: (res) => { setAggInsights(res); toast.success(`Analyzed ${res.sampleSize ?? 0} intakes`); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });

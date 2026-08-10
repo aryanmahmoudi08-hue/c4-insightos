@@ -20,6 +20,8 @@ import {
   listVsls, upsertVsl, deleteVsl, listSnapshots, addSnapshot,
   importCsvRows, analyzeVsl, transcribeAudio, type VslKind,
 } from "@/lib/vsl.functions";
+import { useAuth } from "@/hooks/use-auth";
+import { mockVsls, mockVslSnapshots, mockVslInsights, mockTranscriptLines, withMockDelay } from "@/lib/dev-mock-data";
 
 export const Route = createFileRoute("/_authenticated/vsl")({ component: VslPage });
 
@@ -36,7 +38,11 @@ function mmss(sec: number) { const s = Math.max(0, Math.floor(sec)); return `${M
 
 function VslPage() {
   const load = useServerFn(listVsls);
-  const { data: vsls = [], isLoading } = useQuery({ queryKey: ["vsls"], queryFn: () => load() });
+  const { devBypass } = useAuth();
+  const { data: vsls = [], isLoading } = useQuery({
+    queryKey: ["vsls", devBypass],
+    queryFn: (): Promise<any[]> => (devBypass ? Promise.resolve(mockVsls()) : load()),
+  });
   const [kind, setKind] = useState<VslKind>("main");
 
   const grouped = useMemo(() => {
@@ -119,12 +125,13 @@ function VslCard({ vsl }: { vsl: any }) {
   const loadSnaps = useServerFn(listSnapshots);
   const analyze = useServerFn(analyzeVsl);
   const del = useServerFn(deleteVsl);
+  const { devBypass } = useAuth();
   const [insights, setInsights] = useState<any | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
 
   const { data: snaps = [] } = useQuery({
-    queryKey: ["vsl_snaps", vsl.id],
-    queryFn: () => loadSnaps({ data: { vsl_id: vsl.id } }),
+    queryKey: ["vsl_snaps", vsl.id, devBypass],
+    queryFn: () => (devBypass ? Promise.resolve(mockVslSnapshots(vsl.id)) : loadSnaps({ data: { vsl_id: vsl.id } })),
   });
   const latest = snaps[0];
   const history = [...snaps].reverse();
@@ -132,7 +139,10 @@ function VslCard({ vsl }: { vsl: any }) {
 
   const onAnalyze = async () => {
     setAnalyzing(true);
-    try { setInsights(await analyze({ data: { vsl_id: vsl.id } })); toast.success("Analysis ready"); }
+    try {
+      setInsights(devBypass ? await withMockDelay(mockVslInsights()) : await analyze({ data: { vsl_id: vsl.id } }));
+      toast.success("Analysis ready");
+    }
     catch (e: any) { toast.error(e.message || "Analysis failed"); }
     finally { setAnalyzing(false); }
   };
@@ -293,6 +303,7 @@ function ScriptTranscriptEditor({ vsl }: { vsl: any }) {
   const qc = useQueryClient();
   const upsert = useServerFn(upsertVsl);
   const trans = useServerFn(transcribeAudio);
+  const { devBypass } = useAuth();
   const [script, setScript] = useState<string>(vsl.script || "");
   const [transcriptText, setTranscriptText] = useState<string>(() => {
     const arr = Array.isArray(vsl.transcript_json) ? vsl.transcript_json : [];
@@ -328,6 +339,13 @@ function ScriptTranscriptEditor({ vsl }: { vsl: any }) {
     if (file.size > 25 * 1024 * 1024) return toast.error("File must be under 25 MB");
     setUploading(true);
     try {
+      if (devBypass) {
+        const lines = mockTranscriptLines();
+        await withMockDelay(undefined);
+        setTranscriptText(lines.map((l) => `[${mmss(l.t)}] ${l.text}`).join("\n"));
+        toast.success(`Transcribed ${lines.length} lines`);
+        return;
+      }
       const buf = await file.arrayBuffer();
       const bytes = new Uint8Array(buf);
       let bin = ""; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);

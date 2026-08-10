@@ -11,8 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { generateCopyFn } from "@/lib/copy-os.functions";
+import { mockStorySequenceSlides, withMockDelay } from "@/lib/dev-mock-data";
 import { Sparkles, Plus, Trash2, Calendar, Save, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -126,6 +127,7 @@ function templateFor(key: string) { return TEMPLATES.find(t => t.key === key) ??
 function SequencesPage() {
   const qc = useQueryClient();
   const { data: org } = useCurrentOrg();
+  const { devBypass } = useAuth();
   const orgId = org?.org_id;
   const [activeKey, setActiveKey] = useState<string>("wins_nurture");
   const [editing, setEditing] = useState<{ id?: string; template_key: string; title: string; slides: { label: string; body: string }[]; status: string; client_id: string | null; notes: string } | null>(null);
@@ -178,6 +180,7 @@ function SequencesPage() {
         ...t.slides.map((s, i) => `${i + 1}. ${s.label} — ${s.hint}`),
         editing.notes ? `\nExtra context: ${editing.notes}` : "",
       ].join("\n");
+      if (devBypass) return withMockDelay(mockStorySequenceSlides(t.slides.length));
       const out = await generateFn({ data: {
         copy_type: "story_sequence" as never,
         goal: `${t.title} — slide-by-slide body copy`,
@@ -187,7 +190,7 @@ function SequencesPage() {
         swipe_ids: [],
       } });
       // Try to parse a JSON array out of the response
-      const text = String(out ?? "");
+      const text = out.output ?? "";
       const match = text.match(/\[[\s\S]*\]/);
       let arr: string[] = [];
       if (match) {
@@ -197,6 +200,7 @@ function SequencesPage() {
         // Fallback: split by "Slide N" markers
         arr = text.split(/\n?\s*Slide\s*\d+[:.\-)]\s*/i).filter(Boolean).slice(0, t.slides.length);
       }
+      if (arr.length === 0) throw new Error("AI response couldn't be split into slides — try regenerating.");
       return arr;
     },
     onSuccess: (arr) => {

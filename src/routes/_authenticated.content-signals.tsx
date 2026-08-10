@@ -11,9 +11,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { MECHANISMS, MECHANISM_KEYS, variationLabel, reelSplit, type MechanismKey } from "@/lib/content-mechanisms";
 import { contentDemandFn, analyzeContentSystemFn, logSetterSignalFn } from "@/lib/content-signals.functions";
+import { mockContentDemand, mockContentSystemInsight, withMockDelay } from "@/lib/dev-mock-data";
 import { Radar, Sparkles, Loader2, TrendingUp, TriangleAlert, PhoneCall, CalendarCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -42,19 +43,23 @@ const RANGES = [
 function ContentSignalsPage() {
   const { data: org } = useCurrentOrg();
   const orgId = (org as { org_id?: string } | undefined)?.org_id;
+  const { devBypass } = useAuth();
   const [days, setDays] = useState(30);
   const [reelTarget, setReelTarget] = useState(6);
   const [insight, setInsight] = useState("");
 
   const demandFn = useServerFn(contentDemandFn);
   const { data: demand, isLoading } = useQuery({
-    queryKey: ["content-demand", days],
-    queryFn: () => demandFn({ data: { days } }),
+    queryKey: ["content-demand", days, devBypass],
+    queryFn: () => (devBypass ? Promise.resolve(mockContentDemand()) : demandFn({ data: { days } })),
   });
 
   const analyzeFn = useServerFn(analyzeContentSystemFn);
   const analyze = useMutation({
-    mutationFn: () => analyzeFn({ data: { days } }),
+    mutationFn: async () => {
+      if (devBypass) return withMockDelay(mockContentSystemInsight(demand ?? mockContentDemand()));
+      return analyzeFn({ data: { days } });
+    },
     onSuccess: (r) => setInsight(r.insight),
     onError: (e: Error) => toast.error(e.message),
   });

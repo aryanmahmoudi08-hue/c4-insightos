@@ -5,11 +5,13 @@ interface SparklineProps {
   stroke?: string;
   fill?: string;
   strokeWidth?: number;
+  /** "line" (default) draws a trend path + soft fill; "bar" draws mini bars — better for discrete/count data. */
+  variant?: "line" | "bar";
 }
 
 /**
  * Tiny inline sparkline. No axes, no tooltip — just trend at a glance.
- * Auto-scales to its own min/max. Renders an SVG path + soft area fill.
+ * Auto-scales to its own min/max. Renders an SVG path + soft area fill, or mini bars.
  */
 export function Sparkline({
   data,
@@ -18,9 +20,27 @@ export function Sparkline({
   stroke = "currentColor",
   fill,
   strokeWidth = 1.5,
+  variant = "line",
 }: SparklineProps) {
   if (!data || data.length === 0) {
     return <div style={{ width, height }} className="opacity-20" />;
+  }
+  if (variant === "bar") {
+    const max = Math.max(...data, 1);
+    const gap = 2;
+    const barW = Math.max(1.5, data.length ? width / data.length - gap : width);
+    return (
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
+        {data.map((v, i) => {
+          const h = Math.max(1, (v / max) * (height - 2));
+          const x = i * (barW + gap);
+          return (
+            <rect key={i} x={x} y={height - h} width={barW} height={h} rx={1}
+              fill={fill ?? stroke} opacity={i === data.length - 1 ? 1 : 0.55} />
+          );
+        })}
+      </svg>
+    );
   }
   const pts = data.length === 1 ? [data[0], data[0]] : data;
   const min = Math.min(...pts);

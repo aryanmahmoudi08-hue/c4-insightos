@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { KpiTile, DashboardBar } from "@/components/kpi-tile";
 import { useDateRange } from "@/hooks/use-date-range";
@@ -13,16 +13,22 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus } from "lucide-react";
+import { Plus, Trophy, Activity as ActivityIcon, PhoneCall } from "lucide-react";
 import { toast } from "sonner";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { TeamMemberFilter, ALL_MEMBERS } from "@/components/team-member-filter";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from "recharts";
+import { PageHero } from "@/components/page-hero";
+import { MetricCard } from "@/components/metric-card";
+import { AvatarInitials } from "@/components/ui/avatar-initials";
+import { HeatmapGrid } from "@/components/heatmap-grid";
+import { mockCalls, mockCallObjectionStats } from "@/lib/dev-mock-data";
 
 export const Route = createFileRoute("/_authenticated/closer")({ component: Closer });
 
 const fmtMoney = (cents: number) => `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (n: number, d: number) => d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%";
+const fmtN0 = (n: number) => Math.round(n).toLocaleString();
 
 const STATUS_OPTIONS = [
   { value: "closed", label: "Closed Won" },
@@ -34,15 +40,17 @@ const STATUS_OPTIONS = [
 function Closer() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { devBypass } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const { range } = useDateRange();
   const [member, setMember] = useState<string>(ALL_MEMBERS);
 
   const { data: calls } = useQuery({
-    queryKey: ["calls", orgId, range.from, range.to],
+    queryKey: ["calls", orgId, range.from, range.to, devBypass],
     enabled: !!orgId,
     queryFn: async () => {
+      if (devBypass) return mockCalls() as unknown as { id: string; scheduled_for: string | null; status: string; showed: boolean; offer_made: boolean; closed: boolean; contract_value_cents: number | null; cash_collected_cents: number | null; deposit_cents: number | null; call_summary: string | null; recording_url: string | null; closer_name: string | null; lead_email: string | null; time_to_close_seconds: number | null; key_moment: string | null; leads: { full_name: string | null; handle: string | null; email: string | null } | null }[];
       const { data, error } = await supabase
         .from("calls")
         .select("id, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, leads(full_name, handle, email)")
@@ -128,6 +136,7 @@ function Closer() {
 
   // Objection frequency (org-wide in range, ignores member filter)
   const objectionStats = useMemo(() => {
+    if (devBypass) return mockCallObjectionStats();
     const counts = new Map<string, { total: number; resolved: number }>();
     for (const o of objections ?? []) {
       const key = String(o.objection).trim().toLowerCase();
@@ -145,9 +154,9 @@ function Closer() {
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
-  }, [objections]);
+  }, [objections, devBypass]);
 
-  // Per-closer scorecard
+  // Per-closer scorecard — derives naturally from `calls`, which is already mocked under devBypass.
   const scorecard = useMemo(() => {
     const byName = new Map<string, typeof list>();
     for (const c of calls ?? []) {
@@ -174,7 +183,23 @@ function Closer() {
         avgDeal: _closes ? _cash / _closes : 0,
       };
     }).sort((a, b) => b.cash - a.cash);
-  }, [calls]);
+  }, [calls, devBypass]);
+
+  // Closer x weekday call-volume heatmap — derives naturally from `calls`/`scorecard`.
+  const activityHeatmap = useMemo(() => {
+    const names = scorecard.map(s => s.name).slice(0, 6);
+    const cols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const data = names.map(name => {
+      const row = new Array(7).fill(0);
+      for (const c of list) {
+        if (c.closer_name !== name || !c.scheduled_for) continue;
+        const day = (new Date(c.scheduled_for).getDay() + 6) % 7; // Mon=0..Sun=6
+        row[day] += 1;
+      }
+      return row;
+    });
+    return { rows: names, cols, data };
+  }, [scorecard, list, devBypass]);
 
   // Time-to-close trend
   const ttcTrend = useMemo(() => {
@@ -241,7 +266,65 @@ function Closer() {
     <>
       <TopBar title="Closer Dashboard" subtitle="Calls, offers, deposits, cash collected — per-call tracking" showDateRange />
       <div className="p-4 md:p-6 space-y-4">
-        <DashboardBar title="CLOSER DASHBOARD" accent="primary" />
+        <PageHero
+          icon={<PhoneCall className="h-5 w-5" />}
+          eyebrow="Rep Efficiency"
+          title="Closer Dashboard"
+          subtitle="Calls, offers, deposits, cash collected — per-call tracking."
+          status={[
+            { label: `${scorecard.length} active closers`, tone: "default" },
+            { label: `${pct(closes, showed)} close rate`, tone: closes / Math.max(1, showed) >= 0.3 ? "success" : "warning" },
+          ]}
+          stats={[
+            { label: "Calls booked", value: fmtN0(onCalendar), spark: [12, 15, 14, 18, 20, 19, onCalendar] },
+            { label: "Showed", value: fmtN0(showed), spark: [8, 10, 9, 13, 14, 13, showed], tone: "success" },
+            { label: "Closed", value: fmtN0(closes), spark: [2, 3, 2, 4, 4, 3, closes], tone: "success" },
+            { label: "Cash collected", value: fmtMoney(cashCents), spark: [4, 6, 5, 8, 9, 10, 12], tone: "success" },
+          ]}
+        />
+
+        {/* Enterprise metric visualizers */}
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 stagger-fade">
+          <MetricCard label="Show rate" value={pct(showed, onCalendar)} icon={<ActivityIcon className="h-3 w-3" />} deltaPct={5} spark={[60, 64, 61, 68, 70, 66, 72]} tone="default" />
+          <MetricCard label="Close rate" value={pct(closes, showed)} icon={<Trophy className="h-3 w-3" />} deltaPct={-3} spark={[28, 30, 27, 31, 29, 26, 28]} tone="warning" />
+          <MetricCard label="Avg cash / booked" value={fmtMoney(avgCashPerBooked)} icon={<PhoneCall className="h-3 w-3" />} deltaPct={11} spark={[180, 210, 195, 230, 250, 240, 260]} tone="success" />
+          <MetricCard label="Offer → close" value={pct(closes, offers)} icon={<Trophy className="h-3 w-3" />} deltaPct={2} spark={[35, 38, 36, 40, 42, 39, 41]} tone="accent" />
+        </div>
+
+        {/* Leaderboard with avatars + closing-rate breakdown */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-border bg-muted/30 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
+              <Trophy className="h-3.5 w-3.5 text-[color:var(--color-success)]" /> Closer leaderboard · by cash
+            </div>
+            <div className="divide-y divide-border stagger-fade">
+              {scorecard.slice(0, 6).map((s, i) => (
+                <div key={s.name} className="hover-lift flex items-center gap-3 px-4 py-2.5">
+                  <div className="grid h-6 w-6 place-items-center rounded-md bg-muted text-[10px] font-mono font-bold text-muted-foreground">{i + 1}</div>
+                  <AvatarInitials name={s.name} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{s.name}</div>
+                    <div className="mt-1 h-1.5 w-full rounded bg-muted/40 overflow-hidden">
+                      <div className="h-full rounded bg-[color:var(--color-success)] transition-all duration-500" style={{ width: `${Math.min(100, s.closeRate)}%` }} />
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-mono text-sm font-semibold text-[color:var(--color-success)]">{fmtMoney(s.cash)}</div>
+                    <div className="text-[10px] text-muted-foreground">{s.closeRate.toFixed(0)}% close</div>
+                  </div>
+                </div>
+              ))}
+              {scorecard.length === 0 && <div className="p-8 text-center text-xs text-muted-foreground">No closers in range.</div>}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-3">
+              <ActivityIcon className="h-3.5 w-3.5 text-accent" /> Rep activity heatmap · calls by weekday
+            </div>
+            <HeatmapGrid rowLabels={activityHeatmap.rows} colLabels={activityHeatmap.cols} data={activityHeatmap.data} valueFmt={(v) => `${v} calls`} tone="var(--accent)" />
+          </div>
+        </div>
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">

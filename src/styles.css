@@ -327,4 +327,39 @@
     backdrop-filter: blur(8px);
   }
   .light .badge-glass { background: oklch(0.16 0 0 / 4%); }
+
+  /* Sticky table header — apply to the `<thead>`'s `<th>` cells (position: sticky needs to
+     live on the cell itself for reliable cross-browser behavior, not the <thead>). */
+  .sticky-thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 1px 0 var(--border);
+  }
+
+  /* Stagger-fade — direct children fade/rise in with a small incremental delay each,
+     so a KPI row or card grid reveals as a cascade instead of popping in as one block.
+     nth-child covers the first 12 children; anything past that shares the last delay. */
+  .stagger-fade > * {
+    animation: stagger-fade-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .stagger-fade > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger-fade > *:nth-child(2) { animation-delay: 40ms; }
+  .stagger-fade > *:nth-child(3) { animation-delay: 80ms; }
+  .stagger-fade > *:nth-child(4) { animation-delay: 120ms; }
+  .stagger-fade > *:nth-child(5) { animation-delay: 160ms; }
+  .stagger-fade > *:nth-child(6) { animation-delay: 200ms; }
+  .stagger-fade > *:nth-child(7) { animation-delay: 240ms; }
+  .stagger-fade > *:nth-child(8) { animation-delay: 280ms; }
+  .stagger-fade > *:nth-child(n+9) { animation-delay: 320ms; }
+  @keyframes stagger-fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stagger-fade > * { animation: none; }
+  }
 }

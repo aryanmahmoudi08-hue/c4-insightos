@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { mockAiInsightRows, withMockDelay } from "@/lib/dev-mock-data";
 import { TopBar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Sparkles, AlertTriangle, TrendingUp, TrendingDown, X, Bookmark, Activity } from "lucide-react";
@@ -16,6 +17,7 @@ export const Route = createFileRoute("/_authenticated/insights")({ component: In
 function Insights() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { devBypass } = useAuth();
   const qc = useQueryClient();
   const generate = useServerFn(generateAiInsights);
   const fetchTrend = useServerFn(getWeeklyTrend);
@@ -54,27 +56,45 @@ function Insights() {
   });
 
   const { data: aiInsights } = useQuery({
-    queryKey: ["ai-insights", orgId],
+    queryKey: ["ai-insights", orgId, devBypass],
     enabled: !!orgId,
     queryFn: async () => {
+      if (devBypass) return mockAiInsightRows();
       const { data } = await supabase.from("ai_insights").select("*").eq("org_id", orgId!).eq("dismissed", false).order("created_at", { ascending: false }).limit(30);
       return data ?? [];
     },
   });
 
   const run = useMutation({
-    mutationFn: async () => generate(),
-    onSuccess: (r) => { toast.success(`Generated ${r.inserted} insights`); qc.invalidateQueries({ queryKey: ["ai-insights"] }); },
+    mutationFn: async () => {
+      if (devBypass) {
+        const rows = await withMockDelay(mockAiInsightRows());
+        qc.setQueryData(["ai-insights", orgId, devBypass], rows);
+        return { inserted: rows.length };
+      }
+      return generate();
+    },
+    onSuccess: (r) => { toast.success(`Generated ${r.inserted} insights`); if (!devBypass) qc.invalidateQueries({ queryKey: ["ai-insights"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
   const dismiss = useMutation({
-    mutationFn: async (id: string) => { await supabase.from("ai_insights").update({ dismissed: true }).eq("id", id); },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-insights"] }),
+    mutationFn: async (id: string) => {
+      if (devBypass) { qc.setQueryData<any[]>(["ai-insights", orgId, devBypass], (prev) => (prev ?? []).filter((i) => i.id !== id)); return; }
+      const { error } = await supabase.from("ai_insights").update({ dismissed: true }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { if (!devBypass) qc.invalidateQueries({ queryKey: ["ai-insights"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to dismiss"),
   });
   const save = useMutation({
-    mutationFn: async (id: string) => { await supabase.from("ai_insights").update({ saved: true }).eq("id", id); },
-    onSuccess: () => { toast.success("Saved"); qc.invalidateQueries({ queryKey: ["ai-insights"] }); },
+    mutationFn: async (id: string) => {
+      if (devBypass) { qc.setQueryData<any[]>(["ai-insights", orgId, devBypass], (prev) => (prev ?? []).map((i) => (i.id === id ? { ...i, saved: true } : i))); return; }
+      const { error } = await supabase.from("ai_insights").update({ saved: true }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Saved"); if (!devBypass) qc.invalidateQueries({ queryKey: ["ai-insights"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to save"),
   });
 
   return (

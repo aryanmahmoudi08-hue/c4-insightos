@@ -2,8 +2,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { analyzeDailyWinsFn } from "@/lib/daily-wins.functions";
+import { mockDailyWinsInsight, withMockDelay } from "@/lib/dev-mock-data";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Trophy, DollarSign, Brain, Dumbbell, Sparkles, Link2, AlertTriangle, Loader2, Flame } from "lucide-react";
@@ -35,6 +36,7 @@ const RANGES = [
 
 export function DailyWinsPanel({ studentName }: { studentName?: string }) {
   const { data: org } = useCurrentOrg();
+  const { devBypass } = useAuth();
   const orgId = org?.org_id;
   const [days, setDays] = useState(7);
   const [insight, setInsight] = useState("");
@@ -79,7 +81,10 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
 
   const analyze = useServerFn(analyzeDailyWinsFn);
   const m = useMutation({
-    mutationFn: () => analyze({ data: { days } }),
+    mutationFn: async () => {
+      if (devBypass) return withMockDelay(mockDailyWinsInsight());
+      return analyze({ data: { days } });
+    },
     onSuccess: (r) => setInsight(r.insight),
     onError: (e: Error) => toast.error(e.message),
   });

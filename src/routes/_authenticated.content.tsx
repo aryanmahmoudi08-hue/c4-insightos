@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { useMemo, useState, Fragment } from "react";
 import { Button } from "@/components/ui/button";
@@ -11,13 +11,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Video, Layers, Pencil, ExternalLink, Trash2, Sparkles, ChevronRight, ChevronDown, Eye } from "lucide-react";
+import { Plus, Video, Layers, Pencil, ExternalLink, Trash2, Sparkles, ChevronRight, ChevronDown, Eye, Flame, Download } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeContent } from "@/lib/analyze-content.functions";
 import { dispatchContentReady } from "@/lib/dispatch.functions";
 import { coachContentFn } from "@/lib/coach-content.functions";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
+import { PageHero } from "@/components/page-hero";
+import { MetricCard } from "@/components/metric-card";
+import { HeatmapGrid } from "@/components/heatmap-grid";
+import { mockContentPieces, mockContentFunnel, mockVariationHeatmap, mockContentCoaching, mockContentClassification, withMockDelay } from "@/lib/dev-mock-data";
+import { MECHANISMS, MECHANISM_KEYS } from "@/lib/content-mechanisms";
 import type { Database } from "@/integrations/supabase/types";
 
 type Platform = Database["public"]["Enums"]["content_platform"];
@@ -27,9 +32,12 @@ type PieceRow = {
   id: string; title: string | null; platform: Platform; hook: string | null;
   angle: Angle | null; posted_at: string | null; url: string | null;
   funnel_stage: string | null; body: string | null; pipeline_status: string;
+  mechanism?: string | null; variation?: string | null;
   content_metrics: { views: number | null; likes: number | null; leads_generated: number | null; closes: number | null;
     cash_collected_cents: number | null; hook_retention_pct: number | null }[] | null;
 };
+
+const fmtN = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(n));
 
 const PIPELINE: { key: string; label: string; tone: string }[] = [
   { key: "draft", label: "Draft", tone: "bg-muted text-muted-foreground" },
@@ -59,13 +67,15 @@ function ContentIntel() {
     return next;
   });
 
+  const { devBypass } = useAuth();
   const { data: pieces } = useQuery({
-    queryKey: ["content", orgId],
+    queryKey: ["content", orgId, devBypass],
     enabled: !!orgId,
     queryFn: async () => {
+      if (devBypass) return mockContentPieces() as unknown as PieceRow[];
       const { data, error } = await supabase
         .from("content_pieces")
-        .select("id, title, platform, hook, angle, posted_at, url, funnel_stage, body, pipeline_status, content_metrics(views, likes, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
+        .select("id, title, platform, hook, angle, posted_at, url, funnel_stage, body, pipeline_status, mechanism, variation, content_metrics(views, likes, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
         .eq("org_id", orgId!)
         .order("posted_at", { ascending: false, nullsFirst: false })
         .limit(200);
@@ -189,6 +199,49 @@ function ContentIntel() {
     setOpen(true);
   };
 
+  // Performance overview — funnel totals, top hooks, mechanism x variation heatmap.
+  const perf = useMemo(() => {
+    const list = pieces ?? [];
+    const metricsOf = (p: PieceRow) => p.content_metrics?.[0];
+    const totals = list.reduce((s, p) => {
+      const m = metricsOf(p);
+      s.views += m?.views ?? 0;
+      s.leads += m?.leads_generated ?? 0;
+      s.closes += m?.closes ?? 0;
+      s.cash += m?.cash_collected_cents ?? 0;
+      return s;
+    }, { views: 0, leads: 0, closes: 0, cash: 0 });
+
+    if (devBypass) {
+      const mock = mockContentFunnel();
+      const heat = mockVariationHeatmap();
+      const top = [...list].sort((a, b) => (metricsOf(b)?.hook_retention_pct ?? 0) - (metricsOf(a)?.hook_retention_pct ?? 0)).slice(0, 4);
+      return { totals: mock, topHooks: top, heatmapRows: heat.rows, heatmapCols: heat.cols, heatmapData: heat.data, postedThisWeek: 4, inReview: 1 };
+    }
+
+    const top = [...list]
+      .filter(p => metricsOf(p)?.hook_retention_pct != null)
+      .sort((a, b) => (metricsOf(b)?.hook_retention_pct ?? 0) - (metricsOf(a)?.hook_retention_pct ?? 0))
+      .slice(0, 4);
+
+    const heatRows = MECHANISM_KEYS.map(k => MECHANISMS[k].label);
+    const heatCols = ["Var 1", "Var 2"];
+    const heatData = MECHANISM_KEYS.map(k => {
+      const vars = MECHANISMS[k].variations.map(v => v.value);
+      return vars.slice(0, 2).map(vv => {
+        const matches = list.filter(p => p.mechanism === k && p.variation === vv);
+        if (!matches.length) return 0;
+        return Math.round(matches.reduce((s, p) => s + (metricsOf(p)?.views ?? 0), 0) / matches.length);
+      });
+    });
+
+    const now = Date.now();
+    const postedThisWeek = list.filter(p => p.posted_at && now - new Date(p.posted_at).getTime() < 7 * 86400e3).length;
+    const inReview = list.filter(p => p.pipeline_status === "in_review").length;
+
+    return { totals, topHooks: top, heatmapRows: heatRows, heatmapCols: heatCols, heatmapData: heatData, postedThisWeek, inReview };
+  }, [pieces, devBypass]);
+
   // Real month-grid calendar with month/year navigation.
   const [cursor, setCursor] = useState(() => {
     const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d;
@@ -222,19 +275,122 @@ function ContentIntel() {
   };
 
 
+  const exportCsv = () => {
+    const rows = pieces ?? [];
+    const header = ["title", "platform", "status", "views", "leads", "closes", "cash_cents", "retention_pct"];
+    const lines = rows.map(p => {
+      const m = p.content_metrics?.[0];
+      return [p.title ?? "", p.platform, p.pipeline_status, m?.views ?? 0, m?.leads_generated ?? 0, m?.closes ?? 0, m?.cash_collected_cents ?? 0, m?.hook_retention_pct ?? ""].join(",");
+    });
+    const blob = new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "content-intelligence.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <TopBar title="Content Intelligence" subtitle="Hooks, retention, cash-per-view" />
       <div className="p-6 space-y-4">
-        <div className="flex justify-between items-center">
-          <div className="text-xs text-muted-foreground">{pieces?.length ?? 0} pieces tracked</div>
-          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setPrefill(null); }}>
-            <DialogTrigger asChild><Button size="sm" onClick={() => setPrefill(null)}><Plus className="h-4 w-4" />Log content</Button></DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>{prefill?.id ? "Edit content piece" : "Log content piece"}</DialogTitle></DialogHeader>
-              <ContentForm key={prefill?.id ?? "new"} prefill={prefill} onSubmit={(fd) => save.mutate(fd)} pending={save.isPending} />
-            </DialogContent>
-          </Dialog>
+        <PageHero
+          icon={<Video className="h-5 w-5" />}
+          eyebrow="ContentOS"
+          title="Content Intelligence"
+          subtitle="Every post, tagged by mechanism and variation, tracked hook-to-cash."
+          status={[
+            { label: `${pieces?.length ?? 0} pieces tracked`, tone: "default" },
+            { label: `${perf.postedThisWeek} posted this week`, tone: "success" },
+            ...(perf.inReview > 0 ? [{ label: `${perf.inReview} in review`, tone: "warning" as const }] : []),
+          ]}
+          stats={[
+            { label: "Views", value: fmtN(perf.totals.views) },
+            { label: "Leads", value: fmtN(perf.totals.leads) },
+            { label: "Closes", value: fmtN(perf.totals.closes) },
+            { label: "Cash", value: "$" + fmtN(perf.totals.cash / 100) },
+          ]}
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={exportCsv}><Download className="h-3.5 w-3.5" />Export CSV</Button>
+              <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setPrefill(null); }}>
+                <DialogTrigger asChild><Button size="sm" onClick={() => setPrefill(null)}><Plus className="h-4 w-4" />Log content</Button></DialogTrigger>
+                <DialogContent>
+                  <DialogHeader><DialogTitle>{prefill?.id ? "Edit content piece" : "Log content piece"}</DialogTitle></DialogHeader>
+                  <ContentForm key={prefill?.id ?? "new"} prefill={prefill} onSubmit={(fd) => save.mutate(fd)} pending={save.isPending} />
+                </DialogContent>
+              </Dialog>
+            </>
+          }
+        />
+
+        {/* Enterprise metric visualizers */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger-fade">
+          <MetricCard label="Views" value={fmtN(perf.totals.views)} icon={<Eye className="h-3 w-3" />} deltaPct={12} spark={[40, 55, 48, 62, 70, 65, 80]} tone="default" />
+          <MetricCard label="Leads generated" value={fmtN(perf.totals.leads)} icon={<Sparkles className="h-3 w-3" />} deltaPct={8} spark={[3, 5, 4, 6, 7, 6, 9]} sparkVariant="bar" tone="accent" />
+          <MetricCard label="Closes attributed" value={fmtN(perf.totals.closes)} icon={<Flame className="h-3 w-3" />} deltaPct={-4} spark={[2, 3, 2, 3, 1, 2, 3]} sparkVariant="bar" tone="warning" />
+          <MetricCard label="Cash attributed" value={"$" + fmtN(perf.totals.cash / 100)} icon={<Layers className="h-3 w-3" />} deltaPct={21} spark={[4, 6, 5, 8, 9, 10, 12]} tone="success" />
+        </div>
+
+        {/* Funnel + hook comparison + variation heatmap */}
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="text-sm font-semibold mb-3">Content → Cash funnel</div>
+            <div className="space-y-1.5">
+              {[
+                { stage: "Views", value: perf.totals.views },
+                { stage: "Leads", value: perf.totals.leads },
+                { stage: "Closes", value: perf.totals.closes },
+              ].map((f, i, arr) => {
+                const max = arr[0].value || 1;
+                const width = Math.max(6, Math.round((f.value / max) * 100));
+                return (
+                  <div key={f.stage} className="space-y-0.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-medium">{f.stage}</span>
+                      <span className="font-mono text-muted-foreground">{fmtN(f.value)}</span>
+                    </div>
+                    <div className="h-5 rounded bg-muted/30 overflow-hidden">
+                      <div className="h-full rounded transition-all duration-500" style={{ width: `${width}%`, background: `color-mix(in oklch, var(--foreground) ${92 - i * 20}%, var(--muted-foreground))` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
+            <div className="text-sm font-semibold mb-3">Top hooks by retention</div>
+            <div className="grid sm:grid-cols-2 gap-2.5 stagger-fade">
+              {perf.topHooks.map((p) => {
+                const m = p.content_metrics?.[0];
+                const retention = m?.hook_retention_pct ?? 0;
+                return (
+                  <div key={p.id} className="hover-lift rounded-lg border border-border bg-background/60 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-xs font-medium leading-snug line-clamp-2">{p.title || p.hook || "(untitled)"}</div>
+                      <span className={`badge-glass normal-case tracking-normal shrink-0 ${retention >= 55 ? "text-[color:var(--color-success)]" : "text-muted-foreground"}`}>
+                        <Flame className="h-2.5 w-2.5" />{retention}% retention
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-3 text-[10px] font-mono text-muted-foreground">
+                      <span>{fmtN(m?.views ?? 0)} views</span>
+                      <span>{m?.leads_generated ?? 0} leads</span>
+                      <span className="capitalize">{p.platform?.replace(/_/g, " ")}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {perf.topHooks.length === 0 && <div className="text-xs text-muted-foreground italic sm:col-span-2">Log content with hook retention % to see top performers here.</div>}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-semibold">Mechanism × variation heatmap</div>
+            <div className="text-[10px] text-muted-foreground">Avg views per piece</div>
+          </div>
+          <HeatmapGrid rowLabels={perf.heatmapRows} colLabels={perf.heatmapCols} data={perf.heatmapData} valueFmt={(v) => fmtN(v) + " views"} tone="var(--accent)" />
         </div>
 
         <Tabs defaultValue="pipeline">
@@ -579,13 +735,15 @@ function ContentForm({ prefill, onSubmit, pending }: { prefill: Prefill | null; 
   const [url, setUrl] = useState(prefill?.url ?? "");
   const [transcript, setTranscript] = useState(prefill?.transcript ?? "");
   const analyze = useServerFn(analyzeContent);
+  const { devBypass } = useAuth();
   const [analyzing, setAnalyzing] = useState(false);
 
   const runAnalyze = async () => {
     if (!transcript.trim()) { toast.error("Paste the transcript first"); return; }
     setAnalyzing(true);
     try {
-      const r = await analyze({ data: { transcript, hook, title } });
+      const r = devBypass ? await withMockDelay(mockContentClassification()) : await analyze({ data: { transcript, hook, title } });
+      if (!r) { toast.error("AI not configured — add LOVABLE_API_KEY to enable this."); return; }
       setHook(r.hook);
       setAngle(r.angle as Angle);
       setFunnel(r.funnel_stage);
@@ -738,17 +896,21 @@ function SlidesPanel({ orgId, contentId, onClose }: { orgId?: string; contentId:
 
 function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onClose: () => void; onEdit: (p: PieceRow) => void }) {
   const coach = useServerFn(coachContentFn);
+  const { devBypass } = useAuth();
   const m = (piece?.content_metrics ?? [])[0];
-  const { data: coaching, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["coach", piece?.id],
+  const { data: coaching, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ["coach", piece?.id, devBypass],
     enabled: !!piece,
     staleTime: 1000 * 60 * 60,
-    queryFn: async () => coach({ data: {
-      title: piece!.title, hook: piece!.hook, transcript: piece!.body,
-      angle: piece!.angle, funnel_stage: piece!.funnel_stage, platform: piece!.platform,
-      views: m?.views ?? 0, leads: m?.leads_generated ?? 0, closes: m?.closes ?? 0,
-      cash_cents: m?.cash_collected_cents ?? 0, retention_pct: Number(m?.hook_retention_pct ?? 0),
-    } }),
+    queryFn: async () => {
+      if (devBypass) return withMockDelay(mockContentCoaching());
+      return coach({ data: {
+        title: piece!.title, hook: piece!.hook, transcript: piece!.body,
+        angle: piece!.angle, funnel_stage: piece!.funnel_stage, platform: piece!.platform,
+        views: m?.views ?? 0, leads: m?.leads_generated ?? 0, closes: m?.closes ?? 0,
+        cash_cents: m?.cash_collected_cents ?? 0, retention_pct: Number(m?.hook_retention_pct ?? 0),
+      } });
+    },
   });
 
   if (!piece) return null;
@@ -826,6 +988,10 @@ function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onC
                 <ul className="list-disc pl-5 space-y-1 text-xs">{coaching.next_hook_ideas.map((s, i) => <li key={i}>{s}</li>)}</ul>
               </div>
             </div>
+          ) : isError ? (
+            <div className="text-xs text-destructive">{error instanceof Error ? error.message : "AI coaching failed — try again."}</div>
+          ) : coaching === null ? (
+            <div className="text-xs text-muted-foreground">AI coaching is not configured for this workspace (missing API key).</div>
           ) : (
             <div className="text-xs text-muted-foreground">No review yet.</div>
           )}
