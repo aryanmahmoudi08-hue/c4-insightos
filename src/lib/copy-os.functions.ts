@@ -40,7 +40,7 @@ export const generateCopyFn = createServerFn({ method: "POST" })
     swipe_ids: z.array(z.string().uuid()).max(5).optional(),
     mechanism: z.string().max(50).nullable().optional(),
     variation: z.string().max(50).nullable().optional(),
-    journey_stage: z.string().max(50).nullable().optional(),
+    variation_answers: z.string().max(4000).nullable().optional(),
     objection: z.string().max(1000).nullable().optional(),
   }).parse(d))
   .handler(async ({ data, context }) => {
@@ -55,7 +55,7 @@ export const generateCopyFn = createServerFn({ method: "POST" })
     const output = await generateCopy({
       copy_type: data.copy_type, goal: data.goal, angle: data.angle, brief: data.brief, client, swipes,
       mechanism: data.mechanism, variation: data.variation,
-      journey_stage: data.journey_stage, objection: data.objection,
+      variation_answers: data.variation_answers, objection: data.objection,
     });
     await supabase.from("copy_generations").insert({
       org_id: orgId, client_id: data.client_id ?? null, copy_type: data.copy_type,
@@ -63,7 +63,7 @@ export const generateCopyFn = createServerFn({ method: "POST" })
       prompt_inputs: {
         brief: data.brief ?? null, swipe_ids: data.swipe_ids ?? [],
         mechanism: data.mechanism ?? null, variation: data.variation ?? null,
-        journey_stage: data.journey_stage ?? null, objection: data.objection ?? null,
+        variation_answers: data.variation_answers ?? null, objection: data.objection ?? null,
       },
       output, created_by: userId,
     });

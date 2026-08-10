@@ -99,7 +99,7 @@ export async function generateCopy(input: {
   swipes?: { title: string; body: string }[];
   mechanism?: string | null;
   variation?: string | null;
-  journey_stage?: string | null;
+  variation_answers?: string | null;
   objection?: string | null;
 }): Promise<string> {
   const swipeBlock = (input.swipes ?? []).length
@@ -113,7 +113,8 @@ ${CONTENT_SYSTEM_CORE}
 
 ${mech}
 
-LEAD JOURNEY STAGE: ${input.journey_stage ?? "(unspecified — assume warming)"}
+VARIATION-SPECIFIC INPUTS (answered by the strategist — these are the raw material for this exact format; use every one):
+${input.variation_answers ?? "(none supplied — ask nothing, infer sensibly from the client DNA)"}
 PROSPECT'S #1 QUESTION / CONCERN / FEAR (pre-handle this inside the content): ${input.objection ?? "(none supplied — infer the most likely one for this stage)"}
 === END FRAMEWORK ===
 
