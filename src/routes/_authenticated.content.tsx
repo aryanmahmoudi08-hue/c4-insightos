@@ -811,7 +811,7 @@ function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onC
           {isLoading || isFetching ? (
             <div className="text-xs text-muted-foreground">Analyzing transcript and metrics…</div>
           ) : coaching ? (
-            <div className="space-y-3 text-sm">
+            <div className="space-y-3 text-sm animate-in fade-in-0 slide-in-from-top-1 duration-300">
               <div>{coaching.summary}</div>
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-success,oklch(0.7_0.16_150))] mb-1">What worked</div>

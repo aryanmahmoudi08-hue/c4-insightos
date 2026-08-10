@@ -145,6 +145,7 @@ function Hiring() {
       if (error) throw error;
     },
     onSuccess: () => { toast.success("Updated"); setSelectedIds(new Set()); qc.invalidateQueries({ queryKey: ["hiring"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to update"),
   });
 
   const remove = useMutation({
@@ -153,6 +154,7 @@ function Hiring() {
       if (error) throw error;
     },
     onSuccess: () => { toast.success("Removed"); setEditing(null); qc.invalidateQueries({ queryKey: ["hiring"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to remove"),
   });
 
   const onDrop = (e: React.DragEvent, stage: Stage) => {
@@ -228,7 +230,7 @@ function Hiring() {
                     const sel = selectedIds.has(a.id);
                     return (
                       <div key={a.id} draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", a.id)}
-                        className={`cursor-grab active:cursor-grabbing rounded-md border ${sel ? "border-primary" : "border-border"} bg-background p-2 hover:border-primary/50 transition-colors`}>
+                        className={`cursor-grab active:cursor-grabbing rounded-md border ${sel ? "border-primary" : "border-border"} bg-background p-2 hover:border-primary/50 hover:shadow-md transition-all active:scale-[0.97] active:opacity-70`}>
                         <div className="flex items-start justify-between gap-2">
                           <button onClick={() => toggleSel(a.id)} className="mt-0.5 text-muted-foreground hover:text-foreground">
                             {sel ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}

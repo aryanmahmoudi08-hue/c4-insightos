@@ -68,6 +68,7 @@ export function ClientWins({ clientId, clientName }: { clientId?: string; client
   const remove = useMutation({
     mutationFn: async (id: string) => { const { error } = await (supabase as any).from("client_wins").delete().eq("id", id); if (error) throw error; },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["client-wins", orgId, clientId ?? "all"] }),
+    onError: (e: Error) => toast.error(e.message),
   });
 
   return (

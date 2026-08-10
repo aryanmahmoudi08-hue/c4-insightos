@@ -128,7 +128,7 @@ function ContentSignalsPage() {
           </div>
           <div className="flex items-center gap-1.5">
             {RANGES.map(r => (
-              <button key={r.days} onClick={() => setDays(r.days)}
+              <button key={r.days} onClick={() => { setDays(r.days); setInsight(""); }}
                 className={cn("rounded border px-2 py-1 text-[11px]", days === r.days ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40")}>
                 {r.label}
               </button>
@@ -244,7 +244,7 @@ function ContentSignalsPage() {
             </Button>
           </div>
           {insight
-            ? <div className="text-xs leading-relaxed whitespace-pre-wrap">{insight}</div>
+            ? <div className="text-xs leading-relaxed whitespace-pre-wrap animate-in fade-in-0 slide-in-from-top-1 duration-300">{insight}</div>
             : <p className="text-xs text-muted-foreground">Merges VSL play/drop-off, FAQ clicks, setting-call objections, intake answers and reel performance into a root-cause chain plus this week's 5-7 reels.</p>}
         </Card>
 

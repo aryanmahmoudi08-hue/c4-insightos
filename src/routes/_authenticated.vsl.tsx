@@ -138,9 +138,13 @@ function VslCard({ vsl }: { vsl: any }) {
   };
   const onDelete = async () => {
     if (!confirm(`Delete "${vsl.name}"? Snapshots will also be removed.`)) return;
-    await del({ data: { id: vsl.id } });
-    qc.invalidateQueries({ queryKey: ["vsls"] });
-    toast.success("Deleted");
+    try {
+      await del({ data: { id: vsl.id } });
+      qc.invalidateQueries({ queryKey: ["vsls"] });
+      toast.success("Deleted");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to delete");
+    }
   };
 
   return (
@@ -179,7 +183,7 @@ function VslCard({ vsl }: { vsl: any }) {
 
 function InsightsBlock({ insights }: { insights: any }) {
   return (
-    <div className="border-t border-border p-4 space-y-3 bg-muted/20">
+    <div className="border-t border-border p-4 space-y-3 bg-muted/20 animate-in fade-in-0 slide-in-from-top-1 duration-300">
       {insights.headline && <div className="text-sm font-medium">{insights.headline}</div>}
       <div className="grid gap-3 md:grid-cols-2">
         <div>

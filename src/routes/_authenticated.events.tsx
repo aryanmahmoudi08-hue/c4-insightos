@@ -55,8 +55,9 @@ function EventsBus() {
     enabled: !!orgId,
     refetchInterval: 10000,
     queryFn: async () => {
-      const { data } = await supabase.from("webhook_deliveries").select("id, status, response_code, attempt, created_at, subscription_id")
+      const { data, error } = await supabase.from("webhook_deliveries").select("id, status, response_code, attempt, created_at, subscription_id")
         .eq("org_id", orgId!).order("created_at", { ascending: false }).limit(40);
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -65,7 +66,8 @@ function EventsBus() {
     queryKey: ["sync-status", orgId],
     enabled: !!orgId,
     queryFn: async () => {
-      const { data } = await supabase.from("connector_sync_status").select("*").eq("org_id", orgId!).order("updated_at", { ascending: false });
+      const { data, error } = await supabase.from("connector_sync_status").select("*").eq("org_id", orgId!).order("updated_at", { ascending: false });
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -75,8 +77,9 @@ function EventsBus() {
     enabled: !!orgId,
     refetchInterval: 10000,
     queryFn: async () => {
-      const { data } = await supabase.from("raw_payloads").select("id, resource, connector_id, received_at, processed_at, process_error")
+      const { data, error } = await supabase.from("raw_payloads").select("id, resource, connector_id, received_at, processed_at, process_error")
         .eq("org_id", orgId!).order("received_at", { ascending: false }).limit(30);
+      if (error) throw error;
       return data ?? [];
     },
   });

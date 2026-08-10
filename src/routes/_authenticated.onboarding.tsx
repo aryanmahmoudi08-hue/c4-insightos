@@ -135,6 +135,9 @@ function Onboarding() {
       const r = computeRange(p);
       setAggFrom(r.from); setAggTo(r.to);
     }
+    // Analysis was generated for the previous window — don't keep showing it
+    // labeled under a range it no longer corresponds to.
+    setAggInsights(null);
   };
   const activeRange = computeRange(aggPreset);
   const analyzeFn = useServerFn(analyzeIntake);
@@ -299,9 +302,9 @@ function Onboarding() {
             {aggPreset === "custom" && (
               <div className="flex items-center gap-1.5 text-xs">
                 <span className="text-muted-foreground">From</span>
-                <Input type="date" value={aggFrom} className="h-7 w-36 text-xs" onChange={(e) => setAggFrom(e.target.value)} />
+                <Input type="date" value={aggFrom} className="h-7 w-36 text-xs" onChange={(e) => { setAggFrom(e.target.value); setAggInsights(null); }} />
                 <span className="text-muted-foreground">To</span>
-                <Input type="date" value={aggTo} className="h-7 w-36 text-xs" onChange={(e) => setAggTo(e.target.value)} />
+                <Input type="date" value={aggTo} className="h-7 w-36 text-xs" onChange={(e) => { setAggTo(e.target.value); setAggInsights(null); }} />
               </div>
             )}
             <span className="text-[11px] text-muted-foreground font-mono">{activeRange.from} → {activeRange.to}</span>
@@ -310,9 +313,9 @@ function Onboarding() {
 
           {aggInsights && (
             aggInsights.sampleSize === 0 ? (
-              <div className="text-xs text-muted-foreground italic">No intakes in this range yet.</div>
+              <div className="text-xs text-muted-foreground italic animate-in fade-in-0 duration-300">No intakes in this range yet.</div>
             ) : (
-              <div className="grid md:grid-cols-2 gap-3">
+              <div className="grid md:grid-cols-2 gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-300">
                 <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-2">
                   <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-destructive">
                     <TrendingDown className="h-3 w-3" /> Bottlenecks across {aggInsights.sampleSize} intakes

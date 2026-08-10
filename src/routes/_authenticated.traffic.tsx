@@ -49,7 +49,8 @@ function Traffic() {
     queryKey: ["traffic-calls", orgId],
     enabled: !!orgId,
     queryFn: async () => {
-      const { data } = await supabase.from("calls").select("lead_id, closed, contract_value_cents, cash_collected_cents").eq("org_id", orgId!);
+      const { data, error } = await supabase.from("calls").select("lead_id, closed, contract_value_cents, cash_collected_cents").eq("org_id", orgId!);
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -57,7 +58,8 @@ function Traffic() {
     queryKey: ["traffic-clients", orgId],
     enabled: !!orgId,
     queryFn: async () => {
-      const { data } = await supabase.from("clients").select("lead_id, contract_value_cents").eq("org_id", orgId!);
+      const { data, error } = await supabase.from("clients").select("lead_id, contract_value_cents").eq("org_id", orgId!);
+      if (error) throw error;
       return data ?? [];
     },
   });

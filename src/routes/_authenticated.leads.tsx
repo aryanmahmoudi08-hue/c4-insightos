@@ -118,7 +118,7 @@ function Leads() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selected, setSelected] = useState<LeadRow | null>(null);
 
-  const { data: leads } = useQuery({
+  const { data: leads, isLoading: leadsLoading } = useQuery({
     queryKey: ["leads", orgId],
     enabled: !!orgId,
     queryFn: async () => {
@@ -269,7 +269,8 @@ function Leads() {
                   </tr>
                 );
               })}
-              {view.length === 0 && <tr><td colSpan={6 + APP_COLS.length + 2} className="p-10 text-center text-sm text-muted-foreground">No leads match.</td></tr>}
+              {leadsLoading && <tr><td colSpan={6 + APP_COLS.length + 2} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
+              {!leadsLoading && view.length === 0 && <tr><td colSpan={6 + APP_COLS.length + 2} className="p-10 text-center text-sm text-muted-foreground">No leads match.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -301,6 +302,9 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
         supabase.from("calls").select("id, status, scheduled_for, showed, closed, cash_collected_cents, call_summary").eq("lead_id", lead.id).eq("org_id", orgId!).order("scheduled_for", { ascending: false }).limit(20),
         supabase.from("conversations").select("id, channel, status, last_message_at, first_response_seconds").eq("lead_id", lead.id).eq("org_id", orgId!).limit(10),
       ]);
+      if (touches.error) throw touches.error;
+      if (calls.error) throw calls.error;
+      if (convs.error) throw convs.error;
       return { touches: touches.data ?? [], calls: calls.data ?? [], convs: convs.data ?? [] };
     },
   });
@@ -309,7 +313,8 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
     queryKey: ["lead-notes", lead.id],
     enabled: !!orgId,
     queryFn: async () => {
-      const { data } = await (supabase as any).from("lead_notes").select("id, body, kind, created_at, author_id").eq("lead_id", lead.id).order("created_at", { ascending: false }).limit(50);
+      const { data, error } = await (supabase as any).from("lead_notes").select("id, body, kind, created_at, author_id").eq("lead_id", lead.id).order("created_at", { ascending: false }).limit(50);
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -456,7 +461,7 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <select value={range} onChange={(e) => setRange(e.target.value as any)} className="h-8 rounded border border-input bg-background px-2 text-xs">
+          <select value={range} onChange={(e) => { setRange(e.target.value as any); setData(null); }} className="h-8 rounded border border-input bg-background px-2 text-xs">
             <option value="1d">Last 24h</option>
             <option value="3d">Last 3 days</option>
             <option value="7d">Last 7 days</option>
@@ -468,8 +473,11 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
           </Button>
         </div>
       </div>
+      {!data && !loading && (
+        <div className="text-xs text-muted-foreground italic">Pick a window and hit Generate to surface bottlenecks, double-downs, and today's priority leads.</div>
+      )}
       {data && (
-        <div className="grid md:grid-cols-3 gap-3">
+        <div className="grid md:grid-cols-3 gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-300">
           <div className="rounded border border-destructive/30 bg-destructive/5 p-3 space-y-2">
             <div className="text-[10px] uppercase tracking-wider text-destructive font-semibold flex items-center gap-1.5"><AlertTriangle className="h-3 w-3" /> Bottlenecks</div>
             {data.bottlenecks.map((b, i) => (

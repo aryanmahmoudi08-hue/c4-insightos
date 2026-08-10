@@ -63,6 +63,7 @@ export function TeamRosterPanel() {
       if (error) throw error;
     },
     onSuccess: invalidate,
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to update"),
   });
 
   const remove = useMutation({
@@ -71,6 +72,7 @@ export function TeamRosterPanel() {
       if (error) throw error;
     },
     onSuccess: () => { toast.success("Removed"); invalidate(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to remove"),
   });
 
   const updateMember = useMutation({

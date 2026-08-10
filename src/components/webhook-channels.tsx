@@ -88,6 +88,7 @@ export function WebhookChannels() {
       if (error) throw error;
     },
     onSuccess: () => { toast.success("Removed"); qc.invalidateQueries({ queryKey: ["webhook-subs"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to remove"),
   });
 
   const toggleActive = useMutation({
@@ -96,6 +97,7 @@ export function WebhookChannels() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["webhook-subs"] }),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to update"),
   });
 
   return (

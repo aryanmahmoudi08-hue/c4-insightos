@@ -52,9 +52,18 @@ type ClientRow = {
   pre_close_summary: string | null;
 };
 
+/**
+ * Calendar-day difference, not a raw-instant one. `date` is a bare `YYYY-MM-DD` — parsing it
+ * plain (`new Date(date)`) reads it as UTC midnight, which can shift the result by a day in
+ * negative-UTC-offset timezones once diffed against a local `now`. Append `T00:00:00` so it
+ * parses as local midnight, and compare against local midnight today (not the current instant)
+ * so the count doesn't creep down as the day goes on.
+ */
 function daysUntil(date: string | null): number | null {
   if (!date) return null;
-  return Math.floor((new Date(date).getTime() - Date.now()) / 86400e3);
+  const target = new Date(`${date}T00:00:00`).getTime();
+  const todayLocalMidnight = new Date(new Date().toDateString()).getTime();
+  return Math.round((target - todayLocalMidnight) / 86400e3);
 }
 
 function atRiskReason(c: ClientRow): string | null {
@@ -78,7 +87,7 @@ function Clients() {
   const generatePreClose = useServerFn(generatePreCloseFn);
   const notifyStageChanged = useServerFn(notifyClientStageChangedFn);
 
-  const { data: clients } = useQuery({
+  const { data: clients, isLoading: clientsLoading } = useQuery({
     queryKey: ["clients", orgId],
     enabled: !!orgId,
     queryFn: async () => {
@@ -164,7 +173,7 @@ function Clients() {
   const active = clients?.filter(c => c.status === "active").length ?? 0;
   const ltv = (clients?.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0) ?? 0) / 100;
   const avgHealth = clients?.length ? Math.round(clients.reduce((s, c) => s + Number(c.health_score ?? 0), 0) / clients.length) : 0;
-  const renewalsDue = clients?.filter(c => c.renewal_date && new Date(c.renewal_date) < new Date(Date.now()+30*86400000)).length ?? 0;
+  const renewalsDue = clients?.filter(c => { const d = daysUntil(c.renewal_date); return d !== null && d >= 0 && d < 30; }).length ?? 0;
 
   const view = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -276,7 +285,7 @@ function Clients() {
                           <div key={c.id}
                             draggable
                             onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
-                            className="cursor-grab active:cursor-grabbing rounded-md border border-border bg-background p-2 hover:border-primary/50 transition-colors"
+                            className="cursor-grab active:cursor-grabbing rounded-md border border-border bg-background p-2 hover:border-primary/50 hover:shadow-md transition-all active:scale-[0.97] active:opacity-70"
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div className="font-medium text-sm leading-tight">{c.full_name}</div>
@@ -291,7 +300,7 @@ function Clients() {
                           </div>
                         );
                       })}
-                      {rows.length === 0 && <div className="text-[11px] text-muted-foreground text-center py-6">Drop here</div>}
+                      {!clientsLoading && rows.length === 0 && <div className="text-[11px] text-muted-foreground text-center py-6">Drop here</div>}
                     </div>
                   </div>
                 );
@@ -328,7 +337,8 @@ function Clients() {
                       <td className="p-3 text-right font-mono">${Math.round((c.contract_value_cents ?? 0)/100).toLocaleString()}</td>
                     </tr>
                   ))}
-                  {atRisk.length === 0 && <tr><td colSpan={7} className="p-10 text-center text-sm text-muted-foreground">No clients at risk. 🟢</td></tr>}
+                  {clientsLoading && <tr><td colSpan={7} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
+                  {!clientsLoading && atRisk.length === 0 && <tr><td colSpan={7} className="p-10 text-center text-sm text-muted-foreground">No clients at risk. 🟢</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -393,7 +403,8 @@ function Clients() {
                       <td className="p-3"><span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">{(c.renewal_stage || "not_started").replace("_", " ")}</span></td>
                     </tr>
                   ))}
-                  {view.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">{query ? "No matches." : "No clients yet."}</td></tr>}
+                  {clientsLoading && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
+                  {!clientsLoading && view.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">{query ? "No matches." : "No clients yet."}</td></tr>}
                 </tbody>
               </table>
             </div>

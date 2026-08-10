@@ -6,7 +6,9 @@ import { useDateRange } from "@/hooks/use-date-range";
 import { Sparkline } from "@/components/sparkline";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
-import { Eye, PlayCircle, PhoneCall, FileText, Trophy, Gauge, Users, ArrowUpRight } from "lucide-react";
+import { Eye, PlayCircle, PhoneCall, FileText, Trophy, Gauge, Users, ArrowUpRight, AlertTriangle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 
 const fmt = (n: number) => new Intl.NumberFormat("en-US").format(Math.round(n));
 const rate = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "—");
@@ -23,7 +25,7 @@ export function HubMetrics() {
   const { devBypass } = useAuth();
   const { range } = useDateRange();
 
-  const { data } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["hub-metrics", orgId, range.from, range.to, devBypass],
     enabled: !!orgId,
     queryFn: async () => {
@@ -134,8 +136,29 @@ export function HubMetrics() {
 
   const d = data;
 
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {Array.from({ length: 4 }, (_, i) => <BandSkeleton key={i} />)}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+        <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-destructive">Couldn't load operating metrics</div>
+          <div className="text-xs text-muted-foreground truncate">{error instanceof Error ? error.message : "Unknown error"}</div>
+        </div>
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => refetch()}>Retry</Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-in fade-in-0 duration-300">
       <Band
         icon={<Eye className="h-3.5 w-3.5" />}
         title="Traffic → VSL"
@@ -194,6 +217,25 @@ export function HubMetrics() {
 }
 
 type Tile = { label: string; value: string; tone?: "default" | "success" | "warning" | "danger" | "accent"; spark?: number[] };
+
+function BandSkeleton() {
+  return (
+    <section className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-2">
+        <Skeleton className="h-3 w-32" />
+        <Skeleton className="h-3 w-10" />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y sm:divide-y-0 divide-border sm:divide-x">
+        {Array.from({ length: 5 }, (_, i) => (
+          <div key={i} className="p-3 space-y-1.5">
+            <Skeleton className="h-2 w-16" />
+            <Skeleton className="h-5 w-12" />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function Band({ icon, title, to, tiles }: { icon: React.ReactNode; title: string; to: string; tiles: Tile[] }) {
   return (

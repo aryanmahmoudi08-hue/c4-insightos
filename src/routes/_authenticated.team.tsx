@@ -70,7 +70,7 @@ function Team() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
-  const { data: members } = useQuery({
+  const { data: members, isLoading: membersLoading } = useQuery({
     queryKey: ["team", orgId],
     enabled: !!orgId,
     queryFn: async () => {
@@ -88,7 +88,8 @@ function Team() {
     enabled: !!orgId,
     queryFn: async () => {
       const since = new Date(Date.now() - 30*86400000).toISOString();
-      const { data } = await supabase.from("calls").select("setter_id, closer_id, showed, closed, cash_collected_cents").eq("org_id", orgId!).gte("created_at", since);
+      const { data, error } = await supabase.from("calls").select("setter_id, closer_id, showed, closed, cash_collected_cents").eq("org_id", orgId!).gte("created_at", since);
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -196,7 +197,8 @@ function Team() {
                   )}
                 </tr>
               ))}
-              {byUser.length === 0 && <tr><td colSpan={isAdmin ? 7 : 6} className="p-10 text-center text-sm text-muted-foreground">No team members yet.</td></tr>}
+              {membersLoading && <tr><td colSpan={isAdmin ? 7 : 6} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
+              {!membersLoading && byUser.length === 0 && <tr><td colSpan={isAdmin ? 7 : 6} className="p-10 text-center text-sm text-muted-foreground">No team members yet.</td></tr>}
             </tbody>
           </table>
         </div>

@@ -130,13 +130,14 @@ function SequencesPage() {
   const [activeKey, setActiveKey] = useState<string>("wins_nurture");
   const [editing, setEditing] = useState<{ id?: string; template_key: string; title: string; slides: { label: string; body: string }[]; status: string; client_id: string | null; notes: string } | null>(null);
 
-  const { data: sequences = [] } = useQuery({
+  const { data: sequences = [], isLoading: sequencesLoading, isError: sequencesError, error: sequencesErrorObj, refetch: refetchSequences } = useQuery({
     queryKey: ["story_sequences", orgId],
     enabled: !!orgId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("story_sequences")
         .select("*")
+        .eq("org_id", orgId!)
         .order("updated_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -144,8 +145,13 @@ function SequencesPage() {
   });
 
   const { data: clients = [] } = useQuery({
-    queryKey: ["copy_clients"],
-    queryFn: async () => (await supabase.from("copy_clients").select("id, display_name").order("display_name")).data ?? [],
+    queryKey: ["copy_clients", orgId],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("copy_clients").select("id, display_name").eq("org_id", orgId!).order("display_name");
+      if (error) throw error;
+      return data ?? [];
+    },
   });
 
   const t = templateFor(activeKey);
@@ -354,7 +360,8 @@ function SequencesPage() {
                       })}>Edit</Button>
                       <Button size="sm" variant="ghost" className="text-destructive"
                         onClick={async () => {
-                          await supabase.from("story_sequences").delete().eq("id", s.id);
+                          const { error } = await supabase.from("story_sequences").delete().eq("id", s.id);
+                          if (error) { toast.error(error.message); return; }
                           qc.invalidateQueries({ queryKey: ["story_sequences"] });
                         }}>
                         <Trash2 className="h-3.5 w-3.5" />

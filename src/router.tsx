@@ -3,13 +3,29 @@ import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 
 export const getRouter = () => {
-  const queryClient = new QueryClient();
+  // No route defines a `loader` — every page fetches its own data client-side via
+  // react-query inside the component. Without these defaults, QueryClient's own
+  // defaults (staleTime: 0) mean every remount AND every window focus refetches
+  // every active query from scratch, even when the data is seconds old.
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 30_000,
+        gcTime: 5 * 60_000,
+        refetchOnWindowFocus: true,
+        retry: 1,
+      },
+    },
+  });
 
   const router = createRouter({
     routeTree,
     context: { queryClient },
     scrollRestoration: true,
-    defaultPreloadStaleTime: 0,
+    // Prefetch a route's JS chunk on link hover/focus for snappier navigation.
+    // No route uses a `loader`, so there's no data to preload yet — only code.
+    defaultPreload: "intent",
+    defaultPreloadStaleTime: 30_000,
   });
 
   return router;

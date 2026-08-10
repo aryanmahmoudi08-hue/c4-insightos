@@ -133,6 +133,7 @@ function TeamCalendarPage() {
   const delCal = useMutation({
     mutationFn: async (id: string) => { const { error } = await supabase.from("team_calendars").delete().eq("id", id); if (error) throw error; },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["team-calendars", orgId] }),
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const saveBlock = useMutation({
@@ -148,6 +149,7 @@ function TeamCalendarPage() {
   const delBlock = useMutation({
     mutationFn: async (id: string) => { const { error } = await supabase.from("work_blocks").delete().eq("id", id); if (error) throw error; },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["work-blocks", orgId, days[0]] }),
+    onError: (e: Error) => toast.error(e.message),
   });
 
   return (

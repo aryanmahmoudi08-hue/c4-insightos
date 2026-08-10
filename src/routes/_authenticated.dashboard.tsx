@@ -6,13 +6,15 @@ import { mockDashboardStats } from "@/lib/dev-mock-data";
 import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, Activity, Calendar, Inbox } from "lucide-react";
+import { ArrowUpRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, Activity, Calendar, Inbox, AlertTriangle } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { Sparkline } from "@/components/sparkline";
 import { SlimHeader } from "@/components/slim-header";
 import { EmptyState } from "@/components/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { HubMetrics, HubQuickLinks } from "@/components/hub-metrics";
 
 
@@ -68,7 +70,7 @@ function Dashboard() {
   const { devBypass } = useAuth();
   const { range } = useDateRange();
 
-  const { data: stats, isLoading } = useQuery({
+  const { data: stats, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["exec-dash", orgId, range.from, range.to, devBypass],
     enabled: !!orgId,
     queryFn: async () => {
@@ -222,6 +224,17 @@ function Dashboard() {
           }
         />
 
+        {isError && (
+          <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-destructive">Couldn't load dashboard data</div>
+              <div className="text-xs text-muted-foreground truncate">{error instanceof Error ? error.message : "Unknown error"}</div>
+            </div>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => refetch()}>Retry</Button>
+          </div>
+        )}
+
         {/* Weekly digest */}
         <WeeklyDigest pace={stats?.pace} curr={c} prev={p} />
 
@@ -229,16 +242,22 @@ function Dashboard() {
         <PaceCard pace={stats?.pace} />
 
         {/* Hero KPI grid with WoW deltas + sparklines */}
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-          <DeltaKpi label="CASH COLLECTED" value={money(c?.cash ?? 0)} curr={c?.cash ?? 0} prev={p?.cash ?? 0} tone="money" spark={(stats?.series ?? []).map(s => s.cash)} />
-          <DeltaKpi label="CONTRACT VALUE" value={money(c?.contractValue ?? 0)} curr={c?.contractValue ?? 0} prev={p?.contractValue ?? 0} tone="money" spark={(stats?.series ?? []).map(s => s.contractValue)} />
-          <DeltaKpi label="NEW LEADS" value={fmt(c?.newLeads ?? 0)} curr={c?.newLeads ?? 0} prev={p?.newLeads ?? 0} spark={(stats?.series ?? []).map(s => s.leads)} />
-          <DeltaKpi label="TOTAL VIEWS" value={fmt(c?.views ?? 0)} curr={c?.views ?? 0} prev={p?.views ?? 0} spark={(stats?.series ?? []).map(s => s.views)} />
-          <DeltaKpi label="CALLS BOOKED" value={fmt(c?.totalCalls ?? 0)} curr={c?.totalCalls ?? 0} prev={p?.totalCalls ?? 0} spark={(stats?.series ?? []).map(s => s.calls)} />
-          <DeltaKpi label="SHOWED" value={fmt(c?.showed ?? 0)} curr={c?.showed ?? 0} prev={p?.showed ?? 0} hint={showRate} spark={(stats?.series ?? []).map(s => s.showed)} />
-          <DeltaKpi label="OFFERS MADE" value={fmt(c?.offers ?? 0)} curr={c?.offers ?? 0} prev={p?.offers ?? 0} hint={offerRate} spark={(stats?.series ?? []).map(s => s.offers)} />
-          <DeltaKpi label="CLOSES" value={fmt(c?.closed ?? 0)} curr={c?.closed ?? 0} prev={p?.closed ?? 0} hint={closeRate} tone="rate" spark={(stats?.series ?? []).map(s => s.closed)} />
-        </div>
+        {isLoading ? (
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: 8 }, (_, i) => <KpiSkeleton key={i} />)}
+          </div>
+        ) : (
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 animate-in fade-in-0 duration-300">
+            <DeltaKpi label="CASH COLLECTED" value={money(c?.cash ?? 0)} curr={c?.cash ?? 0} prev={p?.cash ?? 0} tone="money" spark={(stats?.series ?? []).map(s => s.cash)} />
+            <DeltaKpi label="CONTRACT VALUE" value={money(c?.contractValue ?? 0)} curr={c?.contractValue ?? 0} prev={p?.contractValue ?? 0} tone="money" spark={(stats?.series ?? []).map(s => s.contractValue)} />
+            <DeltaKpi label="NEW LEADS" value={fmt(c?.newLeads ?? 0)} curr={c?.newLeads ?? 0} prev={p?.newLeads ?? 0} spark={(stats?.series ?? []).map(s => s.leads)} />
+            <DeltaKpi label="TOTAL VIEWS" value={fmt(c?.views ?? 0)} curr={c?.views ?? 0} prev={p?.views ?? 0} spark={(stats?.series ?? []).map(s => s.views)} />
+            <DeltaKpi label="CALLS BOOKED" value={fmt(c?.totalCalls ?? 0)} curr={c?.totalCalls ?? 0} prev={p?.totalCalls ?? 0} spark={(stats?.series ?? []).map(s => s.calls)} />
+            <DeltaKpi label="SHOWED" value={fmt(c?.showed ?? 0)} curr={c?.showed ?? 0} prev={p?.showed ?? 0} hint={showRate} spark={(stats?.series ?? []).map(s => s.showed)} />
+            <DeltaKpi label="OFFERS MADE" value={fmt(c?.offers ?? 0)} curr={c?.offers ?? 0} prev={p?.offers ?? 0} hint={offerRate} spark={(stats?.series ?? []).map(s => s.offers)} />
+            <DeltaKpi label="CLOSES" value={fmt(c?.closed ?? 0)} curr={c?.closed ?? 0} prev={p?.closed ?? 0} hint={closeRate} tone="rate" spark={(stats?.series ?? []).map(s => s.closed)} />
+          </div>
+        )}
 
         {/* Full-funnel operating metrics — traffic, VSL, applications, rep efficiency, client momentum */}
         <HubMetrics />
@@ -349,6 +368,18 @@ function Dashboard() {
         </div>
       </div>
     </>
+  );
+}
+
+function KpiSkeleton() {
+  return (
+    <div className="rounded-md border border-border bg-card overflow-hidden flex flex-col">
+      <div className="border-b border-border px-3 py-1.5"><Skeleton className="h-2.5 w-16 mx-auto" /></div>
+      <div className="flex-1 grid place-items-center gap-2 px-3 py-3 min-h-[72px]">
+        <Skeleton className="h-5 w-14" />
+        <Skeleton className="h-2.5 w-10" />
+      </div>
+    </div>
   );
 }
 

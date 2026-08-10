@@ -539,7 +539,7 @@ function GenerateTab() {
             </div>
           </div>
           {output ? (
-            <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed">{output}</pre>
+            <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed animate-in fade-in-0 duration-300">{output}</pre>
           ) : (
             <div className="text-sm text-muted-foreground">
               Hit "Write" — output lands here. Every line is engineered to move the reader one inch closer to the CTA.
@@ -993,7 +993,7 @@ function ReviewTab() {
       <Card className="p-4">
         {!result && <div className="text-sm text-muted-foreground">Review output appears here.</div>}
         {result && (
-          <div className="space-y-3 text-sm">
+          <div className="space-y-3 text-sm animate-in fade-in-0 slide-in-from-top-1 duration-300">
             <div className="flex items-center gap-2"><div className="text-3xl font-semibold">{result.score}</div><div className="text-xs text-muted-foreground">/ 100</div></div>
             <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Big Domino</div><div>{result.big_domino}</div></div>
             <div><div className="text-xs uppercase tracking-wider text-muted-foreground">Strengths</div><ul className="list-disc pl-5 space-y-0.5">{result.strengths.map((s, i) => <li key={i}>{s}</li>)}</ul></div>
