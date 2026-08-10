@@ -4,7 +4,7 @@ type Tone = "default" | "header" | "money" | "rate";
 
 export function KpiTile({ label, value, tone = "default", hint }: { label: string; value: string | number; tone?: Tone; hint?: string }) {
   return (
-    <div className="rounded-md border border-border bg-card overflow-hidden flex flex-col">
+    <div className="hover-lift rounded-md border border-border bg-card overflow-hidden flex flex-col">
       <div className={cn(
         "px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-center border-b border-border",
         tone === "money" && "bg-[color:var(--color-success)]/10 text-[color:var(--color-success)]",

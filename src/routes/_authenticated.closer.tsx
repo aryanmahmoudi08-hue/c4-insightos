@@ -345,12 +345,12 @@ function Closer() {
                 <div className="h-[340px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={objectionStats} layout="vertical" margin={{ left: 8, right: 24 }}>
-                      <CartesianGrid stroke="oklch(0.3 0.02 260 / 0.2)" horizontal={false} />
-                      <XAxis type="number" stroke="oklch(0.65 0.02 260)" fontSize={11} />
-                      <YAxis type="category" dataKey="objection" stroke="oklch(0.65 0.02 260)" fontSize={11} width={160} />
-                      <Tooltip contentStyle={{ background: "oklch(0.15 0.02 260)", border: "1px solid oklch(0.3 0.02 260)", fontSize: 12 }}
+                      <CartesianGrid stroke="var(--border)" horizontal={false} />
+                      <XAxis type="number" stroke="var(--muted-foreground)" fontSize={11} />
+                      <YAxis type="category" dataKey="objection" stroke="var(--muted-foreground)" fontSize={11} width={160} />
+                      <Tooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, boxShadow: "var(--shadow-md)" }}
                         formatter={(_v, _n, p) => [`${p.payload.count} logged · ${p.payload.resolved_pct}% resolved`, "Frequency"]} />
-                      <Bar dataKey="count" fill="oklch(0.7 0.18 25)" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="count" fill="var(--destructive)" radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -406,11 +406,11 @@ function Closer() {
                 <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={ttcTrend} margin={{ left: 8, right: 16, top: 8 }}>
-                      <CartesianGrid stroke="oklch(0.3 0.02 260 / 0.2)" />
-                      <XAxis dataKey="date" stroke="oklch(0.65 0.02 260)" fontSize={11} />
-                      <YAxis stroke="oklch(0.65 0.02 260)" fontSize={11} />
-                      <Tooltip contentStyle={{ background: "oklch(0.15 0.02 260)", border: "1px solid oklch(0.3 0.02 260)", fontSize: 12 }} />
-                      <Line type="monotone" dataKey="avgMin" stroke="oklch(0.65 0.2 260)" strokeWidth={2} dot={{ r: 3 }} />
+                      <CartesianGrid stroke="var(--border)" />
+                      <XAxis dataKey="date" stroke="var(--muted-foreground)" fontSize={11} />
+                      <YAxis stroke="var(--muted-foreground)" fontSize={11} />
+                      <Tooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, boxShadow: "var(--shadow-md)" }} />
+                      <Line type="monotone" dataKey="avgMin" stroke="var(--chart-2)" strokeWidth={2} dot={{ r: 3 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>

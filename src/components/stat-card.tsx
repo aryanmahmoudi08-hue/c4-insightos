@@ -19,8 +19,9 @@ export function StatCard({
     accent: "from-accent/20 to-transparent",
   };
   return (
-    <div className="relative overflow-hidden rounded-lg border border-border bg-card p-4">
+    <div className="hover-lift relative overflow-hidden rounded-lg border border-border bg-card p-4">
       <div className={cn("pointer-events-none absolute inset-0 bg-gradient-to-br opacity-60", accentMap[accent])} />
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-lg" />
       <div className="relative flex items-start justify-between">
         <div>
           <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
@@ -30,7 +31,7 @@ export function StatCard({
         {icon && <div className="text-muted-foreground">{icon}</div>}
       </div>
       {delta && (
-        <div className="relative mt-2 inline-flex items-center rounded-md bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+        <div className="badge-glass relative mt-2 font-mono normal-case tracking-normal text-muted-foreground">
           {delta}
         </div>
       )}

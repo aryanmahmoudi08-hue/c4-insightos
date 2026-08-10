@@ -111,6 +111,19 @@
   --shadow-elegant: 0 1px 0 oklch(1 0 0 / 6%) inset, 0 24px 48px -24px oklch(0 0 0 / 70%);
   --shadow-gold: 0 0 0 1px oklch(1 0 0 / 12%), 0 18px 36px -20px oklch(0 0 0 / 60%);
   --hairline: oklch(1 0 0 / 16%);
+
+  /* Elevation scale — soft ambient shadows, layered for depth without color */
+  --shadow-xs: 0 1px 2px oklch(0 0 0 / 40%);
+  --shadow-sm: 0 1px 0 oklch(1 0 0 / 5%) inset, 0 2px 6px oklch(0 0 0 / 35%);
+  --shadow-md: 0 1px 0 oklch(1 0 0 / 6%) inset, 0 8px 20px -6px oklch(0 0 0 / 50%);
+  --shadow-lg: 0 1px 0 oklch(1 0 0 / 7%) inset, 0 20px 44px -16px oklch(0 0 0 / 65%);
+  --shadow-glow: 0 0 0 1px oklch(1 0 0 / 10%), 0 0 32px -4px oklch(1 0 0 / 12%);
+
+  /* Glass surfaces — translucent + blurred, for chrome (sidebar/topbar/modals), not content */
+  --glass-bg: oklch(0.2 0 0 / 55%);
+  --glass-bg-strong: oklch(0.15 0 0 / 78%);
+  --glass-border: oklch(1 0 0 / 10%);
+  --glass-highlight: oklch(1 0 0 / 7%);
 }
 
 .light {
@@ -162,6 +175,17 @@
   --shadow-elegant: 0 1px 0 oklch(1 0 0 / 80%) inset, 0 18px 40px -24px oklch(0 0 0 / 18%);
   --shadow-gold: 0 0 0 1px oklch(0.16 0 0 / 10%), 0 14px 30px -18px oklch(0 0 0 / 14%);
   --hairline: oklch(0.16 0 0 / 18%);
+
+  --shadow-xs: 0 1px 2px oklch(0 0 0 / 6%);
+  --shadow-sm: 0 1px 0 oklch(1 0 0 / 70%) inset, 0 2px 6px oklch(0 0 0 / 6%);
+  --shadow-md: 0 1px 0 oklch(1 0 0 / 70%) inset, 0 8px 20px -6px oklch(0 0 0 / 10%);
+  --shadow-lg: 0 1px 0 oklch(1 0 0 / 70%) inset, 0 20px 44px -16px oklch(0 0 0 / 14%);
+  --shadow-glow: 0 0 0 1px oklch(0.16 0 0 / 8%), 0 0 32px -6px oklch(0.16 0 0 / 10%);
+
+  --glass-bg: oklch(1 0 0 / 65%);
+  --glass-bg-strong: oklch(1 0 0 / 82%);
+  --glass-border: oklch(0.16 0 0 / 8%);
+  --glass-highlight: oklch(1 0 0 / 50%);
 }
 
 .dark { color-scheme: dark; }
@@ -206,4 +230,101 @@
     background-clip: text;
     color: transparent;
   }
+
+  /* ------------------------------------------------------------------ *
+   * Micro-interactions & elevation — applied once here so every route,
+   * card and modal inherits it without per-file markup changes.
+   * ------------------------------------------------------------------ */
+
+  a, button, [role="button"], input, select, textarea, summary {
+    transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease,
+      box-shadow 200ms ease, opacity 150ms ease, transform 120ms ease;
+  }
+
+  /* Every plain `bg-card` surface app-wide (dashboard tiles, panels, list rows —
+     most of which never opted into an explicit shadow utility) picks up a soft
+     ambient shadow + a hairline top highlight for free. Elements that already set
+     an explicit `shadow*` utility keep that instead (utilities layer wins ties). */
+  .bg-card {
+    box-shadow: var(--shadow-sm);
+    transition: border-color 200ms ease, box-shadow 200ms ease, transform 150ms ease;
+  }
+
+  ::selection { background: oklch(1 0 0 / 22%); color: var(--foreground); }
+  .light ::selection { background: oklch(0.16 0 0 / 16%); }
+
+  /* Thin themed scrollbars for the dense, scroll-heavy dashboard surfaces */
+  * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--muted);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); background-clip: padding-box; }
+
+  /* Fallback focus ring for raw interactive elements that skip shadcn's own ring utilities */
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+}
+
+@layer utilities {
+  /* Glass chrome — sidebar / topbar / modal surfaces. Deliberately not applied to
+     ordinary content cards: glassmorphism reads as *chrome*, not as page content. */
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border-color: var(--glass-border);
+  }
+  .glass-strong {
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(28px) saturate(150%);
+    -webkit-backdrop-filter: blur(28px) saturate(150%);
+    border-color: var(--glass-border);
+  }
+  .glass-highlight {
+    box-shadow: inset 0 1px 0 var(--glass-highlight);
+  }
+
+  /* Interactive-card micro-interaction — opt in per element, not global on .bg-card */
+  .hover-lift {
+    transition: transform 150ms ease, border-color 200ms ease, box-shadow 200ms ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-1px);
+    border-color: oklch(1 0 0 / 22%);
+    box-shadow: var(--shadow-md);
+  }
+  .light .hover-lift:hover { border-color: oklch(0.16 0 0 / 18%); }
+
+  /* Status dot — small glowing indicator for badges/leaderboards/rows.
+     Set `color` to the semantic tone (text-[color:var(--color-success)] etc.);
+     the dot fills with currentColor and glows a soft halo of the same hue. */
+  .status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+    box-shadow: 0 0 0 3px color-mix(in oklch, currentColor 18%, transparent);
+  }
+
+  /* Glassy status pill — icon-less badge with a soft translucent fill + dot slot */
+  .badge-glass {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 999px;
+    border: 1px solid var(--glass-border);
+    background: oklch(1 0 0 / 6%);
+    padding: 0.2rem 0.6rem;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    backdrop-filter: blur(8px);
+  }
+  .light .badge-glass { background: oklch(0.16 0 0 / 4%); }
 }

@@ -294,11 +294,11 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 <div className="h-72">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={objectionStats} layout="vertical" margin={{ left: 8, right: 24 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.28 0.02 265 / 0.5)" horizontal={false} />
-                      <XAxis type="number" stroke="oklch(0.65 0.02 260)" fontSize={11} allowDecimals={false} />
-                      <YAxis type="category" dataKey="objection" stroke="oklch(0.65 0.02 260)" fontSize={11} width={140} />
-                      <Tooltip contentStyle={{ background: "oklch(0.18 0.015 265)", border: "1px solid oklch(0.28 0.02 265)", borderRadius: 8, fontSize: 12 }} />
-                      <Bar dataKey="count" fill="oklch(0.72 0.18 25)" radius={[0, 4, 4, 0]} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                      <XAxis type="number" stroke="var(--muted-foreground)" fontSize={11} allowDecimals={false} />
+                      <YAxis type="category" dataKey="objection" stroke="var(--muted-foreground)" fontSize={11} width={140} />
+                      <Tooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, boxShadow: "var(--shadow-md)" }} />
+                      <Bar dataKey="count" fill="var(--destructive)" radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -342,14 +342,14 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart data={scorecard}>
-                      <PolarGrid stroke="oklch(0.28 0.02 265)" />
-                      <PolarAngleAxis dataKey="axis" stroke="oklch(0.65 0.02 260)" fontSize={11} />
-                      <PolarRadiusAxis stroke="oklch(0.45 0.02 260)" fontSize={9} angle={30} domain={[0, 100]} />
+                      <PolarGrid stroke="var(--border)" />
+                      <PolarAngleAxis dataKey="axis" stroke="var(--muted-foreground)" fontSize={11} />
+                      <PolarRadiusAxis stroke="var(--muted-foreground)" fontSize={9} angle={30} domain={[0, 100]} />
                       {scorecardNames.slice(0, 5).map((name, i) => (
                         <Radar key={name} name={name} dataKey={name} stroke={radarColors[i]} fill={radarColors[i]} fillOpacity={0.25} />
                       ))}
                       <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Tooltip contentStyle={{ background: "oklch(0.18 0.015 265)", border: "1px solid oklch(0.28 0.02 265)", borderRadius: 8, fontSize: 12 }} />
+                      <Tooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, boxShadow: "var(--shadow-md)" }} />
                     </RadarChart>
                   </ResponsiveContainer>
                 </div>

@@ -137,15 +137,15 @@ export function AppSidebar() {
         search={it.search as never}
         onClick={closeMobile}
         className={cn(
-          "group flex items-center gap-2.5 rounded-md py-1.5 text-sm transition-colors",
+          "group relative flex items-center gap-2.5 rounded-md py-1.5 text-sm transition-all",
           pl,
           active
-            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+            ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[2px] before:-translate-y-1/2 before:rounded-full before:bg-sidebar-primary"
+            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground hover:translate-x-[1px]",
           nested && depth >= 2 && "py-1",
         )}
       >
-        <Icon className={cn("shrink-0", depth >= 2 ? "h-3.5 w-3.5" : "h-4 w-4")} />
+        <Icon className={cn("shrink-0 transition-transform", depth >= 2 ? "h-3.5 w-3.5" : "h-4 w-4", active && "scale-105")} />
         <span className="flex-1 truncate">{it.label}</span>
       </Link>
     );
@@ -156,14 +156,14 @@ export function AppSidebar() {
       type="button"
       onClick={onClick}
       className={cn(
-        "group flex w-full items-center gap-2.5 rounded-md py-2 text-sm transition-colors",
+        "group flex w-full items-center gap-2.5 rounded-md py-2 text-sm transition-all",
         depth === 0 ? "px-2.5" : "pl-8 pr-2.5 py-1.5",
-        isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+        isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground",
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />
       <span className="flex-1 text-left truncate">{label}</span>
-      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
+      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", open && "rotate-180")} />
     </button>
   );
 
@@ -172,17 +172,17 @@ export function AppSidebar() {
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="fixed top-3 left-3 z-40 md:hidden inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card/90 backdrop-blur"
+        className="glass fixed top-3 left-3 z-40 md:hidden inline-flex h-9 w-9 items-center justify-center rounded-md border shadow-md active:scale-95"
         aria-label="Open menu"
       >
         <Menu className="h-4 w-4" />
       </button>
       {mobileOpen && (
-        <div className="fixed inset-0 z-30 bg-black/60 md:hidden" onClick={closeMobile} aria-hidden />
+        <div className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden animate-in fade-in-0 duration-200" onClick={closeMobile} aria-hidden />
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-sidebar-border bg-sidebar transition-transform",
+          "fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]/95 backdrop-blur-xl shadow-lg transition-transform",
           "md:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
@@ -286,12 +286,12 @@ export function AppSidebar() {
           {isAdmin && renderItem({ to: "/connectors", label: "Connectors", icon: Plug })}
         </nav>
         <div className="border-t border-sidebar-border p-2 space-y-1">
-          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sidebar-foreground/80"
+          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sidebar-foreground/80 hover:bg-sidebar-accent/50"
             onClick={toggle}>
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             {theme === "dark" ? "Light mode" : "Dark mode"}
           </Button>
-          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sidebar-foreground/80"
+          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sidebar-foreground/80 hover:bg-destructive/10 hover:text-destructive"
             onClick={async () => { await supabase.auth.signOut(); nav({ to: "/login" }); }}>
             <LogOut className="h-4 w-4" /> Sign out
           </Button>
@@ -313,7 +313,7 @@ export function TopBar({ title, subtitle, showDateRange = false }: { title: stri
     nav({ to: "/clients", search: { q: term } as never });
   };
   return (
-    <div className="sticky top-0 z-20 border-b border-border bg-background/70 px-4 md:px-6 py-4 backdrop-blur-xl">
+    <div className="glass sticky top-0 z-20 border-b px-4 md:px-6 py-4">
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 pl-10 md:pl-0">
           <div className="eyebrow">— {subtitle ? "Dossier" : "Overview"}</div>
@@ -322,11 +322,13 @@ export function TopBar({ title, subtitle, showDateRange = false }: { title: stri
         </div>
         <div className="flex items-center gap-2">
           <form onSubmit={submitSearch} className="relative hidden md:block">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground transition-colors" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search clients, leads, content…"
-              className="h-8 w-72 rounded-md border border-input bg-input/40 pl-8 pr-3 text-xs outline-none focus:ring-1 focus:ring-ring" />
+              className="h-8 w-72 rounded-md border border-input bg-input/40 pl-8 pr-3 text-xs outline-none transition-all hover:border-ring/30 focus:border-ring focus:ring-1 focus:ring-ring focus:bg-input/70" />
           </form>
-          <Button variant="ghost" size="icon" className="h-8 w-8 hidden sm:inline-flex"><Bell className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" className="relative h-8 w-8 hidden sm:inline-flex">
+            <Bell className="h-4 w-4" />
+          </Button>
           <ThemeToggle />
           <Button asChild variant="ghost" size="icon" className="h-8 w-8 hidden sm:inline-flex">
             <Link to="/settings" aria-label="Settings"><Settings className="h-4 w-4" /></Link>

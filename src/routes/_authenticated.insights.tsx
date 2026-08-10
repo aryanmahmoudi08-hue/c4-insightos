@@ -120,9 +120,9 @@ function Insights() {
           )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {[
-              { key: "cash", label: "Cash collected", color: "oklch(0.7 0.18 150)", fmt: (v: number) => `$${Math.round(v/100).toLocaleString()}` },
-              { key: "totalCalls", label: "Calls booked", color: "oklch(0.65 0.18 250)", fmt: (v: number) => String(v) },
-              { key: "views", label: "Content views", color: "oklch(0.7 0.2 25)", fmt: (v: number) => v.toLocaleString() },
+              { key: "cash", label: "Cash collected", color: "var(--color-success)", fmt: (v: number) => `$${Math.round(v/100).toLocaleString()}` },
+              { key: "totalCalls", label: "Calls booked", color: "var(--chart-2)", fmt: (v: number) => String(v) },
+              { key: "views", label: "Content views", color: "var(--chart-1)", fmt: (v: number) => v.toLocaleString() },
             ].map(m => {
               const data = (trend?.weeks ?? []).map(w => ({ week: w.weekStart.slice(5), value: Number((w as unknown as Record<string, unknown>)[m.key]) }));
               const last = data[data.length - 1]?.value ?? 0;
@@ -140,10 +140,10 @@ function Insights() {
                   <div className="h-16 mt-1">
                     <ResponsiveContainer>
                       <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                        <CartesianGrid vertical={false} stroke="oklch(0.3 0.02 260 / 0.15)" />
+                        <CartesianGrid vertical={false} stroke="var(--border)" />
                         <XAxis dataKey="week" hide />
                         <YAxis hide />
-                        <Tooltip contentStyle={{ background: "oklch(0.15 0.02 260)", border: "1px solid oklch(0.3 0.02 260)", fontSize: 11 }} />
+                        <Tooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11, boxShadow: "var(--shadow-md)" }} />
                         <Line type="monotone" dataKey="value" stroke={m.color} strokeWidth={2} dot={{ r: 2 }} />
                       </LineChart>
                     </ResponsiveContainer>

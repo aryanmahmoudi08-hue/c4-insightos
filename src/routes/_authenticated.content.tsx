@@ -691,11 +691,11 @@ function SlidesPanel({ orgId, contentId, onClose }: { orgId?: string; contentId:
           <div className="h-48 rounded border border-border bg-card p-2">
             <ResponsiveContainer>
               <LineChart data={chartData}>
-                <XAxis dataKey="slide" stroke="hsl(var(--muted-foreground))" fontSize={11} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: 12 }} />
-                <Line type="monotone" dataKey="views" stroke="oklch(0.65 0.18 250)" strokeWidth={2} />
-                <Line type="monotone" dataKey="exits" stroke="oklch(0.65 0.22 25)" strokeWidth={2} />
+                <XAxis dataKey="slide" stroke="var(--muted-foreground)" fontSize={11} />
+                <YAxis stroke="var(--muted-foreground)" fontSize={11} />
+                <Tooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
+                <Line type="monotone" dataKey="views" stroke="var(--chart-1)" strokeWidth={2} />
+                <Line type="monotone" dataKey="exits" stroke="var(--destructive)" strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
           </div>

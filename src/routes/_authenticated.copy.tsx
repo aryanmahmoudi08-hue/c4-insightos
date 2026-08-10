@@ -21,7 +21,8 @@ import { useRef } from "react";
 import { cn } from "@/lib/utils";
 import { MECHANISMS, MECHANISM_KEYS, questionsFor, type MechanismKey } from "@/lib/content-mechanisms";
 import { contentDemandFn } from "@/lib/content-signals.functions";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { mockContentDemand } from "@/lib/dev-mock-data";
 
 export const Route = createFileRoute("/_authenticated/copy")({
   component: CopyOSPage,
@@ -54,7 +55,7 @@ const CATEGORIES: Record<string, {
       { value: "short_form_script", label: "Reel / TikTok script", icon: Clapperboard, desc: "Hook → tension → payoff → soft CTA in under 60s." },
       { value: "long_form_reel", label: "Long-form reel (90s+)", icon: Video, desc: "Story-led, mid-funnel reel built to hold for 90s+." },
       { value: "youtube_hook", label: "YouTube hook + title", icon: Megaphone, desc: "Title, thumbnail copy, and 15s spoken hook." },
-      { value: "music_video_concept", label: "Music video concept", icon: Music, desc: "Visual concept doc — scenes, beats, hooks." },
+      { value: "music_video_concept", label: "TOF text video", icon: Music, desc: "Visual concept doc — scenes, beats, hooks." },
     ],
     fields: [
       { key: "platform", label: "Platform", placeholder: "Reels / TikTok / Shorts / YouTube" },
@@ -212,12 +213,14 @@ function GenerateTab() {
   const varQuestions = questionsFor(variation);
 
   // How much of each mechanism the business currently needs (FAQ clicks + intakes + setting calls).
+  const { devBypass } = useAuth();
   const demandFn = useServerFn(contentDemandFn);
   const { data: demand } = useQuery({
-    queryKey: ["content-demand", 30],
+    queryKey: ["content-demand", 30, devBypass],
     enabled: isContent,
     staleTime: 5 * 60_000,
-    queryFn: () => demandFn({ data: { days: 30 } }),
+    // requireSupabaseAuth-gated — dev bypass has no real session, so 401s. Use mock demand instead.
+    queryFn: () => (devBypass ? Promise.resolve(mockContentDemand()) : demandFn({ data: { days: 30 } })),
   });
 
   // Reset per-category fields when category changes.

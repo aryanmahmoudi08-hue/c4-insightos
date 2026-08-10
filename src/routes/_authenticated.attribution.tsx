@@ -74,13 +74,13 @@ function Attribution() {
             <div className="text-[11px] text-muted-foreground mt-0.5">Each band is proportional to volume. Drop-off between stages = leakage.</div>
           </div>
           <div className="p-6 space-y-2">
-            <FunnelBand icon={<Film className="h-4 w-4" />} label="Views" value={totalPathViews} max={totalPathViews} unit="views" color="oklch(0.55 0.18 250)" />
+            <FunnelBand icon={<Film className="h-4 w-4" />} label="Views" value={totalPathViews} max={totalPathViews} unit="views" color="var(--chart-1)" />
             <DropArrow from={totalPathViews} to={totalPathLeads} label="view → lead" />
-            <FunnelBand icon={<Users className="h-4 w-4" />} label="Leads generated" value={totalPathLeads} max={totalPathViews} unit="leads" color="oklch(0.62 0.16 200)" />
+            <FunnelBand icon={<Users className="h-4 w-4" />} label="Leads generated" value={totalPathLeads} max={totalPathViews} unit="leads" color="var(--chart-2)" />
             <DropArrow from={totalPathLeads} to={totalPathCloses} label="lead → close" />
-            <FunnelBand icon={<PhoneCall className="h-4 w-4" />} label="Closes" value={totalPathCloses} max={totalPathViews} unit="closes" color="oklch(0.68 0.15 150)" />
+            <FunnelBand icon={<PhoneCall className="h-4 w-4" />} label="Closes" value={totalPathCloses} max={totalPathViews} unit="closes" color="var(--chart-3)" />
             <DropArrow from={totalPathCloses} to={Math.round(totalPathCash / 1000)} label="cash collected" suffix="$" />
-            <FunnelBand icon={<DollarSign className="h-4 w-4" />} label="Revenue attributed" value={Math.round(totalPathCash / 100)} max={totalPathViews} unit="$" color="oklch(0.72 0.18 100)" displayAs="money" />
+            <FunnelBand icon={<DollarSign className="h-4 w-4" />} label="Revenue attributed" value={Math.round(totalPathCash / 100)} max={totalPathViews} unit="$" color="var(--color-success)" displayAs="money" />
           </div>
         </div>
 

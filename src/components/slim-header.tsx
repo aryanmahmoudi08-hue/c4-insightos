@@ -27,9 +27,9 @@ export function SlimHeader({ icon, title, subtitle, right, accent = "accent" }: 
     destructive: "text-destructive",
   }[accent];
   return (
-    <div className={cn("flex items-center justify-between gap-3 rounded-r-md border-l-[3px] bg-card/40 px-4 py-2.5", border)}>
+    <div className={cn("glass flex items-center justify-between gap-3 rounded-r-md border-l-[3px] border-y-0 border-r-0 px-4 py-2.5 shadow-sm", border)}>
       <div className="flex items-center gap-2.5 min-w-0">
-        {icon && <span className={cn("shrink-0", iconTone)}>{icon}</span>}
+        {icon && <span className={cn("shrink-0 transition-transform", iconTone)}>{icon}</span>}
         <div className="min-w-0">
           <h2 className="text-sm font-semibold tracking-tight truncate">{title}</h2>
           {subtitle && <div className="text-[11px] text-muted-foreground truncate">{subtitle}</div>}

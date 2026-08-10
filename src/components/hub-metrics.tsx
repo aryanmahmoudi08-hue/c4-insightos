@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { mockHubMetrics } from "@/lib/dev-mock-data";
 import { useDateRange } from "@/hooks/use-date-range";
 import { Sparkline } from "@/components/sparkline";
 import { cn } from "@/lib/utils";
@@ -19,12 +20,16 @@ const APP_FIELDS = [
 export function HubMetrics() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { devBypass } = useAuth();
   const { range } = useDateRange();
 
   const { data } = useQuery({
-    queryKey: ["hub-metrics", orgId, range.from, range.to],
+    queryKey: ["hub-metrics", orgId, range.from, range.to, devBypass],
     enabled: !!orgId,
     queryFn: async () => {
+      // Same rationale as the main exec-dashboard query — no real session, so skip straight to mock data.
+      if (devBypass) return mockHubMetrics();
+
       const fromISO = `${range.from}T00:00:00`;
       const toISO = `${range.to}T23:59:59`;
 

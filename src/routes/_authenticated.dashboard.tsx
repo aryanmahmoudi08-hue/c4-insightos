@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { mockDashboardStats } from "@/lib/dev-mock-data";
 import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
 import { Link } from "@tanstack/react-router";
@@ -64,12 +65,17 @@ async function fetchPeriod(orgId: string, from: string, to: string) {
 function Dashboard() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { devBypass } = useAuth();
   const { range } = useDateRange();
 
   const { data: stats, isLoading } = useQuery({
-    queryKey: ["exec-dash", orgId, range.from, range.to],
+    queryKey: ["exec-dash", orgId, range.from, range.to, devBypass],
     enabled: !!orgId,
     queryFn: async () => {
+      // Dev bypass has no real Supabase session, so every query below would come back
+      // RLS-empty — skip the round trips and hand back a populated mock dashboard.
+      if (devBypass) return mockDashboardStats(range.from, range.to);
+
       const fromISO = `${range.from}T00:00:00`;
       const toISO = `${range.to}T23:59:59`;
 
@@ -255,20 +261,20 @@ function Dashboard() {
                 <AreaChart data={stats?.series ?? []} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="cashGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="oklch(0.66 0.18 258)" stopOpacity={0.6} />
-                      <stop offset="100%" stopColor="oklch(0.66 0.18 258)" stopOpacity={0} />
+                      <stop offset="0%" stopColor="var(--color-success)" stopOpacity={0.5} />
+                      <stop offset="100%" stopColor="var(--color-success)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="2 4" stroke="oklch(0.28 0.02 265 / 0.4)" vertical={false} />
-                  <XAxis dataKey="d" stroke="oklch(0.65 0.02 260)" fontSize={10} tickLine={false} axisLine={{ stroke: "oklch(0.28 0.02 265 / 0.5)" }} />
-                  <YAxis stroke="oklch(0.65 0.02 260)" fontSize={10} tickLine={false} axisLine={false} width={48} tickFormatter={(v) => "$" + Math.round(v / 100)} />
+                  <CartesianGrid strokeDasharray="2 4" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="d" stroke="var(--muted-foreground)" fontSize={10} tickLine={false} axisLine={{ stroke: "var(--border)" }} />
+                  <YAxis stroke="var(--muted-foreground)" fontSize={10} tickLine={false} axisLine={false} width={48} tickFormatter={(v) => "$" + Math.round(v / 100)} />
                   <Tooltip
-                    cursor={{ stroke: "oklch(0.66 0.18 258 / 0.4)", strokeWidth: 1 }}
-                    contentStyle={{ background: "oklch(0.18 0.015 265)", border: "1px solid oklch(0.28 0.02 265)", borderRadius: 8, fontSize: 12, padding: "6px 10px" }}
-                    labelStyle={{ color: "oklch(0.65 0.02 260)", fontSize: 10, marginBottom: 2 }}
+                    cursor={{ stroke: "var(--color-success)", strokeWidth: 1, strokeOpacity: 0.4 }}
+                    contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, padding: "6px 10px", boxShadow: "var(--shadow-md)" }}
+                    labelStyle={{ color: "var(--muted-foreground)", fontSize: 10, marginBottom: 2 }}
                     formatter={(v: number) => [money(v), "Cash"]}
                   />
-                  <Area type="monotone" dataKey="cash" stroke="oklch(0.66 0.18 258)" fill="url(#cashGrad)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="cash" stroke="var(--color-success)" fill="url(#cashGrad)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -350,7 +356,7 @@ function DeltaKpi({ label, value, curr, prev, hint, tone = "default", spark }: {
   const delta = prev > 0 ? ((curr - prev) / prev) * 100 : (curr > 0 ? 100 : 0);
   const Icon = delta > 1 ? TrendingUp : delta < -1 ? TrendingDown : Minus;
   const deltaTone = delta > 1 ? "text-[color:var(--color-success)]" : delta < -1 ? "text-destructive" : "text-muted-foreground";
-  const sparkStroke = delta > 1 ? "oklch(0.72 0.18 155)" : delta < -1 ? "oklch(0.65 0.22 25)" : "oklch(0.65 0.02 260)";
+  const sparkStroke = delta > 1 ? "var(--color-success)" : delta < -1 ? "var(--destructive)" : "var(--muted-foreground)";
   return (
     <div className="rounded-md border border-border bg-card overflow-hidden flex flex-col">
       <div className={cn(
@@ -458,7 +464,10 @@ function FunnelCard({ funnel }: { funnel: { stage: string; value: number; conv: 
                 <span className="font-mono text-muted-foreground">{fmt(f.value)} {f.conv && <span className="text-accent ml-1">{f.conv}</span>}</span>
               </div>
               <div className="h-6 rounded bg-muted/30 overflow-hidden">
-                <div className="h-full rounded transition-all" style={{ width: `${width}%`, background: `oklch(${0.72 - i * 0.05} ${0.18 - i * 0.02} ${258 + i * 6})` }} />
+                <div
+                  className="h-full rounded transition-all duration-500 ease-out"
+                  style={{ width: `${width}%`, background: `color-mix(in oklch, var(--foreground) ${Math.max(20, 92 - i * 14)}%, var(--muted-foreground))` }}
+                />
               </div>
             </div>
           );

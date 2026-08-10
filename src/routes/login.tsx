@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, redirect } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
+import { enableDevBypass } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -102,6 +103,16 @@ function LoginPage() {
             className="block w-full text-center text-xs text-muted-foreground hover:text-foreground">
             {mode === "signup" ? "Have an account? Sign in" : "New to C4? Create a workspace"}
           </button>
+          {import.meta.env.DEV && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full border-dashed border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:text-amber-400"
+              onClick={() => { enableDevBypass(); window.location.href = "/dashboard"; }}
+            >
+              Dev Bypass (skip login)
+            </Button>
+          )}
         </form>
       </div>
     </div>
