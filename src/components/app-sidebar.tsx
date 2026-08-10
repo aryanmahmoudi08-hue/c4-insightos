@@ -58,6 +58,7 @@ const COPY_GENERATE_NAV: NavItem[] = [
 const CONTENT_OS_NAV: NavItem[] = [
   { to: "/content-calendar", label: "Content Calendar", icon: CalendarDays },
   { to: "/content", label: "Content Intelligence", icon: Video },
+  { to: "/content-signals", label: "Content Signals", icon: Radar },
 ];
 
 // CopyOS top-level items (excluding the nested Generate)
