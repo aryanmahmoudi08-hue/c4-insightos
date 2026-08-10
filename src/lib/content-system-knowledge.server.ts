@@ -56,7 +56,7 @@ export function mechanismBlock(mechanism?: string | null, variation?: string | n
 export const PRODUCTION_BREAKDOWN_SPEC = `OUTPUT CONTRACT — you MUST return all sections below, in this order, with these exact headers:
 
 A) STRATEGY TAG
-Mechanism · Variation · Lead-Journey stage · the exact objection/fear this piece pre-handles (one line).
+Mechanism · Variation · the exact objection/fear this piece pre-handles (one line).
 
 B) HOOK OPTIONS (3-5)
 Scroll-stopping first-3-second hooks, matched to the mechanism.
@@ -83,4 +83,4 @@ Matched to the Lead-Journey stage + distribution layer (comment keyword / DM key
 H) THUMBNAIL + TITLE
 Only include this section when the requested type is a YouTube hook + title; otherwise write "H) THUMBNAIL + TITLE — n/a".
 
-SELF-CHECK before returning (silently): Problem-Solution has at most 3 solutions to ONE problem; Lifestyle ties back to the skill; the objection is pre-handled inside the script; the CTA matches the journey stage; captions call has reasoning; every scene has on-screen text specified. Fix anything that fails, then output.`;
+SELF-CHECK before returning (silently): Problem-Solution has at most 3 solutions to ONE problem; Lifestyle ties back to the skill; the objection is pre-handled inside the script; the CTA matches the mechanism's intent; captions call has reasoning; every scene has on-screen text specified. Fix anything that fails, then output.`;

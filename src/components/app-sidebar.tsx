@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Video, GitBranch, MessageSquare, PhoneCall, Users, BadgeCheck,
   TrendingUp, Sparkles, Settings, LogOut, Bell, Search, Brain, Activity, PhoneIncoming,
   ChevronDown, Briefcase, UserPlus, Menu, X, Wand2, BookOpen, Layers, CalendarDays,
-  ShieldCheck, Plug, Sun, Moon,
+  ShieldCheck, Plug, Sun, Moon, Radar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -58,6 +58,7 @@ const COPY_GENERATE_NAV: NavItem[] = [
 const CONTENT_OS_NAV: NavItem[] = [
   { to: "/content-calendar", label: "Content Calendar", icon: CalendarDays },
   { to: "/content", label: "Content Intelligence", icon: Video },
+  { to: "/content-signals", label: "Content Signals", icon: Radar },
 ];
 
 // CopyOS top-level items (excluding the nested Generate)

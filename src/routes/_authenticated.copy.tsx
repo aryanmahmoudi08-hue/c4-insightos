@@ -19,7 +19,8 @@ import {
 } from "lucide-react";
 import { useRef } from "react";
 import { cn } from "@/lib/utils";
-import { MECHANISMS, MECHANISM_KEYS, JOURNEY_STAGES, type MechanismKey } from "@/lib/content-mechanisms";
+import { MECHANISMS, MECHANISM_KEYS, questionsFor, type MechanismKey } from "@/lib/content-mechanisms";
+import { contentDemandFn } from "@/lib/content-signals.functions";
 import { useCurrentOrg } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/_authenticated/copy")({
@@ -200,13 +201,24 @@ function GenerateTab() {
   const isContent = catKey === "content";
   const [mechanism, setMechanism] = useState<MechanismKey>("educational");
   const [variation, setVariation] = useState<string>(MECHANISMS.educational.variations[0].value);
-  const [journeyStage, setJourneyStage] = useState<string>("");
   const [objection, setObjection] = useState("");
+  const [varAnswers, setVarAnswers] = useState<Record<string, string>>({});
   const variations = MECHANISMS[mechanism].variations;
   useEffect(() => {
     if (!variations.some(v => v.value === variation)) setVariation(variations[0].value);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mechanism]);
+  useEffect(() => { setVarAnswers({}); }, [variation]);
+  const varQuestions = questionsFor(variation);
+
+  // How much of each mechanism the business currently needs (FAQ clicks + intakes + setting calls).
+  const demandFn = useServerFn(contentDemandFn);
+  const { data: demand } = useQuery({
+    queryKey: ["content-demand", 30],
+    enabled: isContent,
+    staleTime: 5 * 60_000,
+    queryFn: () => demandFn({ data: { days: 30 } }),
+  });
 
   // Reset per-category fields when category changes.
   useEffect(() => { setFields({}); setOutput(""); }, [catKey]);
@@ -226,7 +238,9 @@ function GenerateTab() {
       swipe_ids: selectedSwipes,
       mechanism: isContent ? mechanism : null,
       variation: isContent ? variation : null,
-      journey_stage: isContent && journeyStage ? journeyStage : null,
+      variation_answers: isContent && Object.keys(varAnswers).length
+        ? varQuestions.filter(q => varAnswers[q.key]?.trim()).map(q => `${q.label}: ${varAnswers[q.key]}`).join("\n")
+        : null,
       objection: isContent && objection ? objection : null,
     }}),
     onSuccess: (r) => { setOutput(r.output); toast.success("Generated."); },
@@ -268,7 +282,7 @@ function GenerateTab() {
         topic: fields.brief || null,
         pipeline_status: "draft",
         notes: isContent
-          ? `Mechanism: ${mechLabel} · Variation: ${varLabel}${journeyStage ? ` · Stage: ${journeyStage}` : ""}${objection ? `\nObjection pre-handled: ${objection}` : ""}`
+          ? `Mechanism: ${mechLabel} · Variation: ${varLabel}${objection ? `\nObjection pre-handled: ${objection}` : ""}`
           : null,
       }).select("id").single();
       if (error) throw error;
@@ -375,20 +389,44 @@ function GenerateTab() {
 
           {isContent && (
             <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Conversion mechanism (drives the whole generation)</div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Conversion mechanism (drives the whole generation)</div>
+                {demand && <span className="text-[10px] text-muted-foreground">% = how much this format is needed right now</span>}
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 {MECHANISM_KEYS.map(k => {
                   const mk = MECHANISMS[k];
                   const active = k === mechanism;
+                  const pct = demand?.mix?.[k];
                   return (
                     <button key={k} type="button" title={mk.purpose} onClick={() => setMechanism(k as MechanismKey)}
                       className={cn("text-left rounded-md border p-2.5 transition", active ? "border-primary bg-primary/5 ring-1 ring-primary/40" : "border-border hover:bg-card")}>
-                      <div className="text-sm font-medium">{mk.label}</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-medium">{mk.label}</div>
+                        {pct != null && (
+                          <span className={cn("font-mono text-[10px] rounded px-1.5 py-0.5 border",
+                            pct >= 30 ? "border-[color:var(--color-success)]/50 text-[color:var(--color-success)]" : "border-border text-muted-foreground")}>
+                            {pct}%
+                          </span>
+                        )}
+                      </div>
+                      {pct != null && (
+                        <div className="mt-1 h-1 w-full rounded bg-muted overflow-hidden">
+                          <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                        </div>
+                      )}
                       <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{mk.purpose}</div>
                     </button>
                   );
                 })}
               </div>
+              {demand && demand.drivers.length > 0 && (
+                <div className="text-[10px] text-muted-foreground leading-relaxed">
+                  Demand from last 30d: {demand.counts.faq} FAQ videos · {demand.counts.setter_calls} setting-call signals · {demand.counts.intakes} client intakes.
+                  Top driver: <span className="text-foreground">{demand.drivers[0].source} — {demand.drivers[0].detail}</span>
+                </div>
+              )}
+
 
               <div>
                 <label className="text-xs text-muted-foreground">Variation</label>
@@ -406,15 +444,33 @@ function GenerateTab() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs text-muted-foreground">Lead Journey stage (optional)</label>
-                <Select value={journeyStage} onValueChange={setJourneyStage}>
-                  <SelectTrigger><SelectValue placeholder="(let the AI assume warming)" /></SelectTrigger>
-                  <SelectContent>
-                    {JOURNEY_STAGES.map(s => <SelectItem key={s.value} value={s.value}>{s.label} — {s.hint}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+              {varQuestions.length > 0 && (
+                <div className="space-y-2 rounded-md border border-border bg-background/40 p-2.5">
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    {variations.find(v => v.value === variation)?.label} inputs — tailored to this variation
+                  </div>
+                  {varQuestions.map(q => (
+                    <div key={q.key}>
+                      <label className="text-xs text-muted-foreground">{q.label}</label>
+                      {q.type === "select" ? (
+                        <Select value={varAnswers[q.key] ?? ""} onValueChange={(v) => setVarAnswers(s => ({ ...s, [q.key]: v }))}>
+                          <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                          <SelectContent>
+                            {(q.options ?? []).map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      ) : q.type === "textarea" ? (
+                        <Textarea rows={3} value={varAnswers[q.key] ?? ""} placeholder={q.placeholder}
+                          onChange={e => setVarAnswers(s => ({ ...s, [q.key]: e.target.value }))} />
+                      ) : (
+                        <Input value={varAnswers[q.key] ?? ""} placeholder={q.placeholder}
+                          onChange={e => setVarAnswers(s => ({ ...s, [q.key]: e.target.value }))} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
 
               <div>
                 <label className="text-xs text-muted-foreground">Prospect's current #1 question / concern / fear</label>
