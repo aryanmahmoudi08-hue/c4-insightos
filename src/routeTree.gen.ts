@@ -32,6 +32,7 @@ import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedDmSetterRouteImport } from './routes/_authenticated.dm-setter'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedCopyRouteImport } from './routes/_authenticated.copy'
+import { Route as AuthenticatedContentSignalsRouteImport } from './routes/_authenticated.content-signals'
 import { Route as AuthenticatedContentCalendarRouteImport } from './routes/_authenticated.content-calendar'
 import { Route as AuthenticatedContentRouteImport } from './routes/_authenticated.content'
 import { Route as AuthenticatedConnectorsRouteImport } from './routes/_authenticated.connectors'
@@ -159,6 +160,12 @@ const AuthenticatedCopyRoute = AuthenticatedCopyRouteImport.update({
   path: '/copy',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedContentSignalsRoute =
+  AuthenticatedContentSignalsRouteImport.update({
+    id: '/content-signals',
+    path: '/content-signals',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedContentCalendarRoute =
   AuthenticatedContentCalendarRouteImport.update({
     id: '/content-calendar',
@@ -213,6 +220,7 @@ export interface FileRoutesByFullPath {
   '/connectors': typeof AuthenticatedConnectorsRoute
   '/content': typeof AuthenticatedContentRoute
   '/content-calendar': typeof AuthenticatedContentCalendarRoute
+  '/content-signals': typeof AuthenticatedContentSignalsRoute
   '/copy': typeof AuthenticatedCopyRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
@@ -244,6 +252,7 @@ export interface FileRoutesByTo {
   '/connectors': typeof AuthenticatedConnectorsRoute
   '/content': typeof AuthenticatedContentRoute
   '/content-calendar': typeof AuthenticatedContentCalendarRoute
+  '/content-signals': typeof AuthenticatedContentSignalsRoute
   '/copy': typeof AuthenticatedCopyRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
@@ -278,6 +287,7 @@ export interface FileRoutesById {
   '/_authenticated/connectors': typeof AuthenticatedConnectorsRoute
   '/_authenticated/content': typeof AuthenticatedContentRoute
   '/_authenticated/content-calendar': typeof AuthenticatedContentCalendarRoute
+  '/_authenticated/content-signals': typeof AuthenticatedContentSignalsRoute
   '/_authenticated/copy': typeof AuthenticatedCopyRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/dm-setter': typeof AuthenticatedDmSetterRoute
@@ -313,6 +323,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/content'
     | '/content-calendar'
+    | '/content-signals'
     | '/copy'
     | '/dashboard'
     | '/dm-setter'
@@ -344,6 +355,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/content'
     | '/content-calendar'
+    | '/content-signals'
     | '/copy'
     | '/dashboard'
     | '/dm-setter'
@@ -377,6 +389,7 @@ export interface FileRouteTypes {
     | '/_authenticated/connectors'
     | '/_authenticated/content'
     | '/_authenticated/content-calendar'
+    | '/_authenticated/content-signals'
     | '/_authenticated/copy'
     | '/_authenticated/dashboard'
     | '/_authenticated/dm-setter'
@@ -572,6 +585,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCopyRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/content-signals': {
+      id: '/_authenticated/content-signals'
+      path: '/content-signals'
+      fullPath: '/content-signals'
+      preLoaderRoute: typeof AuthenticatedContentSignalsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/content-calendar': {
       id: '/_authenticated/content-calendar'
       path: '/content-calendar'
@@ -638,6 +658,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedConnectorsRoute: typeof AuthenticatedConnectorsRoute
   AuthenticatedContentRoute: typeof AuthenticatedContentRoute
   AuthenticatedContentCalendarRoute: typeof AuthenticatedContentCalendarRoute
+  AuthenticatedContentSignalsRoute: typeof AuthenticatedContentSignalsRoute
   AuthenticatedCopyRoute: typeof AuthenticatedCopyRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDmSetterRoute: typeof AuthenticatedDmSetterRoute
@@ -666,6 +687,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedConnectorsRoute: AuthenticatedConnectorsRoute,
   AuthenticatedContentRoute: AuthenticatedContentRoute,
   AuthenticatedContentCalendarRoute: AuthenticatedContentCalendarRoute,
+  AuthenticatedContentSignalsRoute: AuthenticatedContentSignalsRoute,
   AuthenticatedCopyRoute: AuthenticatedCopyRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDmSetterRoute: AuthenticatedDmSetterRoute,

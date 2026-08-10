@@ -218,7 +218,7 @@ function ContentSignalsPage() {
         <Card className="p-4 space-y-2">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">Why the mix looks like this — raw signals</div>
           {(demand?.drivers ?? []).length === 0 ? (
-            <EmptyState title="No demand signals yet" description="Log FAQ video clicks, screen a setting call, or collect a client intake — each one moves the mix." />
+            <EmptyState icon={Radar} title="No demand signals yet" description="Log FAQ video clicks, screen a setting call, or collect a client intake — each one moves the mix." />
           ) : (
             <div className="divide-y divide-border">
               {demand!.drivers.map((d, i) => (
