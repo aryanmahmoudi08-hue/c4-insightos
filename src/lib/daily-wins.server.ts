@@ -15,6 +15,7 @@ export type DailyWinInput = {
   energy_score?: number | null;
   blocker?: string | null;
   tomorrow_needle_mover?: string | null;
+  source?: "manual" | "typeform";
 };
 
 export async function insertDailyWin(input: DailyWinInput) {
@@ -46,6 +47,7 @@ export async function insertDailyWin(input: DailyWinInput) {
     blocker: input.blocker ?? null,
     tomorrow_needle_mover: input.tomorrow_needle_mover ?? null,
     priority: financial ? "high" : "normal",
+    source: input.source ?? "manual",
   };
 
   const { data, error } = await supabaseAdmin.from("daily_wins").insert(row).select("id").single();

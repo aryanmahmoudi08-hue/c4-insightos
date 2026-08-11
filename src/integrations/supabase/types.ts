@@ -1104,6 +1104,7 @@ export type Database = {
           org_id: string
           priority: string
           proof_url: string | null
+          source: string
           student_name: string
           tomorrow_needle_mover: string | null
           updated_at: string
@@ -1125,6 +1126,7 @@ export type Database = {
           org_id: string
           priority?: string
           proof_url?: string | null
+          source?: string
           student_name: string
           tomorrow_needle_mover?: string | null
           updated_at?: string
@@ -1146,6 +1148,7 @@ export type Database = {
           org_id?: string
           priority?: string
           proof_url?: string | null
+          source?: string
           student_name?: string
           tomorrow_needle_mover?: string | null
           updated_at?: string

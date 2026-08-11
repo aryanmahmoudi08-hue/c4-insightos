@@ -24,7 +24,7 @@ export async function computeDemand(sb: Sb, orgId: string, days = 30): Promise<D
   const [faq, setters, intakes, reels] = await Promise.all([
     sb.from("faq_videos").select("title, question, mechanism, clicks, plays").eq("org_id", orgId).eq("active", true),
     sb.from("setter_call_signals").select("setter_name, call_date, limiting_beliefs, objections, mechanism, ai_summary, notes").eq("org_id", orgId).gte("call_date", sinceDate).limit(300),
-    sb.from("onboarding_responses").select("responses, submitted_at, created_at").eq("org_id", orgId).gte("created_at", sinceIso).limit(200),
+    sb.from("onboarding_responses").select("responses, mechanism_signals, submitted_at, created_at").eq("org_id", orgId).gte("created_at", sinceIso).limit(200),
     sb.from("content_pieces").select("id, mechanism, variation, posted_at, pipeline_status").eq("org_id", orgId).gte("created_at", sinceIso).limit(400),
   ]);
 
@@ -56,6 +56,8 @@ export async function computeDemand(sb: Sb, orgId: string, days = 30): Promise<D
   }
 
   // 3) Onboarding: first touchpoint / decision moment / join-earlier answers.
+  // Prefers the mechanism_signals tagged at submit time (Onboarding page); falls
+  // back to live keyword scoring only for legacy rows submitted before that existed.
   for (const i of (intakes.data ?? []) as any[]) {
     const r = (i.responses ?? {}) as Record<string, string>;
     const text = [
@@ -63,7 +65,9 @@ export async function computeDemand(sb: Sb, orgId: string, days = 30): Promise<D
       r.decision_moment, r.pivotal_moment, r.beliefs_shifted, r.content_type_helped,
       r.join_earlier, r.join_sooner, r.hesitations, r.fear,
     ].filter(Boolean).join(" · ");
-    const sc = scoreText(text, 2);
+    const stored = (i.mechanism_signals ?? {}) as Partial<MechanismWeights>;
+    const hasStored = MECHANISM_KEYS.some((k) => Number(stored[k] ?? 0) > 0);
+    const sc = hasStored ? addWeights(emptyWeights(), stored as MechanismWeights) : scoreText(text, 2);
     weights = addWeights(weights, sc);
     const top = pickTop(sc);
     if (top) drivers.push({ source: "Client intake", detail: truncate(text, 90), mechanism: top, weight: sc[top] });

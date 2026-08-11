@@ -1,14 +1,18 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
-import { analyzeDailyWinsFn } from "@/lib/daily-wins.functions";
+import { analyzeDailyWinsFn, submitDailyWinFn } from "@/lib/daily-wins.functions";
 import { mockDailyWinsInsight, withMockDelay } from "@/lib/dev-mock-data";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Trophy, DollarSign, Brain, Dumbbell, Sparkles, Link2, AlertTriangle, Loader2, Flame } from "lucide-react";
+import { Trophy, DollarSign, Brain, Dumbbell, Sparkles, Link2, AlertTriangle, Loader2, Flame, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
 
 type Win = {
   id: string;
@@ -24,7 +28,14 @@ type Win = {
   blocker: string | null;
   tomorrow_needle_mover: string | null;
   priority: string;
+  source: string;
 };
+
+const WIN_TYPE_OPTS = [
+  { value: "financial", label: "Financial", icon: DollarSign },
+  { value: "mental", label: "Mental", icon: Brain },
+  { value: "physical", label: "Physical", icon: Dumbbell },
+] as const;
 
 const RANGES = [
   { label: "Today", days: 1 },
@@ -38,6 +49,7 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
   const { data: org } = useCurrentOrg();
   const { devBypass } = useAuth();
   const orgId = org?.org_id;
+  const qc = useQueryClient();
   const [days, setDays] = useState(7);
   const [insight, setInsight] = useState("");
 
@@ -49,7 +61,7 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
     queryFn: async () => {
       let q = supabase
         .from("daily_wins")
-        .select("id, student_name, win_date, yesterday_status, win_types, win_description, financial_amount_cents, financial_source, proof_url, energy_score, blocker, tomorrow_needle_mover, priority")
+        .select("id, student_name, win_date, yesterday_status, win_types, win_description, financial_amount_cents, financial_source, proof_url, energy_score, blocker, tomorrow_needle_mover, priority, source")
         .eq("org_id", orgId!)
         .gte("win_date", since)
         .order("win_date", { ascending: false });
@@ -109,6 +121,7 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
             onClick={() => { navigator.clipboard.writeText(formLink); toast.success("Daily W form link copied — send it to your students."); }}>
             <Link2 className="h-3 w-3 mr-1" /> Copy form link
           </Button>
+          <LogWinDialog orgId={orgId} defaultName={studentName} onLogged={() => qc.invalidateQueries({ queryKey: ["daily-wins"] })} />
         </div>
       </div>
 
@@ -171,6 +184,9 @@ function WinRow({ w }: { w: Win }) {
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">{w.student_name}</span>
         <span className="font-mono text-3xs text-muted-foreground">{w.win_date}</span>
+        <span className={cn("rounded px-1.5 py-0.5 text-3xs uppercase tracking-wider", w.source === "typeform" ? CHIP_TONE_CLASSES.info : CHIP_TONE_CLASSES.default)}>
+          source: {w.source}
+        </span>
         {financial && (
           <span className="inline-flex items-center gap-1 rounded bg-[color:var(--color-success)]/15 px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wider text-[color:var(--color-success)]">
             <Flame className="h-3 w-3" /> High priority
@@ -192,6 +208,128 @@ function WinRow({ w }: { w: Win }) {
       {proof && <img src={proof} alt="Win proof" loading="lazy" className="max-h-48 w-full rounded border border-border object-cover" />}
       {w.blocker && <div className="text-muted-foreground"><span className="uppercase tracking-wider text-3xs text-destructive">Blocker</span> — {w.blocker}</div>}
       {w.tomorrow_needle_mover && <div className="text-muted-foreground"><span className="uppercase tracking-wider text-3xs">Tomorrow</span> — {w.tomorrow_needle_mover}</div>}
+    </div>
+  );
+}
+
+/**
+ * The one manual win-logging surface — mirrors every field on the public Typeform-style
+ * /daily-win form so manual and Typeform submissions carry identical data, distinguished
+ * only by `source`. Always shows the full field set, even before any entries exist.
+ */
+function LogWinDialog({ orgId, defaultName, onLogged }: { orgId: string | undefined; defaultName?: string; onLogged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const submit = useServerFn(submitDailyWinFn);
+  const { devBypass } = useAuth();
+
+  const [name, setName] = useState(defaultName ?? "");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [kept, setKept] = useState<"done" | "partial" | "no">("done");
+  const [workDone, setWorkDone] = useState("");
+  const [types, setTypes] = useState<string[]>([]);
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [source, setSource] = useState("");
+  const [energy, setEnergy] = useState(7);
+  const [blocker, setBlocker] = useState("");
+  const [tomorrow, setTomorrow] = useState("");
+  const financial = types.includes("financial");
+
+  const m = useMutation({
+    mutationFn: async () => {
+      if (!orgId) throw new Error("No workspace");
+      if (devBypass) return withMockDelay({ id: "mock", matched_client: null, priority: financial ? "high" : "normal" });
+      return submit({ data: {
+        org_id: orgId,
+        student_name: name.trim(),
+        win_date: date,
+        yesterday_status: kept,
+        work_done: workDone || null,
+        win_types: types as never,
+        win_description: description.trim(),
+        financial_amount_cents: financial && amount ? Math.round(parseFloat(amount.replace(/[^\d.]/g, "")) * 100) : null,
+        financial_source: financial ? (source || null) : null,
+        energy_score: energy,
+        blocker: blocker || null,
+        tomorrow_needle_mover: tomorrow || null,
+        source: "manual",
+      }});
+    },
+    onSuccess: () => {
+      toast.success("Win logged");
+      onLogged();
+      setOpen(false);
+      setWorkDone(""); setTypes([]); setDescription(""); setAmount(""); setSource(""); setBlocker(""); setTomorrow("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const valid = !!orgId && name.trim().length > 1 && types.length > 0 && description.trim().length > 2;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" className="h-7 text-2xs"><Plus className="h-3 w-3 mr-1" /> Log win</Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Log a Daily W</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Student name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+            <Field label="Date"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+          </div>
+          <Field label="Did they do yesterday's needle-mover?">
+            <div className="flex gap-2">
+              {(["done", "partial", "no"] as const).map((s) => (
+                <button key={s} type="button" onClick={() => setKept(s)}
+                  className={cn("rounded-md border px-3 py-1.5 text-xs capitalize", kept === s ? "border-primary bg-primary/10" : "border-border hover:bg-muted/40")}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="What did they get done today?"><Textarea rows={2} value={workDone} onChange={(e) => setWorkDone(e.target.value)} /></Field>
+          <Field label="Win type (select all that apply)">
+            <div className="flex flex-wrap gap-2">
+              {WIN_TYPE_OPTS.map((t) => {
+                const active = types.includes(t.value);
+                const Icon = t.icon;
+                return (
+                  <button key={t.value} type="button"
+                    onClick={() => setTypes((prev) => active ? prev.filter((x) => x !== t.value) : [...prev, t.value])}
+                    className={cn("flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs", active ? "border-primary bg-primary/10" : "border-border hover:bg-muted/40")}>
+                    <Icon className="h-3.5 w-3.5" />{t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+          <Field label="Win description"><Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+          {financial && (
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Amount ($)"><Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="1500" /></Field>
+              <Field label="From what?"><Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Closed a client…" /></Field>
+            </div>
+          )}
+          <Field label={`Energy — ${energy}/10`}>
+            <input type="range" min={1} max={10} value={energy} onChange={(e) => setEnergy(Number(e.target.value))} className="w-full accent-[color:var(--color-success)]" />
+          </Field>
+          <Field label="Biggest blocker"><Textarea rows={2} value={blocker} onChange={(e) => setBlocker(e.target.value)} /></Field>
+          <Field label="Tomorrow's #1 needle-mover"><Input value={tomorrow} onChange={(e) => setTomorrow(e.target.value)} /></Field>
+          <Button className="w-full" disabled={!valid || m.isPending} onClick={() => m.mutate()}>
+            {m.isPending ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving…</> : "Save win"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-2xs text-muted-foreground">{label}</label>
+      {children}
     </div>
   );
 }

@@ -6,7 +6,6 @@ import { TopBar } from "@/components/app-sidebar";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Briefcase, Target, TrendingUp, Search } from "lucide-react";
-import { ClientWins } from "@/components/client-wins";
 import { DailyWinsPanel } from "@/components/daily-wins-panel";
 
 export const Route = createFileRoute("/_authenticated/fulfillment")({ component: Fulfillment });
@@ -128,10 +127,6 @@ function Fulfillment() {
               </div>
 
               <div className="rounded-md border border-border p-3">
-                <ClientWins clientId={activeClient.id} clientName={activeClient.full_name} />
-              </div>
-
-              <div className="rounded-md border border-border p-3">
                 <DailyWinsPanel studentName={activeClient.full_name} />
               </div>
             </>
@@ -143,9 +138,6 @@ function Fulfillment() {
         <div className="px-6 pb-6 space-y-4">
           <div className="rounded-lg border border-border bg-card p-4">
             <DailyWinsPanel />
-          </div>
-          <div className="rounded-lg border border-border bg-card p-4">
-            <ClientWins />
           </div>
         </div>
       )}

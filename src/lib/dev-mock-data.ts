@@ -521,6 +521,10 @@ export function mockLoomGrade() {
   return { score: 7.8, stage: "interview_worthy", summary: "[MOCK] Clear speech, solid energy, cites specific past results. Some rambling in the middle third — trim for a follow-up.", reasoning: "Clarity high | energy high | specificity of results high | minor rambling mid-video" };
 }
 
+export function mockCalendarStatus() {
+  return { ok: true, error: null as string | null };
+}
+
 export function mockPreCloseSummary() {
   return {
     summary: "[MOCK — Dev Bypass] The conversation started from a story-sequence DM after the prospect saw a case study post. Their stated pain was inconsistent lead flow despite posting daily. The main objection was price relative to a past bad experience with a generic coach, which the setter pre-handled by naming the difference up front. Intent shifted noticeably after a proof screenshot was shared mid-conversation. They committed after the call once the payment plan option was offered.",

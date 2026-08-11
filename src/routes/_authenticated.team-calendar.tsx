@@ -1,17 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { CalendarDays, Plus, Trash2, ExternalLink, Clock } from "lucide-react";
+import { CalendarDays, Plus, Trash2, ExternalLink, Clock, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { checkCalendarStatusFn } from "@/lib/team-calendar-status.functions";
+import { mockCalendarStatus, withMockDelay } from "@/lib/dev-mock-data";
+import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
 
 export const Route = createFileRoute("/_authenticated/team-calendar")({
   component: TeamCalendarPage,
@@ -51,6 +55,12 @@ type Block = {
 };
 
 const ROLES = ["closer", "dm_setter", "dialer", "manager", "other"];
+const ALL_REPS = "__all__";
+const ROLE_GROUPS: { key: string; label: string; roles: string[] }[] = [
+  { key: "closer", label: "All Closers", roles: ["closer"] },
+  { key: "dm_setter", label: "All Setters", roles: ["dm_setter"] },
+  { key: "ops", label: "All Ops", roles: ["dialer", "manager", "other"] },
+];
 const KINDS = [
   { value: "calls", label: "Calls", tone: "bg-primary/15 text-primary border-primary/30" },
   { value: "prospecting", label: "Prospecting", tone: "bg-accent/15 text-accent border-accent/30" },
@@ -62,9 +72,11 @@ const KINDS = [
 function TeamCalendarPage() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { devBypass } = useAuth();
   const qc = useQueryClient();
   const [view, setView] = useState<"WEEK" | "MONTH" | "AGENDA">("WEEK");
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const [repFilter, setRepFilter] = useState<string>(ALL_REPS);
 
   const { data: cals } = useQuery({
     queryKey: ["team-calendars", orgId],
@@ -102,13 +114,39 @@ function TeamCalendarPage() {
     },
   });
 
-  const activeCals = (cals ?? []).filter(c => c.active);
+  const matchesFilter = (role: string, name: string) => {
+    if (repFilter === ALL_REPS) return true;
+    const group = ROLE_GROUPS.find(g => g.key === repFilter);
+    if (group) return group.roles.includes(role);
+    return name === repFilter;
+  };
+
+  const allActiveCals = (cals ?? []).filter(c => c.active);
+  const activeCals = allActiveCals.filter(c => matchesFilter(c.role, c.member_name));
+  const visibleCals = (cals ?? []).filter(c => matchesFilter(c.role, c.member_name));
   const combinedEmbed = useMemo(() => {
     const ids = activeCals.map(c => c.calendar_id).filter(Boolean) as string[];
     if (!ids.length) return null;
     const params = ids.map(id => `src=${encodeURIComponent(id)}`).join("&");
     return `https://calendar.google.com/calendar/embed?${params}&mode=${view}&showTitle=0&showPrint=0&showTabs=1&showCalendars=1`;
   }, [activeCals, view]);
+
+  const checkStatus = useServerFn(checkCalendarStatusFn);
+  const { data: statuses } = useQuery({
+    queryKey: ["team-calendar-status", allActiveCals.map(c => c.id).join(","), devBypass],
+    enabled: allActiveCals.length > 0,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const results = await Promise.all(allActiveCals.map(async (c) => {
+        const r = devBypass
+          ? await withMockDelay(mockCalendarStatus(), 300)
+          : await checkStatus({ data: { calendar_id: c.calendar_id, ical_url: c.ical_url } });
+        return [c.id, r] as const;
+      }));
+      return Object.fromEntries(results) as Record<string, { ok: boolean; error: string | null }>;
+    },
+  });
+  const failedCals = allActiveCals.filter(c => statuses?.[c.id] && !statuses[c.id].ok);
 
   const saveCal = useMutation({
     mutationFn: async (row: Partial<Cal> & { member_name: string }) => {
@@ -162,7 +200,15 @@ function TeamCalendarPage() {
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider">
               <CalendarDays className="h-3.5 w-3.5" /> Live team calendar · {activeCals.length} connected
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Select value={repFilter} onValueChange={setRepFilter}>
+                <SelectTrigger className="h-7 w-[160px] text-2xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_REPS}>All reps</SelectItem>
+                  {ROLE_GROUPS.map(g => <SelectItem key={g.key} value={g.key}>{g.label}</SelectItem>)}
+                  {(cals ?? []).map(c => <SelectItem key={c.id} value={c.member_name}>{c.member_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
               {(["WEEK", "MONTH", "AGENDA"] as const).map(v => (
                 <button key={v} onClick={() => setView(v)}
                   className={cn("rounded border px-2 py-1 text-2xs", view === v ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40")}>
@@ -172,12 +218,22 @@ function TeamCalendarPage() {
               <CalendarDialog onSave={(r) => saveCal.mutate(r)} />
             </div>
           </div>
+          {failedCals.length > 0 && (
+            <div className="flex items-start gap-2 border-b border-destructive/30 bg-destructive/5 px-4 py-2.5 text-2xs text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span>
+                {failedCals.length} calendar{failedCals.length === 1 ? "" : "s"} not reachable ({failedCals.map(c => c.member_name).join(", ")}) —
+                they won't render below even though they're marked connected. Make each calendar public (Google Calendar → Settings → that calendar → Access permissions → Make available to public) or paste its secret iCal URL instead.
+              </span>
+            </div>
+          )}
           {combinedEmbed ? (
             <iframe title="Team calendar" src={combinedEmbed} className="h-[620px] w-full border-0" loading="lazy" />
           ) : (
             <div className="p-10 text-center text-xs text-muted-foreground">
-              No Google Calendar IDs connected yet. Add a rep's calendar ID (Google Calendar → Settings → Integrate calendar → Calendar ID)
-              and make sure the calendar is shared publicly or with the team.
+              {allActiveCals.length === 0
+                ? <>No Google Calendar IDs connected yet. Add a rep's calendar ID (Google Calendar → Settings → Integrate calendar → Calendar ID) and make sure the calendar is shared publicly or with the team.</>
+                : <>No calendars match this filter.</>}
             </div>
           )}
         </section>
@@ -186,25 +242,37 @@ function TeamCalendarPage() {
         <section className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="border-b border-border bg-muted/30 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider">Connected reps</div>
           <div className="divide-y divide-border">
-            {(cals ?? []).map(c => (
-              <div key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
-                <span className="font-medium">{c.member_name}</span>
-                <span className="rounded border border-border px-1.5 py-0.5 text-3xs uppercase tracking-wider text-muted-foreground">{c.role.replace("_", " ")}</span>
-                <span className="truncate font-mono text-2xs text-muted-foreground">{c.calendar_id ?? c.ical_url ?? "—"}</span>
-                <div className="ml-auto flex items-center gap-2">
-                  {c.calendar_id && (
-                    <a className="text-muted-foreground hover:text-foreground" target="_blank" rel="noreferrer"
-                      href={`https://calendar.google.com/calendar/u/0/r?cid=${encodeURIComponent(c.calendar_id)}`} aria-label="Open in Google Calendar">
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
+            {visibleCals.map(c => {
+              const status = statuses?.[c.id];
+              return (
+                <div key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
+                  <span className="font-medium">{c.member_name}</span>
+                  <span className="rounded border border-border px-1.5 py-0.5 text-3xs uppercase tracking-wider text-muted-foreground">{c.role.replace("_", " ")}</span>
+                  <span className="truncate font-mono text-2xs text-muted-foreground">{c.calendar_id ?? c.ical_url ?? "—"}</span>
+                  {c.active && (c.calendar_id || c.ical_url) && (
+                    status === undefined ? (
+                      <span className="inline-flex items-center gap-1 text-3xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Checking…</span>
+                    ) : status.ok ? (
+                      <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-3xs uppercase", CHIP_TONE_CLASSES.success)}><CheckCircle2 className="h-3 w-3" /> Connected</span>
+                    ) : (
+                      <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-3xs uppercase", CHIP_TONE_CLASSES.destructive)} title={status.error ?? undefined}><AlertTriangle className="h-3 w-3" /> Not shared</span>
+                    )
                   )}
-                  <button onClick={() => delCal.mutate(c.id)} className="text-muted-foreground hover:text-destructive" aria-label="Remove calendar">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="ml-auto flex items-center gap-2">
+                    {c.calendar_id && (
+                      <a className="text-muted-foreground hover:text-foreground" target="_blank" rel="noreferrer"
+                        href={`https://calendar.google.com/calendar/u/0/r?cid=${encodeURIComponent(c.calendar_id)}`} aria-label="Open in Google Calendar">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                    <button onClick={() => delCal.mutate(c.id)} className="text-muted-foreground hover:text-destructive" aria-label="Remove calendar">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
-            {(cals ?? []).length === 0 && <div className="px-4 py-6 text-center text-xs text-muted-foreground">No rep calendars yet.</div>}
+              );
+            })}
+            {visibleCals.length === 0 && <div className="px-4 py-6 text-center text-xs text-muted-foreground">{(cals ?? []).length === 0 ? "No rep calendars yet." : "No reps match this filter."}</div>}
           </div>
         </section>
 
@@ -221,7 +289,7 @@ function TeamCalendarPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-7 divide-y sm:divide-y-0 sm:divide-x divide-border">
             {days.map(d => {
-              const dayBlocks = (blocks ?? []).filter(b => b.block_date === d);
+              const dayBlocks = (blocks ?? []).filter(b => b.block_date === d && (repFilter === ALL_REPS || visibleCals.some(c => c.member_name === b.member_name)));
               const isToday = d === new Date().toISOString().slice(0, 10);
               return (
                 <div key={d} className={cn("min-h-[150px] p-2 space-y-1.5", isToday && "bg-primary/5")}>

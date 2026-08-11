@@ -5,7 +5,7 @@ import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { mockIntakeInsights, withMockDelay } from "@/lib/dev-mock-data";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ import { Plus, Brain, MessageSquareQuote, Sparkles, Cloud, Pencil, Save, Search,
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeIntake, analyzeIntakesAggregate } from "@/lib/intake-insights.functions";
+import { MECHANISM_KEYS, MECHANISMS, emptyWeights, scoreText, addWeights, type MechanismWeights } from "@/lib/content-mechanisms";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({ component: Onboarding });
 
@@ -97,6 +98,20 @@ const QUESTIONS: { key: string; q: string; type: QType; options?: string[]; sect
   { section: "logistics", key: "kickoff_date", q: "Earliest date you can start implementing this week", type: "short" },
 ];
 
+/**
+ * Maps the 3 key sales-psychology questions (first touchpoint, decision to join,
+ * join-earlier) to the 4 content mechanisms via the same keyword scorer used by
+ * Content Signals, and stores the result on the row at submit time instead of only
+ * recomputing it live downstream.
+ */
+function mechanismSignalsFor(answers: Record<string, string>): MechanismWeights {
+  let w = emptyWeights();
+  w = addWeights(w, scoreText(answers.first_touchpoint, 1));
+  w = addWeights(w, scoreText(answers.pivotal_moment, 1));
+  w = addWeights(w, scoreText(answers.join_sooner, 1));
+  return w;
+}
+
 const SECTION_META: Record<Section, { label: string; hint: string }> = {
   sales: { label: "Sales psychology", hint: "Feeds the content + coaching engine" },
   fulfillment: { label: "Fulfillment intake", hint: "What your coach / CSM needs to deliver outcomes" },
@@ -162,7 +177,7 @@ function Onboarding() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("onboarding_responses")
-        .select("id, responses, submitted_at, created_at, share_token, clients(full_name, offer_name)")
+        .select("id, responses, mechanism_signals, submitted_at, created_at, share_token, clients(full_name, offer_name)")
         .eq("org_id", orgId!)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -188,6 +203,7 @@ function Onboarding() {
         org_id: orgId!,
         client_id,
         responses: answers,
+        mechanism_signals: mechanismSignalsFor(answers),
         submitted_at: new Date().toISOString(),
       });
       if (error) throw error;
@@ -205,7 +221,7 @@ function Onboarding() {
 
   const updateResp = useMutation({
     mutationFn: async ({ id, answers }: { id: string; answers: Record<string, string> }) => {
-      const { error } = await supabase.from("onboarding_responses").update({ responses: answers }).eq("id", id);
+      const { error } = await supabase.from("onboarding_responses").update({ responses: answers, mechanism_signals: mechanismSignalsFor(answers) }).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => { toast.success("Intake updated"); qc.invalidateQueries({ queryKey: ["onboarding"] }); setEditMode(false); },
@@ -214,6 +230,22 @@ function Onboarding() {
 
   const total = responses?.length ?? 0;
   const submitted = responses?.filter(r => r.submitted_at).length ?? 0;
+
+  const mechanismTagCounts = useMemo(() => {
+    const counts: MechanismWeights = emptyWeights();
+    let untagged = 0;
+    for (const r of responses ?? []) {
+      const w = (r.mechanism_signals ?? {}) as Partial<MechanismWeights>;
+      let top: (typeof MECHANISM_KEYS)[number] | null = null;
+      let topVal = 0;
+      for (const k of MECHANISM_KEYS) {
+        const v = Number(w[k] ?? 0);
+        if (v > topVal) { topVal = v; top = k; }
+      }
+      if (top) counts[top] += 1; else untagged += 1;
+    }
+    return { counts, untagged };
+  }, [responses]);
 
   return (
     <>
@@ -224,6 +256,27 @@ function Onboarding() {
           <StatCard label="Submitted" value={submitted} accent="success" />
           <StatCard label="Pending" value={total - submitted} accent="warning" />
           <StatCard label="Insight signals" value={submitted * QUESTIONS.length} icon={<Sparkles className="h-4 w-4" />} accent="primary" />
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+            <Brain className="h-3.5 w-3.5" /> Mechanism signal tags
+          </div>
+          <div className="text-2xs text-muted-foreground mb-3">
+            Every submission's "first touchpoint" / "decision to join" / "join sooner" answers are scored against the 4 content mechanisms and tagged here — this feeds Content Signals' mix directly instead of being buried in a footnote.
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+            {MECHANISM_KEYS.map(k => (
+              <div key={k} className="rounded-md border border-border bg-muted/20 p-2.5">
+                <div className="text-3xs uppercase tracking-wider text-muted-foreground truncate">{MECHANISMS[k].label}</div>
+                <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums">{mechanismTagCounts.counts[k]}</div>
+              </div>
+            ))}
+            <div className="rounded-md border border-dashed border-border p-2.5">
+              <div className="text-3xs uppercase tracking-wider text-muted-foreground truncate">Untagged</div>
+              <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-muted-foreground">{mechanismTagCounts.untagged}</div>
+            </div>
+          </div>
         </div>
 
         <div className="flex items-center justify-between">

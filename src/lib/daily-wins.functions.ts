@@ -17,6 +17,7 @@ const submitSchema = z.object({
   energy_score: z.number().int().min(1).max(10).nullable().optional(),
   blocker: z.string().trim().max(2000).nullable().optional(),
   tomorrow_needle_mover: z.string().trim().max(500).nullable().optional(),
+  source: z.enum(["manual", "typeform"]).optional(),
 });
 
 /** Public — students submit The Daily W without an account, via a workspace link. */

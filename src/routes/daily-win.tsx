@@ -95,6 +95,7 @@ function DailyWinForm() {
         energy_score: energy,
         blocker: blocker || null,
         tomorrow_needle_mover: tomorrow || null,
+        source: "typeform",
       }});
     },
     onSuccess: () => setDone(true),
