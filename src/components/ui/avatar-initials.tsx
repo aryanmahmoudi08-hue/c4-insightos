@@ -20,7 +20,7 @@ function initials(name: string) {
 
 /** Deterministic initials avatar — no photo storage in this app, so every "avatar" is derived from the name. */
 export function AvatarInitials({ name, size = "md", className }: { name: string; size?: "xs" | "sm" | "md" | "lg"; className?: string }) {
-  const dims = { xs: "h-5 w-5 text-[9px]", sm: "h-7 w-7 text-[10px]", md: "h-9 w-9 text-xs", lg: "h-12 w-12 text-sm" }[size];
+  const dims = { xs: "h-5 w-5 text-4xs", sm: "h-7 w-7 text-3xs", md: "h-9 w-9 text-xs", lg: "h-12 w-12 text-sm" }[size];
   const color = hashHue(name || "?");
   return (
     <div

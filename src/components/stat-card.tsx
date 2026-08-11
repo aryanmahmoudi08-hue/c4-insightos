@@ -24,9 +24,9 @@ export function StatCard({
       <div className="glass-highlight pointer-events-none absolute inset-0 rounded-lg" />
       <div className="relative flex items-start justify-between">
         <div>
-          <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
+          <div className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
           <div className="mt-1 font-mono text-2xl font-semibold tracking-tight tabular">{value}</div>
-          {hint && <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div>}
+          {hint && <div className="mt-0.5 text-2xs text-muted-foreground">{hint}</div>}
         </div>
         {icon && <div className="text-muted-foreground">{icon}</div>}
       </div>

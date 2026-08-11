@@ -192,7 +192,7 @@ export function AppSidebar() {
           <div className="min-w-0 flex-1">
             <div className="eyebrow truncate">C4 · Insight</div>
             <div className="display-serif truncate text-base text-sidebar-foreground">InsightOS</div>
-            <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground/80">{org?.organizations?.name ?? "Workspace"}</div>
+            <div className="truncate text-3xs uppercase tracking-wider text-muted-foreground/80">{org?.organizations?.name ?? "Workspace"}</div>
           </div>
           <button
             type="button"
@@ -269,18 +269,18 @@ export function AppSidebar() {
 
           {fulfillmentItems.length > 0 && (
             <>
-              <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Fulfillment</div>
+              <div className="mt-2 border-t border-sidebar-border/60 pt-3 pb-1 px-2.5 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50">Fulfillment</div>
               {fulfillmentItems.map(it => renderItem(it))}
             </>
           )}
           {bottomItems.length > 0 && (
             <>
-              <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">Ops</div>
+              <div className="mt-2 border-t border-sidebar-border/60 pt-3 pb-1 px-2.5 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50">Ops</div>
               {bottomItems.map(it => renderItem(it))}
             </>
           )}
 
-          <div className="pt-2 pb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">General</div>
+          <div className="mt-2 border-t border-sidebar-border/60 pt-3 pb-1 px-2.5 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50">General</div>
           {renderItem({ to: "/settings", label: "Settings", icon: Settings })}
           {isAdmin && renderItem({ to: "/permissions", label: "Access control", icon: ShieldCheck })}
           {isAdmin && renderItem({ to: "/connectors", label: "Connectors", icon: Plug })}
@@ -317,7 +317,7 @@ export function TopBar({ title, subtitle, showDateRange = false }: { title: stri
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 pl-10 md:pl-0">
           <div className="eyebrow">— {subtitle ? "Dossier" : "Overview"}</div>
-          <h1 className="display-serif text-xl md:text-[28px] leading-none mt-1 truncate">{title}</h1>
+          <h1 className="display-serif text-xl md:text-2xl leading-none mt-1 truncate">{title}</h1>
           {subtitle && <p className="mt-1.5 text-xs text-muted-foreground hidden sm:block">{subtitle}</p>}
         </div>
         <div className="flex items-center gap-2">

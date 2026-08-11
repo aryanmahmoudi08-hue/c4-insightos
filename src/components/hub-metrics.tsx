@@ -241,15 +241,15 @@ function Band({ icon, title, to, tiles }: { icon: React.ReactNode; title: string
   return (
     <section className="rounded-lg border border-border bg-card overflow-hidden">
       <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-2">
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider">{icon}{title}</div>
-        <Link to={to} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+        <div className="flex items-center gap-2 text-2xs font-semibold uppercase tracking-wider">{icon}{title}</div>
+        <Link to={to} className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground">
           Open <ArrowUpRight className="h-3 w-3" />
         </Link>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y sm:divide-y-0 divide-border sm:divide-x">
         {tiles.map(t => (
           <div key={t.label} className="p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{t.label}</div>
+            <div className="text-3xs uppercase tracking-wider text-muted-foreground">{t.label}</div>
             <div className={cn("mt-1 font-mono text-xl font-semibold tabular-nums",
               t.tone === "success" && "text-[color:var(--color-success)]",
               t.tone === "warning" && "text-[color:var(--color-warning)]",
@@ -275,7 +275,7 @@ export function HubQuickLinks() {
     <div className="flex flex-wrap gap-2">
       {links.map(l => (
         <Link key={l.to} to={l.to}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[11px] text-muted-foreground transition hover:border-primary/40 hover:text-foreground">
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-2xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground">
           <l.icon className="h-3.5 w-3.5" /> {l.label}
         </Link>
       ))}

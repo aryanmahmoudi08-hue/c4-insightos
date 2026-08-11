@@ -101,11 +101,11 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
         <div className="flex items-center gap-1.5">
           {RANGES.map((r) => (
             <button key={r.days} onClick={() => setDays(r.days)}
-              className={cn("rounded border px-2 py-1 text-[11px]", days === r.days ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40")}>
+              className={cn("rounded border px-2 py-1 text-2xs", days === r.days ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40")}>
               {r.label}
             </button>
           ))}
-          <Button size="sm" variant="outline" className="h-7 text-[11px]"
+          <Button size="sm" variant="outline" className="h-7 text-2xs"
             onClick={() => { navigator.clipboard.writeText(formLink); toast.success("Daily W form link copied — send it to your students."); }}>
             <Link2 className="h-3 w-3 mr-1" /> Copy form link
           </Button>
@@ -122,7 +122,7 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
 
       {repeatBlockers.length > 0 && (
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 space-y-1.5">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-destructive">
+          <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-destructive">
             <AlertTriangle className="h-3.5 w-3.5" /> Save-call triggers · same blocker 3+ days
           </div>
           {repeatBlockers.map((b, i) => (
@@ -133,10 +133,10 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
 
       <div className="rounded-md border border-border p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5" /> AI coach read · last {days}d
           </div>
-          <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={m.isPending} onClick={() => m.mutate()}>
+          <Button size="sm" variant="outline" className="h-7 text-2xs" disabled={m.isPending} onClick={() => m.mutate()}>
             {m.isPending ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Reading…</> : "Analyze wins"}
           </Button>
         </div>
@@ -170,18 +170,18 @@ function WinRow({ w }: { w: Win }) {
       financial ? "border-[color:var(--color-success)]/45 bg-[color:var(--color-success)]/5" : "border-border bg-card")}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">{w.student_name}</span>
-        <span className="font-mono text-[10px] text-muted-foreground">{w.win_date}</span>
+        <span className="font-mono text-3xs text-muted-foreground">{w.win_date}</span>
         {financial && (
-          <span className="inline-flex items-center gap-1 rounded bg-[color:var(--color-success)]/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-success)]">
+          <span className="inline-flex items-center gap-1 rounded bg-[color:var(--color-success)]/15 px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wider text-[color:var(--color-success)]">
             <Flame className="h-3 w-3" /> High priority
           </span>
         )}
         {(w.win_types ?? []).map((t) => (
-          <span key={t} className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+          <span key={t} className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-3xs uppercase tracking-wider text-muted-foreground">
             {t === "financial" ? <DollarSign className="h-3 w-3" /> : t === "mental" ? <Brain className="h-3 w-3" /> : <Dumbbell className="h-3 w-3" />}{t}
           </span>
         ))}
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground">energy {w.energy_score ?? "—"}/10 · {w.yesterday_status}</span>
+        <span className="ml-auto font-mono text-3xs text-muted-foreground">energy {w.energy_score ?? "—"}/10 · {w.yesterday_status}</span>
       </div>
       <div className="whitespace-pre-wrap">{w.win_description}</div>
       {financial && w.financial_amount_cents != null && (
@@ -190,8 +190,8 @@ function WinRow({ w }: { w: Win }) {
         </div>
       )}
       {proof && <img src={proof} alt="Win proof" loading="lazy" className="max-h-48 w-full rounded border border-border object-cover" />}
-      {w.blocker && <div className="text-muted-foreground"><span className="uppercase tracking-wider text-[10px] text-destructive">Blocker</span> — {w.blocker}</div>}
-      {w.tomorrow_needle_mover && <div className="text-muted-foreground"><span className="uppercase tracking-wider text-[10px]">Tomorrow</span> — {w.tomorrow_needle_mover}</div>}
+      {w.blocker && <div className="text-muted-foreground"><span className="uppercase tracking-wider text-3xs text-destructive">Blocker</span> — {w.blocker}</div>}
+      {w.tomorrow_needle_mover && <div className="text-muted-foreground"><span className="uppercase tracking-wider text-3xs">Tomorrow</span> — {w.tomorrow_needle_mover}</div>}
     </div>
   );
 }
@@ -199,7 +199,7 @@ function WinRow({ w }: { w: Win }) {
 function Mini({ label, value, tone = "default" }: { label: string; value: string | number; tone?: "default" | "success" | "danger" }) {
   return (
     <div className="rounded-md border border-border bg-card p-2.5">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={cn("mt-0.5 font-mono text-lg font-semibold tabular-nums",
         tone === "success" && "text-[color:var(--color-success)]",
         tone === "danger" && "text-destructive")}>{value}</div>

@@ -127,7 +127,7 @@ function Team() {
               <div className="p-6 text-center text-xs text-muted-foreground">No pending requests. Share <code className="font-mono">/request-access</code> with teammates.</div>
             ) : (
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr><th className="text-left p-3">Name</th><th className="text-left p-3">Email</th><th className="text-left p-3">Role</th><th className="text-right p-3">Actions</th></tr>
                 </thead>
                 <tbody>
@@ -169,7 +169,7 @@ function Team() {
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
               <tr><th className="text-left p-3">Member</th><th className="text-left p-3">Role</th>
                 <th className="text-right p-3 font-mono">Booked</th><th className="text-right p-3 font-mono">Shown</th>
                 <th className="text-right p-3 font-mono">Closes</th><th className="text-right p-3 font-mono">Cash 30d</th>
@@ -180,10 +180,10 @@ function Team() {
               {byUser.map(m => (
                 <tr key={m.user_id} className="border-t border-border hover:bg-muted/20">
                   <td className="p-3 flex items-center gap-2">
-                    <div className="grid h-7 w-7 place-items-center rounded-full bg-muted text-[11px] font-mono">{(m.profiles?.display_name ?? "??").slice(0,2).toUpperCase()}</div>
+                    <div className="grid h-7 w-7 place-items-center rounded-full bg-muted text-2xs font-mono">{(m.profiles?.display_name ?? "??").slice(0,2).toUpperCase()}</div>
                     <span className="font-medium">{m.profiles?.display_name ?? m.user_id.slice(0,8)}</span>
                   </td>
-                  <td className="p-3"><span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">{m.role}</span></td>
+                  <td className="p-3"><span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase">{m.role}</span></td>
                   <td className="p-3 text-right font-mono">{m.booked}</td>
                   <td className="p-3 text-right font-mono">{m.shown}</td>
                   <td className="p-3 text-right font-mono">{m.closes}</td>

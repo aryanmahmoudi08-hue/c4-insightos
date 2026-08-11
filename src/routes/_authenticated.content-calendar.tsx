@@ -137,7 +137,7 @@ function ContentCalendar() {
           ].map(s => (
             <Card key={s.label} className="p-3 bg-gradient-to-br from-card to-muted/20">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{s.label}</span>
+                <span className="text-3xs uppercase tracking-wider text-muted-foreground">{s.label}</span>
                 <s.icon className="h-3.5 w-3.5 text-muted-foreground" />
               </div>
               <div className="text-2xl font-mono mt-1">{s.value}</div>
@@ -160,12 +160,12 @@ function ContentCalendar() {
             </div>
             <div className="flex gap-2 flex-wrap">
               {Object.entries(FORMAT_LABEL).map(([k, v]) => (
-                <span key={k} className={`text-[10px] rounded border px-1.5 py-0.5 ${FMT_TONE[k]}`}>{v}</span>
+                <span key={k} className={`text-3xs rounded border px-1.5 py-0.5 ${FMT_TONE[k]}`}>{v}</span>
               ))}
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-1 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+          <div className="grid grid-cols-7 gap-1 text-3xs uppercase tracking-wider text-muted-foreground mb-1">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
               <div key={d} className="p-1 text-center font-semibold">{d}</div>
             ))}
@@ -188,11 +188,11 @@ function ContentCalendar() {
                         {slot.items.map(p => (
                           <button key={p.id} onClick={() => setOpenPiece(p)}
                             className={`w-full text-left rounded border px-1.5 py-1 hover:brightness-125 transition ${FMT_TONE[p.post_format ?? ""] ?? "bg-muted text-muted-foreground border-border"}`}>
-                            <div className="flex items-center gap-1 text-[9px] font-mono opacity-80">
+                            <div className="flex items-center gap-1 text-4xs font-mono opacity-80">
                               <Clock className="h-2.5 w-2.5" />{(p.scheduled_time ?? "").slice(0, 5) || "—"}
                               {p.pipeline_status === "posted" && <Check className="h-2.5 w-2.5 ml-auto" />}
                             </div>
-                            <div className="text-[10px] font-medium leading-tight line-clamp-2 mt-0.5">{p.title || "(untitled)"}</div>
+                            <div className="text-3xs font-medium leading-tight line-clamp-2 mt-0.5">{p.title || "(untitled)"}</div>
                           </button>
                         ))}
                       </div>
@@ -219,16 +219,16 @@ function ContentCalendar() {
               {upcoming.map(p => (
                 <Card key={p.id} className="p-3 space-y-1.5 cursor-pointer hover:border-accent/50 transition" onClick={() => setOpenPiece(p)}>
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-muted-foreground">
+                    <span className="text-3xs font-mono text-muted-foreground">
                       {new Date(`${p.scheduled_date}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
                       {p.scheduled_time ? ` · ${p.scheduled_time.slice(0, 5)}` : ""}
                     </span>
-                    <span className={`text-[9px] rounded border px-1 py-px ${FMT_TONE[p.post_format ?? ""] ?? "bg-muted text-muted-foreground border-border"}`}>
+                    <span className={`text-4xs rounded border px-1 py-px ${FMT_TONE[p.post_format ?? ""] ?? "bg-muted text-muted-foreground border-border"}`}>
                       {FORMAT_LABEL[p.post_format ?? ""] ?? p.platform}
                     </span>
                   </div>
                   <div className="text-sm font-medium leading-snug line-clamp-2">{p.title || "(untitled)"}</div>
-                  {p.hook && <div className="text-[11px] text-muted-foreground line-clamp-2 italic">"{p.hook}"</div>}
+                  {p.hook && <div className="text-2xs text-muted-foreground line-clamp-2 italic">"{p.hook}"</div>}
                 </Card>
               ))}
             </div>
@@ -245,15 +245,15 @@ function ContentCalendar() {
               </SheetHeader>
               <div className="mt-4 space-y-4 text-sm">
                 <div className="flex flex-wrap gap-1.5">
-                  <Badge variant="outline" className="font-mono text-[10px]">
+                  <Badge variant="outline" className="font-mono text-3xs">
                     {openPiece.scheduled_date
                       ? new Date(`${openPiece.scheduled_date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })
                       : "Unscheduled"}
                   </Badge>
-                  {openPiece.scheduled_time && <Badge variant="outline" className="font-mono text-[10px]">{openPiece.scheduled_time.slice(0, 5)}</Badge>}
-                  <Badge className="text-[10px]">{FORMAT_LABEL[openPiece.post_format ?? ""] ?? openPiece.platform}</Badge>
-                  {openPiece.funnel_stage && <Badge variant="secondary" className="text-[10px]">{openPiece.funnel_stage}</Badge>}
-                  {openPiece.pipeline_status === "posted" && <Badge variant="secondary" className="text-[10px]">Posted</Badge>}
+                  {openPiece.scheduled_time && <Badge variant="outline" className="font-mono text-3xs">{openPiece.scheduled_time.slice(0, 5)}</Badge>}
+                  <Badge className="text-3xs">{FORMAT_LABEL[openPiece.post_format ?? ""] ?? openPiece.platform}</Badge>
+                  {openPiece.funnel_stage && <Badge variant="secondary" className="text-3xs">{openPiece.funnel_stage}</Badge>}
+                  {openPiece.pipeline_status === "posted" && <Badge variant="secondary" className="text-3xs">Posted</Badge>}
                 </div>
 
                 {openPiece.hook && (
@@ -263,7 +263,7 @@ function ContentCalendar() {
                 )}
 
                 <Block icon={FileText} title="Full script">
-                  <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed">{openPiece.body || "No script written yet."}</pre>
+                  <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{openPiece.body || "No script written yet."}</pre>
                   <Button size="sm" variant="outline" className="mt-2"
                     onClick={() => { navigator.clipboard.writeText(openPiece.body ?? ""); toast.success("Script copied"); }}>
                     <Copy className="h-3.5 w-3.5 mr-1.5" />Copy script
@@ -320,7 +320,7 @@ function ContentCalendar() {
 function Block({ icon: Icon, title, children }: { icon: typeof Target; title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-border bg-card/60 p-3">
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">
+      <div className="flex items-center gap-1.5 text-3xs uppercase tracking-wider text-muted-foreground mb-1.5">
         <Icon className="h-3 w-3" />{title}
       </div>
       {children}

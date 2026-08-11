@@ -99,7 +99,7 @@ function Permissions() {
         </div>
         <div className="rounded-md border border-border bg-card/40 px-4 py-3">
           <div className="text-sm font-medium">{ROLE_LABELS[role]}</div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">{ROLE_BLURBS[role]}</div>
+          <div className="mt-0.5 text-2xs text-muted-foreground">{ROLE_BLURBS[role]}</div>
         </div>
 
         <PermissionEditor

@@ -223,8 +223,8 @@ function Hiring() {
               <div key={stage.key} onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDrop(e, stage.key)}
                 className="rounded-lg border border-border bg-card min-h-[300px]">
                 <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-                  <span className={`text-[10px] uppercase tracking-wider rounded px-1.5 py-0.5 ${stage.tone}`}>{stage.label}</span>
-                  <span className="text-[10px] font-mono text-muted-foreground">{rows.length}</span>
+                  <span className={`text-3xs uppercase tracking-wider rounded px-1.5 py-0.5 ${stage.tone}`}>{stage.label}</span>
+                  <span className="text-3xs font-mono text-muted-foreground">{rows.length}</span>
                 </div>
                 <div className="p-2 space-y-2">
                   {rows.map(a => {
@@ -239,21 +239,21 @@ function Hiring() {
                           <div className="flex-1 min-w-0">
                             <button onClick={() => setEditing(a)} className="text-left w-full">
                               <div className="font-medium text-sm leading-tight truncate">{a.full_name}</div>
-                              <div className="text-[10px] text-muted-foreground capitalize">{a.role_applied} · {a.niche ?? "—"}</div>
+                              <div className="text-3xs text-muted-foreground capitalize">{a.role_applied} · {a.niche ?? "—"}</div>
                             </button>
                           </div>
-                          <span className={`text-[11px] font-mono font-semibold rounded px-1.5 py-0.5 ${Number(a.ai_score ?? 0) >= 8 ? "bg-[color:var(--color-success)]/15 text-[color:var(--color-success)]" : Number(a.ai_score ?? 0) >= 6 ? "bg-[color:var(--color-warning)]/15 text-[color:var(--color-warning)]" : "bg-muted text-muted-foreground"}`}>
+                          <span className={`text-2xs font-mono font-semibold rounded px-1.5 py-0.5 ${Number(a.ai_score ?? 0) >= 8 ? "bg-[color:var(--color-success)]/15 text-[color:var(--color-success)]" : Number(a.ai_score ?? 0) >= 6 ? "bg-[color:var(--color-warning)]/15 text-[color:var(--color-warning)]" : "bg-muted text-muted-foreground"}`}>
                             {a.ai_score?.toFixed(1) ?? "—"}
                           </span>
                         </div>
-                        <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground">
+                        <div className="mt-1.5 flex items-center justify-between text-3xs text-muted-foreground">
                           <span>Applied {new Date(a.applied_at).toLocaleDateString()}</span>
                           {a.last_shown_at && <span>Moved {new Date(a.last_shown_at).toLocaleDateString()}</span>}
                         </div>
                       </div>
                     );
                   })}
-                  {rows.length === 0 && <div className="text-[11px] text-muted-foreground text-center py-6">Drop here</div>}
+                  {rows.length === 0 && <div className="text-2xs text-muted-foreground text-center py-6">Drop here</div>}
                 </div>
               </div>
             );
@@ -274,19 +274,19 @@ function Hiring() {
                   <div><span className="text-muted-foreground">Source:</span> {editing.source ?? "—"}</div>
                 </div>
                 <div className="rounded-md border border-border bg-muted/20 p-3">
-                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">AI score · {editing.ai_score?.toFixed(1) ?? "—"}/10</div>
+                  <div className="text-2xs uppercase tracking-wider text-muted-foreground mb-1">AI score · {editing.ai_score?.toFixed(1) ?? "—"}/10</div>
                   <div className="text-xs">{editing.ai_reasoning ?? "No reasoning yet."}</div>
                   {editing.ai_transcript_summary && (
                     <p className="mt-2 border-t border-border pt-2 text-xs leading-relaxed text-muted-foreground">{editing.ai_transcript_summary}</p>
                   )}
                   {editing.ai_recommended_stage && (
-                    <div className="mt-2 flex items-center gap-2 text-[11px]">
+                    <div className="mt-2 flex items-center gap-2 text-2xs">
                       <span className="text-muted-foreground">AI recommends</span>
                       <span className="rounded bg-primary/15 px-1.5 py-0.5 font-semibold uppercase tracking-wider text-primary">
                         {STAGES.find(s => s.key === editing.ai_recommended_stage)?.label ?? editing.ai_recommended_stage}
                       </span>
                       {editing.stage !== editing.ai_recommended_stage && (
-                        <Button size="sm" variant="outline" className="h-6 text-[10px]"
+                        <Button size="sm" variant="outline" className="h-6 text-3xs"
                           onClick={() => update.mutate({ id: editing.id, patch: { stage: editing.ai_recommended_stage as string, last_shown_at: new Date().toISOString() } })}>
                           Apply
                         </Button>
@@ -370,7 +370,7 @@ function LoomGrader({ applicant, onGraded }: { applicant: Applicant; onGraded: (
 
   return (
     <div className="rounded-md border border-border p-3 space-y-2">
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground">
         <Video className="h-3.5 w-3.5" /> Video application
       </div>
       <Input placeholder="https://www.loom.com/share/…" value={url} onChange={(e) => setUrl(e.target.value)} />
@@ -380,7 +380,7 @@ function LoomGrader({ applicant, onGraded }: { applicant: Applicant; onGraded: (
         <Button size="sm" disabled={m.isPending || (!url.trim() && !transcript.trim())} onClick={() => m.mutate()}>
           {m.isPending ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Watching…</> : <><Sparkles className="h-3.5 w-3.5 mr-1.5" />Grade & route from video</>}
         </Button>
-        {url.trim() && <a href={url} target="_blank" rel="noreferrer" className="text-[11px] text-muted-foreground hover:text-foreground">Open Loom</a>}
+        {url.trim() && <a href={url} target="_blank" rel="noreferrer" className="text-2xs text-muted-foreground hover:text-foreground">Open Loom</a>}
       </div>
     </div>
   );

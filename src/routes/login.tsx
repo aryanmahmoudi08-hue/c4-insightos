@@ -62,7 +62,7 @@ function LoginPage() {
           <div className="grid grid-cols-3 gap-3 max-w-md pt-4">
             {[["Cash/1k", "$284"], ["Show", "78%"], ["Close", "31%"]].map(([k,v]) => (
               <div key={k} className="rounded-md border border-border bg-card/60 p-3">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{k}</div>
+                <div className="text-3xs uppercase tracking-wider text-muted-foreground">{k}</div>
                 <div className="font-mono text-lg font-semibold">{v}</div>
               </div>
             ))}
@@ -79,7 +79,7 @@ function LoginPage() {
             <svg className="h-4 w-4" viewBox="0 0 24 24"><path fill="#fff" d="M21.35 11.1H12v2.93h5.35c-.23 1.26-1.62 3.7-5.35 3.7-3.22 0-5.84-2.67-5.84-5.96 0-3.29 2.62-5.96 5.84-5.96 1.83 0 3.06.78 3.76 1.45l2.57-2.47C16.71 3.27 14.6 2.5 12 2.5 6.76 2.5 2.5 6.76 2.5 12s4.26 9.5 9.5 9.5c5.49 0 9.13-3.86 9.13-9.29 0-.62-.07-1.1-.18-1.61z"/></svg>
             Continue with Google
           </Button>
-          <div className="flex items-center gap-3 text-[11px] uppercase tracking-widest text-muted-foreground">
+          <div className="flex items-center gap-3 text-2xs uppercase tracking-widest text-muted-foreground">
             <div className="h-px flex-1 bg-border" /> or <div className="h-px flex-1 bg-border" />
           </div>
           {mode === "signup" && (

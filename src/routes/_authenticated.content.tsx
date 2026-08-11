@@ -345,7 +345,7 @@ function ContentIntel() {
                 const width = Math.max(6, Math.round((f.value / max) * 100));
                 return (
                   <div key={f.stage} className="space-y-0.5">
-                    <div className="flex items-center justify-between text-[11px]">
+                    <div className="flex items-center justify-between text-2xs">
                       <span className="font-medium">{f.stage}</span>
                       <span className="font-mono text-muted-foreground">{fmtN(f.value)}</span>
                     </div>
@@ -372,7 +372,7 @@ function ContentIntel() {
                         <Flame className="h-2.5 w-2.5" />{retention}% retention
                       </span>
                     </div>
-                    <div className="mt-2 flex items-center gap-3 text-[10px] font-mono text-muted-foreground">
+                    <div className="mt-2 flex items-center gap-3 text-3xs font-mono text-muted-foreground">
                       <span>{fmtN(m?.views ?? 0)} views</span>
                       <span>{m?.leads_generated ?? 0} leads</span>
                       <span className="capitalize">{p.platform?.replace(/_/g, " ")}</span>
@@ -388,7 +388,7 @@ function ContentIntel() {
         <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-semibold">Mechanism × variation heatmap</div>
-            <div className="text-[10px] text-muted-foreground">Avg views per piece</div>
+            <div className="text-3xs text-muted-foreground">Avg views per piece</div>
           </div>
           <HeatmapGrid rowLabels={perf.heatmapRows} colLabels={perf.heatmapCols} data={perf.heatmapData} valueFmt={(v) => fmtN(v) + " views"} tone="var(--accent)" />
         </div>
@@ -408,20 +408,20 @@ function ContentIntel() {
                   <div key={col.key} className="rounded-lg border border-border bg-card flex flex-col min-h-[300px]">
                     <div className="px-3 py-2 border-b border-border flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${col.tone}`}>{col.label}</span>
-                        <span className="text-[11px] text-muted-foreground">{items.length}</span>
+                        <span className={`text-3xs font-mono uppercase px-1.5 py-0.5 rounded ${col.tone}`}>{col.label}</span>
+                        <span className="text-2xs text-muted-foreground">{items.length}</span>
                       </div>
                     </div>
                     <div className="p-2 space-y-2 flex-1 overflow-y-auto max-h-[70vh]">
                       {items.length === 0 && (
-                        <div className="text-[11px] text-muted-foreground italic text-center py-6">Empty</div>
+                        <div className="text-2xs text-muted-foreground italic text-center py-6">Empty</div>
                       )}
                       {items.map(p => (
                         <div key={p.id} className="rounded-md border border-border bg-background p-2.5 space-y-1.5 hover:border-accent/40 transition-colors">
                           <div className="flex items-start justify-between gap-2">
                             <button onClick={() => setOverviewFor(p)} className="text-xs font-medium leading-snug text-left hover:text-accent line-clamp-2">{p.title || "(untitled)"}</button>
                             {p.funnel_stage && (
-                              <span className={`shrink-0 inline-block rounded px-1 py-0.5 text-[9px] font-mono uppercase ${
+                              <span className={`shrink-0 inline-block rounded px-1 py-0.5 text-4xs font-mono uppercase ${
                                 p.funnel_stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
                                 p.funnel_stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
                                 p.funnel_stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" :
@@ -429,14 +429,14 @@ function ContentIntel() {
                               }`}>{p.funnel_stage}</span>
                             )}
                           </div>
-                          {p.hook && <div className="text-[11px] text-muted-foreground line-clamp-2">{p.hook}</div>}
+                          {p.hook && <div className="text-2xs text-muted-foreground line-clamp-2">{p.hook}</div>}
                           <div className="flex items-center justify-between pt-1">
-                            <span className="text-[10px] uppercase text-muted-foreground">{p.platform}</span>
+                            <span className="text-3xs uppercase text-muted-foreground">{p.platform}</span>
                             <div className="flex gap-1">
                               {colIdx > 0 && (
                                 <button title="Move back"
                                   onClick={() => moveStatus.mutate({ id: p.id, status: PIPELINE[colIdx - 1].key })}
-                                  className="text-[10px] text-muted-foreground hover:text-foreground px-1">←</button>
+                                  className="text-3xs text-muted-foreground hover:text-foreground px-1">←</button>
                               )}
                               {colIdx < PIPELINE.length - 1 && (
                                 <button title={PIPELINE[colIdx + 1].key === "ready_to_post" ? "Schedule it · lands on the client calendar" : "Advance"}
@@ -445,7 +445,7 @@ function ContentIntel() {
                                     if (next === "ready_to_post") setSchedulingFor(p);
                                     else moveStatus.mutate({ id: p.id, status: next });
                                   }}
-                                  className="text-[10px] text-accent hover:text-accent/80 px-1 font-semibold">→</button>
+                                  className="text-3xs text-accent hover:text-accent/80 px-1 font-semibold">→</button>
                               )}
 
                             </div>
@@ -457,7 +457,7 @@ function ContentIntel() {
                 );
               })}
             </div>
-            <p className="text-[11px] text-muted-foreground mt-3">
+            <p className="text-2xs text-muted-foreground mt-3">
               Tip: when a piece moves to <span className="font-mono">Ready to Post</span> the team's posting-channel automation will fire. New ideas land in <span className="font-mono">Draft</span> by default — log content above to start the pipeline.
             </p>
           </TabsContent>
@@ -466,7 +466,7 @@ function ContentIntel() {
           <TabsContent value="table">
             <div className="rounded-lg border border-border bg-card overflow-x-auto">
               <table className="w-full min-w-[1200px] text-sm">
-                <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="w-6 p-3"></th>
                     <th className="text-left p-3">Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
@@ -501,7 +501,7 @@ function ContentIntel() {
                           <td className="p-3 text-xs">{p.angle ?? "—"}</td>
                           <td className="p-3 text-center">
                             {p.funnel_stage ? (
-                              <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-mono uppercase ${
+                              <span className={`inline-block rounded px-1.5 py-0.5 text-3xs font-mono uppercase ${
                                 p.funnel_stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
                                 p.funnel_stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
                                 p.funnel_stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" :
@@ -537,7 +537,7 @@ function ContentIntel() {
                           <tr key={p.id + "-tx"} className="bg-muted/10 border-t border-border/50">
                             <td></td>
                             <td colSpan={11} className="p-3">
-                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Transcript</div>
+                              <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-1">Transcript</div>
                               <div className="whitespace-pre-wrap text-xs text-foreground/90 max-h-64 overflow-y-auto rounded bg-background/50 p-3 border border-border">
                                 {p.body || <span className="text-muted-foreground italic">No transcript yet. Add one via Edit.</span>}
                               </div>
@@ -566,7 +566,7 @@ function ContentIntel() {
                 </div>
                 <Button size="sm" variant="ghost" onClick={() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); setCursor(d); }}>Today</Button>
               </div>
-              <div className="grid grid-cols-7 gap-1 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+              <div className="grid grid-cols-7 gap-1 text-3xs uppercase tracking-wider text-muted-foreground mb-1">
                 {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => <div key={d} className="p-1 text-center font-semibold">{d}</div>)}
               </div>
               <div className="space-y-1">
@@ -577,7 +577,7 @@ function ContentIntel() {
                       const isToday = slot.date === today;
                       const dayNum = Number(slot.date.slice(8, 10));
                       return (
-                        <div key={slot.date} className={`min-h-[96px] rounded-md border p-1.5 text-[11px] transition ${
+                        <div key={slot.date} className={`min-h-[96px] rounded-md border p-1.5 text-2xs transition ${
                           isToday ? "border-primary bg-primary/5 ring-1 ring-primary/40" :
                           slot.inMonth ? "border-border bg-card hover:bg-muted/20" :
                           "border-border/40 bg-muted/10 text-muted-foreground/50"
@@ -592,12 +592,12 @@ function ContentIntel() {
                                 stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" : "bg-muted text-muted-foreground";
                               return (
                                 <button key={p.id} onClick={() => setOverviewFor(p)} className="w-full flex items-center gap-1 rounded px-1 py-0.5 hover:bg-accent/10 text-left" title={p.title ?? ""}>
-                                  <span className={`rounded px-1 py-px text-[9px] font-mono uppercase ${stageCls}`}>{stage}</span>
-                                  <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground"><Eye className="h-2.5 w-2.5" />{m?.views ?? 0}</span>
+                                  <span className={`rounded px-1 py-px text-4xs font-mono uppercase ${stageCls}`}>{stage}</span>
+                                  <span className="flex items-center gap-0.5 text-3xs font-mono text-muted-foreground"><Eye className="h-2.5 w-2.5" />{m?.views ?? 0}</span>
                                 </button>
                               );
                             })}
-                            {slot.pieces.length > 3 && <div className="text-muted-foreground text-[10px] pl-1">+{slot.pieces.length - 3} more</div>}
+                            {slot.pieces.length > 3 && <div className="text-muted-foreground text-3xs pl-1">+{slot.pieces.length - 3} more</div>}
                           </div>
                         </div>
                       );
@@ -674,7 +674,7 @@ function ScheduleDialog({
           <div className="space-y-3">
             <div className="rounded-md border border-border bg-muted/20 p-2.5">
               <div className="text-xs font-medium">{piece.title || "(untitled)"}</div>
-              {piece.hook && <div className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2 italic">"{piece.hook}"</div>}
+              {piece.hook && <div className="text-2xs text-muted-foreground mt-0.5 line-clamp-2 italic">"{piece.hook}"</div>}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
@@ -715,7 +715,7 @@ function ScheduleDialog({
               onClick={() => onConfirm({ scheduled_date: date, scheduled_time: time, post_format: format, repurpose_plan: repurpose, voice_notes: voice, why_it_works: why, posting_instructions: instr })}>
               {pending ? "Scheduling…" : "Confirm · add to client calendar"}
             </Button>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               This moves the piece to <span className="font-mono">Ready to Post</span>, drops it on the Content Calendar for that day/time, and pings the admin channel with the script.
             </p>
           </div>
@@ -874,7 +874,7 @@ function SlidesPanel({ orgId, contentId, onClose }: { orgId?: string; contentId:
           {(!slides || slides.length === 0) && <div className="p-6 text-center text-xs text-muted-foreground">No slides yet.</div>}
         </div>
         <form className="space-y-2 border-t border-border pt-3" onSubmit={(e) => { e.preventDefault(); add.mutate(new FormData(e.currentTarget)); (e.target as HTMLFormElement).reset(); }}>
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Add slide</div>
+          <div className="text-2xs uppercase tracking-wider text-muted-foreground">Add slide</div>
           <div className="grid grid-cols-2 gap-2">
             <Input name="sequence_index" type="number" placeholder="Seq #" />
             <Input name="caption" placeholder="Caption" />
@@ -928,7 +928,7 @@ function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onC
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="uppercase text-muted-foreground">{piece.platform}</span>
-          <span className={`rounded px-1.5 py-0.5 font-mono uppercase text-[10px] ${stageCls}`}>{stage}</span>
+          <span className={`rounded px-1.5 py-0.5 font-mono uppercase text-3xs ${stageCls}`}>{stage}</span>
           {piece.angle && <span className="rounded bg-muted px-1.5 py-0.5">{piece.angle}</span>}
           {piece.posted_at && <span className="text-muted-foreground">· {new Date(piece.posted_at).toLocaleDateString()}</span>}
           {piece.url && <a href={piece.url} target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 text-accent hover:underline"><ExternalLink className="h-3 w-3" />Open</a>}
@@ -943,7 +943,7 @@ function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onC
             ["Retention", m?.hook_retention_pct ? m.hook_retention_pct+"%" : "—"],
           ].map(([k, v]) => (
             <div key={k as string} className="rounded border border-border bg-card/40 p-2">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{k}</div>
+              <div className="text-3xs uppercase tracking-wider text-muted-foreground">{k}</div>
               <div className="font-mono text-sm">{v}</div>
             </div>
           ))}
@@ -951,14 +951,14 @@ function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onC
 
         {piece.hook && (
           <div className="rounded border border-border bg-card/40 p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Hook (first 3s)</div>
+            <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-1">Hook (first 3s)</div>
             <div className="text-sm">{piece.hook}</div>
           </div>
         )}
 
         {piece.body && (
           <div className="rounded border border-border bg-card/40 p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Transcript</div>
+            <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-1">Transcript</div>
             <div className="whitespace-pre-wrap text-xs text-foreground/90 max-h-48 overflow-y-auto">{piece.body}</div>
           </div>
         )}
@@ -976,15 +976,15 @@ function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onC
             <div className="space-y-3 text-sm animate-in fade-in-0 slide-in-from-top-1 duration-300">
               <div>{coaching.summary}</div>
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-success,oklch(0.7_0.16_150))] mb-1">What worked</div>
+                <div className="text-3xs uppercase tracking-wider text-[color:var(--color-success,oklch(0.7_0.16_150))] mb-1">What worked</div>
                 <ul className="list-disc pl-5 space-y-1 text-xs">{coaching.strengths.map((s, i) => <li key={i}>{s}</li>)}</ul>
               </div>
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-amber-400 mb-1">How to improve</div>
+                <div className="text-3xs uppercase tracking-wider text-amber-400 mb-1">How to improve</div>
                 <ul className="list-disc pl-5 space-y-1 text-xs">{coaching.improvements.map((s, i) => <li key={i}>{s}</li>)}</ul>
               </div>
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-accent mb-1">Try these hooks next time</div>
+                <div className="text-3xs uppercase tracking-wider text-accent mb-1">Try these hooks next time</div>
                 <ul className="list-disc pl-5 space-y-1 text-xs">{coaching.next_hook_ideas.map((s, i) => <li key={i}>{s}</li>)}</ul>
               </div>
             </div>

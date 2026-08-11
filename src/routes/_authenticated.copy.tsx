@@ -363,7 +363,7 @@ function GenerateTab() {
                 <TIcon className={cn("h-4 w-4", active ? "text-primary" : "text-muted-foreground")} />
                 <div className="text-sm font-medium">{t.label}</div>
               </div>
-              <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{t.desc}</div>
+              <div className="text-2xs text-muted-foreground mt-1 line-clamp-2">{t.desc}</div>
             </button>
           );
         })}
@@ -400,8 +400,8 @@ function GenerateTab() {
           {isContent && (
             <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Conversion mechanism (drives the whole generation)</div>
-                {demand && <span className="text-[10px] text-muted-foreground">% = how much this format is needed right now</span>}
+                <div className="text-2xs uppercase tracking-wider text-muted-foreground">Conversion mechanism (drives the whole generation)</div>
+                {demand && <span className="text-3xs text-muted-foreground">% = how much this format is needed right now</span>}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {MECHANISM_KEYS.map(k => {
@@ -414,7 +414,7 @@ function GenerateTab() {
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-sm font-medium">{mk.label}</div>
                         {pct != null && (
-                          <span className={cn("font-mono text-[10px] rounded px-1.5 py-0.5 border",
+                          <span className={cn("font-mono text-3xs rounded px-1.5 py-0.5 border",
                             pct >= 30 ? "border-[color:var(--color-success)]/50 text-[color:var(--color-success)]" : "border-border text-muted-foreground")}>
                             {pct}%
                           </span>
@@ -425,13 +425,13 @@ function GenerateTab() {
                           <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
                         </div>
                       )}
-                      <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{mk.purpose}</div>
+                      <div className="text-3xs text-muted-foreground mt-0.5 line-clamp-2">{mk.purpose}</div>
                     </button>
                   );
                 })}
               </div>
               {demand && demand.drivers.length > 0 && (
-                <div className="text-[10px] text-muted-foreground leading-relaxed">
+                <div className="text-3xs text-muted-foreground leading-relaxed">
                   Demand from last 30d: {demand.counts.faq} FAQ videos · {demand.counts.setter_calls} setting-call signals · {demand.counts.intakes} client intakes.
                   Top driver: <span className="text-foreground">{demand.drivers[0].source} — {demand.drivers[0].detail}</span>
                 </div>
@@ -447,7 +447,7 @@ function GenerateTab() {
                       <button key={v.value} type="button" title={v.hint} onClick={() => setVariation(v.value)}
                         className={cn("text-left rounded-md border p-2.5 transition", active ? "border-primary bg-primary/5 ring-1 ring-primary/40" : "border-border hover:bg-card")}>
                         <div className="text-xs font-medium">{v.label}</div>
-                        <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{v.hint}</div>
+                        <div className="text-3xs text-muted-foreground mt-0.5 line-clamp-2">{v.hint}</div>
                       </button>
                     );
                   })}
@@ -456,7 +456,7 @@ function GenerateTab() {
 
               {varQuestions.length > 0 && (
                 <div className="space-y-2 rounded-md border border-border bg-background/40 p-2.5">
-                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <div className="text-2xs uppercase tracking-wider text-muted-foreground">
                     {variations.find(v => v.value === variation)?.label} inputs — tailored to this variation
                   </div>
                   {varQuestions.map(q => (
@@ -511,7 +511,7 @@ function GenerateTab() {
                   return (
                     <button key={s.id} type="button" onClick={() => {
                       setSelectedSwipes(prev => sel ? prev.filter(x => x !== s.id) : prev.length < 5 ? [...prev, s.id] : prev);
-                    }} className={`text-[11px] px-2 py-1 rounded border ${sel ? "bg-primary/20 border-primary" : "border-border"}`}>
+                    }} className={`text-2xs px-2 py-1 rounded border ${sel ? "bg-primary/20 border-primary" : "border-border"}`}>
                       {s.title}
                     </button>
                   );
@@ -531,8 +531,8 @@ function GenerateTab() {
             <div className="flex items-center gap-1.5">
               {isContent && output && (
                 <div className="flex items-center gap-1 mr-1">
-                  <Badge variant="outline" className="text-[10px]">{MECHANISMS[mechanism].label}</Badge>
-                  <Badge variant="outline" className="text-[10px]">{variations.find(v => v.value === variation)?.label}</Badge>
+                  <Badge variant="outline" className="text-3xs">{MECHANISMS[mechanism].label}</Badge>
+                  <Badge variant="outline" className="text-3xs">{variations.find(v => v.value === variation)?.label}</Badge>
                 </div>
               )}
               {output && (
@@ -573,10 +573,10 @@ function ClientAvatar({ path, onPick }: { path: string | null; onPick: (f: File)
     <label className="group relative h-24 w-24 shrink-0 cursor-pointer overflow-hidden rounded-xl border border-border bg-muted/40 grid place-items-center">
       {url
         ? <img src={url} alt="Client photo" className="h-full w-full object-cover" />
-        : <div className="text-center text-[10px] text-muted-foreground px-2"><ImagePlus className="h-5 w-5 mx-auto mb-1" />Add photo</div>}
+        : <div className="text-center text-3xs text-muted-foreground px-2"><ImagePlus className="h-5 w-5 mx-auto mb-1" />Add photo</div>}
       <input type="file" accept="image/*" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(f); }} />
-      <span className="absolute inset-x-0 bottom-0 hidden bg-background/80 py-0.5 text-center text-[9px] uppercase tracking-wider group-hover:block">Change</span>
+      <span className="absolute inset-x-0 bottom-0 hidden bg-background/80 py-0.5 text-center text-4xs uppercase tracking-wider group-hover:block">Change</span>
     </label>
   );
 }
@@ -689,7 +689,7 @@ function ClientsTab() {
           <GaugeChart value={positioningScore} label="Profile completeness" tone="var(--accent)" />
         </div>
         <div className="rounded-xl border border-border bg-card p-4">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Reach by channel (relative)</div>
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-2">Reach by channel (relative)</div>
           <ResponsiveContainer width="100%" height={140}>
             <RadarChart data={reachRadar} outerRadius={55}>
               <PolarGrid stroke="var(--border)" />
@@ -700,11 +700,11 @@ function ClientsTab() {
         </div>
         <div className="grid grid-cols-2 gap-3 content-start">
           <div className="hover-lift rounded-lg border border-border bg-card p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Total reach</div>
+            <div className="text-3xs uppercase tracking-wider text-muted-foreground">Total reach</div>
             <div className="mt-1 font-mono text-lg font-semibold">{totalReach.toLocaleString()}</div>
           </div>
           <div className="hover-lift rounded-lg border border-border bg-card p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Business stage</div>
+            <div className="text-3xs uppercase tracking-wider text-muted-foreground">Business stage</div>
             <div className="mt-1 text-xs font-medium truncate">{(e.business_stage as string) || "—"}</div>
           </div>
           <div className="col-span-2 flex flex-wrap gap-1.5">
@@ -823,7 +823,7 @@ function ClientsTab() {
           <Textarea rows={2} value={(e.notes as string) ?? ""} onChange={ev => set("notes", ev.target.value)} /></div>
         {e.voice_fingerprint ? (
           <div className="text-xs"><Badge variant="outline">Voice fingerprint extracted</Badge>
-            <pre className="mt-1 max-h-32 overflow-auto rounded bg-muted/30 p-2 text-[10px] text-muted-foreground">{JSON.stringify(e.voice_fingerprint, null, 2)}</pre></div>
+            <pre className="mt-1 max-h-32 overflow-auto rounded bg-muted/30 p-2 text-3xs text-muted-foreground">{JSON.stringify(e.voice_fingerprint, null, 2)}</pre></div>
         ) : null}
       </Card>
 
@@ -996,10 +996,10 @@ function SwipesTab() {
               <div className="min-w-0">
                 <div className="font-medium truncate">{s.title as string}</div>
                 <div className="flex gap-1 mt-1 flex-wrap">
-                  <Badge variant="outline" className="text-[10px]">{s.copy_type as string}</Badge>
-                  {s.angle ? <Badge variant="outline" className="text-[10px]">{s.angle as string}</Badge> : null}
-                  {s.emotion ? <Badge variant="outline" className="text-[10px]">{s.emotion as string}</Badge> : null}
-                  {imgs.length > 0 ? <Badge variant="outline" className="text-[10px]"><ImagePlus className="h-2.5 w-2.5 mr-0.5" />{imgs.length}</Badge> : null}
+                  <Badge variant="outline" className="text-3xs">{s.copy_type as string}</Badge>
+                  {s.angle ? <Badge variant="outline" className="text-3xs">{s.angle as string}</Badge> : null}
+                  {s.emotion ? <Badge variant="outline" className="text-3xs">{s.emotion as string}</Badge> : null}
+                  {imgs.length > 0 ? <Badge variant="outline" className="text-3xs"><ImagePlus className="h-2.5 w-2.5 mr-0.5" />{imgs.length}</Badge> : null}
                 </div>
               </div>
               <button onClick={async () => { await supabase.from("copy_swipes").delete().eq("id", s.id as string); qc.invalidateQueries({ queryKey: ["copy_swipes"] }); }} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -1098,7 +1098,7 @@ function AnglesTab() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {result.angles.map((a, i) => (
             <Card key={i} className="p-3">
-              <Badge variant="outline" className="text-[10px] mb-2">{a.trigger}</Badge>
+              <Badge variant="outline" className="text-3xs mb-2">{a.trigger}</Badge>
               <div className="text-sm font-medium">{a.hook}</div>
               <div className="text-xs text-muted-foreground mt-2">→ {a.big_domino}</div>
             </Card>

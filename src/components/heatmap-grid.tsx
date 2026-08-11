@@ -17,14 +17,14 @@ export function HeatmapGrid({ rowLabels, colLabels, data, valueFmt, tone = "var(
           <tr>
             <th className="w-16" />
             {colLabels.map((c) => (
-              <th key={c} className="pb-1 text-center text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{c}</th>
+              <th key={c} className="pb-1 text-center text-4xs font-medium uppercase tracking-wider text-muted-foreground">{c}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rowLabels.map((r, ri) => (
             <tr key={r}>
-              <td className="pr-2 text-right text-[10px] font-medium text-muted-foreground whitespace-nowrap">{r}</td>
+              <td className="pr-2 text-right text-3xs font-medium text-muted-foreground whitespace-nowrap">{r}</td>
               {colLabels.map((_, ci) => {
                 const v = data[ri]?.[ci] ?? 0;
                 const alpha = Math.round((v / max) * 85) + (v > 0 ? 10 : 0);

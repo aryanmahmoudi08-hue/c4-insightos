@@ -66,7 +66,7 @@ function Fulfillment() {
       <TopBar title="Client Results" subtitle="Track active client goals + progress from intake → outcome" />
       <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="bg-muted/40 px-3 py-2 text-[11px] uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <div className="bg-muted/40 px-3 py-2 text-2xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
             <Briefcase className="h-3.5 w-3.5" /> Active clients · {clients?.length ?? 0}
           </div>
           <div className="p-2 border-b border-border">
@@ -82,7 +82,7 @@ function Fulfillment() {
             }).map((c) => (
               <button key={c.id} onClick={() => setSelected(c.id)} className={`w-full text-left p-3 hover:bg-muted/30 ${selected === c.id ? "bg-muted/40" : ""}`}>
                 <div className="font-medium text-sm">{c.full_name}</div>
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-0.5">
+                <div className="flex items-center justify-between text-2xs text-muted-foreground mt-0.5">
                   <span>{c.offer_name ?? "—"}</span>
                   <span className="font-mono">health {Number(c.health_score ?? 0)}</span>
                 </div>
@@ -104,7 +104,7 @@ function Fulfillment() {
 
               {activeClient.pre_close_summary && (
                 <div className="rounded-md border border-border bg-muted/30 p-3">
-                  <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
+                  <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground mb-1">
                     <Target className="h-3 w-3" /> Pre-close summary
                   </div>
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">{activeClient.pre_close_summary}</p>
@@ -121,7 +121,7 @@ function Fulfillment() {
               </div>
 
               <div className="rounded-md border border-border p-3">
-                <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
+                <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground mb-2">
                   <TrendingUp className="h-3 w-3" /> Progress checkpoints
                 </div>
                 <p className="text-xs text-muted-foreground">Use the Clients page to update health score + renewal stage as progress milestones are hit.</p>
@@ -156,7 +156,7 @@ function Fulfillment() {
 function SignalCard({ label, value }: { label: string; value?: string }) {
   return (
     <div className="rounded-md border border-border p-3">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
+      <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
       <div className="text-sm whitespace-pre-wrap min-h-[2.5rem]">{value || <span className="text-muted-foreground italic">no intake answer</span>}</div>
     </div>
   );

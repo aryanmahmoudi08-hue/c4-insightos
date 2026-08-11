@@ -14,8 +14,9 @@ import { toast } from "sonner";
 import { analyzeLeads } from "@/lib/lead-insights.functions";
 import { PageHero } from "@/components/page-hero";
 import { MetricCard } from "@/components/metric-card";
-import { GlassTableShell, TableSearch, FilterPills, Pagination, usePagination } from "@/components/glass-table";
+import { GlassTableShell, TableSearch, FilterPills, Pagination, usePagination, ColumnGroupToggle } from "@/components/glass-table";
 import { mockLeads, mockLeadInsights, withMockDelay } from "@/lib/dev-mock-data";
+import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 
 export const Route = createFileRoute("/_authenticated/leads")({ component: Leads });
 
@@ -40,14 +41,24 @@ type LeadRow = {
   created_at: string;
 };
 
+// Row tint (subtle, 5%) for the same tone family used by chips (15%) — one 4-accent
+// system for everything: success/warning/destructive/info + neutral default.
+const ROW_TINT: Record<ChipTone, string> = {
+  default: "",
+  success: "bg-[color:var(--color-success)]/5",
+  warning: "bg-[color:var(--color-warning)]/5",
+  destructive: "bg-destructive/5",
+  info: "bg-accent/5",
+};
+
 const PIPELINE_STAGES = [
-  { v: "", label: "—" },
-  { v: "cold", label: "Cold", chip: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
-  { v: "warm", label: "Warm", chip: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
-  { v: "hot", label: "Hot", chip: "bg-orange-500/15 text-orange-600 dark:text-orange-400" },
-  { v: "diamond", label: "💎 Diamond", chip: "bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 font-semibold" },
+  { v: "", label: "—", tone: "default" as ChipTone },
+  { v: "cold", label: "Cold", tone: "default" as ChipTone },
+  { v: "warm", label: "Warm", tone: "warning" as ChipTone },
+  { v: "hot", label: "Hot", tone: "success" as ChipTone },
+  { v: "diamond", label: "💎 Diamond", tone: "info" as ChipTone },
 ];
-const stageChip = (v: string | null) => PIPELINE_STAGES.find(s => s.v === (v ?? ""))?.chip ?? "bg-muted text-muted-foreground";
+const stageChip = (v: string | null) => CHIP_TONE_CLASSES[PIPELINE_STAGES.find(s => s.v === (v ?? ""))?.tone ?? "default"];
 
 const PRIORITY_OPTIONS = [
   { v: "low", label: "Low" },
@@ -76,25 +87,35 @@ const STATUS_OPTIONS = [
   { v: "ignore", label: "IGNORE" },
 ];
 
-// Row tone + chip tone keyed off semantic tokens / utility colors
-const STATUS_TONE: Record<string, { row: string; chip: string }> = {
-  opt_in: { row: "", chip: "bg-muted text-muted-foreground" },
-  call_booked: { row: "bg-amber-500/5 hover:bg-amber-500/10", chip: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
-  applied_qualified_no_book: { row: "bg-yellow-500/5", chip: "bg-yellow-500/15 text-yellow-600 dark:text-yellow-400" },
-  applied_unqualified_no_book: { row: "", chip: "bg-muted text-muted-foreground" },
-  rescheduling: { row: "bg-amber-500/5", chip: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
-  no_show: { row: "bg-destructive/5", chip: "bg-destructive/15 text-destructive" },
-  follow_up_short: { row: "bg-blue-500/5", chip: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
-  follow_up_long: { row: "bg-indigo-500/5", chip: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400" },
-  deposit: { row: "bg-emerald-500/5", chip: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
-  closed: { row: "bg-emerald-500/10 hover:bg-emerald-500/15", chip: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold" },
-  lt_closed: { row: "bg-emerald-500/10", chip: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold" },
-  no_close: { row: "bg-destructive/5", chip: "bg-destructive/15 text-destructive" },
-  bad_fit: { row: "", chip: "bg-muted text-muted-foreground" },
-  disqualified: { row: "", chip: "bg-muted text-muted-foreground" },
-  cancelled: { row: "bg-destructive/5", chip: "bg-destructive/10 text-destructive" },
-  ignore: { row: "opacity-50", chip: "bg-muted text-muted-foreground" },
+// Every status collapses onto the same 4-accent + neutral system as everything
+// else in the app (was 8 raw hues: amber/yellow/blue/indigo/emerald + destructive/muted).
+const STATUS_TONE_KEY: Record<string, ChipTone> = {
+  opt_in: "default",
+  call_booked: "warning",
+  applied_qualified_no_book: "warning",
+  applied_unqualified_no_book: "default",
+  rescheduling: "warning",
+  no_show: "destructive",
+  follow_up_short: "info",
+  follow_up_long: "info",
+  deposit: "success",
+  closed: "success",
+  lt_closed: "success",
+  no_close: "destructive",
+  bad_fit: "default",
+  disqualified: "default",
+  cancelled: "destructive",
+  ignore: "default",
 };
+const STATUS_TONE: Record<string, { row: string; chip: string }> = Object.fromEntries(
+  Object.entries(STATUS_TONE_KEY).map(([status, t]) => [
+    status,
+    {
+      row: status === "ignore" ? "opacity-50" : ROW_TINT[t],
+      chip: (status === "closed" || status === "lt_closed") ? `${CHIP_TONE_CLASSES[t]} font-semibold` : CHIP_TONE_CLASSES[t],
+    },
+  ]),
+);
 const tone = (s: string) => STATUS_TONE[s] ?? STATUS_TONE.opt_in;
 
 // Application data keys (match typeform mapping)
@@ -128,6 +149,7 @@ function Leads() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [bucket, setBucket] = useState<"all" | "active" | "booked" | "closed" | "lost">("all");
   const [selected, setSelected] = useState<LeadRow | null>(null);
+  const [qualExpanded, setQualExpanded] = useState(false);
 
   const { data: leads, isLoading: leadsLoading } = useQuery({
     queryKey: ["leads", orgId, devBypass],
@@ -217,18 +239,18 @@ function Leads() {
                 value={bucket}
                 onChange={setBucket}
               />
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-[11px]">
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-2xs">
                 <option value="all">All statuses</option>
                 {STATUS_OPTIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
               </select>
-              <div className="ml-auto text-[11px] text-muted-foreground">{view.length} / {leads?.length ?? 0}</div>
+              <div className="ml-auto text-2xs text-muted-foreground">{view.length} / {leads?.length ?? 0}</div>
             </>
           }
           footer={<Pagination page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize} />}
         >
 
           <table className="w-full text-sm">
-            <thead className="sticky-thead bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
+            <thead className="sticky-thead bg-muted/40 text-3xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left p-2.5 min-w-[110px]">Date / Time</th>
                 <th className="text-left p-2.5 min-w-[60px]">💎</th>
@@ -236,7 +258,17 @@ function Leads() {
                 <th className="text-left p-2.5 min-w-[120px]">Stage</th>
                 <th className="text-left p-2.5 min-w-[220px]">Lead Status</th>
                 <th className="text-center p-2.5 min-w-[90px]">Pre-call vid</th>
-                {APP_COLS.map(c => <th key={c.key} className={`text-left p-2.5 ${c.width ?? ""}`}>{c.label}</th>)}
+                {qualExpanded ? (
+                  APP_COLS.map((c, i) => (
+                    <th key={c.key} className={`text-left p-2.5 normal-case ${c.width ?? ""}`}>
+                      {i === 0 ? <ColumnGroupToggle label={c.label} expanded onToggle={() => setQualExpanded(false)} /> : c.label}
+                    </th>
+                  ))
+                ) : (
+                  <th className="text-left p-2.5 min-w-[140px] normal-case">
+                    <ColumnGroupToggle label="Qualification" expanded={false} onToggle={() => setQualExpanded(true)} />
+                  </th>
+                )}
                 <th className="text-left p-2.5 min-w-[140px]">Contact</th>
                 <th className="text-left p-2.5 min-w-[130px]">Handle</th>
               </tr>
@@ -247,16 +279,16 @@ function Leads() {
                 const app = l.application_data ?? {};
                 const isDiamond = l.priority === "diamond" || l.pipeline_stage === "diamond";
                 return (
-                  <tr key={l.id} className={`border-t border-border cursor-pointer transition-colors ${isDiamond ? "bg-cyan-500/5 hover:bg-cyan-500/10" : (t.row || "hover:bg-muted/30")}`} onClick={() => setSelected(l)}>
+                  <tr key={l.id} className={`border-t border-border cursor-pointer transition-colors ${isDiamond ? "bg-accent/5 hover:bg-accent/10" : (t.row || "hover:bg-muted/30")}`} onClick={() => setSelected(l)}>
                     <td className="p-2.5 text-xs text-muted-foreground whitespace-nowrap">
                       {new Date(l.created_at).toLocaleDateString()}<br />
-                      <span className="text-[10px]">{new Date(l.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      <span className="text-3xs">{new Date(l.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                     </td>
                     <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
                       <select
                         value={l.priority ?? "normal"}
                         onChange={(e) => updateLead.mutate({ id: l.id, patch: { priority: e.target.value } })}
-                        className="h-7 rounded px-1 text-[11px] bg-transparent border border-border cursor-pointer"
+                        className="h-7 rounded px-1 text-2xs bg-transparent border border-border cursor-pointer"
                         title="Priority"
                       >
                         {PRIORITY_OPTIONS.map(p => <option key={p.v} value={p.v}>{p.label}</option>)}
@@ -264,7 +296,7 @@ function Leads() {
                     </td>
                     <td className="p-2.5">
                       <div className="font-medium flex items-center gap-1.5">
-                        {isDiamond && <Gem className="h-3.5 w-3.5 text-cyan-500 shrink-0" />}
+                        {isDiamond && <Gem className="h-3.5 w-3.5 text-accent shrink-0" />}
                         {l.full_name || l.handle || l.email || "(no name)"}
                       </div>
                     </td>
@@ -272,7 +304,7 @@ function Leads() {
                       <select
                         value={l.pipeline_stage ?? ""}
                         onChange={(e) => updateLead.mutate({ id: l.id, patch: { pipeline_stage: e.target.value || null } })}
-                        className={`h-7 rounded px-2 text-[11px] font-medium border-0 cursor-pointer ${stageChip(l.pipeline_stage)}`}
+                        className={`h-7 rounded px-2 text-2xs font-medium border-0 cursor-pointer ${stageChip(l.pipeline_stage)}`}
                       >
                         {PIPELINE_STAGES.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
                       </select>
@@ -281,7 +313,7 @@ function Leads() {
                       <select
                         value={l.status}
                         onChange={(e) => updateLead.mutate({ id: l.id, patch: { status: e.target.value } })}
-                        className={`h-7 rounded px-2 text-[11px] font-medium border-0 cursor-pointer ${t.chip}`}
+                        className={`h-7 rounded px-2 text-2xs font-medium border-0 cursor-pointer ${t.chip}`}
                       >
                         {STATUS_OPTIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
                       </select>
@@ -289,17 +321,23 @@ function Leads() {
                     <td className="p-2.5 text-center" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => updateLead.mutate({ id: l.id, patch: { precall_video_watched: !l.precall_video_watched } })}
-                        className={`h-7 w-12 rounded text-[10px] font-semibold uppercase tracking-wider transition-colors ${l.precall_video_watched ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground hover:bg-muted/70"}`}
+                        className={`h-7 w-12 rounded text-3xs font-semibold uppercase tracking-wider transition-colors ${l.precall_video_watched ? CHIP_TONE_CLASSES.success : "bg-muted text-muted-foreground hover:bg-muted/70"}`}
                         title={l.precall_video_watched ? "Watched" : "Mark as watched"}
                       >
                         {l.precall_video_watched ? "✓ Yes" : "No"}
                       </button>
                     </td>
-                    {APP_COLS.map(c => (
-                      <td key={c.key} className="p-2.5 text-xs">
-                        <div className="truncate max-w-[200px]" title={app[c.key] ?? ""}>{app[c.key] ?? <span className="text-muted-foreground/50">—</span>}</div>
+                    {qualExpanded ? (
+                      APP_COLS.map(c => (
+                        <td key={c.key} className="p-2.5 text-xs">
+                          <div className="truncate max-w-[200px]" title={app[c.key] ?? ""}>{app[c.key] ?? <span className="text-muted-foreground/50">—</span>}</div>
+                        </td>
+                      ))
+                    ) : (
+                      <td className="p-2.5 text-xs text-muted-foreground font-mono">
+                        {APP_COLS.filter(c => app[c.key]).length}/{APP_COLS.length} filled
                       </td>
-                    ))}
+                    )}
                     <td className="p-2.5 text-xs text-muted-foreground">
                       {l.email ?? l.phone ?? "—"}
                     </td>
@@ -307,8 +345,8 @@ function Leads() {
                   </tr>
                 );
               })}
-              {leadsLoading && <tr><td colSpan={6 + APP_COLS.length + 2} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
-              {!leadsLoading && view.length === 0 && <tr><td colSpan={6 + APP_COLS.length + 2} className="p-10 text-center text-sm text-muted-foreground">No leads match.</td></tr>}
+              {leadsLoading && <tr><td colSpan={6 + (qualExpanded ? APP_COLS.length : 1) + 2} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
+              {!leadsLoading && view.length === 0 && <tr><td colSpan={6 + (qualExpanded ? APP_COLS.length : 1) + 2} className="p-10 text-center text-sm text-muted-foreground">No leads match.</td></tr>}
             </tbody>
           </table>
         </GlassTableShell>
@@ -387,7 +425,7 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
         <div className="rounded border border-border divide-y divide-border text-xs">
           {APP_COLS.map(c => (
             <div key={c.key} className="p-2.5 grid grid-cols-3 gap-2">
-              <div className="text-muted-foreground uppercase text-[10px] tracking-wider">{c.label}</div>
+              <div className="text-muted-foreground uppercase text-3xs tracking-wider">{c.label}</div>
               <div className="col-span-2">{app[c.key] || <span className="text-muted-foreground/50">—</span>}</div>
             </div>
           ))}
@@ -410,8 +448,8 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
           {(notes ?? []).map((n: any) => (
             <div key={n.id} className="rounded border border-border bg-card p-3 text-xs">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{n.kind ?? "note"}</span>
-                <span className="text-[10px] text-muted-foreground">{new Date(n.created_at).toLocaleString()}</span>
+                <span className="text-3xs uppercase tracking-wider text-muted-foreground">{n.kind ?? "note"}</span>
+                <span className="text-3xs text-muted-foreground">{new Date(n.created_at).toLocaleString()}</span>
               </div>
               <div className="whitespace-pre-wrap">{n.body}</div>
             </div>
@@ -422,13 +460,13 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
 
       <TabsContent value="timeline" className="space-y-3">
         <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="rounded border border-border p-2 text-center"><Film className="h-3 w-3 mx-auto text-accent mb-1" /><div className="font-mono font-bold">{timeline?.touches.length ?? 0}</div><div className="text-[10px] text-muted-foreground">content touches</div></div>
-          <div className="rounded border border-border p-2 text-center"><MessageSquare className="h-3 w-3 mx-auto text-primary mb-1" /><div className="font-mono font-bold">{timeline?.convs.length ?? 0}</div><div className="text-[10px] text-muted-foreground">conversations</div></div>
-          <div className="rounded border border-border p-2 text-center"><PhoneCall className="h-3 w-3 mx-auto text-emerald-500 mb-1" /><div className="font-mono font-bold">{timeline?.calls.length ?? 0}</div><div className="text-[10px] text-muted-foreground">calls · ${Math.round(totalCash / 100).toLocaleString()}</div></div>
+          <div className="rounded border border-border p-2 text-center"><Film className="h-3 w-3 mx-auto text-accent mb-1" /><div className="font-mono font-bold">{timeline?.touches.length ?? 0}</div><div className="text-3xs text-muted-foreground">content touches</div></div>
+          <div className="rounded border border-border p-2 text-center"><MessageSquare className="h-3 w-3 mx-auto text-primary mb-1" /><div className="font-mono font-bold">{timeline?.convs.length ?? 0}</div><div className="text-3xs text-muted-foreground">conversations</div></div>
+          <div className="rounded border border-border p-2 text-center"><PhoneCall className="h-3 w-3 mx-auto text-emerald-500 mb-1" /><div className="font-mono font-bold">{timeline?.calls.length ?? 0}</div><div className="text-3xs text-muted-foreground">calls · ${Math.round(totalCash / 100).toLocaleString()}</div></div>
         </div>
 
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5"><Film className="h-3 w-3" /> Content path (first → last)</div>
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5"><Film className="h-3 w-3" /> Content path (first → last)</div>
           <div className="space-y-1.5">
             {(timeline?.touches ?? []).map((t: any) => {
               const cp = Array.isArray(t.content_pieces) ? t.content_pieces[0] : t.content_pieces;
@@ -436,7 +474,7 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
                 <div key={t.id} className="flex items-center gap-2 text-xs">
                   <div className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" />
                   <div className="flex-1 truncate">{cp?.title || "(untitled)"} <span className="text-muted-foreground">· {cp?.platform}</span></div>
-                  <div className="text-[10px] text-muted-foreground">{t.touch_type} · {new Date(t.touched_at).toLocaleDateString()}</div>
+                  <div className="text-3xs text-muted-foreground">{t.touch_type} · {new Date(t.touched_at).toLocaleDateString()}</div>
                 </div>
               );
             })}
@@ -445,16 +483,16 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
         </div>
 
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5"><PhoneCall className="h-3 w-3" /> Calls</div>
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5"><PhoneCall className="h-3 w-3" /> Calls</div>
           <div className="space-y-1.5">
             {(timeline?.calls ?? []).map((c: any) => (
               <div key={c.id} className="rounded border border-border p-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium uppercase text-[10px]">{c.status}</span>
+                  <span className="font-medium uppercase text-3xs">{c.status}</span>
                   <span className="font-mono text-emerald-500">${Math.round((c.cash_collected_cents ?? 0) / 100).toLocaleString()}</span>
                 </div>
                 {c.call_summary && <div className="mt-1 text-muted-foreground line-clamp-2">{c.call_summary}</div>}
-                <div className="text-[10px] text-muted-foreground mt-1">{c.scheduled_for ? new Date(c.scheduled_for).toLocaleString() : "no date"}</div>
+                <div className="text-3xs text-muted-foreground mt-1">{c.scheduled_for ? new Date(c.scheduled_for).toLocaleString() : "no date"}</div>
               </div>
             ))}
             {(timeline?.calls ?? []).length === 0 && <div className="text-xs text-muted-foreground italic">No calls yet.</div>}
@@ -497,7 +535,7 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
           <Sparkles className="h-4 w-4 text-accent" />
           <div>
             <div className="text-sm font-semibold">Lead AI Insights</div>
-            <div className="text-[11px] text-muted-foreground">Bottlenecks, double-downs, and today's diamond leads</div>
+            <div className="text-2xs text-muted-foreground">Bottlenecks, double-downs, and today's diamond leads</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -519,27 +557,27 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
       {data && (
         <div className="grid md:grid-cols-3 gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-300">
           <div className="rounded border border-destructive/30 bg-destructive/5 p-3 space-y-2">
-            <div className="text-[10px] uppercase tracking-wider text-destructive font-semibold flex items-center gap-1.5"><AlertTriangle className="h-3 w-3" /> Bottlenecks</div>
+            <div className="text-3xs uppercase tracking-wider text-destructive font-semibold flex items-center gap-1.5"><AlertTriangle className="h-3 w-3" /> Bottlenecks</div>
             {data.bottlenecks.map((b, i) => (
               <div key={i} className="text-xs space-y-0.5">
                 <div className="font-medium">{b.title}</div>
                 <div className="text-muted-foreground">{b.body}</div>
-                <div className="text-accent text-[11px]">→ {b.recommendation}</div>
+                <div className="text-accent text-2xs">→ {b.recommendation}</div>
               </div>
             ))}
           </div>
           <div className="rounded border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-2">
-            <div className="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5"><TrendingUp className="h-3 w-3" /> Double down</div>
+            <div className="text-3xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5"><TrendingUp className="h-3 w-3" /> Double down</div>
             {data.double_down.map((b, i) => (
               <div key={i} className="text-xs space-y-0.5">
                 <div className="font-medium">{b.title}</div>
                 <div className="text-muted-foreground">{b.body}</div>
-                <div className="text-accent text-[11px]">→ {b.recommendation}</div>
+                <div className="text-accent text-2xs">→ {b.recommendation}</div>
               </div>
             ))}
           </div>
-          <div className="rounded border border-cyan-500/30 bg-cyan-500/5 p-3 space-y-2">
-            <div className="text-[10px] uppercase tracking-wider text-cyan-600 dark:text-cyan-300 font-semibold flex items-center gap-1.5"><Gem className="h-3 w-3" /> Priority leads</div>
+          <div className="rounded border border-accent/30 bg-accent/5 p-3 space-y-2">
+            <div className="text-3xs uppercase tracking-wider text-accent font-semibold flex items-center gap-1.5"><Gem className="h-3 w-3" /> Priority leads</div>
             {data.priority_leads.map((p, i) => (
               <div key={i} className="text-xs space-y-0.5">
                 <div className="font-medium">💎 {p.name}</div>
@@ -550,7 +588,7 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
           </div>
         </div>
       )}
-      {data && <div className="text-[10px] text-muted-foreground">Based on {data.sampleSize} lead{data.sampleSize === 1 ? "" : "s"}.</div>}
+      {data && <div className="text-3xs text-muted-foreground">Based on {data.sampleSize} lead{data.sampleSize === 1 ? "" : "s"}.</div>}
     </div>
   );
 }

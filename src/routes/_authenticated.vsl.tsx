@@ -61,7 +61,7 @@ function VslPage() {
               <TabsTrigger key={k} value={k} className="gap-2">
                 <Video className="h-3.5 w-3.5" />
                 {KIND_LABEL[k]}
-                <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono">{grouped[k].length}</span>
+                <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-3xs font-mono">{grouped[k].length}</span>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -162,7 +162,7 @@ function VslCard({ vsl }: { vsl: any }) {
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold truncate">{vsl.name}</div>
-          <div className="text-[11px] text-muted-foreground truncate">
+          <div className="text-2xs text-muted-foreground truncate">
             {vsl.wistia_video_id ? `Wistia · ${vsl.wistia_video_id}` : "No Wistia ID set"}
             {vsl.sheet_url && <> · <a href={vsl.sheet_url} target="_blank" rel="noreferrer" className="underline">Sheet</a></>}
           </div>
@@ -197,7 +197,7 @@ function InsightsBlock({ insights }: { insights: any }) {
       {insights.headline && <div className="text-sm font-medium">{insights.headline}</div>}
       <div className="grid gap-3 md:grid-cols-2">
         <div>
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-destructive mb-1.5"><TrendingDown className="h-3 w-3" /> Bottlenecks</div>
+          <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-destructive mb-1.5"><TrendingDown className="h-3 w-3" /> Bottlenecks</div>
           <ul className="space-y-2">
             {(insights.bottlenecks ?? []).map((b: any, i: number) => (
               <li key={i} className="rounded border border-destructive/20 bg-destructive/5 p-2 text-xs">
@@ -209,7 +209,7 @@ function InsightsBlock({ insights }: { insights: any }) {
           </ul>
         </div>
         <div>
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--color-success)] mb-1.5"><TrendingUp className="h-3 w-3" /> Double down</div>
+          <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-[color:var(--color-success)] mb-1.5"><TrendingUp className="h-3 w-3" /> Double down</div>
           <ul className="space-y-2">
             {(insights.double_down ?? []).map((b: any, i: number) => (
               <li key={i} className="rounded border border-[color:var(--color-success)]/20 bg-[color:var(--color-success)]/5 p-2 text-xs">
@@ -223,10 +223,10 @@ function InsightsBlock({ insights }: { insights: any }) {
       </div>
       {insights.drop_off_moments?.length ? (
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Drop-off moments</div>
+          <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Drop-off moments</div>
           <div className="flex flex-wrap gap-1.5">
             {insights.drop_off_moments.map((d: any, i: number) => (
-              <span key={i} className="rounded bg-background border border-border px-2 py-1 text-[11px]">
+              <span key={i} className="rounded bg-background border border-border px-2 py-1 text-2xs">
                 <span className="font-mono text-destructive">{d.timestamp}</span> · {d.why}
               </span>
             ))}
@@ -271,7 +271,7 @@ function ImportDialog({ vslId }: { vslId: string }) {
         <Tabs defaultValue="csv">
           <TabsList><TabsTrigger value="csv">Paste sheet (CSV)</TabsTrigger><TabsTrigger value="manual">Manual entry</TabsTrigger></TabsList>
           <TabsContent value="csv" className="space-y-2">
-            <div className="text-[11px] text-muted-foreground">
+            <div className="text-2xs text-muted-foreground">
               Copy-paste rows from your Google Sheet. Recognized columns: <span className="font-mono">video_name, plays, unique_visitors, play_rate, avg_percent_watched, page_loads, last_updated</span>.
               Include the header row.
             </div>
@@ -284,7 +284,7 @@ function ImportDialog({ vslId }: { vslId: string }) {
             <div className="grid grid-cols-2 gap-2">
               {(Object.keys(form) as Array<keyof typeof form>).map(k => (
                 <div key={k}>
-                  <Label className="text-[11px] capitalize">{k.replace(/_/g, " ")}</Label>
+                  <Label className="text-2xs capitalize">{k.replace(/_/g, " ")}</Label>
                   <Input type="number" step="any" value={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} />
                 </div>
               ))}
@@ -366,7 +366,7 @@ function ScriptTranscriptEditor({ vsl }: { vsl: any }) {
         </TabsList>
         <TabsContent value="transcript" className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-[11px] text-muted-foreground">
+            <div className="text-2xs text-muted-foreground">
               One line per beat. Prefix with <span className="font-mono">[m:ss]</span> to lock a timestamp. Match drop-off moments to what's being said.
             </div>
             <div className="flex items-center gap-2">
@@ -406,7 +406,7 @@ function TranscriptPreview({ txt }: { txt: string }) {
         const m = l.match(/^\s*\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?\s*(.*)$/);
         return (
           <div key={i} className="flex gap-3 px-2.5 py-1 text-xs">
-            <span className="font-mono text-[10px] text-accent w-14 shrink-0 pt-0.5">{m ? m[1] : "—"}</span>
+            <span className="font-mono text-3xs text-accent w-14 shrink-0 pt-0.5">{m ? m[1] : "—"}</span>
             <span className="min-w-0">{m ? m[2] : l}</span>
           </div>
         );

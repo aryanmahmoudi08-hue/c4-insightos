@@ -300,7 +300,7 @@ function Closer() {
             <div className="divide-y divide-border stagger-fade">
               {scorecard.slice(0, 6).map((s, i) => (
                 <div key={s.name} className="hover-lift flex items-center gap-3 px-4 py-2.5">
-                  <div className="grid h-6 w-6 place-items-center rounded-md bg-muted text-[10px] font-mono font-bold text-muted-foreground">{i + 1}</div>
+                  <div className="grid h-6 w-6 place-items-center rounded-md bg-muted text-3xs font-mono font-bold text-muted-foreground">{i + 1}</div>
                   <AvatarInitials name={s.name} size="sm" />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{s.name}</div>
@@ -310,7 +310,7 @@ function Closer() {
                   </div>
                   <div className="text-right shrink-0">
                     <div className="font-mono text-sm font-semibold text-[color:var(--color-success)]">{fmtMoney(s.cash)}</div>
-                    <div className="text-[10px] text-muted-foreground">{s.closeRate.toFixed(0)}% close</div>
+                    <div className="text-3xs text-muted-foreground">{s.closeRate.toFixed(0)}% close</div>
                   </div>
                 </div>
               ))}
@@ -444,7 +444,7 @@ function Closer() {
           <TabsContent value="scorecard">
             <div className="rounded-lg border border-border bg-card overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="text-left p-3">Closer</th>
                     <th className="text-right p-3 font-mono">Booked</th>
@@ -507,7 +507,7 @@ function Closer() {
                 Follow-up pipeline · {followUps.length} calls awaiting next touch
               </div>
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="text-left p-3">Closer</th>
                     <th className="text-left p-3">Lead</th>
@@ -525,7 +525,7 @@ function Closer() {
                         <td className="p-3 text-xs">{c.lead_email || c.leads?.full_name || "—"}</td>
                         <td className="p-3 text-xs">
                           {c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—"}
-                          {daysAgo !== null && <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] ${daysAgo > 7 ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>{daysAgo}d ago</span>}
+                          {daysAgo !== null && <span className={`ml-2 rounded px-1.5 py-0.5 text-3xs ${daysAgo > 7 ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>{daysAgo}d ago</span>}
                         </td>
                         <td className="p-3 text-xs text-muted-foreground max-w-[320px] truncate">{c.call_summary || "—"}</td>
                         <td className="p-3 text-right font-mono">{c.contract_value_cents ? "$" + (c.contract_value_cents/100).toLocaleString() : "—"}</td>
@@ -545,7 +545,7 @@ function Closer() {
             Closer Input · {list.length} calls
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left p-2.5">Closer Name</th>
                 <th className="text-left p-2.5">Date Of Call</th>
@@ -574,7 +574,7 @@ function Closer() {
                     <td className="p-2.5 text-xs">{c.lead_email || c.leads?.email || "—"}</td>
                     <td className="p-2.5 text-xs text-muted-foreground max-w-[280px] truncate">{c.call_summary || "—"}</td>
                     <td className="p-2.5 text-center font-mono">{c.offer_made ? "TRUE" : "FALSE"}</td>
-                    <td className="p-2.5"><span className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${colorMap[c.status] ?? "bg-muted"}`}>{labelMap[c.status] ?? c.status}</span></td>
+                    <td className="p-2.5"><span className={`rounded px-1.5 py-0.5 text-3xs uppercase tracking-wide ${colorMap[c.status] ?? "bg-muted"}`}>{labelMap[c.status] ?? c.status}</span></td>
                     <td className="p-2.5 text-right font-mono text-[color:var(--color-success)]">{c.cash_collected_cents ? "$" + (c.cash_collected_cents/100).toLocaleString() : "—"}</td>
                     <td className="p-2.5 text-right font-mono">{c.contract_value_cents ? "$" + (c.contract_value_cents/100).toLocaleString() : "—"}</td>
                     <td className="p-2.5 text-xs">{c.recording_url ? <a className="text-primary hover:underline" href={c.recording_url} target="_blank" rel="noreferrer">link</a> : "—"}</td>

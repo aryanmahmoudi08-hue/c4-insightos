@@ -134,7 +134,7 @@ function ContentSignalsPage() {
           <div className="flex items-center gap-1.5">
             {RANGES.map(r => (
               <button key={r.days} onClick={() => { setDays(r.days); setInsight(""); }}
-                className={cn("rounded border px-2 py-1 text-[11px]", days === r.days ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40")}>
+                className={cn("rounded border px-2 py-1 text-2xs", days === r.days ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40")}>
                 {r.label}
               </button>
             ))}
@@ -145,7 +145,7 @@ function ContentSignalsPage() {
         <Card className="p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-xs uppercase tracking-wider text-muted-foreground">Recommended mix · last {days}d</div>
-            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-2 text-2xs text-muted-foreground">
               Weekly reel target
               <Input type="number" min={1} max={21} value={reelTarget} onChange={e => setReelTarget(Math.max(1, Number(e.target.value) || 1))} className="h-7 w-16 text-xs" />
             </div>
@@ -168,8 +168,8 @@ function ContentSignalsPage() {
                     <div className="h-1.5 w-full rounded bg-muted overflow-hidden">
                       <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
                     </div>
-                    <div className="text-[11px] text-muted-foreground">{reels} of {reelTarget} reels this week</div>
-                    <div className={cn("text-[11px] font-medium",
+                    <div className="text-2xs text-muted-foreground">{reels} of {reelTarget} reels this week</div>
+                    <div className={cn("text-2xs font-medium",
                       gap > 0 ? "text-destructive" : "text-[color:var(--color-success)]")}>
                       {gap > 0 ? `${gap} short — posted ${posted}` : `On target — posted ${posted}`}
                     </div>
@@ -179,7 +179,7 @@ function ContentSignalsPage() {
             </div>
           )}
           {demand && (
-            <div className="text-[11px] text-muted-foreground">
+            <div className="text-2xs text-muted-foreground">
               Built from {demand.counts.faq} FAQ videos · {demand.counts.setter_calls} setting-call signals · {demand.counts.intakes} client intakes · {demand.counts.reels} content pieces.
             </div>
           )}
@@ -201,7 +201,7 @@ function ContentSignalsPage() {
           </div>
           <div className="grid gap-2 md:grid-cols-2">
             <div className="rounded-md border border-[color:var(--color-success)]/45 bg-[color:var(--color-success)]/5 p-3 text-xs space-y-1">
-              <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-[10px] text-[color:var(--color-success)]">
+              <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-3xs text-[color:var(--color-success)]">
                 <TrendingUp className="h-3.5 w-3.5" /> Drove the most DMs / calls
               </div>
               {weekly.best && weekly.per[weekly.best].count > 0
@@ -209,7 +209,7 @@ function ContentSignalsPage() {
                 : <div className="text-muted-foreground">No performance logged yet this week.</div>}
             </div>
             <div className="rounded-md border border-destructive/45 bg-destructive/5 p-3 text-xs space-y-1">
-              <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-[10px] text-destructive">
+              <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-3xs text-destructive">
                 <TriangleAlert className="h-3.5 w-3.5" /> Underperformed
               </div>
               {weekly.worst
@@ -228,10 +228,10 @@ function ContentSignalsPage() {
             <div className="divide-y divide-border">
               {demand!.drivers.map((d, i) => (
                 <div key={i} className="flex items-start gap-2 py-2 text-xs">
-                  <Badge variant="outline" className="text-[10px] shrink-0">{MECHANISMS[d.mechanism as MechanismKey]?.label ?? d.mechanism}</Badge>
+                  <Badge variant="outline" className="text-3xs shrink-0">{MECHANISMS[d.mechanism as MechanismKey]?.label ?? d.mechanism}</Badge>
                   <span className="text-muted-foreground shrink-0">{d.source}</span>
                   <span className="flex-1">{d.detail}</span>
-                  <span className="font-mono text-[10px] text-muted-foreground">w{Math.round(d.weight)}</span>
+                  <span className="font-mono text-3xs text-muted-foreground">w{Math.round(d.weight)}</span>
                 </div>
               ))}
             </div>
@@ -300,7 +300,7 @@ function SetterSignals({ orgId, days }: { orgId?: string; days: number }) {
       <div className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted-foreground">
         <PhoneCall className="h-3.5 w-3.5" /> Setting-call word tracks → content demand
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Paste the setting-call transcript (or the setter's notes from Close). AI pulls the limiting beliefs and objections, then decides which mechanism kills them.
       </p>
       <div className="grid gap-2 sm:grid-cols-3">
@@ -318,11 +318,11 @@ function SetterSignals({ orgId, days }: { orgId?: string; days: number }) {
           <div key={r.id} className="py-2 space-y-1 text-xs">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium">{r.setter_name}</span>
-              <span className="font-mono text-[10px] text-muted-foreground">{r.call_date}</span>
-              {r.mechanism && <Badge variant="outline" className="text-[10px]">{MECHANISMS[r.mechanism as MechanismKey]?.label ?? r.mechanism}</Badge>}
+              <span className="font-mono text-3xs text-muted-foreground">{r.call_date}</span>
+              {r.mechanism && <Badge variant="outline" className="text-3xs">{MECHANISMS[r.mechanism as MechanismKey]?.label ?? r.mechanism}</Badge>}
             </div>
-            {(r.limiting_beliefs ?? []).length > 0 && <div><span className="text-[10px] uppercase tracking-wider text-destructive">Beliefs</span> — {(r.limiting_beliefs ?? []).join(" · ")}</div>}
-            {(r.objections ?? []).length > 0 && <div><span className="text-[10px] uppercase tracking-wider text-muted-foreground">Objections</span> — {(r.objections ?? []).join(" · ")}</div>}
+            {(r.limiting_beliefs ?? []).length > 0 && <div><span className="text-3xs uppercase tracking-wider text-destructive">Beliefs</span> — {(r.limiting_beliefs ?? []).join(" · ")}</div>}
+            {(r.objections ?? []).length > 0 && <div><span className="text-3xs uppercase tracking-wider text-muted-foreground">Objections</span> — {(r.objections ?? []).join(" · ")}</div>}
             {r.ai_summary && <div className="text-muted-foreground">{r.ai_summary}</div>}
           </div>
         ))}
@@ -335,10 +335,10 @@ function SetterSignals({ orgId, days }: { orgId?: string; days: number }) {
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "success" | "danger" }) {
   return (
     <div className="rounded-md border border-border p-3">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={cn("mt-0.5 font-mono text-lg font-semibold",
         tone === "success" && "text-[color:var(--color-success)]", tone === "danger" && "text-destructive")}>{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

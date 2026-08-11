@@ -188,12 +188,12 @@ function DailyWinForm() {
                           : "border-primary bg-primary/10"
                         : "border-border hover:bg-muted/30")}>
                     <div className="flex items-center gap-2 text-sm font-medium"><Icon className="h-4 w-4" />{t.label}</div>
-                    <div className="text-[11px] text-muted-foreground mt-1">{t.hint}</div>
+                    <div className="text-2xs text-muted-foreground mt-1">{t.hint}</div>
                   </button>
                 );
               })}
             </div>
-            {financial && <div className="text-[11px] text-[color:var(--color-success)] mt-1.5">Financial wins are logged as HIGH PRIORITY and pushed to the wins wall.</div>}
+            {financial && <div className="text-2xs text-[color:var(--color-success)] mt-1.5">Financial wins are logged as HIGH PRIORITY and pushed to the wins wall.</div>}
           </Field>
           <Field label="Describe your win — be specific.">
             <Textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What happened, and why it matters" />
@@ -232,7 +232,7 @@ function DailyWinForm() {
         <Button className="w-full h-11" disabled={!valid || m.isPending || uploading} onClick={() => m.mutate()}>
           {m.isPending || uploading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{uploading ? "Uploading proof…" : "Logging…"}</> : "Submit today's W"}
         </Button>
-        <p className="text-center text-[11px] text-muted-foreground pb-8">C4 · InsightOS accountability log</p>
+        <p className="text-center text-2xs text-muted-foreground pb-8">C4 · InsightOS accountability log</p>
       </div>
     </main>
   );
@@ -242,7 +242,7 @@ function Section({ n, title, children }: { n: number; title: string; children: R
   return (
     <section className="rounded-lg border border-border bg-card p-5 space-y-4">
       <div className="flex items-center gap-2">
-        <span className="grid h-6 w-6 place-items-center rounded-full bg-muted text-[11px] font-mono">{n}</span>
+        <span className="grid h-6 w-6 place-items-center rounded-full bg-muted text-2xs font-mono">{n}</span>
         <h2 className="text-sm font-semibold uppercase tracking-wider">{title}</h2>
       </div>
       {children}

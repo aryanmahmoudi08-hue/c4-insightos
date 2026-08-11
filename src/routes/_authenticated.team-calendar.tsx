@@ -165,7 +165,7 @@ function TeamCalendarPage() {
             <div className="flex items-center gap-1.5">
               {(["WEEK", "MONTH", "AGENDA"] as const).map(v => (
                 <button key={v} onClick={() => setView(v)}
-                  className={cn("rounded border px-2 py-1 text-[11px]", view === v ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40")}>
+                  className={cn("rounded border px-2 py-1 text-2xs", view === v ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40")}>
                   {v[0] + v.slice(1).toLowerCase()}
                 </button>
               ))}
@@ -189,8 +189,8 @@ function TeamCalendarPage() {
             {(cals ?? []).map(c => (
               <div key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
                 <span className="font-medium">{c.member_name}</span>
-                <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{c.role.replace("_", " ")}</span>
-                <span className="truncate font-mono text-[11px] text-muted-foreground">{c.calendar_id ?? c.ical_url ?? "—"}</span>
+                <span className="rounded border border-border px-1.5 py-0.5 text-3xs uppercase tracking-wider text-muted-foreground">{c.role.replace("_", " ")}</span>
+                <span className="truncate font-mono text-2xs text-muted-foreground">{c.calendar_id ?? c.ical_url ?? "—"}</span>
                 <div className="ml-auto flex items-center gap-2">
                   {c.calendar_id && (
                     <a className="text-muted-foreground hover:text-foreground" target="_blank" rel="noreferrer"
@@ -213,9 +213,9 @@ function TeamCalendarPage() {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider"><Clock className="h-3.5 w-3.5" /> Work blocks · week of {days[0]}</div>
             <div className="flex items-center gap-1.5">
-              <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => setWeekStart(shiftWeek(weekStart, -7))}>← Prev</Button>
-              <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => setWeekStart(startOfWeek(new Date()))}>This week</Button>
-              <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => setWeekStart(shiftWeek(weekStart, 7))}>Next →</Button>
+              <Button size="sm" variant="outline" className="h-7 text-2xs" onClick={() => setWeekStart(shiftWeek(weekStart, -7))}>← Prev</Button>
+              <Button size="sm" variant="outline" className="h-7 text-2xs" onClick={() => setWeekStart(startOfWeek(new Date()))}>This week</Button>
+              <Button size="sm" variant="outline" className="h-7 text-2xs" onClick={() => setWeekStart(shiftWeek(weekStart, 7))}>Next →</Button>
               <BlockDialog days={days} onSave={(r) => saveBlock.mutate(r)} />
             </div>
           </div>
@@ -225,25 +225,25 @@ function TeamCalendarPage() {
               const isToday = d === new Date().toISOString().slice(0, 10);
               return (
                 <div key={d} className={cn("min-h-[150px] p-2 space-y-1.5", isToday && "bg-primary/5")}>
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                     {new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric" })}
                   </div>
                   {dayBlocks.map(b => {
                     const kind = KINDS.find(k => k.value === b.kind) ?? KINDS[2];
                     return (
-                      <div key={b.id} className={cn("group rounded border px-1.5 py-1 text-[11px]", kind.tone)}>
+                      <div key={b.id} className={cn("group rounded border px-1.5 py-1 text-2xs", kind.tone)}>
                         <div className="flex items-start gap-1">
                           <span className="flex-1 font-medium leading-tight">{b.title}</span>
                           <button onClick={() => delBlock.mutate(b.id)} className="opacity-0 group-hover:opacity-100" aria-label="Delete block">
                             <Trash2 className="h-3 w-3" />
                           </button>
                         </div>
-                        <div className="font-mono text-[10px] opacity-80">{b.start_time ?? ""}{b.end_time ? `–${b.end_time}` : ""}</div>
-                        <div className="truncate text-[10px] opacity-80">{b.member_name}</div>
+                        <div className="font-mono text-3xs opacity-80">{b.start_time ?? ""}{b.end_time ? `–${b.end_time}` : ""}</div>
+                        <div className="truncate text-3xs opacity-80">{b.member_name}</div>
                       </div>
                     );
                   })}
-                  {dayBlocks.length === 0 && <div className="text-[10px] text-muted-foreground/60 italic">—</div>}
+                  {dayBlocks.length === 0 && <div className="text-3xs text-muted-foreground/60 italic">—</div>}
                 </div>
               );
             })}
@@ -263,7 +263,7 @@ function CalendarDialog({ onSave }: { onSave: (r: Partial<Cal> & { member_name: 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" className="h-7 text-[11px]"><Plus className="h-3 w-3 mr-1" /> Connect calendar</Button>
+        <Button size="sm" className="h-7 text-2xs"><Plus className="h-3 w-3 mr-1" /> Connect calendar</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Connect a rep's Google Calendar</DialogTitle></DialogHeader>
@@ -276,7 +276,7 @@ function CalendarDialog({ onSave }: { onSave: (r: Partial<Cal> & { member_name: 
           <div>
             <label className="text-xs text-muted-foreground">Google Calendar ID</label>
             <Input placeholder="rep@gmail.com or ...@group.calendar.google.com" value={calId} onChange={e => setCalId(e.target.value)} />
-            <p className="mt-1 text-[11px] text-muted-foreground">Google Calendar → Settings → your calendar → Integrate calendar → Calendar ID. Share it with the team so it renders here.</p>
+            <p className="mt-1 text-2xs text-muted-foreground">Google Calendar → Settings → your calendar → Integrate calendar → Calendar ID. Share it with the team so it renders here.</p>
           </div>
           <div>
             <label className="text-xs text-muted-foreground">Secret iCal URL (optional)</label>
@@ -304,7 +304,7 @@ function BlockDialog({ days, onSave }: { days: string[]; onSave: (r: Omit<Block,
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="h-7 text-[11px]"><Plus className="h-3 w-3 mr-1" /> Work block</Button>
+        <Button size="sm" variant="outline" className="h-7 text-2xs"><Plus className="h-3 w-3 mr-1" /> Work block</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Add a work block</DialogTitle></DialogHeader>

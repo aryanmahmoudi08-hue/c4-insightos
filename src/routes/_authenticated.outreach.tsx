@@ -13,15 +13,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Mail, MessageSquare, Plus, Send, Calendar, Users, Clock } from "lucide-react";
 import { toast } from "sonner";
+import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
 
 export const Route = createFileRoute("/_authenticated/outreach")({ component: Outreach });
 
 const STATUS_TONE: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground",
-  scheduled: "bg-amber-500/15 text-amber-400",
-  sending: "bg-blue-500/15 text-blue-400",
-  sent: "bg-emerald-500/15 text-emerald-400",
-  failed: "bg-destructive/15 text-destructive",
+  draft: CHIP_TONE_CLASSES.default,
+  scheduled: CHIP_TONE_CLASSES.warning,
+  sending: CHIP_TONE_CLASSES.info,
+  sent: CHIP_TONE_CLASSES.success,
+  failed: CHIP_TONE_CLASSES.destructive,
 };
 
 function Outreach() {
@@ -150,7 +151,7 @@ function Outreach() {
                     <Button type="submit" name="send_now" value="1" className="flex-1" disabled={createMessage.isPending}><Send className="h-4 w-4" />Queue to send now</Button>
                     <Button type="submit" variant="outline" className="flex-1" disabled={createMessage.isPending}><Calendar className="h-4 w-4" />Save / schedule</Button>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     Messages are queued in the database. A scheduled cron tick processes <span className="font-mono">queued</span> + due <span className="font-mono">scheduled</span> rows through your email / SMS provider once configured.
                   </p>
                 </form>
@@ -167,7 +168,7 @@ function Outreach() {
 
           <TabsContent value="messages">
             <div className="rounded-lg border border-border bg-card overflow-hidden">
-              <div className="bg-muted/40 px-3 py-2 text-[11px] uppercase tracking-wider text-muted-foreground grid grid-cols-12 gap-2">
+              <div className="bg-muted/40 px-3 py-2 text-2xs uppercase tracking-wider text-muted-foreground grid grid-cols-12 gap-2">
                 <div className="col-span-1">Channel</div>
                 <div className="col-span-4">Subject / preview</div>
                 <div className="col-span-2">List</div>
@@ -188,15 +189,15 @@ function Outreach() {
                   </div>
                   <div className="col-span-4 min-w-0">
                     <div className="truncate font-medium text-xs">{m.subject || (m.body ?? "").slice(0, 80)}</div>
-                    {m.subject && <div className="truncate text-[11px] text-muted-foreground">{(m.body ?? "").slice(0, 80)}</div>}
+                    {m.subject && <div className="truncate text-2xs text-muted-foreground">{(m.body ?? "").slice(0, 80)}</div>}
                   </div>
                   <div className="col-span-2 text-xs text-muted-foreground truncate">{m.outreach_lists?.name ?? "—"}</div>
-                  <div className="col-span-2 text-[11px] text-muted-foreground flex items-center gap-1">
+                  <div className="col-span-2 text-2xs text-muted-foreground flex items-center gap-1">
                     <Clock className="h-3 w-3" />
                     {m.sent_at ? new Date(m.sent_at).toLocaleString() : m.scheduled_for ? new Date(m.scheduled_for).toLocaleString() : "—"}
                   </div>
                   <div className="col-span-1">
-                    <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-mono uppercase ${STATUS_TONE[m.status] ?? "bg-muted text-muted-foreground"}`}>{m.status}</span>
+                    <span className={`inline-block rounded px-1.5 py-0.5 text-3xs font-mono uppercase ${STATUS_TONE[m.status] ?? "bg-muted text-muted-foreground"}`}>{m.status}</span>
                   </div>
                   <div className="col-span-2 text-right"></div>
                 </div>
@@ -215,12 +216,12 @@ function Outreach() {
                         {l.kind === "email" ? <Mail className="h-4 w-4 text-accent" /> : <MessageSquare className="h-4 w-4 text-accent" />}
                         {l.name}
                       </div>
-                      <span className="text-[10px] font-mono uppercase text-muted-foreground">{l.kind}</span>
+                      <span className="text-3xs font-mono uppercase text-muted-foreground">{l.kind}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Users className="h-3 w-3" /> {count} recipient{count === 1 ? "" : "s"}
                     </div>
-                    <div className="text-[10px] text-muted-foreground">Created {new Date(l.created_at).toLocaleDateString()}</div>
+                    <div className="text-3xs text-muted-foreground">Created {new Date(l.created_at).toLocaleDateString()}</div>
                   </div>
                 );
               })}

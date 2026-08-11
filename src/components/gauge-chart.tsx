@@ -24,7 +24,7 @@ export function GaugeChart({ value, max = 100, label, size = 120, tone = "var(--
           {Math.round(value)}
         </text>
       </svg>
-      {label && <div className="-mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>}
+      {label && <div className="-mt-1 text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>}
     </div>
   );
 }

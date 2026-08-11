@@ -22,15 +22,21 @@ export function DateRangePicker({ value, onChange }: { value: DateRange; onChang
   ];
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <div className="flex rounded-md border border-border bg-card overflow-hidden">
-        {presets.map(p => (
-          <button key={p.key}
-            onClick={() => { setCustom(false); onChange(RANGES[p.key]()); }}
-            className={`px-2.5 py-1 text-xs ${value.label === RANGES[p.key]().label && !custom ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/50"}`}>
-            {p.label}
-          </button>
-        ))}
-        <button onClick={() => setCustom(true)} className={`px-2.5 py-1 text-xs ${custom ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/50"}`}>Custom</button>
+      <div className="flex items-center gap-0.5 rounded-full border border-border bg-muted/30 p-0.5">
+        {presets.map(p => {
+          const active = value.label === RANGES[p.key]().label && !custom;
+          return (
+            <button key={p.key} type="button"
+              onClick={() => { setCustom(false); onChange(RANGES[p.key]()); }}
+              className={`rounded-full px-2.5 py-1 text-2xs font-medium transition-all ${active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+              {p.label}
+            </button>
+          );
+        })}
+        <button type="button" onClick={() => setCustom(true)}
+          className={`rounded-full px-2.5 py-1 text-2xs font-medium transition-all ${custom ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+          Custom
+        </button>
       </div>
       {custom && (
         <div className="flex items-center gap-1.5 text-xs">
@@ -42,7 +48,7 @@ export function DateRangePicker({ value, onChange }: { value: DateRange; onChang
             onChange={(e) => onChange({ ...value, to: e.target.value, label: "Custom" })} />
         </div>
       )}
-      <span className="text-[11px] text-muted-foreground font-mono">{value.from} → {value.to}</span>
+      <span className="text-2xs text-muted-foreground font-mono">{value.from} → {value.to}</span>
     </div>
   );
 }

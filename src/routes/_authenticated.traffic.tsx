@@ -176,7 +176,7 @@ function Traffic() {
             <div className="flex items-start gap-3">
               <Target className="mt-0.5 h-5 w-5 shrink-0 text-[color:var(--color-success)]" />
               <div className="min-w-0 flex-1">
-                <div className="mb-0.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <div className="mb-0.5 flex items-center gap-1 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
                   <Sparkles className="h-3 w-3" /> What the data says
                 </div>
                 <p className="text-sm leading-relaxed">
@@ -196,9 +196,9 @@ function Traffic() {
         {/* Share of leads — single clean bar, no mixed scales */}
         <section className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-2.5">
-            <div className="text-[11px] font-semibold uppercase tracking-wider">Share of leads by channel</div>
+            <div className="text-2xs font-semibold uppercase tracking-wider">Share of leads by channel</div>
             <Dialog open={open} onOpenChange={setOpen}>
-              <DialogTrigger asChild><Button size="sm" className="h-7 text-[11px]"><Plus className="h-3 w-3 mr-1" />Add channel</Button></DialogTrigger>
+              <DialogTrigger asChild><Button size="sm" className="h-7 text-2xs"><Plus className="h-3 w-3 mr-1" />Add channel</Button></DialogTrigger>
               <DialogContent>
                 <DialogHeader><DialogTitle>New traffic channel</DialogTitle></DialogHeader>
                 <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); create.mutate(new FormData(e.currentTarget)); }}>
@@ -221,7 +221,7 @@ function Traffic() {
                   <div className="h-6 flex-1 overflow-hidden rounded bg-muted/40">
                     <div className="h-full bg-primary/70" style={{ width: `${Math.max(2, share)}%` }} />
                   </div>
-                  <div className="w-28 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
+                  <div className="w-28 shrink-0 text-right font-mono text-2xs text-muted-foreground">
                     {b.leads} leads · {share.toFixed(0)}%
                   </div>
                 </div>
@@ -241,20 +241,20 @@ function Traffic() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold">{b.name}</div>
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{b.category}</div>
+                    <div className="text-3xs uppercase tracking-wider text-muted-foreground">{b.category}</div>
                   </div>
-                  <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${v.tone}`}>{v.label}</span>
+                  <span className={`shrink-0 rounded border px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wider ${v.tone}`}>{v.label}</span>
                 </div>
 
                 <div>
                   <div className="flex items-baseline justify-between">
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Revenue per lead</span>
+                    <span className="text-3xs uppercase tracking-wider text-muted-foreground">Revenue per lead</span>
                     <span className="font-mono text-lg font-semibold">${b.revenuePerLead.toLocaleString()}</span>
                   </div>
                   <div className="mt-1 h-1.5 overflow-hidden rounded bg-muted">
                     <div className="h-full bg-[color:var(--color-success)]" style={{ width: `${Math.max(2, bar)}%` }} />
                   </div>
-                  <div className="mt-1 text-[10px] text-muted-foreground">Workspace average ${avgRevPerLead.toLocaleString()}</div>
+                  <div className="mt-1 text-3xs text-muted-foreground">Workspace average ${avgRevPerLead.toLocaleString()}</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-xs">
@@ -273,12 +273,12 @@ function Traffic() {
         {/* Ranked table — plain-English headers */}
         <section className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="border-b border-border bg-muted/30 px-4 py-2.5">
-            <div className="text-[11px] font-semibold uppercase tracking-wider">Every channel, best to worst</div>
-            <div className="mt-0.5 text-[11px] text-muted-foreground">Sorted by revenue per lead — the honest measure of a channel.</div>
+            <div className="text-2xs font-semibold uppercase tracking-wider">Every channel, best to worst</div>
+            <div className="mt-0.5 text-2xs text-muted-foreground">Sorted by revenue per lead — the honest measure of a channel.</div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+              <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="p-3 text-left">#</th>
                   <th className="p-3 text-left">Channel</th>
@@ -304,7 +304,7 @@ function Traffic() {
                       <td className="p-3 text-right font-mono">{b.closeRate}%</td>
                       <td className="p-3 text-right font-mono">${b.avgDeal.toLocaleString()}</td>
                       <td className="p-3 text-right font-mono font-semibold">${b.revenuePerLead.toLocaleString()}</td>
-                      <td className="p-3"><span className={`rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${v.tone}`}>{v.label}</span></td>
+                      <td className="p-3"><span className={`rounded border px-1.5 py-0.5 text-3xs uppercase tracking-wider ${v.tone}`}>{v.label}</span></td>
                     </tr>
                   );
                 })}
@@ -321,7 +321,7 @@ function Traffic() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded border border-border px-2 py-1.5">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="font-mono text-sm">{value}</div>
     </div>
   );

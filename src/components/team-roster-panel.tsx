@@ -100,7 +100,7 @@ export function TeamRosterPanel() {
     <div className="rounded-lg border border-border bg-card overflow-hidden">
       <div className="px-4 py-2.5 border-b border-border bg-muted/30 flex items-center justify-between">
         <div className="text-xs font-semibold uppercase tracking-wider">Roster — Closers, Setters & Dialers</div>
-        <div className="text-[11px] text-muted-foreground">{members?.length ?? 0} total · drag cards between columns to reassign</div>
+        <div className="text-2xs text-muted-foreground">{members?.length ?? 0} total · drag cards between columns to reassign</div>
       </div>
       <form className="flex gap-2 p-3 border-b border-border bg-muted/10" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
         <Input placeholder="Full name…" value={name} onChange={(e) => setName(e.target.value)} className="flex-1" />
@@ -121,8 +121,8 @@ export function TeamRosterPanel() {
             className={`p-3 space-y-2 transition-colors ${dragOver === g.value ? "bg-accent/10" : ""}`}
           >
             <div className="flex items-center justify-between">
-              <span className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${g.accent}`}>{g.label}</span>
-              <span className="text-[11px] text-muted-foreground">{g.list.length}</span>
+              <span className={`rounded px-1.5 py-0.5 text-3xs uppercase tracking-wide ${g.accent}`}>{g.label}</span>
+              <span className="text-2xs text-muted-foreground">{g.list.length}</span>
             </div>
             <div className="space-y-1 min-h-[40px]">
               {g.list.map(m => {
@@ -173,7 +173,7 @@ export function TeamRosterPanel() {
                   </div>
                 );
               })}
-              {g.list.length === 0 && <div className="text-[11px] text-muted-foreground italic px-1 py-2">Drop here…</div>}
+              {g.list.length === 0 && <div className="text-2xs text-muted-foreground italic px-1 py-2">Drop here…</div>}
             </div>
           </div>
         ))}

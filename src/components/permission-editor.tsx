@@ -47,11 +47,11 @@ export function PermissionEditor({ getPerm, onChange, onBulk, note, disabled }: 
         ))}
       </div>
 
-      <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-4 text-2xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5"><Eye className="h-3.5 w-3.5" /> {granted} of {RESOURCES.length} sections visible</span>
         <span className="inline-flex items-center gap-1.5"><Pencil className="h-3.5 w-3.5" /> {editable} editable</span>
       </div>
-      {note && <div className="text-[11px] text-muted-foreground">{note}</div>}
+      {note && <div className="text-2xs text-muted-foreground">{note}</div>}
 
       <div className="space-y-4">
         {RESOURCE_GROUPS.map(group => {
@@ -61,7 +61,7 @@ export function PermissionEditor({ getPerm, onChange, onBulk, note, disabled }: 
           if (items.length === 0) return null;
           return (
             <div key={group}>
-              <div className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{group}</div>
+              <div className="mb-1.5 px-1 text-3xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{group}</div>
               <div className="divide-y divide-border rounded-md border border-border bg-card">
                 {items.map(r => {
                   const p = getPerm(r.key);
@@ -71,20 +71,20 @@ export function PermissionEditor({ getPerm, onChange, onBulk, note, disabled }: 
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium">{r.label}</span>
                           {r.sensitive && (
-                            <span className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
+                            <span className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-4xs uppercase tracking-wider text-muted-foreground">
                               <Lock className="h-2.5 w-2.5" /> sensitive
                             </span>
                           )}
                         </div>
-                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                        <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
                           <span className="font-medium text-foreground/80">View:</span> {r.view}
                         </p>
-                        <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                        <p className="mt-0.5 text-2xs leading-relaxed text-muted-foreground">
                           <span className="font-medium text-foreground/80">Edit:</span> {r.edit}
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-5 sm:pt-0.5">
-                        <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <label className="flex items-center gap-2 text-2xs text-muted-foreground">
                           <Switch
                             checked={p.can_view}
                             disabled={disabled}
@@ -92,7 +92,7 @@ export function PermissionEditor({ getPerm, onChange, onBulk, note, disabled }: 
                           />
                           View
                         </label>
-                        <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <label className="flex items-center gap-2 text-2xs text-muted-foreground">
                           <Switch
                             checked={p.can_edit}
                             disabled={disabled || !p.can_view}

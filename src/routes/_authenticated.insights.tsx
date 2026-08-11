@@ -104,7 +104,7 @@ function Insights() {
         <div className="rounded-lg border border-border bg-card p-4">
           <div className="flex items-center gap-2 mb-2"><Sparkles className="h-4 w-4 text-accent" />
             <div className="text-sm font-semibold">Rule engine</div>
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">deterministic</span></div>
+            <span className="text-3xs uppercase tracking-wide text-muted-foreground">deterministic</span></div>
           <div className="space-y-2">
             {(ruleAlerts ?? []).map((a, i) => (
               <div key={i} className="flex items-start gap-3 rounded-md border border-border bg-background/40 p-3">
@@ -123,7 +123,7 @@ function Insights() {
           <div className="flex items-center gap-2 mb-3">
             <Activity className="h-4 w-4 text-accent" />
             <div className="text-sm font-semibold">4-week trend patterns</div>
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">multi-week direction</span>
+            <span className="text-3xs uppercase tracking-wide text-muted-foreground">multi-week direction</span>
           </div>
           {trend?.trends && trend.trends.length > 0 && (
             <div className="mb-3 space-y-1">
@@ -151,8 +151,8 @@ function Insights() {
               return (
                 <div key={m.key} className="rounded-md border border-border bg-background/40 p-3">
                   <div className="flex items-center justify-between">
-                    <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{m.label}</div>
-                    <div className={`text-[11px] font-mono ${delta > 0 ? "text-[color:var(--color-success)]" : delta < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                    <div className="text-2xs uppercase tracking-wider text-muted-foreground">{m.label}</div>
+                    <div className={`text-2xs font-mono ${delta > 0 ? "text-[color:var(--color-success)]" : delta < 0 ? "text-destructive" : "text-muted-foreground"}`}>
                       {delta > 0 ? "+" : ""}{delta.toFixed(0)}%
                     </div>
                   </div>
@@ -202,13 +202,13 @@ function Insights() {
                   <div className="text-xs text-muted-foreground leading-relaxed">{i.body}</div>
                   {i.recommendation && (
                     <div className="text-xs mt-2 rounded-md bg-background/60 px-2.5 py-1.5 border border-border/60">
-                      <span className={`uppercase tracking-wide text-[10px] font-semibold mr-1.5 ${tone === "bottleneck" ? "text-destructive" : "text-[color:var(--color-success)]"}`}>action</span>
+                      <span className={`uppercase tracking-wide text-3xs font-semibold mr-1.5 ${tone === "bottleneck" ? "text-destructive" : "text-[color:var(--color-success)]"}`}>action</span>
                       {i.recommendation}
                     </div>
                   )}
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    <span className="text-[10px] uppercase tracking-wider rounded bg-muted px-1.5 py-0.5">{String(i.module ?? "").split(":")[1] || i.module}</span>
-                    <span className="text-[10px] font-mono text-muted-foreground">conf {Math.round(Number(i.confidence) * 100)}%</span>
+                    <span className="text-3xs uppercase tracking-wider rounded bg-muted px-1.5 py-0.5">{String(i.module ?? "").split(":")[1] || i.module}</span>
+                    <span className="text-3xs font-mono text-muted-foreground">conf {Math.round(Number(i.confidence) * 100)}%</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -226,7 +226,7 @@ function Insights() {
                   <div className="flex items-center gap-2">
                     <TrendingDown className="h-4 w-4 text-destructive" />
                     <div className="text-sm font-semibold">Current bottlenecks</div>
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">what's leaking revenue</span>
+                    <span className="text-3xs uppercase tracking-wide text-muted-foreground">what's leaking revenue</span>
                   </div>
                   <span className="text-xs font-mono text-destructive">{bottlenecks.length + unclassified.length}</span>
                 </div>
@@ -245,7 +245,7 @@ function Insights() {
                   <div className="flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-[color:var(--color-success)]" />
                     <div className="text-sm font-semibold">Double down on these</div>
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">what's working — pour fuel</span>
+                    <span className="text-3xs uppercase tracking-wide text-muted-foreground">what's working — pour fuel</span>
                   </div>
                   <span className="text-xs font-mono text-[color:var(--color-success)]">{doubleDown.length}</span>
                 </div>

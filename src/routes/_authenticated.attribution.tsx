@@ -71,7 +71,7 @@ function Attribution() {
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="px-4 py-2.5 border-b border-border bg-muted/30">
             <div className="text-xs font-semibold uppercase tracking-wider">Content → Cash river</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">Each band is proportional to volume. Drop-off between stages = leakage.</div>
+            <div className="text-2xs text-muted-foreground mt-0.5">Each band is proportional to volume. Drop-off between stages = leakage.</div>
           </div>
           <div className="p-6 space-y-2">
             <FunnelBand icon={<Film className="h-4 w-4" />} label="Views" value={totalPathViews} max={totalPathViews} unit="views" color="var(--chart-1)" />
@@ -88,7 +88,7 @@ function Attribution() {
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="px-4 py-2.5 border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider">Top revenue-driving content paths</div>
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left p-3">#</th>
                 <th className="text-left p-3">Content</th>
@@ -143,7 +143,7 @@ function FunnelBand({ icon, label, value, max, unit, color, displayAs }: { icon:
 function DropArrow({ from, to, label, suffix }: { from: number; to: number; label: string; suffix?: string }) {
   const conv = from > 0 ? (to / from) * 100 : 0;
   return (
-    <div className="flex items-center gap-3 pl-32 text-[10px] text-muted-foreground">
+    <div className="flex items-center gap-3 pl-32 text-3xs text-muted-foreground">
       <ArrowRight className="h-3 w-3" />
       <span>{label}: <span className="font-mono text-accent">{conv.toFixed(1)}%</span> {suffix && `(${suffix}${to.toLocaleString()})`}</span>
     </div>

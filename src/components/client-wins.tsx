@@ -116,7 +116,7 @@ export function ClientWins({ clientId, clientName }: { clientId?: string; client
             </div>
             {w.body && <div className="text-muted-foreground whitespace-pre-wrap">{w.body}</div>}
             {w.screenshot_url && <img src={w.screenshot_url} alt="" className="rounded border border-border max-h-48 object-cover w-full" />}
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground uppercase tracking-wider">
+            <div className="flex items-center justify-between text-3xs text-muted-foreground uppercase tracking-wider">
               <span className={w.magnitude === "major" ? "text-amber-600 dark:text-amber-400 font-semibold" : ""}>{w.magnitude}</span>
               <span>{new Date(w.occurred_at).toLocaleDateString()}</span>
             </div>

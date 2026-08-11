@@ -29,7 +29,7 @@ function Section({ title, description, children }: { title: string; description?
     <section className="rounded-lg border border-border bg-card">
       <div className="border-b border-border px-4 py-3">
         <h2 className="text-sm font-semibold">{title}</h2>
-        {description && <p className="mt-0.5 text-[11px] text-muted-foreground">{description}</p>}
+        {description && <p className="mt-0.5 text-2xs text-muted-foreground">{description}</p>}
       </div>
       <div className="p-4">{children}</div>
     </section>
@@ -61,7 +61,7 @@ function Settings() {
                     active ? "border-primary ring-1 ring-ring" : "border-border hover:bg-muted/40")}>
                   <div className="flex items-center gap-2 text-sm font-medium">
                     <Icon className="h-4 w-4" /> {opt.label}
-                    {active && <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground">Active</span>}
+                    {active && <span className="ml-auto text-3xs uppercase tracking-wider text-muted-foreground">Active</span>}
                   </div>
                   <div className="mt-2 flex gap-1">
                     {opt.swatch.map(c => (
@@ -87,7 +87,7 @@ function Settings() {
             <div>
               <dt className="text-muted-foreground">Your role</dt>
               <dd className="mt-0.5 font-medium">{role ? (ROLE_LABELS[role as ManagedRole] ?? role) : "—"}</dd>
-              {role && <dd className="text-[11px] text-muted-foreground">{ROLE_BLURBS[role as ManagedRole] ?? "Full owner access."}</dd>}
+              {role && <dd className="text-2xs text-muted-foreground">{ROLE_BLURBS[role as ManagedRole] ?? "Full owner access."}</dd>}
             </div>
             <div>
               <dt className="text-muted-foreground">Default reporting range</dt>
@@ -108,7 +108,7 @@ function Settings() {
               <Link to="/connectors"><Plug className="h-4 w-4" /> Connectors</Link>
             </Button>
           </div>
-          <p className="mt-3 text-[11px] text-muted-foreground">
+          <p className="mt-3 text-2xs text-muted-foreground">
             Role access sets the baseline. Person-level overrides live on each team row under Team → Access and always win over the role default.
           </p>
         </Section>

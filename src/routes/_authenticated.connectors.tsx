@@ -136,19 +136,19 @@ function Connectors() {
                       <Plug className="h-4 w-4 text-muted-foreground" />
                       <div className="font-semibold text-sm capitalize truncate">{c.name}</div>
                     </div>
-                    <div className="mt-1 text-[11px] uppercase tracking-wider text-muted-foreground">{c.category}</div>
+                    <div className="mt-1 text-2xs uppercase tracking-wider text-muted-foreground">{c.category}</div>
                     {c.description && <p className="mt-2 text-xs text-muted-foreground line-clamp-2">{c.description}</p>}
                   </div>
                   {isConnected && configured ? (
-                    <span className="rounded bg-[color:var(--color-success)]/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--color-success)] flex items-center gap-1">
+                    <span className="rounded bg-[color:var(--color-success)]/15 px-2 py-0.5 text-3xs uppercase tracking-wide text-[color:var(--color-success)] flex items-center gap-1">
                       <CheckCircle2 className="h-3 w-3" /> connected
                     </span>
                   ) : isConnected ? (
-                    <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">setup needed</span>
+                    <span className="rounded bg-muted px-2 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">setup needed</span>
                   ) : canConnect ? (
-                    <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">available</span>
+                    <span className="rounded bg-muted px-2 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">available</span>
                   ) : (
-                    <span className="rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">credentials needed</span>
+                    <span className="rounded bg-muted px-2 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">credentials needed</span>
                   )}
                 </div>
                 {isConnected && hasSetup && (

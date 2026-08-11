@@ -318,7 +318,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                     <div key={m.name} className="flex items-center gap-3 px-4 py-2.5">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium truncate">{m.name}</div>
-                        <div className="text-[11px] text-muted-foreground">avg {m.recentAvg} sets/day last 7d · best day {m.best}</div>
+                        <div className="text-2xs text-muted-foreground">avg {m.recentAvg} sets/day last 7d · best day {m.best}</div>
                       </div>
                       <div className={`flex items-center gap-1.5 font-mono text-sm font-semibold ${tone}`}>
                         <Icon className="h-4 w-4" />{m.score}%
@@ -364,7 +364,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             {isDialer ? "Setter Input" : "DM Setter Input"} · {rows?.length ?? 0} rows
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left p-2.5">Name</th>
                 <th className="text-left p-2.5">Date</th>
@@ -389,7 +389,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 <tr key={r.id} className="border-t border-border hover:bg-muted/20">
                   <td className="p-2.5 font-medium">{r.team_member_name}</td>
                   <td className="p-2.5 text-xs text-muted-foreground">{r.activity_date}</td>
-                  <td className="p-2.5 text-xs">{r.lead_source ? <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">{r.lead_source}</span> : <span className="text-muted-foreground">—</span>}</td>
+                  <td className="p-2.5 text-xs">{r.lead_source ? <span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase">{r.lead_source}</span> : <span className="text-muted-foreground">—</span>}</td>
                   {isDialer
                     ? (<><td className="p-2.5 text-right font-mono">{r.dials ?? 0}</td><td className="p-2.5 text-right font-mono">{r.connections ?? 0}</td></>)
                     : (<><td className="p-2.5 text-right font-mono">{r.leads_contacted ?? 0}</td><td className="p-2.5 text-right font-mono">{r.links_sent ?? 0}</td></>)}

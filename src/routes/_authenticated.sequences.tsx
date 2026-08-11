@@ -252,9 +252,9 @@ function SequencesPage() {
                   tpl.accent,
                   active ? "border-primary ring-2 ring-primary/40" : "border-border hover:border-primary/40",
                 )}>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">{tpl.dayName}</div>
+                <div className="text-3xs uppercase tracking-wider text-muted-foreground font-mono">{tpl.dayName}</div>
                 <div className="text-sm font-semibold mt-1 leading-tight">{tpl.title}</div>
-                <div className="text-[10px] text-muted-foreground mt-1.5 line-clamp-2">{tpl.subtitle}</div>
+                <div className="text-3xs text-muted-foreground mt-1.5 line-clamp-2">{tpl.subtitle}</div>
               </button>
             );
           })}
@@ -264,7 +264,7 @@ function SequencesPage() {
         <Card className={cn("p-4 bg-gradient-to-br", t.accent)}>
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">{t.dayName} · Template</div>
+              <div className="text-3xs uppercase tracking-wider text-muted-foreground font-mono">{t.dayName} · Template</div>
               <h2 className="text-xl font-semibold mt-1">{t.title}</h2>
               <p className="text-sm text-muted-foreground mt-1 max-w-2xl">{t.subtitle}</p>
             </div>
@@ -277,7 +277,7 @@ function SequencesPage() {
             <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {t.slides.map((s, i) => (
                 <div key={i} className="rounded-md border border-border/60 bg-background/60 p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">Slide {i + 1}</div>
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground font-mono">Slide {i + 1}</div>
                   <div className="text-sm font-semibold mt-0.5">{s.label}</div>
                   <div className="text-xs text-muted-foreground mt-1.5">{s.hint}</div>
                 </div>
@@ -314,10 +314,10 @@ function SequencesPage() {
                 {editing.slides.map((s, i) => (
                   <div key={i} className="rounded-md border border-border/60 bg-background/60 p-3">
                     <div className="flex items-center justify-between">
-                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">Slide {i + 1}</div>
+                      <div className="text-3xs uppercase tracking-wider text-muted-foreground font-mono">Slide {i + 1}</div>
                       <div className="text-xs font-semibold">{s.label}</div>
                     </div>
-                    <div className="text-[11px] text-muted-foreground mt-1 italic line-clamp-2">{t.slides[i]?.hint}</div>
+                    <div className="text-2xs text-muted-foreground mt-1 italic line-clamp-2">{t.slides[i]?.hint}</div>
                     <Textarea rows={5} className="mt-2" value={s.body}
                       onChange={ev => {
                         const next = [...editing.slides]; next[i] = { ...next[i], body: ev.target.value };
@@ -350,7 +350,7 @@ function SequencesPage() {
                 return (
                   <Card key={s.id} className={cn("p-3 bg-gradient-to-br", tpl.accent)}>
                     <div className="flex items-center justify-between">
-                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">{tpl.dayName}</div>
+                      <div className="text-3xs uppercase tracking-wider text-muted-foreground font-mono">{tpl.dayName}</div>
                       <Badge variant={s.status === "ready" ? "default" : s.status === "posted" ? "secondary" : "outline"}>{s.status}</Badge>
                     </div>
                     <div className="text-sm font-semibold mt-1">{s.title}</div>

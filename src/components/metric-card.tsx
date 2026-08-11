@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/sparkline";
+import { useCountUp } from "@/hooks/use-count-up";
 
 type Tone = "default" | "success" | "warning" | "destructive" | "accent";
 
@@ -28,6 +29,7 @@ const TONE_GLOW: Record<Tone, string> = {
 export function MetricCard({
   label, value, subLabel, icon, tone = "default",
   deltaPct, spark, sparkVariant = "line",
+  numericValue, format,
 }: {
   label: string;
   value: ReactNode;
@@ -38,12 +40,17 @@ export function MetricCard({
   deltaPct?: number;
   spark?: number[];
   sparkVariant?: "line" | "bar";
+  /** Opt-in: pass the raw number + a formatter to get a count-up animation on change (e.g. date-range switches). Omit to render `value` as-is. */
+  numericValue?: number;
+  format?: (n: number) => string;
 }) {
   const hasDelta = deltaPct !== undefined && Number.isFinite(deltaPct);
   const up = hasDelta && deltaPct > 0.5;
   const down = hasDelta && deltaPct < -0.5;
   const DeltaIcon = up ? TrendingUp : down ? TrendingDown : Minus;
   const deltaTone = up ? "success" : down ? "destructive" : "default";
+  const animated = useCountUp(numericValue ?? 0);
+  const display: ReactNode = numericValue !== undefined ? (format ? format(animated) : Math.round(animated)) : value;
 
   return (
     <div className="hover-lift group relative overflow-hidden rounded-xl border border-border bg-card p-4">
@@ -51,12 +58,12 @@ export function MetricCard({
       <div className="glass-highlight pointer-events-none absolute inset-0 rounded-xl" />
       <div className="relative flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
             {icon && <span className="text-muted-foreground/80">{icon}</span>}
             <span className="truncate">{label}</span>
           </div>
-          <div className={cn("mt-1.5 font-mono text-2xl font-bold tabular-nums tracking-tight", TONE_TEXT[tone])}>{value}</div>
-          {subLabel && <div className="mt-0.5 text-[11px] text-muted-foreground">{subLabel}</div>}
+          <div className={cn("mt-1.5 font-mono text-2xl font-bold tabular-nums tracking-tight", TONE_TEXT[tone])}>{display}</div>
+          {subLabel && <div className="mt-0.5 text-2xs text-muted-foreground">{subLabel}</div>}
         </div>
         {hasDelta && (
           <span className={cn(

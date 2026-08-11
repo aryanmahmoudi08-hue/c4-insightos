@@ -218,7 +218,7 @@ function Dashboard() {
           subtitle="Real-time KPIs across content, attribution, and sales"
           accent="accent"
           right={
-            <span className="text-[11px] font-mono text-muted-foreground">
+            <span className="text-2xs font-mono text-muted-foreground">
               {isLoading ? "syncing…" : `${range.from} → ${range.to} · vs prior ${Math.max(1, Math.round((new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400e3) + 1)}d`}
             </span>
           }
@@ -329,7 +329,7 @@ function Dashboard() {
                   <span className={`mt-1 h-2 w-2 rounded-full ${a.severity === "critical" ? "bg-destructive" : a.severity === "warning" ? "bg-[color:var(--color-warning)]" : "bg-primary"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{a.title}</div>
-                    <div className="text-[11px] text-muted-foreground">{new Date(a.created_at).toLocaleString()}</div>
+                    <div className="text-2xs text-muted-foreground">{new Date(a.created_at).toLocaleString()}</div>
                   </div>
                 </div>
               ))}
@@ -349,10 +349,10 @@ function Dashboard() {
                 <div key={i.id} className="px-4 py-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-sm font-medium truncate">{i.title}</div>
-                    <span className="text-[10px] font-mono text-muted-foreground">{Math.round(Number(i.confidence) * 100)}%</span>
+                    <span className="text-3xs font-mono text-muted-foreground">{Math.round(Number(i.confidence) * 100)}%</span>
                   </div>
-                  <div className="text-[11px] text-muted-foreground line-clamp-2">{i.body}</div>
-                  <div className="text-[10px] uppercase tracking-wider text-accent mt-1">{i.module}</div>
+                  <div className="text-2xs text-muted-foreground line-clamp-2">{i.body}</div>
+                  <div className="text-3xs uppercase tracking-wider text-accent mt-1">{i.module}</div>
                 </div>
               ))}
               {(!stats?.insights || stats.insights.length === 0) && (
@@ -391,7 +391,7 @@ function DeltaKpi({ label, value, curr, prev, hint, tone = "default", spark }: {
   return (
     <div className="rounded-md border border-border bg-card overflow-hidden flex flex-col">
       <div className={cn(
-        "px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-center border-b border-border",
+        "px-3 py-1.5 text-3xs font-medium uppercase tracking-wider text-center border-b border-border",
         tone === "money" && "bg-[color:var(--color-success)]/10 text-[color:var(--color-success)]",
         tone === "rate" && "bg-accent/10 text-accent",
         tone === "default" && "bg-muted/40 text-muted-foreground",
@@ -399,7 +399,7 @@ function DeltaKpi({ label, value, curr, prev, hint, tone = "default", spark }: {
       <div className="flex-1 grid place-items-center px-3 py-3 min-h-[72px]">
         <div className="font-mono text-xl font-bold tabular-nums">{value}</div>
         <div className="flex items-center gap-2 mt-1">
-          <span className={`flex items-center gap-1 text-[10px] font-mono ${deltaTone}`}>
+          <span className={`flex items-center gap-1 text-3xs font-mono ${deltaTone}`}>
             <Icon className="h-3 w-3" />{Math.abs(delta).toFixed(0)}%
           </span>
           {spark && spark.length > 1 && (
@@ -408,7 +408,7 @@ function DeltaKpi({ label, value, curr, prev, hint, tone = "default", spark }: {
             </span>
           )}
         </div>
-        {hint && <div className="text-[10px] text-muted-foreground">{hint}</div>}
+        {hint && <div className="text-3xs text-muted-foreground">{hint}</div>}
       </div>
     </div>
   );
@@ -440,21 +440,21 @@ function WeeklyDigest({ pace, curr, prev }: { pace?: { monthCash: number; projec
           </div>
         </div>
         {pace && (
-          <div className="text-[11px] font-mono text-muted-foreground">
+          <div className="text-2xs font-mono text-muted-foreground">
             Month pace · <span className="text-foreground font-semibold">{money(pace.projection)}</span> projected · {money(pace.dailyPace)}/day
           </div>
         )}
       </div>
       <div className="mt-3 grid sm:grid-cols-2 gap-3">
         <div className="rounded-md border border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/5 p-3 space-y-1">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--color-success)] flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Wins</div>
-          {winners.length === 0 ? <div className="text-[11px] text-muted-foreground italic">No metrics up &gt;5% vs prior.</div>
-            : <ul className="text-[11px] space-y-0.5">{winners.map((w, i) => <li key={i} className="font-mono">• {w}</li>)}</ul>}
+          <div className="text-3xs font-semibold uppercase tracking-wider text-[color:var(--color-success)] flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Wins</div>
+          {winners.length === 0 ? <div className="text-2xs text-muted-foreground italic">No metrics up &gt;5% vs prior.</div>
+            : <ul className="text-2xs space-y-0.5">{winners.map((w, i) => <li key={i} className="font-mono">• {w}</li>)}</ul>}
         </div>
         <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-1">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-destructive flex items-center gap-1"><TrendingDown className="h-3 w-3" /> Pressure</div>
-          {losers.length === 0 ? <div className="text-[11px] text-muted-foreground italic">Nothing falling &gt;5% vs prior.</div>
-            : <ul className="text-[11px] space-y-0.5">{losers.map((w, i) => <li key={i} className="font-mono">• {w}</li>)}</ul>}
+          <div className="text-3xs font-semibold uppercase tracking-wider text-destructive flex items-center gap-1"><TrendingDown className="h-3 w-3" /> Pressure</div>
+          {losers.length === 0 ? <div className="text-2xs text-muted-foreground italic">Nothing falling &gt;5% vs prior.</div>
+            : <ul className="text-2xs space-y-0.5">{losers.map((w, i) => <li key={i} className="font-mono">• {w}</li>)}</ul>}
         </div>
       </div>
     </div>
@@ -481,7 +481,7 @@ function FunnelCard({ funnel }: { funnel: { stage: string; value: number; conv: 
           <div className="text-xs text-muted-foreground">% = conversion from previous stage</div>
         </div>
         <button onClick={() => setLogScale(s => !s)}
-          className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:bg-muted/50">
+          className="text-3xs font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:bg-muted/50">
           {logScale ? "LOG" : "LINEAR"}
         </button>
       </div>
@@ -490,7 +490,7 @@ function FunnelCard({ funnel }: { funnel: { stage: string; value: number; conv: 
           const width = scale(f.value);
           return (
             <div key={f.stage} className="space-y-0.5">
-              <div className="flex items-center justify-between text-[11px]">
+              <div className="flex items-center justify-between text-2xs">
                 <span className="font-medium">{f.stage}</span>
                 <span className="font-mono text-muted-foreground">{fmt(f.value)} {f.conv && <span className="text-accent ml-1">{f.conv}</span>}</span>
               </div>
@@ -522,11 +522,11 @@ function PaceCard({ pace }: { pace?: { monthCash: number; projection: number; da
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Month-end pace</div>
             <div className="text-2xl font-mono font-bold">{money(pace.projection)}</div>
-            <div className="text-[11px] text-muted-foreground">projected · {money(pace.monthCash)} collected · {money(pace.dailyPace)} / day</div>
+            <div className="text-2xs text-muted-foreground">projected · {money(pace.monthCash)} collected · {money(pace.dailyPace)} / day</div>
           </div>
         </div>
         <div className="flex-1 min-w-[200px] max-w-md">
-          <div className="flex justify-between text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+          <div className="flex justify-between text-3xs uppercase tracking-wider text-muted-foreground mb-1">
             <span>Day {pace.dayOfMonth} of {pace.daysInMonth}</span>
             <span>{progress.toFixed(0)}% through month</span>
           </div>
@@ -573,10 +573,10 @@ function ContentToCashStrip({ rows }: { rows: ContentAttrRow[] }) {
             return (
               <div key={it.id} className="px-4 py-2.5">
                 <div className="flex items-center gap-3">
-                  <div className="grid h-7 w-7 place-items-center rounded-md bg-muted text-[11px] font-mono font-bold">{i + 1}</div>
+                  <div className="grid h-7 w-7 place-items-center rounded-md bg-muted text-2xs font-mono font-bold">{i + 1}</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{it.title}</div>
-                    <div className="text-[11px] text-muted-foreground">{it.platform} · {fmt(it.views)} views · {it.leads} leads · {it.closes} closes</div>
+                    <div className="text-2xs text-muted-foreground">{it.platform} · {fmt(it.views)} views · {it.leads} leads · {it.closes} closes</div>
                   </div>
                   <div className="text-sm font-mono font-semibold text-[color:var(--color-success)]">{money(it.cash)}</div>
                 </div>
@@ -600,10 +600,10 @@ function Leaderboard({ title, rows, accent }: { title: string; rows: { name: str
       <div className="divide-y divide-border">
         {rows.map((r, i) => (
           <div key={r.name + i} className="flex items-center gap-3 px-4 py-2.5">
-            <div className="grid h-7 w-7 place-items-center rounded-md bg-muted text-[11px] font-mono font-bold">{i + 1}</div>
+            <div className="grid h-7 w-7 place-items-center rounded-md bg-muted text-2xs font-mono font-bold">{i + 1}</div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{r.name}</div>
-              <div className="text-[11px] text-muted-foreground">{r.secondary}</div>
+              <div className="text-2xs text-muted-foreground">{r.secondary}</div>
             </div>
             <div className={`text-sm font-mono font-semibold ${color}`}>{r.primary}</div>
           </div>

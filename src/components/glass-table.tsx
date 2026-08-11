@@ -1,5 +1,5 @@
 import { useState, useMemo, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -53,7 +53,7 @@ export function FilterPills<T extends string>({ options, value, onChange }: {
           type="button"
           onClick={() => onChange(o.key)}
           className={cn(
-            "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all",
+            "rounded-full border px-2.5 py-1 text-2xs font-medium transition-all",
             value === o.key
               ? "border-primary bg-primary text-primary-foreground shadow-sm"
               : "border-border text-muted-foreground hover:border-ring/40 hover:text-foreground",
@@ -73,19 +73,43 @@ export function Pagination({ page, pageCount, onPage, total, pageSize }: {
   const to = Math.min(total, page * pageSize);
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="text-[11px] font-mono text-muted-foreground">{from}–{to} of {total}</div>
+      <div className="text-2xs font-mono text-muted-foreground">{from}–{to} of {total}</div>
       <div className="flex items-center gap-1">
         <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)}
           className="grid h-7 w-7 place-items-center rounded-md border border-border text-muted-foreground transition-all hover:border-ring/40 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none">
           <ChevronLeft className="h-3.5 w-3.5" />
         </button>
-        <span className="px-2 text-[11px] font-mono text-muted-foreground">{page} / {Math.max(1, pageCount)}</span>
+        <span className="px-2 text-2xs font-mono text-muted-foreground">{page} / {Math.max(1, pageCount)}</span>
         <button type="button" disabled={page >= pageCount} onClick={() => onPage(page + 1)}
           className="grid h-7 w-7 place-items-center rounded-md border border-border text-muted-foreground transition-all hover:border-ring/40 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none">
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Toggle button for a collapsible column group (e.g. Leads CRM's 11 mostly-empty
+ * qualification columns) — render this as a single `<th>` when collapsed, then
+ * conditionally render either it or the group's real `<th>`s based on `expanded`.
+ */
+export function ColumnGroupToggle({ label, count, expanded, onToggle }: {
+  label: string;
+  /** How many fields are actually filled, e.g. "4/11" — shown when collapsed. */
+  count?: string;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-3xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground hover:bg-muted/50"
+    >
+      {label}{count && <span className="font-mono normal-case tracking-normal opacity-70">{count}</span>}
+      <ChevronDown className={cn("h-3 w-3 transition-transform", expanded && "rotate-180")} />
+    </button>
   );
 }
 

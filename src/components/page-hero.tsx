@@ -66,7 +66,7 @@ export function PageHero({
             const toneColor = s.tone === "success" ? "var(--color-success)" : s.tone === "destructive" ? "var(--destructive)" : s.tone === "warning" ? "var(--color-warning)" : "var(--muted-foreground)";
             return (
               <div key={i} className="min-w-0">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">{s.label}</div>
+                <div className="text-3xs uppercase tracking-wider text-muted-foreground truncate">{s.label}</div>
                 <div className="mt-0.5 flex items-center gap-2">
                   <span className="font-mono text-sm font-semibold tabular-nums">{s.value}</span>
                   {s.spark && s.spark.length > 1 && (

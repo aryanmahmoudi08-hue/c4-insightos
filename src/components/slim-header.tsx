@@ -32,7 +32,7 @@ export function SlimHeader({ icon, title, subtitle, right, accent = "accent" }: 
         {icon && <span className={cn("shrink-0 transition-transform", iconTone)}>{icon}</span>}
         <div className="min-w-0">
           <h2 className="text-sm font-semibold tracking-tight truncate">{title}</h2>
-          {subtitle && <div className="text-[11px] text-muted-foreground truncate">{subtitle}</div>}
+          {subtitle && <div className="text-2xs text-muted-foreground truncate">{subtitle}</div>}
         </div>
       </div>
       {right && <div className="shrink-0 flex items-center gap-2">{right}</div>}

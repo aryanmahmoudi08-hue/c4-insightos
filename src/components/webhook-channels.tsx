@@ -107,7 +107,7 @@ export function WebhookChannels() {
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Webhook className="h-4 w-4 text-accent" /> Admin channels (Discord / Slack / n8n)
           </div>
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-2xs text-muted-foreground">
             Route specific event categories to specific channels. Example: send "Ready to Post · reels" scripts to <span className="font-mono">#admin-reels</span>, "sale" events to <span className="font-mono">#wins</span>.
           </div>
         </div>
@@ -118,11 +118,11 @@ export function WebhookChannels() {
         <div className="rounded border border-dashed border-border p-3 space-y-2 bg-muted/20">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-[11px]">Label</Label>
+              <Label className="text-2xs">Label</Label>
               <Input placeholder="#admin-reels" value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} />
             </div>
             <div>
-              <Label className="text-[11px]">Channel type</Label>
+              <Label className="text-2xs">Channel type</Label>
               <Select value={draft.channel} onValueChange={v => setDraft(d => ({ ...d, channel: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -134,12 +134,12 @@ export function WebhookChannels() {
             </div>
           </div>
           <div>
-            <Label className="text-[11px]">Webhook URL</Label>
+            <Label className="text-2xs">Webhook URL</Label>
             <Input placeholder="https://discord.com/api/webhooks/..." value={draft.target_url} onChange={e => setDraft(d => ({ ...d, target_url: e.target.value }))} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-[11px]">Category filter</Label>
+              <Label className="text-2xs">Category filter</Label>
               <Select value={draft.category || "_all"} onValueChange={v => setDraft(d => ({ ...d, category: v === "_all" ? "" : v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -148,7 +148,7 @@ export function WebhookChannels() {
               </Select>
             </div>
             <div>
-              <Label className="text-[11px]">Event types</Label>
+              <Label className="text-2xs">Event types</Label>
               <Select value={draft.event_types[0]} onValueChange={v => setDraft(d => ({ ...d, event_types: [v] }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -172,12 +172,12 @@ export function WebhookChannels() {
             <div className="min-w-0">
               <div className="flex items-center gap-2 font-medium">
                 <Hash className="h-3 w-3 text-muted-foreground" /> {s.name}
-                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wider">{s.channel}</span>
-                {s.category && <span className="rounded bg-accent/10 text-accent px-1.5 py-0.5 text-[10px] uppercase tracking-wider">{s.category}</span>}
-                {!s.active && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">paused</span>}
+                <span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase tracking-wider">{s.channel}</span>
+                {s.category && <span className="rounded bg-accent/10 text-accent px-1.5 py-0.5 text-3xs uppercase tracking-wider">{s.category}</span>}
+                {!s.active && <span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase">paused</span>}
               </div>
-              <div className="text-[10px] text-muted-foreground truncate max-w-[420px] font-mono">{s.target_url}</div>
-              <div className="text-[10px] text-muted-foreground">{s.event_types.join(" · ")}</div>
+              <div className="text-3xs text-muted-foreground truncate max-w-[420px] font-mono">{s.target_url}</div>
+              <div className="text-3xs text-muted-foreground">{s.event_types.join(" · ")}</div>
             </div>
             <div className="flex gap-1">
               <Button size="sm" variant="ghost" onClick={() => toggleActive.mutate({ id: s.id, active: !s.active })}>{s.active ? "Pause" : "Resume"}</Button>

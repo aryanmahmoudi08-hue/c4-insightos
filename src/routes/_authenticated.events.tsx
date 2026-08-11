@@ -118,7 +118,7 @@ function EventsBus() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="bg-muted/40 px-3 py-2 text-[11px] uppercase tracking-wider text-muted-foreground flex justify-between items-center">
+            <div className="bg-muted/40 px-3 py-2 text-2xs uppercase tracking-wider text-muted-foreground flex justify-between items-center">
               <span>Live event stream</span><span className="font-mono">refresh 5s</span>
             </div>
             <div className="divide-y divide-border max-h-[60vh] overflow-y-auto">
@@ -126,9 +126,9 @@ function EventsBus() {
                 <div key={e.id} className="p-3 hover:bg-muted/20">
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-xs text-accent">{e.event_type}</span>
-                    <span className="text-[10px] text-muted-foreground">{new Date(e.occurred_at).toLocaleTimeString()}</span>
+                    <span className="text-3xs text-muted-foreground">{new Date(e.occurred_at).toLocaleTimeString()}</span>
                   </div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5">{e.subject_type ?? "—"}</div>
+                  <div className="text-2xs text-muted-foreground mt-0.5">{e.subject_type ?? "—"}</div>
                 </div>
               ))}
               {(!events || events.length === 0) && <div className="p-10 text-center text-xs text-muted-foreground">No events emitted yet.</div>}
@@ -138,7 +138,7 @@ function EventsBus() {
           <div className="space-y-4">
             <div className="rounded-lg border border-border bg-card overflow-hidden">
               <div className="flex items-center justify-between bg-muted/40 px-3 py-2">
-                <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Webhook subscriptions</span>
+                <span className="text-2xs uppercase tracking-wider text-muted-foreground">Webhook subscriptions</span>
                 <Dialog open={open} onOpenChange={setOpen}>
                   <DialogTrigger asChild><Button size="sm" variant="ghost" className="h-6 text-xs"><Plus className="h-3 w-3" />Add</Button></DialogTrigger>
                   <DialogContent>
@@ -149,7 +149,7 @@ function EventsBus() {
                       <div className="space-y-1.5"><Label>Signing secret</Label><Input name="secret" type="password" required /></div>
                       <div className="space-y-1.5"><Label>Event types (comma)</Label>
                         <Input name="event_types" defaultValue="call.closed_won,payment.collected" />
-                        <div className="text-[10px] text-muted-foreground">Available: {EVENT_TYPES.join(", ")}</div>
+                        <div className="text-3xs text-muted-foreground">Available: {EVENT_TYPES.join(", ")}</div>
                       </div>
                       <Button type="submit" className="w-full" disabled={create.isPending}>Subscribe</Button>
                     </form>
@@ -160,9 +160,9 @@ function EventsBus() {
                 {(subs ?? []).map(s => (
                   <div key={s.id} className="p-3 text-xs">
                     <div className="flex justify-between"><span className="font-medium">{s.name}</span>
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${s.active ? "bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]" : "bg-muted"}`}>{s.active ? "active" : "off"}</span></div>
+                      <span className={`rounded px-1.5 py-0.5 text-3xs ${s.active ? "bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]" : "bg-muted"}`}>{s.active ? "active" : "off"}</span></div>
                     <div className="text-muted-foreground truncate mt-0.5 font-mono">{s.target_url}</div>
-                    <div className="text-[10px] text-muted-foreground mt-1">{(s.event_types ?? []).length} event types</div>
+                    <div className="text-3xs text-muted-foreground mt-1">{(s.event_types ?? []).length} event types</div>
                   </div>
                 ))}
                 {(!subs || subs.length === 0) && <div className="p-6 text-center text-xs text-muted-foreground">No subscriptions configured.</div>}
@@ -170,15 +170,15 @@ function EventsBus() {
             </div>
 
             <div className="rounded-lg border border-border bg-card overflow-hidden">
-              <div className="bg-muted/40 px-3 py-2 text-[11px] uppercase tracking-wider text-muted-foreground">Connector sync status</div>
+              <div className="bg-muted/40 px-3 py-2 text-2xs uppercase tracking-wider text-muted-foreground">Connector sync status</div>
               <div className="divide-y divide-border max-h-48 overflow-y-auto">
                 {(syncs ?? []).map(s => (
                   <div key={s.id} className="p-3 text-xs flex items-center justify-between">
                     <div>
                       <div className="font-mono">{s.resource}</div>
-                      <div className="text-[10px] text-muted-foreground">{s.last_sync_at ? `last ${new Date(s.last_sync_at).toLocaleTimeString()}` : "never"} · {s.records_synced ?? 0} records</div>
+                      <div className="text-3xs text-muted-foreground">{s.last_sync_at ? `last ${new Date(s.last_sync_at).toLocaleTimeString()}` : "never"} · {s.records_synced ?? 0} records</div>
                     </div>
-                    <span className="rounded px-1.5 py-0.5 text-[10px] uppercase bg-muted">{s.state}</span>
+                    <span className="rounded px-1.5 py-0.5 text-3xs uppercase bg-muted">{s.state}</span>
                   </div>
                 ))}
                 {(!syncs || syncs.length === 0) && <div className="p-6 text-center text-xs text-muted-foreground">No sync streams.</div>}
@@ -189,12 +189,12 @@ function EventsBus() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="bg-muted/40 px-3 py-2 text-[11px] uppercase tracking-wider text-muted-foreground">Webhook deliveries</div>
+            <div className="bg-muted/40 px-3 py-2 text-2xs uppercase tracking-wider text-muted-foreground">Webhook deliveries</div>
             <table className="w-full text-xs">
               <thead className="text-muted-foreground"><tr><th className="text-left p-2">Status</th><th className="text-left p-2">Code</th><th className="text-left p-2">Attempt</th><th className="text-left p-2">When</th></tr></thead>
               <tbody>{(deliveries ?? []).map(d => (
                 <tr key={d.id} className="border-t border-border">
-                  <td className="p-2"><span className={`rounded px-1.5 py-0.5 text-[10px] ${d.status === "delivered" ? "bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]" : d.status === "pending" ? "bg-muted" : "bg-destructive/20 text-destructive"}`}>{d.status}</span></td>
+                  <td className="p-2"><span className={`rounded px-1.5 py-0.5 text-3xs ${d.status === "delivered" ? "bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]" : d.status === "pending" ? "bg-muted" : "bg-destructive/20 text-destructive"}`}>{d.status}</span></td>
                   <td className="p-2 font-mono">{d.response_code ?? "—"}</td>
                   <td className="p-2 font-mono">{d.attempt}</td>
                   <td className="p-2 text-muted-foreground">{new Date(d.created_at).toLocaleTimeString()}</td>
@@ -205,7 +205,7 @@ function EventsBus() {
             </table>
           </div>
           <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="bg-muted/40 px-3 py-2 text-[11px] uppercase tracking-wider text-muted-foreground">Raw ingestion payloads</div>
+            <div className="bg-muted/40 px-3 py-2 text-2xs uppercase tracking-wider text-muted-foreground">Raw ingestion payloads</div>
             <table className="w-full text-xs">
               <thead className="text-muted-foreground"><tr><th className="text-left p-2">Connector</th><th className="text-left p-2">Resource</th><th className="text-left p-2">Processed</th><th className="text-left p-2">Received</th></tr></thead>
               <tbody>{(raw ?? []).map(r => (
@@ -383,24 +383,24 @@ function InboundIngestCard({ orgId }: { orgId: string | undefined }) {
 
       <div className="p-5 space-y-4">
         <div className="space-y-1.5">
-          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Endpoint URL</Label>
+          <Label className="text-3xs uppercase tracking-wider text-muted-foreground">Endpoint URL</Label>
           <div className="flex gap-2">
             <Input readOnly value={isLoading ? "Loading…" : url} className="font-mono text-xs bg-background" />
             <Button variant="outline" size="sm" onClick={() => copy(url, "url")} disabled={!url}>
               {copied === "url" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} Copy
             </Button>
           </div>
-          <p className="text-[10px] text-muted-foreground">Treat this URL as a secret — anyone with it can write into your workspace. Rotate if leaked.</p>
+          <p className="text-3xs text-muted-foreground">Treat this URL as a secret — anyone with it can write into your workspace. Rotate if leaked.</p>
         </div>
 
         <div className="rule-gold" />
 
         <div>
-          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 block">Payload schemas by event type</Label>
+          <Label className="text-3xs uppercase tracking-wider text-muted-foreground mb-2 block">Payload schemas by event type</Label>
           <Tabs defaultValue="closer_call">
             <TabsList className="grid grid-cols-5 w-full">
               {Object.entries(EXAMPLES).map(([k, v]) => (
-                <TabsTrigger key={k} value={k} className="text-[11px]">{v.label}</TabsTrigger>
+                <TabsTrigger key={k} value={k} className="text-2xs">{v.label}</TabsTrigger>
               ))}
             </TabsList>
             {Object.entries(EXAMPLES).map(([k, v]) => {
@@ -408,27 +408,27 @@ function InboundIngestCard({ orgId }: { orgId: string | undefined }) {
               const curl = url ? `curl -X POST '${url}' \\\n  -H 'content-type: application/json' \\\n  -d '${json.replace(/'/g, "'\\''")}'` : "";
               return (
                 <TabsContent key={k} value={k} className="mt-3 space-y-3">
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     Routes to <span className="font-mono text-accent">{v.table}</span>
                   </div>
                   <div className="rounded-md border border-border bg-background overflow-hidden">
                     <div className="flex items-center justify-between bg-muted/40 px-3 py-1.5">
-                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">JSON body</span>
-                      <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => copy(json, `json-${k}`)}>
+                      <span className="text-3xs uppercase tracking-wider text-muted-foreground">JSON body</span>
+                      <Button variant="ghost" size="sm" className="h-6 text-3xs" onClick={() => copy(json, `json-${k}`)}>
                         {copied === `json-${k}` ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} Copy
                       </Button>
                     </div>
-                    <pre className="p-3 text-[11px] font-mono overflow-x-auto max-h-72">{json}</pre>
+                    <pre className="p-3 text-2xs font-mono overflow-x-auto max-h-72">{json}</pre>
                   </div>
                   {url && (
                     <div className="rounded-md border border-border bg-background overflow-hidden">
                       <div className="flex items-center justify-between bg-muted/40 px-3 py-1.5">
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">cURL</span>
-                        <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => copy(curl, `curl-${k}`)}>
+                        <span className="text-3xs uppercase tracking-wider text-muted-foreground">cURL</span>
+                        <Button variant="ghost" size="sm" className="h-6 text-3xs" onClick={() => copy(curl, `curl-${k}`)}>
                           {copied === `curl-${k}` ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} Copy
                         </Button>
                       </div>
-                      <pre className="p-3 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-all">{curl}</pre>
+                      <pre className="p-3 text-2xs font-mono overflow-x-auto whitespace-pre-wrap break-all">{curl}</pre>
                     </div>
                   )}
                 </TabsContent>
