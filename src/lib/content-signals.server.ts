@@ -25,7 +25,7 @@ export async function computeDemand(sb: Sb, orgId: string, days = 30): Promise<D
     sb.from("faq_videos").select("title, question, mechanism, clicks, plays").eq("org_id", orgId).eq("active", true),
     sb.from("setter_call_signals").select("setter_name, call_date, limiting_beliefs, objections, mechanism, ai_summary, notes").eq("org_id", orgId).gte("call_date", sinceDate).limit(300),
     sb.from("onboarding_responses").select("responses, mechanism_signals, submitted_at, created_at").eq("org_id", orgId).gte("created_at", sinceIso).limit(200),
-    sb.from("content_pieces").select("id, mechanism, variation, posted_at, pipeline_status").eq("org_id", orgId).gte("created_at", sinceIso).limit(400),
+    sb.from("content_pieces").select("id, mechanism, variation, posted_at, pipeline_status, content_metrics(leads_generated, cash_collected_cents, hook_retention_pct, engagement_rate_pct, drop_off_rate_pct)").eq("org_id", orgId).gte("created_at", sinceIso).limit(400),
   ]);
 
   let weights = emptyWeights();
@@ -71,6 +71,28 @@ export async function computeDemand(sb: Sb, orgId: string, days = 30): Promise<D
     weights = addWeights(weights, sc);
     const top = pickTop(sc);
     if (top) drivers.push({ source: "Client intake", detail: truncate(text, 90), mechanism: top, weight: sc[top] });
+  }
+
+  // 4) Strong-performing reels — "double down on this format" as a real signal, not
+  // just a display. A reel counts as strong if it converted (leads/cash) or held
+  // attention well (retention/engagement) with low drop-off.
+  for (const p of (reels.data ?? []) as any[]) {
+    if (!p.mechanism) continue;
+    const metrics = Array.isArray(p.content_metrics) ? p.content_metrics : (p.content_metrics ? [p.content_metrics] : []);
+    const m = metrics[0];
+    if (!m) continue;
+    const converted = Number(m.leads_generated ?? 0) > 0 || Number(m.cash_collected_cents ?? 0) > 0;
+    const heldAttention = Number(m.hook_retention_pct ?? 0) >= 45 || Number(m.engagement_rate_pct ?? 0) >= 6;
+    const lowDropOff = m.drop_off_rate_pct == null || Number(m.drop_off_rate_pct) < 40;
+    if (!converted && !(heldAttention && lowDropOff)) continue;
+    const w = (converted ? 3 : 0) + (heldAttention ? 2 : 0);
+    weights[p.mechanism as MechanismKey] += w;
+    drivers.push({
+      source: "Reel performance",
+      detail: `${p.mechanism}${p.variation ? "/" + p.variation : ""} · ${converted ? `${m.leads_generated ?? 0} leads` : `${m.hook_retention_pct ?? m.engagement_rate_pct ?? 0}% retention`}`,
+      mechanism: p.mechanism as MechanismKey,
+      weight: w,
+    });
   }
 
   drivers.sort((a, b) => b.weight - a.weight);

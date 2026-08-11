@@ -518,11 +518,25 @@ Sam R. — blocker "no time to post" repeated 4 days running. Open the call with
 }
 
 export function mockLoomGrade() {
-  return { score: 7.8, stage: "interview_worthy", summary: "[MOCK] Clear speech, solid energy, cites specific past results. Some rambling in the middle third — trim for a follow-up.", reasoning: "Clarity high | energy high | specificity of results high | minor rambling mid-video" };
+  return {
+    score: 7.8, stage: "interview_worthy",
+    summary: "[MOCK] Clear speech, solid energy, cites specific past results. Some rambling in the middle third — trim for a follow-up.",
+    reasoning: "Clarity high | energy high | specificity of results high | minor rambling mid-video",
+    stated_role: "closer" as string | null,
+  };
 }
 
 export function mockCalendarStatus() {
   return { ok: true, error: null as string | null };
+}
+
+export function mockFaqVideos() {
+  return [
+    { id: "mock-faq-1", title: "\"Is this a scam?\"", question: "How do I know this actually works and isn't a scam?", video_url: "https://example.com/faq/trust", wistia_video_id: null, mechanism: "credibility", clicks: 340, plays: 288, avg_watch_pct: 71, active: true, notes: null },
+    { id: "mock-faq-2", title: "\"How is this different?\"", question: "What makes this different from every other coach?", video_url: "https://example.com/faq/different", wistia_video_id: null, mechanism: "authoritative", clicks: 210, plays: 165, avg_watch_pct: 58, active: true, notes: null },
+    { id: "mock-faq-3", title: "\"Will this work for me?\"", question: "I'm not like your other clients — will this actually work for my situation?", video_url: "https://example.com/faq/relatable", wistia_video_id: null, mechanism: "relatability", clicks: 175, plays: 140, avg_watch_pct: 64, active: true, notes: null },
+    { id: "mock-faq-4", title: "\"What's the actual process?\"", question: "What does the day-to-day process actually look like?", video_url: "https://example.com/faq/process", wistia_video_id: null, mechanism: "educational", clicks: 96, plays: 80, avg_watch_pct: 52, active: true, notes: null },
+  ];
 }
 
 export function mockPreCloseSummary() {

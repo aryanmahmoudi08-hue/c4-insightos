@@ -22,7 +22,7 @@ import { PageHero } from "@/components/page-hero";
 import { MetricCard } from "@/components/metric-card";
 import { HeatmapGrid } from "@/components/heatmap-grid";
 import { mockContentPieces, mockContentFunnel, mockVariationHeatmap, mockContentCoaching, mockContentClassification, withMockDelay } from "@/lib/dev-mock-data";
-import { MECHANISMS, MECHANISM_KEYS } from "@/lib/content-mechanisms";
+import { MECHANISMS, MECHANISM_KEYS, questionsFor, type MechanismKey, type VariationQuestion } from "@/lib/content-mechanisms";
 import type { Database } from "@/integrations/supabase/types";
 import { GlassTableShell } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
@@ -35,9 +35,12 @@ type PieceRow = {
   id: string; title: string | null; platform: Platform; hook: string | null;
   angle: Angle | null; posted_at: string | null; url: string | null;
   funnel_stage: string | null; body: string | null; pipeline_status: string;
-  mechanism?: string | null; variation?: string | null;
+  mechanism?: string | null; variation?: string | null; variation_answers?: Record<string, string> | null;
   content_metrics: { views: number | null; likes: number | null; leads_generated: number | null; closes: number | null;
-    cash_collected_cents: number | null; hook_retention_pct: number | null }[] | null;
+    cash_collected_cents: number | null; hook_retention_pct: number | null;
+    comments: number | null; shares: number | null; saves: number | null;
+    follower_views: number | null; non_follower_views: number | null;
+    engagement_rate_pct: number | null; drop_off_rate_pct: number | null }[] | null;
 };
 
 const fmtN = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(n));
@@ -52,7 +55,13 @@ const PIPELINE: { key: string; label: string; tone: string }[] = [
 
 const FUNNEL_TONE: Record<string, ChipTone> = { TOF: "info", MOF: "warning", BOF: "success" };
 
-type Prefill = { id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; funnel_stage?: string; transcript?: string; views?: number; leads?: number; retention?: number };
+type Prefill = {
+  id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; transcript?: string;
+  mechanism?: string; variation?: string; variationAnswers?: Record<string, string>;
+  views?: number; leads?: number; retention?: number;
+  likes?: number; comments?: number; shares?: number; saves?: number;
+  followerViews?: number; nonFollowerViews?: number; engagementRatePct?: number; dropOffRatePct?: number;
+};
 
 export const Route = createFileRoute("/_authenticated/content")({ component: ContentIntel });
 
@@ -80,7 +89,7 @@ function ContentIntel() {
       if (devBypass) return mockContentPieces() as unknown as PieceRow[];
       const { data, error } = await supabase
         .from("content_pieces")
-        .select("id, title, platform, hook, angle, posted_at, url, funnel_stage, body, pipeline_status, mechanism, variation, content_metrics(views, likes, leads_generated, closes, cash_collected_cents, hook_retention_pct)")
+        .select("id, title, platform, hook, angle, posted_at, url, funnel_stage, body, pipeline_status, mechanism, variation, variation_answers, content_metrics(views, likes, leads_generated, closes, cash_collected_cents, hook_retention_pct, comments, shares, saves, follower_views, non_follower_views, engagement_rate_pct, drop_off_rate_pct)")
         .eq("org_id", orgId!)
         .order("posted_at", { ascending: false, nullsFirst: false })
         .limit(200);
@@ -136,8 +145,10 @@ function ContentIntel() {
         platform: form.get("platform") as Platform,
         angle: (form.get("angle") as Angle) || null,
         url: String(form.get("url") || "") || null,
-        funnel_stage: String(form.get("funnel_stage") || "") || null,
         body: String(form.get("transcript") || "") || null,
+        mechanism: String(form.get("mechanism") || "") || null,
+        variation: String(form.get("variation") || "") || null,
+        variation_answers: JSON.parse(String(form.get("variation_answers") || "{}")),
       };
       let contentId = editingId;
       if (editingId) {
@@ -155,6 +166,14 @@ function ContentIntel() {
         views: Number(form.get("views") || 0),
         leads_generated: Number(form.get("leads") || 0),
         hook_retention_pct: Number(form.get("retention") || 0),
+        likes: Number(form.get("likes") || 0),
+        comments: Number(form.get("comments") || 0),
+        shares: Number(form.get("shares") || 0),
+        saves: Number(form.get("saves") || 0),
+        follower_views: Number(form.get("follower_views") || 0),
+        non_follower_views: Number(form.get("non_follower_views") || 0),
+        engagement_rate_pct: Number(form.get("engagement_rate_pct") || 0),
+        drop_off_rate_pct: Number(form.get("drop_off_rate_pct") || 0),
       };
       if (editingId) {
         const { data: existing } = await supabase
@@ -195,11 +214,21 @@ function ContentIntel() {
       platform: p.platform,
       angle: p.angle ?? undefined,
       url: p.url ?? undefined,
-      funnel_stage: p.funnel_stage ?? undefined,
       transcript: p.body ?? undefined,
+      mechanism: p.mechanism ?? undefined,
+      variation: p.variation ?? undefined,
+      variationAnswers: p.variation_answers ?? undefined,
       views: m?.views ?? 0,
       leads: m?.leads_generated ?? 0,
       retention: m?.hook_retention_pct ?? 0,
+      likes: m?.likes ?? 0,
+      comments: m?.comments ?? 0,
+      shares: m?.shares ?? 0,
+      saves: m?.saves ?? 0,
+      followerViews: m?.follower_views ?? 0,
+      nonFollowerViews: m?.non_follower_views ?? 0,
+      engagementRatePct: m?.engagement_rate_pct ?? 0,
+      dropOffRatePct: m?.drop_off_rate_pct ?? 0,
     });
     setOpen(true);
   };
@@ -731,12 +760,16 @@ function ContentForm({ prefill, onSubmit, pending }: { prefill: Prefill | null; 
   const [hook, setHook] = useState(prefill?.hook ?? "");
   const [platform, setPlatform] = useState<Platform>(prefill?.platform ?? "reel");
   const [angle, setAngle] = useState<Angle>(prefill?.angle ?? "authority");
-  const [funnel, setFunnel] = useState(prefill?.funnel_stage ?? "TOF");
   const [url, setUrl] = useState(prefill?.url ?? "");
   const [transcript, setTranscript] = useState(prefill?.transcript ?? "");
+  const [mechanism, setMechanism] = useState<MechanismKey | "">((prefill?.mechanism as MechanismKey) ?? "");
+  const [variation, setVariation] = useState(prefill?.variation ?? "");
+  const [answers, setAnswers] = useState<Record<string, string>>(prefill?.variationAnswers ?? {});
   const analyze = useServerFn(analyzeContent);
   const { devBypass } = useAuth();
   const [analyzing, setAnalyzing] = useState(false);
+
+  const questions: VariationQuestion[] = questionsFor(variation);
 
   const runAnalyze = async () => {
     if (!transcript.trim()) { toast.error("Paste the transcript first"); return; }
@@ -746,8 +779,7 @@ function ContentForm({ prefill, onSubmit, pending }: { prefill: Prefill | null; 
       if (!r) { toast.error("AI not configured — add LOVABLE_API_KEY to enable this."); return; }
       setHook(r.hook);
       setAngle(r.angle as Angle);
-      setFunnel(r.funnel_stage);
-      toast.success(`Detected: ${r.funnel_stage} · ${r.angle}`, { description: r.rationale });
+      toast.success(`Detected: ${r.angle}`, { description: r.rationale });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Analysis failed");
     } finally {
@@ -759,7 +791,9 @@ function ContentForm({ prefill, onSubmit, pending }: { prefill: Prefill | null; 
     <form className="space-y-3" onSubmit={(e) => {
       e.preventDefault();
       const fd = new FormData(e.currentTarget);
-      fd.set("platform", platform); fd.set("angle", angle); fd.set("funnel_stage", funnel);
+      fd.set("platform", platform); fd.set("angle", angle);
+      fd.set("mechanism", mechanism); fd.set("variation", variation);
+      fd.set("variation_answers", JSON.stringify(answers));
       onSubmit(fd);
     }}>
       <div className="space-y-1.5"><Label>Title</Label><Input name="title" value={title} onChange={(e) => setTitle(e.target.value)} required /></div>
@@ -768,7 +802,7 @@ function ContentForm({ prefill, onSubmit, pending }: { prefill: Prefill | null; 
         <div className="flex items-center justify-between">
           <Label>Full transcript</Label>
           <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={runAnalyze} disabled={analyzing}>
-            <Sparkles className="h-3 w-3" />{analyzing ? "Analyzing…" : "AI: detect hook, angle, funnel"}
+            <Sparkles className="h-3 w-3" />{analyzing ? "Analyzing…" : "AI: detect hook + angle"}
           </Button>
         </div>
         <Textarea name="transcript" rows={6} placeholder="Paste the entire reel transcript here…" value={transcript} onChange={(e) => setTranscript(e.target.value)} />
@@ -784,19 +818,61 @@ function ContentForm({ prefill, onSubmit, pending }: { prefill: Prefill | null; 
             <SelectContent>{["authority","story","contrarian","tutorial","case_study","aspirational","fear","social_proof"].map(p =>
               <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
       </div>
-      <div className="space-y-1.5"><Label>Funnel stage</Label>
-        <Select value={funnel} onValueChange={setFunnel}><SelectTrigger><SelectValue/></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="TOF">TOF — Top of Funnel (awareness)</SelectItem>
-            <SelectItem value="MOF">MOF — Middle of Funnel (consideration)</SelectItem>
-            <SelectItem value="BOF">BOF — Bottom of Funnel (conversion)</SelectItem>
-          </SelectContent>
-        </Select>
+
+      <div className="grid grid-cols-2 gap-3 rounded-md border border-accent/30 bg-accent/5 p-3">
+        <div className="space-y-1.5"><Label>Mechanism</Label>
+          <Select value={mechanism} onValueChange={(v) => { setMechanism(v as MechanismKey); setVariation(""); setAnswers({}); }}>
+            <SelectTrigger><SelectValue placeholder="Which of the 4?" /></SelectTrigger>
+            <SelectContent>{MECHANISM_KEYS.map(k => <SelectItem key={k} value={k}>{MECHANISMS[k].label}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5"><Label>Variation</Label>
+          <Select value={variation} onValueChange={(v) => { setVariation(v); setAnswers({}); }} disabled={!mechanism}>
+            <SelectTrigger><SelectValue placeholder={mechanism ? "Pick a variation" : "Pick mechanism first"} /></SelectTrigger>
+            <SelectContent>{mechanism && MECHANISMS[mechanism].variations.map(v => <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        {mechanism && variation && (
+          <p className="col-span-2 text-2xs text-muted-foreground">{MECHANISMS[mechanism].variations.find(v => v.value === variation)?.hint}</p>
+        )}
       </div>
+
+      {questions.length > 0 && (
+        <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+          <div className="text-2xs uppercase tracking-wider text-muted-foreground">Tailored for this variation — not the same generic form every time</div>
+          {questions.map(q => (
+            <div key={q.key} className="space-y-1.5">
+              <Label className="text-xs leading-snug">{q.label}</Label>
+              {q.type === "textarea" && <Textarea rows={2} placeholder={q.placeholder} value={answers[q.key] ?? ""} onChange={(e) => setAnswers(a => ({ ...a, [q.key]: e.target.value }))} />}
+              {q.type === "text" && <Input placeholder={q.placeholder} value={answers[q.key] ?? ""} onChange={(e) => setAnswers(a => ({ ...a, [q.key]: e.target.value }))} />}
+              {q.type === "select" && (
+                <Select value={answers[q.key] ?? ""} onValueChange={(v) => setAnswers(a => ({ ...a, [q.key]: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>{(q.options ?? []).map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                </Select>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-3">
         <div className="space-y-1.5"><Label>Views</Label><Input name="views" type="number" defaultValue={prefill?.views ?? 0} /></div>
         <div className="space-y-1.5"><Label>Leads</Label><Input name="leads" type="number" defaultValue={prefill?.leads ?? 0} /></div>
-        <div className="space-y-1.5"><Label>Retention %</Label><Input name="retention" type="number" step="0.1" defaultValue={prefill?.retention ?? 0} /></div>
+        <div className="space-y-1.5"><Label>Hook retention %</Label><Input name="retention" type="number" step="0.1" defaultValue={prefill?.retention ?? 0} /></div>
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-2xs uppercase tracking-wider text-muted-foreground">Reel-level detail — every metric individually, not aggregate</Label>
+        <div className="grid grid-cols-4 gap-3">
+          <div className="space-y-1.5"><Label className="text-xs">Likes</Label><Input name="likes" type="number" defaultValue={prefill?.likes ?? 0} /></div>
+          <div className="space-y-1.5"><Label className="text-xs">Comments</Label><Input name="comments" type="number" defaultValue={prefill?.comments ?? 0} /></div>
+          <div className="space-y-1.5"><Label className="text-xs">Shares</Label><Input name="shares" type="number" defaultValue={prefill?.shares ?? 0} /></div>
+          <div className="space-y-1.5"><Label className="text-xs">Saves</Label><Input name="saves" type="number" defaultValue={prefill?.saves ?? 0} /></div>
+          <div className="space-y-1.5"><Label className="text-xs">Drop-off %</Label><Input name="drop_off_rate_pct" type="number" step="0.1" defaultValue={prefill?.dropOffRatePct ?? 0} /></div>
+          <div className="space-y-1.5"><Label className="text-xs">Follower views</Label><Input name="follower_views" type="number" defaultValue={prefill?.followerViews ?? 0} /></div>
+          <div className="space-y-1.5"><Label className="text-xs">Non-follower views</Label><Input name="non_follower_views" type="number" defaultValue={prefill?.nonFollowerViews ?? 0} /></div>
+          <div className="space-y-1.5 col-span-2"><Label className="text-xs">Engagement rate %</Label><Input name="engagement_rate_pct" type="number" step="0.1" defaultValue={prefill?.engagementRatePct ?? 0} /></div>
+        </div>
       </div>
       <Button type="submit" className="w-full" disabled={pending}>{pending ? "…" : "Save"}</Button>
     </form>
@@ -914,10 +990,9 @@ function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onC
   });
 
   if (!piece) return null;
-  const stage = piece.funnel_stage ?? "—";
-  const stageCls = stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
-    stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
-    stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" : "bg-muted text-muted-foreground";
+  const stage = piece.funnel_stage;
+  const answers = piece.variation_answers ?? {};
+  const questions = questionsFor(piece.variation);
 
   return (
     <Dialog open={!!piece} onOpenChange={(v) => !v && onClose()}>
@@ -928,8 +1003,14 @@ function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onC
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="uppercase text-muted-foreground">{piece.platform}</span>
-          <span className={`rounded px-1.5 py-0.5 font-mono uppercase text-3xs ${stageCls}`}>{stage}</span>
+          {stage && <span className={`rounded px-1.5 py-0.5 font-mono uppercase text-3xs ${CHIP_TONE_CLASSES[FUNNEL_TONE[stage] ?? "default"]}`}>{stage}</span>}
           {piece.angle && <span className="rounded bg-muted px-1.5 py-0.5">{piece.angle}</span>}
+          {piece.mechanism && (
+            <span className="rounded bg-accent/15 px-1.5 py-0.5 text-accent">
+              {MECHANISMS[piece.mechanism as MechanismKey]?.label ?? piece.mechanism}
+              {piece.variation && ` · ${MECHANISMS[piece.mechanism as MechanismKey]?.variations.find(v => v.value === piece.variation)?.label ?? piece.variation}`}
+            </span>
+          )}
           {piece.posted_at && <span className="text-muted-foreground">· {new Date(piece.posted_at).toLocaleDateString()}</span>}
           {piece.url && <a href={piece.url} target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 text-accent hover:underline"><ExternalLink className="h-3 w-3" />Open</a>}
         </div>
@@ -948,6 +1029,36 @@ function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onC
             </div>
           ))}
         </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            ["Likes", m?.likes ?? "—"],
+            ["Comments", m?.comments ?? "—"],
+            ["Shares", m?.shares ?? "—"],
+            ["Saves", m?.saves ?? "—"],
+            ["Follower views", m?.follower_views ?? "—"],
+            ["Non-follower views", m?.non_follower_views ?? "—"],
+            ["Engagement rate", m?.engagement_rate_pct ? m.engagement_rate_pct + "%" : "—"],
+            ["Drop-off rate", m?.drop_off_rate_pct ? m.drop_off_rate_pct + "%" : "—"],
+          ].map(([k, v]) => (
+            <div key={k as string} className="rounded border border-border bg-card/40 p-2">
+              <div className="text-3xs uppercase tracking-wider text-muted-foreground">{k}</div>
+              <div className="font-mono text-sm">{v}</div>
+            </div>
+          ))}
+        </div>
+
+        {questions.length > 0 && Object.keys(answers).length > 0 && (
+          <div className="rounded border border-border bg-card/40 p-3 space-y-2">
+            <div className="text-3xs uppercase tracking-wider text-muted-foreground">Variation-specific answers</div>
+            {questions.map(q => answers[q.key] ? (
+              <div key={q.key}>
+                <div className="text-3xs text-muted-foreground">{q.label}</div>
+                <div className="text-sm whitespace-pre-wrap">{answers[q.key]}</div>
+              </div>
+            ) : null)}
+          </div>
+        )}
 
         {piece.hook && (
           <div className="rounded border border-border bg-card/40 p-3">

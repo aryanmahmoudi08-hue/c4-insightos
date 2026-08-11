@@ -5,6 +5,8 @@ import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { KpiTile, DashboardBar } from "@/components/kpi-tile";
 import { useDateRange } from "@/hooks/use-date-range";
+import { useServerFn } from "@tanstack/react-start";
+import { autoIngestCallSignalFn } from "@/lib/content-signals.functions";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -227,6 +229,7 @@ function Closer() {
   // Follow-up pipeline (calls flagged as follow_up across whole range)
   const followUps = useMemo(() => list.filter(c => c.status === "follow_up"), [list]);
 
+  const autoIngest = useServerFn(autoIngestCallSignalFn);
   const create = useMutation({
     mutationFn: async (f: FormData) => {
       const status = f.get("status") as "closed" | "follow_up" | "booked" | "disqualified";
@@ -259,6 +262,19 @@ function Closer() {
         await supabase.from("call_objections").insert(
           parts.map(p => ({ org_id: orgId!, call_id: callRow.id, objection: p, resolved: closed }))
         );
+      }
+
+      // 2.8 — screen the call summary for limiting beliefs/objections automatically,
+      // same extraction the manual-paste flow on Content Signals uses. Best-effort:
+      // never block "call logged" if AI screening fails or isn't configured.
+      if (payload.call_summary && !devBypass) {
+        autoIngest({ data: {
+          call_id: callRow?.id ?? null,
+          closer_name: payload.closer_name || "Unknown",
+          call_date: payload.scheduled_for ? payload.scheduled_for.slice(0, 10) : undefined,
+          call_summary: payload.call_summary,
+          lead_id: payload.lead_id,
+        } }).catch((e) => console.warn("Auto setter-signal screening failed", e));
       }
     },
     onSuccess: () => {

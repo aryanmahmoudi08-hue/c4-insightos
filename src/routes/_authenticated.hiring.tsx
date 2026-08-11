@@ -12,7 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Users, Star, Trash2, Pencil, CheckSquare, Square, Video, Sparkles, Loader2 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Plus, Search, Users, Star, Trash2, Pencil, CheckSquare, Square, Video, Sparkles, Loader2, DollarSign, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { gradeLoomFn } from "@/lib/hiring.functions";
@@ -33,6 +34,12 @@ const STAGES = [
 type Stage = typeof STAGES[number]["key"];
 
 const ROLES = ["setter", "closer", "dialer"] as const;
+const ROLE_TABS: { key: typeof ROLES[number]; label: string }[] = [
+  { key: "closer", label: "Closer" },
+  { key: "setter", label: "Setter" },
+  { key: "dialer", label: "Dialer" },
+];
+const fmtMoney = (cents: number) => `$${Math.round(cents / 100).toLocaleString()}`;
 
 type Applicant = {
   id: string;
@@ -53,6 +60,9 @@ type Applicant = {
   loom_transcript?: string | null;
   ai_recommended_stage?: string | null;
   ai_transcript_summary?: string | null;
+  ai_stated_role?: string | null;
+  historical_cash_collected_cents?: number | null;
+  recent_monthly_cash_collected_cents?: number | null;
 };
 
 // Heuristic AI-style scorer. Replace with Lovable AI call later if desired.
@@ -80,7 +90,7 @@ function Hiring() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Applicant | null>(null);
   const [query, setQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [tab, setTab] = useState<typeof ROLES[number]>("closer");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const { data: applicants } = useQuery({
@@ -96,21 +106,21 @@ function Hiring() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (applicants ?? []).filter(a => {
-      if (roleFilter !== "all" && a.role_applied !== roleFilter) return false;
       if (!q) return true;
       return [a.full_name, a.email, a.niche, a.source, a.notes].some(v => (v ?? "").toLowerCase().includes(q));
     });
-  }, [applicants, query, roleFilter]);
+  }, [applicants, query]);
 
-  const byStage = useMemo(() => {
+  const byStageFor = (role: string) => {
     const m = new Map<Stage, Applicant[]>();
     STAGES.forEach(s => m.set(s.key, []));
     for (const a of filtered) {
+      if (a.role_applied !== role) continue;
       const s = (STAGES.find(x => x.key === a.stage)?.key) ?? "applied";
       m.get(s)!.push(a);
     }
     return m;
-  }, [filtered]);
+  };
 
   const create = useMutation({
     mutationFn: async (f: FormData) => {
@@ -185,13 +195,6 @@ function Hiring() {
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="Search by name, email, niche, notes…" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8 h-9" />
           </div>
-          <Select value={roleFilter} onValueChange={setRoleFilter}>
-            <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All roles</SelectItem>
-              {ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-            </SelectContent>
-          </Select>
           {selectedIds.size > 0 && (
             <div className="flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1">
               <span className="text-xs text-muted-foreground">{selectedIds.size} selected</span>
@@ -212,37 +215,73 @@ function Hiring() {
           </div>
         </div>
 
-        <KanbanBoard
-          columns={STAGES.map(s => ({ key: s.key, label: s.label, tone: s.tone }))}
-          itemsByColumn={byStage}
-          onDropItem={(id, stage) => update.mutate({ id, patch: { stage: stage as Stage, last_shown_at: new Date().toISOString() } })}
-          renderCard={(a) => {
-            const sel = selectedIds.has(a.id);
-            const scoreTone: ChipTone = Number(a.ai_score ?? 0) >= 8 ? "success" : Number(a.ai_score ?? 0) >= 6 ? "warning" : "default";
+        <Tabs value={tab} onValueChange={(v) => { setTab(v as typeof ROLES[number]); setSelectedIds(new Set()); }}>
+          <TabsList>
+            {ROLE_TABS.map(t => {
+              const roleApplicants = (applicants ?? []).filter(a => a.role_applied === t.key);
+              return <TabsTrigger key={t.key} value={t.key}>{t.label} · {roleApplicants.length}</TabsTrigger>;
+            })}
+          </TabsList>
+          {ROLE_TABS.map(t => {
+            const roleApplicants = filtered.filter(a => a.role_applied === t.key);
+            const roleAvg = roleApplicants.length ? roleApplicants.reduce((s, a) => s + Number(a.ai_score ?? 0), 0) / roleApplicants.length : 0;
+            const roleHired = roleApplicants.filter(a => a.stage === "hired").length;
             return (
-              <div className={sel ? "-m-2 rounded-md border border-primary p-2" : ""}>
-                <div className="flex items-start justify-between gap-2">
-                  <button onClick={() => toggleSel(a.id)} className="mt-0.5 text-muted-foreground hover:text-foreground">
-                    {sel ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <button onClick={() => setEditing(a)} className="text-left w-full">
-                      <div className="font-medium text-sm leading-tight truncate">{a.full_name}</div>
-                      <div className="text-3xs text-muted-foreground capitalize">{a.role_applied} · {a.niche ?? "—"}</div>
-                    </button>
-                  </div>
-                  <span className={`text-2xs font-mono font-semibold rounded px-1.5 py-0.5 ${CHIP_TONE_CLASSES[scoreTone]}`}>
-                    {a.ai_score?.toFixed(1) ?? "—"}
-                  </span>
+              <TabsContent key={t.key} value={t.key} className="space-y-3">
+                <div className="grid grid-cols-3 gap-3">
+                  <StatCard label={`${t.label}s in pipeline`} value={roleApplicants.length} icon={<Users className="h-4 w-4" />} accent="accent" />
+                  <StatCard label="Hired" value={roleHired} accent="success" />
+                  <StatCard label="Avg transcript-quality score" value={roleAvg.toFixed(1)} icon={<Star className="h-4 w-4" />} accent={roleAvg >= 7 ? "success" : "warning"} />
                 </div>
-                <div className="mt-1.5 flex items-center justify-between text-3xs text-muted-foreground">
-                  <span>Applied {new Date(a.applied_at).toLocaleDateString()}</span>
-                  {a.last_shown_at && <span>Moved {new Date(a.last_shown_at).toLocaleDateString()}</span>}
-                </div>
-              </div>
+                <KanbanBoard
+                  columns={STAGES.map(s => ({ key: s.key, label: s.label, tone: s.tone }))}
+                  itemsByColumn={byStageFor(t.key)}
+                  onDropItem={(id, stage) => update.mutate({ id, patch: { stage: stage as Stage, last_shown_at: new Date().toISOString() } })}
+                  renderCard={(a) => {
+                    const sel = selectedIds.has(a.id);
+                    const scoreTone: ChipTone = Number(a.ai_score ?? 0) >= 8 ? "success" : Number(a.ai_score ?? 0) >= 6 ? "warning" : "default";
+                    const roleMismatch = a.ai_stated_role && a.ai_stated_role !== a.role_applied;
+                    return (
+                      <div className={sel ? "-m-2 rounded-md border border-primary p-2" : ""}>
+                        <div className="flex items-start justify-between gap-2">
+                          <button onClick={() => toggleSel(a.id)} className="mt-0.5 text-muted-foreground hover:text-foreground">
+                            {sel ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <button onClick={() => setEditing(a)} className="text-left w-full">
+                              <div className="font-medium text-sm leading-tight truncate">{a.full_name}</div>
+                              <div className="text-3xs text-muted-foreground capitalize">{a.role_applied} · {a.niche ?? "—"}</div>
+                            </button>
+                          </div>
+                          <span className={`text-2xs font-mono font-semibold rounded px-1.5 py-0.5 ${CHIP_TONE_CLASSES[scoreTone]}`}>
+                            {a.ai_score?.toFixed(1) ?? "—"}
+                          </span>
+                        </div>
+                        {(a.recent_monthly_cash_collected_cents || a.historical_cash_collected_cents) && (
+                          <div className="mt-1 flex items-center gap-1 text-3xs text-[color:var(--color-success)]">
+                            <DollarSign className="h-3 w-3" />
+                            {a.recent_monthly_cash_collected_cents ? `${fmtMoney(a.recent_monthly_cash_collected_cents)}/mo recent` : ""}
+                            {a.recent_monthly_cash_collected_cents && a.historical_cash_collected_cents ? " · " : ""}
+                            {a.historical_cash_collected_cents ? `${fmtMoney(a.historical_cash_collected_cents)} lifetime` : ""}
+                          </div>
+                        )}
+                        {roleMismatch && (
+                          <div className="mt-1 flex items-center gap-1 text-3xs text-[color:var(--color-warning)]">
+                            <AlertTriangle className="h-3 w-3" /> AI heard "{a.ai_stated_role}" on video
+                          </div>
+                        )}
+                        <div className="mt-1.5 flex items-center justify-between text-3xs text-muted-foreground">
+                          <span>Applied {new Date(a.applied_at).toLocaleDateString()}</span>
+                          {a.last_shown_at && <span>Moved {new Date(a.last_shown_at).toLocaleDateString()}</span>}
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+              </TabsContent>
             );
-          }}
-        />
+          })}
+        </Tabs>
 
         <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null); }}>
           <DialogContent className="max-h-[90vh] overflow-y-auto">
@@ -252,14 +291,21 @@ function Hiring() {
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div><span className="text-muted-foreground">Email:</span> {editing.email ?? "—"}</div>
                   <div><span className="text-muted-foreground">Phone:</span> {editing.phone ?? "—"}</div>
-                  <div><span className="text-muted-foreground">Role:</span> {editing.role_applied}</div>
                   <div><span className="text-muted-foreground">Experience:</span> {editing.years_experience ?? "—"}y</div>
                   <div><span className="text-muted-foreground">Niche:</span> {editing.niche ?? "—"}</div>
                   <div><span className="text-muted-foreground">Source:</span> {editing.source ?? "—"}</div>
                 </div>
+
+                {(editing.historical_cash_collected_cents || editing.recent_monthly_cash_collected_cents) && (
+                  <div className="rounded-md border border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/5 p-3 grid grid-cols-2 gap-3 text-xs">
+                    <div><span className="text-muted-foreground">Recent monthly cash (stated)</span><div className="font-mono text-sm text-[color:var(--color-success)]">{editing.recent_monthly_cash_collected_cents ? fmtMoney(editing.recent_monthly_cash_collected_cents) : "—"}</div></div>
+                    <div><span className="text-muted-foreground">Historical cash (stated)</span><div className="font-mono text-sm text-[color:var(--color-success)]">{editing.historical_cash_collected_cents ? fmtMoney(editing.historical_cash_collected_cents) : "—"}</div></div>
+                  </div>
+                )}
+
                 <div className="rounded-md border border-border bg-muted/20 p-3">
-                  <div className="text-2xs uppercase tracking-wider text-muted-foreground mb-1">AI score · {editing.ai_score?.toFixed(1) ?? "—"}/10</div>
-                  <div className="text-xs">{editing.ai_reasoning ?? "No reasoning yet."}</div>
+                  <div className="text-2xs uppercase tracking-wider text-muted-foreground mb-1">Transcript quality · {editing.ai_score?.toFixed(1) ?? "—"}/10</div>
+                  <div className="text-xs">{editing.ai_reasoning ?? "No reasoning yet — grade the video below."}</div>
                   {editing.ai_transcript_summary && (
                     <p className="mt-2 border-t border-border pt-2 text-xs leading-relaxed text-muted-foreground">{editing.ai_transcript_summary}</p>
                   )}
@@ -281,12 +327,30 @@ function Hiring() {
 
                 <LoomGrader applicant={editing} onGraded={() => { qc.invalidateQueries({ queryKey: ["hiring"] }); setEditing(null); }} />
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Stage</Label>
-                  <Select value={editing.stage} onValueChange={(v) => update.mutate({ id: editing.id, patch: { stage: v, last_shown_at: new Date().toISOString() } })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{STAGES.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
-                  </Select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Role applied for</Label>
+                    <Select value={editing.role_applied} onValueChange={(v) => { update.mutate({ id: editing.id, patch: { role_applied: v } }); setEditing({ ...editing, role_applied: v }); }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+                    </Select>
+                    {editing.ai_stated_role && editing.ai_stated_role !== editing.role_applied && (
+                      <div className="flex items-center gap-1.5 text-3xs text-[color:var(--color-warning)]">
+                        <AlertTriangle className="h-3 w-3" /> AI heard "{editing.ai_stated_role}" on video
+                        <Button size="sm" variant="outline" className="h-5 text-4xs px-1.5"
+                          onClick={() => { const r = editing.ai_stated_role as string; update.mutate({ id: editing.id, patch: { role_applied: r } }); setEditing({ ...editing, role_applied: r }); }}>
+                          Use this
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Stage</Label>
+                    <Select value={editing.stage} onValueChange={(v) => update.mutate({ id: editing.id, patch: { stage: v, last_shown_at: new Date().toISOString() } })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{STAGES.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Recruiter notes</Label>

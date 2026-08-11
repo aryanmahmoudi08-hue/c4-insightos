@@ -741,6 +741,7 @@ export type Database = {
           updated_at: string
           url: string | null
           variation: string | null
+          variation_answers: Json
           voice_notes: string | null
           why_it_works: string | null
         }
@@ -778,6 +779,7 @@ export type Database = {
           updated_at?: string
           url?: string | null
           variation?: string | null
+          variation_answers?: Json
           voice_notes?: string | null
           why_it_works?: string | null
         }
@@ -815,6 +817,7 @@ export type Database = {
           updated_at?: string
           url?: string | null
           variation?: string | null
+          variation_answers?: Json
           voice_notes?: string | null
           why_it_works?: string | null
         }
@@ -1367,11 +1370,13 @@ export type Database = {
           ai_reasoning: string | null
           ai_recommended_stage: string | null
           ai_score: number | null
+          ai_stated_role: string | null
           ai_transcript_summary: string | null
           applied_at: string
           created_at: string
           email: string | null
           full_name: string
+          historical_cash_collected_cents: number | null
           id: string
           last_shown_at: string | null
           loom_transcript: string | null
@@ -1380,6 +1385,7 @@ export type Database = {
           notes: string | null
           org_id: string
           phone: string | null
+          recent_monthly_cash_collected_cents: number | null
           responses: Json
           role_applied: string
           source: string | null
@@ -1391,11 +1397,13 @@ export type Database = {
           ai_reasoning?: string | null
           ai_recommended_stage?: string | null
           ai_score?: number | null
+          ai_stated_role?: string | null
           ai_transcript_summary?: string | null
           applied_at?: string
           created_at?: string
           email?: string | null
           full_name: string
+          historical_cash_collected_cents?: number | null
           id?: string
           last_shown_at?: string | null
           loom_transcript?: string | null
@@ -1404,6 +1412,7 @@ export type Database = {
           notes?: string | null
           org_id: string
           phone?: string | null
+          recent_monthly_cash_collected_cents?: number | null
           responses?: Json
           role_applied?: string
           source?: string | null
@@ -1415,11 +1424,13 @@ export type Database = {
           ai_reasoning?: string | null
           ai_recommended_stage?: string | null
           ai_score?: number | null
+          ai_stated_role?: string | null
           ai_transcript_summary?: string | null
           applied_at?: string
           created_at?: string
           email?: string | null
           full_name?: string
+          historical_cash_collected_cents?: number | null
           id?: string
           last_shown_at?: string | null
           loom_transcript?: string | null
@@ -1428,6 +1439,7 @@ export type Database = {
           notes?: string | null
           org_id?: string
           phone?: string | null
+          recent_monthly_cash_collected_cents?: number | null
           responses?: Json
           role_applied?: string
           source?: string | null

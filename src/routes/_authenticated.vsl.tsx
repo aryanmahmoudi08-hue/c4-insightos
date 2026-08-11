@@ -14,14 +14,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Video, Plus, Upload, Wand2, Loader2, TrendingDown, TrendingUp, Save, Play, Mic, Trash2 } from "lucide-react";
+import { Video, Plus, Upload, Wand2, Loader2, TrendingDown, TrendingUp, Save, Play, Mic, Trash2, HelpCircle, Pencil, MousePointerClick, Eye } from "lucide-react";
 import { toast } from "sonner";
 import {
   listVsls, upsertVsl, deleteVsl, listSnapshots, addSnapshot,
   importCsvRows, analyzeVsl, transcribeAudio, type VslKind,
 } from "@/lib/vsl.functions";
-import { useAuth } from "@/hooks/use-auth";
-import { mockVsls, mockVslSnapshots, mockVslInsights, mockTranscriptLines, withMockDelay } from "@/lib/dev-mock-data";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { supabase } from "@/integrations/supabase/client";
+import { mockVsls, mockVslSnapshots, mockVslInsights, mockTranscriptLines, mockFaqVideos, withMockDelay } from "@/lib/dev-mock-data";
+import { MECHANISM_KEYS, MECHANISMS, type MechanismKey } from "@/lib/content-mechanisms";
 
 export const Route = createFileRoute("/_authenticated/vsl")({ component: VslPage });
 
@@ -31,6 +33,20 @@ const KIND_LABEL: Record<VslKind, string> = {
   post_booking: "Post-booking Confirmation",
 };
 const KIND_ORDER: VslKind[] = ["main", "webinar", "post_booking"];
+
+type FaqVideo = {
+  id: string;
+  title: string;
+  question: string | null;
+  video_url: string | null;
+  wistia_video_id: string | null;
+  mechanism: string | null;
+  clicks: number;
+  plays: number;
+  avg_watch_pct: number;
+  active: boolean;
+  notes: string | null;
+};
 
 function fmtNum(n: number) { return Intl.NumberFormat().format(Math.round(n || 0)); }
 function fmtPct(n: number) { return `${(Number(n) || 0).toFixed(1)}%`; }
@@ -43,7 +59,7 @@ function VslPage() {
     queryKey: ["vsls", devBypass],
     queryFn: (): Promise<any[]> => (devBypass ? Promise.resolve(mockVsls()) : load()),
   });
-  const [kind, setKind] = useState<VslKind>("main");
+  const [kind, setKind] = useState<VslKind | "faq">("main");
 
   const grouped = useMemo(() => {
     const m: Record<VslKind, any[]> = { main: [], webinar: [], post_booking: [] };
@@ -55,7 +71,7 @@ function VslPage() {
     <>
       <TopBar title="VSL Analytics" subtitle="Wistia performance, drop-off, and script alignment across your video funnel." />
       <div className="p-4 md:p-6 space-y-5">
-        <Tabs value={kind} onValueChange={(v) => setKind(v as VslKind)}>
+        <Tabs value={kind} onValueChange={(v) => setKind(v as VslKind | "faq")}>
           <TabsList className="w-full justify-start">
             {KIND_ORDER.map(k => (
               <TabsTrigger key={k} value={k} className="gap-2">
@@ -64,6 +80,9 @@ function VslPage() {
                 <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-3xs font-mono">{grouped[k].length}</span>
               </TabsTrigger>
             ))}
+            <TabsTrigger value="faq" className="gap-2">
+              <HelpCircle className="h-3.5 w-3.5" /> FAQ Videos
+            </TabsTrigger>
           </TabsList>
           {KIND_ORDER.map(k => (
             <TabsContent key={k} value={k} className="space-y-4 mt-4">
@@ -84,6 +103,9 @@ function VslPage() {
               {grouped[k].map((v: any) => <VslCard key={v.id} vsl={v} />)}
             </TabsContent>
           ))}
+          <TabsContent value="faq" className="space-y-4 mt-4">
+            <FaqVideosSection />
+          </TabsContent>
         </Tabs>
       </div>
     </>
@@ -412,5 +434,198 @@ function TranscriptPreview({ txt }: { txt: string }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * FAQ Videos — the real data source feeding Content Signals' "FAQ clicks" signal
+ * (previously mocked). Most-clicked FAQ reveals the audience's dominant subconscious
+ * limiting belief, so this is ranked most-clicked first, not by recency.
+ */
+function FaqVideosSection() {
+  const { data: org } = useCurrentOrg();
+  const orgId = org?.org_id;
+  const { devBypass } = useAuth();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<FaqVideo | null>(null);
+  const [statsFor, setStatsFor] = useState<FaqVideo | null>(null);
+
+  const { data: faqs, isLoading } = useQuery({
+    queryKey: ["faq-videos", orgId, devBypass],
+    enabled: devBypass || !!orgId,
+    queryFn: async () => {
+      if (devBypass) return mockFaqVideos() as FaqVideo[];
+      const { data, error } = await supabase.from("faq_videos").select("*").eq("org_id", orgId!).order("clicks", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as FaqVideo[];
+    },
+  });
+
+  const ranked = [...(faqs ?? [])].sort((a, b) => b.clicks - a.clicks);
+  const topBelief = ranked[0];
+
+  const del = useMutation({
+    mutationFn: async (id: string) => { const { error } = await supabase.from("faq_videos").delete().eq("id", id); if (error) throw error; },
+    onSuccess: () => { toast.success("Removed"); qc.invalidateQueries({ queryKey: ["faq-videos"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="space-y-4">
+      <SlimHeader
+        icon={<HelpCircle className="h-4 w-4" />}
+        title="FAQ Videos"
+        subtitle="Objection-answer videos shown post-booking. Ranked most-clicked first — the top one is the audience's #1 subconscious limiting belief."
+        right={<Button size="sm" className="gap-1.5" onClick={() => { setEditing(null); setOpen(true); }}><Plus className="h-3.5 w-3.5" />Add FAQ video</Button>}
+      />
+
+      {topBelief && topBelief.clicks > 0 && (
+        <div className="rounded-lg border border-accent/30 bg-accent/5 p-3 flex items-start gap-2">
+          <TrendingUp className="h-4 w-4 text-accent shrink-0 mt-0.5" />
+          <div className="text-xs">
+            <span className="font-semibold">Dominant limiting belief:</span> "{topBelief.title}" — {topBelief.clicks} clicks
+            {topBelief.mechanism && <span className="text-muted-foreground"> · feeds the {MECHANISMS[topBelief.mechanism as MechanismKey]?.label ?? topBelief.mechanism} mix</span>}
+          </div>
+        </div>
+      )}
+
+      {isLoading && <div className="text-sm text-muted-foreground">Loading…</div>}
+      {!isLoading && ranked.length === 0 && (
+        <EmptyState icon={<HelpCircle className="h-6 w-6" />} title="No FAQ videos yet"
+          description="Add the objection-answer videos shown after booking, then log their click/play stats to feed the mechanism mix." />
+      )}
+
+      <div className="space-y-2">
+        {ranked.map((f, i) => {
+          const watchRate = f.clicks > 0 ? Math.round((f.plays / f.clicks) * 100) : 0;
+          return (
+            <div key={f.id} className="rounded-lg border border-border bg-card p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted text-3xs font-mono font-bold text-muted-foreground mt-0.5">{i + 1}</div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold truncate">{f.title}</div>
+                    {f.question && <div className="text-2xs text-muted-foreground mt-0.5">{f.question}</div>}
+                    <div className="flex items-center gap-2 mt-1.5">
+                      {f.mechanism && (
+                        <span className="rounded bg-accent/15 px-1.5 py-0.5 text-3xs uppercase tracking-wide text-accent">{MECHANISMS[f.mechanism as MechanismKey]?.label ?? f.mechanism}</span>
+                      )}
+                      {!f.active && <span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">Inactive</span>}
+                      {f.video_url && <a href={f.video_url} target="_blank" rel="noreferrer" className="text-3xs text-accent hover:underline">Open video</a>}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="text-right">
+                    <div className="flex items-center gap-1 font-mono text-sm font-semibold"><MousePointerClick className="h-3 w-3 text-muted-foreground" />{fmtNum(f.clicks)}</div>
+                    <div className="text-3xs text-muted-foreground">clicks</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="flex items-center gap-1 font-mono text-sm font-semibold"><Eye className="h-3 w-3 text-muted-foreground" />{fmtNum(f.plays)}</div>
+                    <div className="text-3xs text-muted-foreground">plays</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-mono text-sm font-semibold">{watchRate}%</div>
+                    <div className="text-3xs text-muted-foreground">watch rate</div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="outline" className="h-7 text-2xs" onClick={() => setStatsFor(f)}>Stats</Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditing(f); setOpen(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => { if (confirm(`Remove "${f.title}"?`)) del.mutate(f.id); }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <FaqVideoDialog open={open} onOpenChange={setOpen} editing={editing} orgId={orgId} />
+      <FaqStatsDialog faq={statsFor} onOpenChange={(o) => { if (!o) setStatsFor(null); }} />
+    </div>
+  );
+}
+
+function FaqVideoDialog({ open, onOpenChange, editing, orgId }: { open: boolean; onOpenChange: (o: boolean) => void; editing: FaqVideo | null; orgId: string | undefined }) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState(editing?.title ?? "");
+  const [question, setQuestion] = useState(editing?.question ?? "");
+  const [videoUrl, setVideoUrl] = useState(editing?.video_url ?? "");
+  const [mechanism, setMechanism] = useState<string>(editing?.mechanism ?? "");
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const payload = { title: title.trim(), question: question.trim() || null, video_url: videoUrl.trim() || null, mechanism: mechanism || null };
+      if (editing) {
+        const { error } = await supabase.from("faq_videos").update(payload).eq("id", editing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("faq_videos").insert({ org_id: orgId!, ...payload });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => { toast.success(editing ? "Updated" : "Added"); qc.invalidateQueries({ queryKey: ["faq-videos"] }); onOpenChange(false); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent key={editing?.id ?? "new"}>
+        <DialogHeader><DialogTitle>{editing ? "Edit FAQ video" : "New FAQ video"}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div><Label>Objection / title</Label><Input defaultValue={editing?.title ?? ""} onChange={e => setTitle(e.target.value)} placeholder={'e.g. "Is this a scam?"'} /></div>
+          <div><Label>Question it answers</Label><Textarea rows={2} defaultValue={editing?.question ?? ""} onChange={e => setQuestion(e.target.value)} /></div>
+          <div><Label>Video URL</Label><Input defaultValue={editing?.video_url ?? ""} onChange={e => setVideoUrl(e.target.value)} placeholder="https://" /></div>
+          <div>
+            <Label>Mechanism (optional — which of the 4 this feeds)</Label>
+            <Select defaultValue={editing?.mechanism ?? undefined} onValueChange={setMechanism}>
+              <SelectTrigger><SelectValue placeholder="Auto-detect from title/question" /></SelectTrigger>
+              <SelectContent>{MECHANISM_KEYS.map(k => <SelectItem key={k} value={k}>{MECHANISMS[k].label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <Button className="w-full" disabled={!title.trim() || save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editing ? "Save changes" : "Add FAQ video"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function FaqStatsDialog({ faq, onOpenChange }: { faq: FaqVideo | null; onOpenChange: (o: boolean) => void }) {
+  const qc = useQueryClient();
+  const [clicks, setClicks] = useState("");
+  const [plays, setPlays] = useState("");
+  const [watchPct, setWatchPct] = useState("");
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!faq) return;
+      const { error } = await supabase.from("faq_videos").update({
+        clicks: Number(clicks) || 0, plays: Number(plays) || 0, avg_watch_pct: Number(watchPct) || 0,
+      }).eq("id", faq.id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Stats updated"); qc.invalidateQueries({ queryKey: ["faq-videos"] }); onOpenChange(false); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Dialog open={!!faq} onOpenChange={onOpenChange}>
+      <DialogContent key={faq?.id ?? "none"}>
+        <DialogHeader><DialogTitle>Update stats — {faq?.title}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <div><Label className="text-2xs">Total clicks</Label><Input type="number" min={0} defaultValue={faq?.clicks ?? 0} onChange={e => setClicks(e.target.value)} /></div>
+            <div><Label className="text-2xs">Total plays</Label><Input type="number" min={0} defaultValue={faq?.plays ?? 0} onChange={e => setPlays(e.target.value)} /></div>
+            <div><Label className="text-2xs">Avg % watched</Label><Input type="number" min={0} max={100} defaultValue={faq?.avg_watch_pct ?? 0} onChange={e => setWatchPct(e.target.value)} /></div>
+          </div>
+          <Button className="w-full" disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save stats"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -67,3 +67,40 @@ export const logSetterSignalFn = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return row;
   });
+
+/**
+ * Automatic ingestion path for 2.8: the same extraction the manual-paste flow uses,
+ * triggered right after a call is logged instead of requiring someone to come back
+ * and paste the summary in separately. Best-effort — a screening failure here should
+ * never block "call logged" from succeeding, so callers should treat this as fire-and-forget.
+ */
+export const autoIngestCallSignalFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({
+    call_id: z.string().uuid().nullable().optional(),
+    closer_name: z.string().trim().min(1).max(120),
+    call_date: z.string().max(20).optional(),
+    call_summary: z.string().trim().min(1).max(20000),
+    lead_id: z.string().uuid().nullable().optional(),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, orgId } = await orgOf(context);
+    const { extractSetterSignals } = await import("./content-signals.server");
+    const extracted = await extractSetterSignals(data.call_summary);
+
+    const { data: row, error } = await supabase.from("setter_call_signals").insert({
+      org_id: orgId,
+      lead_id: data.lead_id ?? null,
+      setter_name: data.closer_name.trim(),
+      call_date: data.call_date || new Date().toISOString().slice(0, 10),
+      source: "auto_call",
+      transcript: null,
+      notes: data.call_summary,
+      limiting_beliefs: extracted.limiting_beliefs,
+      objections: extracted.objections,
+      mechanism: extracted.mechanism,
+      ai_summary: extracted.summary || null,
+    }).select("id, limiting_beliefs, objections, mechanism, ai_summary").single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
