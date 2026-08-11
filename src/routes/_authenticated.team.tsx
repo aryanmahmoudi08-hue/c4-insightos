@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Users, Check, X, UserPlus, Shield } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { GlassTableShell } from "@/components/glass-table";
+import { EmptyState } from "@/components/empty-state";
 
 export const Route = createFileRoute("/_authenticated/team")({ component: Team });
 
@@ -124,17 +126,17 @@ function Team() {
               <UserPlus className="h-3.5 w-3.5" /> Pending access requests · {requests?.length ?? 0}
             </div>
             {(!requests || requests.length === 0) ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">No pending requests. Share <code className="font-mono">/request-access</code> with teammates.</div>
+              <EmptyState icon={<UserPlus className="h-4 w-4" />} title="No pending requests" description="Share /request-access with teammates." />
             ) : (
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+                <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr><th className="text-left p-3">Name</th><th className="text-left p-3">Email</th><th className="text-left p-3">Role</th><th className="text-right p-3">Actions</th></tr>
                 </thead>
                 <tbody>
                   {requests.map(r => {
                     const role = pendingRoles[r.id] ?? r.requested_role;
                     return (
-                      <tr key={r.id} className="border-t border-border">
+                      <tr key={r.id} className="border-t border-border/70">
                         <td className="p-3 font-medium">{r.full_name}</td>
                         <td className="p-3 text-xs text-muted-foreground">{r.email}</td>
                         <td className="p-3">
@@ -167,9 +169,9 @@ function Team() {
 
 
 
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <GlassTableShell>
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+            <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
               <tr><th className="text-left p-3">Member</th><th className="text-left p-3">Role</th>
                 <th className="text-right p-3 font-mono">Booked</th><th className="text-right p-3 font-mono">Shown</th>
                 <th className="text-right p-3 font-mono">Closes</th><th className="text-right p-3 font-mono">Cash 30d</th>
@@ -178,7 +180,7 @@ function Team() {
             </thead>
             <tbody>
               {byUser.map(m => (
-                <tr key={m.user_id} className="border-t border-border hover:bg-muted/20">
+                <tr key={m.user_id} className="border-t border-border/70 hover:bg-muted/20">
                   <td className="p-3 flex items-center gap-2">
                     <div className="grid h-7 w-7 place-items-center rounded-full bg-muted text-2xs font-mono">{(m.profiles?.display_name ?? "??").slice(0,2).toUpperCase()}</div>
                     <span className="font-medium">{m.profiles?.display_name ?? m.user_id.slice(0,8)}</span>
@@ -198,10 +200,12 @@ function Team() {
                 </tr>
               ))}
               {membersLoading && <tr><td colSpan={isAdmin ? 7 : 6} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
-              {!membersLoading && byUser.length === 0 && <tr><td colSpan={isAdmin ? 7 : 6} className="p-10 text-center text-sm text-muted-foreground">No team members yet.</td></tr>}
+              {!membersLoading && byUser.length === 0 && (
+                <tr><td colSpan={isAdmin ? 7 : 6}><EmptyState icon={<Users className="h-4 w-4" />} title="No team members yet" /></td></tr>
+              )}
             </tbody>
           </table>
-        </div>
+        </GlassTableShell>
       </div>
       <MemberPermissionsDialog
         open={!!permTarget}

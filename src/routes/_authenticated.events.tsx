@@ -11,9 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Activity, Webhook, Radio, AlertCircle, Plus, Copy, RefreshCw, Check } from "lucide-react";
+import { Activity, Webhook, Radio, AlertCircle, Plus, Copy, RefreshCw, Check, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import { getOrCreateIngestToken, rotateIngestToken } from "@/lib/ingest.functions";
+import { GlassTableShell } from "@/components/glass-table";
+import { EmptyState } from "@/components/empty-state";
+import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
 
 const EVENT_TYPES = [
   "lead.created","lead.status_changed","conversation.started","call.booked","call.showed","call.closed_won","call.closed_lost",
@@ -188,38 +191,46 @@ function EventsBus() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="bg-muted/40 px-3 py-2 text-2xs uppercase tracking-wider text-muted-foreground">Webhook deliveries</div>
+          <GlassTableShell
+            toolbar={<div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Webhook deliveries</div>}
+            maxHeight="360px"
+          >
             <table className="w-full text-xs">
-              <thead className="text-muted-foreground"><tr><th className="text-left p-2">Status</th><th className="text-left p-2">Code</th><th className="text-left p-2">Attempt</th><th className="text-left p-2">When</th></tr></thead>
+              <thead className="sticky-thead text-muted-foreground bg-muted/40"><tr><th className="text-left p-2">Status</th><th className="text-left p-2">Code</th><th className="text-left p-2">Attempt</th><th className="text-left p-2">When</th></tr></thead>
               <tbody>{(deliveries ?? []).map(d => (
-                <tr key={d.id} className="border-t border-border">
-                  <td className="p-2"><span className={`rounded px-1.5 py-0.5 text-3xs ${d.status === "delivered" ? "bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]" : d.status === "pending" ? "bg-muted" : "bg-destructive/20 text-destructive"}`}>{d.status}</span></td>
+                <tr key={d.id} className="border-t border-border/70">
+                  <td className="p-2"><span className={`rounded px-1.5 py-0.5 text-3xs ${d.status === "delivered" ? CHIP_TONE_CLASSES.success : d.status === "pending" ? CHIP_TONE_CLASSES.default : CHIP_TONE_CLASSES.destructive}`}>{d.status}</span></td>
                   <td className="p-2 font-mono">{d.response_code ?? "—"}</td>
                   <td className="p-2 font-mono">{d.attempt}</td>
                   <td className="p-2 text-muted-foreground">{new Date(d.created_at).toLocaleTimeString()}</td>
                 </tr>
               ))}
-                {(!deliveries || deliveries.length === 0) && <tr><td colSpan={4} className="p-6 text-center text-muted-foreground">No deliveries yet.</td></tr>}
+                {(!deliveries || deliveries.length === 0) && (
+                  <tr><td colSpan={4}><EmptyState icon={<Webhook className="h-4 w-4" />} title="No deliveries yet" /></td></tr>
+                )}
               </tbody>
             </table>
-          </div>
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="bg-muted/40 px-3 py-2 text-2xs uppercase tracking-wider text-muted-foreground">Raw ingestion payloads</div>
+          </GlassTableShell>
+          <GlassTableShell
+            toolbar={<div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Raw ingestion payloads</div>}
+            maxHeight="360px"
+          >
             <table className="w-full text-xs">
-              <thead className="text-muted-foreground"><tr><th className="text-left p-2">Connector</th><th className="text-left p-2">Resource</th><th className="text-left p-2">Processed</th><th className="text-left p-2">Received</th></tr></thead>
+              <thead className="sticky-thead text-muted-foreground bg-muted/40"><tr><th className="text-left p-2">Connector</th><th className="text-left p-2">Resource</th><th className="text-left p-2">Processed</th><th className="text-left p-2">Received</th></tr></thead>
               <tbody>{(raw ?? []).map(r => (
-                <tr key={r.id} className="border-t border-border">
+                <tr key={r.id} className="border-t border-border/70">
                   <td className="p-2 font-mono">{r.connector_id}</td>
                   <td className="p-2">{r.resource}</td>
                   <td className="p-2">{r.process_error ? <span className="text-destructive">err</span> : r.processed_at ? "✓" : <span className="text-muted-foreground">queued</span>}</td>
                   <td className="p-2 text-muted-foreground">{new Date(r.received_at).toLocaleTimeString()}</td>
                 </tr>
               ))}
-                {(!raw || raw.length === 0) && <tr><td colSpan={4} className="p-6 text-center text-muted-foreground">No payloads ingested yet.</td></tr>}
+                {(!raw || raw.length === 0) && (
+                  <tr><td colSpan={4}><EmptyState icon={<Inbox className="h-4 w-4" />} title="No payloads ingested yet" /></td></tr>
+                )}
               </tbody>
             </table>
-          </div>
+          </GlassTableShell>
         </div>
       </div>
     </>

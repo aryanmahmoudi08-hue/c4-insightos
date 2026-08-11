@@ -1,19 +1,12 @@
 import type { ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 
 export type KanbanColumnDef = {
   key: string;
   label: string;
-  tone?: "default" | "success" | "warning" | "destructive" | "accent";
-};
-
-const TONE_CHIP: Record<NonNullable<KanbanColumnDef["tone"]>, string> = {
-  default: "bg-muted text-muted-foreground",
-  success: "bg-[color:var(--color-success)]/15 text-[color:var(--color-success)]",
-  warning: "bg-[color:var(--color-warning)]/15 text-[color:var(--color-warning)]",
-  destructive: "bg-destructive/15 text-destructive",
-  accent: "bg-accent/15 text-accent",
+  tone?: ChipTone;
 };
 
 /**
@@ -23,14 +16,14 @@ const TONE_CHIP: Record<NonNullable<KanbanColumnDef["tone"]>, string> = {
  * empty/loading states; callers supply per-card content via `renderCard`.
  */
 export function KanbanBoard<T extends { id: string }>({
-  columns, itemsByColumn, onDropItem, renderCard, valueOf, formatValue, loading, emptyHint = "Drop here",
+  columns, itemsByColumn, onDropItem, renderCard, sumBy, formatValue, loading, emptyHint = "Drop here",
 }: {
   columns: KanbanColumnDef[];
   itemsByColumn: Map<string, T[]>;
   onDropItem: (id: string, columnKey: string) => void;
   renderCard: (item: T) => ReactNode;
   /** Optional: summed per column for the header's count+value badge (e.g. contract value, cash). */
-  valueOf?: (item: T) => number;
+  sumBy?: (item: T) => number;
   formatValue?: (n: number) => string;
   loading?: boolean;
   emptyHint?: string;
@@ -40,7 +33,7 @@ export function KanbanBoard<T extends { id: string }>({
     <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
       {columns.map((col) => {
         const rows = itemsByColumn.get(col.key) ?? [];
-        const total = valueOf ? rows.reduce((s, r) => s + valueOf(r), 0) : null;
+        const total = sumBy ? rows.reduce((s, r) => s + sumBy(r), 0) : null;
         return (
           <div
             key={col.key}
@@ -49,7 +42,7 @@ export function KanbanBoard<T extends { id: string }>({
             className="rounded-lg border border-border bg-card min-h-[300px]"
           >
             <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-              <span className={cn("text-3xs uppercase tracking-wider rounded px-1.5 py-0.5", TONE_CHIP[col.tone ?? "default"])}>{col.label}</span>
+              <span className={cn("text-3xs uppercase tracking-wider rounded px-1.5 py-0.5", CHIP_TONE_CLASSES[col.tone ?? "default"])}>{col.label}</span>
               <span className="text-3xs font-mono text-muted-foreground">{rows.length}{total !== null ? ` · ${fmt(total)}` : ""}</span>
             </div>
             <div className="p-2 space-y-2">

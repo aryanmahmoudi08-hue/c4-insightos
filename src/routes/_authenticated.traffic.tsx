@@ -10,8 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, TrendingUp, Target, Sparkles } from "lucide-react";
+import { Plus, TrendingUp, Target, Sparkles, Signpost } from "lucide-react";
 import { toast } from "sonner";
+import { GlassTableShell } from "@/components/glass-table";
+import { EmptyState } from "@/components/empty-state";
 
 
 export const Route = createFileRoute("/_authenticated/traffic")({ component: Traffic });
@@ -276,9 +278,9 @@ function Traffic() {
             <div className="text-2xs font-semibold uppercase tracking-wider">Every channel, best to worst</div>
             <div className="mt-0.5 text-2xs text-muted-foreground">Sorted by revenue per lead — the honest measure of a channel.</div>
           </div>
-          <div className="overflow-x-auto">
+          <GlassTableShell>
             <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+              <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="p-3 text-left">#</th>
                   <th className="p-3 text-left">Channel</th>
@@ -295,7 +297,7 @@ function Traffic() {
                 {ranked.map((b, i) => {
                   const v = verdict(b);
                   return (
-                    <tr key={b.id} className="border-t border-border hover:bg-muted/20">
+                    <tr key={b.id} className="border-t border-border/70 hover:bg-muted/20">
                       <td className="p-3 font-mono text-xs text-muted-foreground">{i + 1}</td>
                       <td className="p-3 font-medium">{b.name}</td>
                       <td className="p-3 text-xs uppercase text-muted-foreground">{b.category}</td>
@@ -308,10 +310,12 @@ function Traffic() {
                     </tr>
                   );
                 })}
-                {ranked.length === 0 && <tr><td colSpan={9} className="p-10 text-center text-sm text-muted-foreground">No channels yet. Add one, then tag leads to it.</td></tr>}
+                {ranked.length === 0 && (
+                  <tr><td colSpan={9}><EmptyState icon={<Signpost className="h-4 w-4" />} title="No channels yet" description="Add one, then tag leads to it." /></td></tr>
+                )}
               </tbody>
             </table>
-          </div>
+          </GlassTableShell>
         </section>
       </div>
     </>

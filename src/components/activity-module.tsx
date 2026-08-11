@@ -16,6 +16,9 @@ import { Plus, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { toast } from "sonner";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { TeamMemberFilter, ALL_MEMBERS } from "@/components/team-member-filter";
+import { GlassTableShell, Pagination, usePagination } from "@/components/glass-table";
+import { EmptyState } from "@/components/empty-state";
+import { ClipboardList } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend,
@@ -53,6 +56,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     },
   });
   const rows = member === ALL_MEMBERS ? allRows : (allRows ?? []).filter(r => r.team_member_name === member);
+  const { page, setPage, pageCount, paged: pagedRows, total: totalRows, pageSize } = usePagination(rows ?? [], 25);
 
   const sum = (k: string) => (rows ?? []).reduce((s, r) => s + (Number((r as Record<string, unknown>)[k] ?? 0) || 0), 0);
   const dials = sum("dials");
@@ -359,12 +363,16 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         </Tabs>
 
         {/* Activity Log */}
-        <div className="rounded-lg border border-border bg-card overflow-x-auto">
-          <div className="px-4 py-2 border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            {isDialer ? "Setter Input" : "DM Setter Input"} · {rows?.length ?? 0} rows
-          </div>
+        <GlassTableShell
+          toolbar={
+            <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
+              {isDialer ? "Setter Input" : "DM Setter Input"} · {totalRows} rows
+            </div>
+          }
+          footer={totalRows > 0 ? <Pagination page={page} pageCount={pageCount} onPage={setPage} total={totalRows} pageSize={pageSize} /> : undefined}
+        >
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+            <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left p-2.5">Name</th>
                 <th className="text-left p-2.5">Date</th>
@@ -385,8 +393,8 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               </tr>
             </thead>
             <tbody>
-              {(rows ?? []).map((r) => (
-                <tr key={r.id} className="border-t border-border hover:bg-muted/20">
+              {pagedRows.map((r) => (
+                <tr key={r.id} className="border-t border-border/70 hover:bg-muted/20">
                   <td className="p-2.5 font-medium">{r.team_member_name}</td>
                   <td className="p-2.5 text-xs text-muted-foreground">{r.activity_date}</td>
                   <td className="p-2.5 text-xs">{r.lead_source ? <span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase">{r.lead_source}</span> : <span className="text-muted-foreground">—</span>}</td>
@@ -401,17 +409,25 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                   <td className="p-2.5 text-right font-mono">{r.downsells ?? 0}</td>
                   <td className="p-2.5 text-right font-mono text-[color:var(--color-success)]">${((r.cash_collected_cents ?? 0)/100).toLocaleString()}</td>
                   <td className="p-2.5 text-right font-mono">${((r.total_revenue_cents ?? 0)/100).toLocaleString()}</td>
-                  <td className="p-2.5 text-center">{r.rate_today ?? "—"}</td>
+                  <td className="p-2.5 text-center">{r.rate_today ?? <span className="text-muted-foreground">—</span>}</td>
                   <td className="p-2.5 text-xs text-muted-foreground max-w-[180px] truncate">{r.objections ?? "—"}</td>
                   <td className="p-2.5 text-xs text-muted-foreground max-w-[200px] truncate">{r.notes ?? "—"}</td>
                 </tr>
               ))}
-              {(!rows || rows.length === 0) && (
-                <tr><td colSpan={16} className="p-10 text-center text-sm text-muted-foreground">No entries in this date range. Log your first day to start tracking.</td></tr>
+              {totalRows === 0 && (
+                <tr>
+                  <td colSpan={16}>
+                    <EmptyState
+                      icon={<ClipboardList className="h-4 w-4" />}
+                      title="No entries in this date range"
+                      description="Log your first day to start tracking."
+                    />
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
-        </div>
+        </GlassTableShell>
       </div>
     </>
   );

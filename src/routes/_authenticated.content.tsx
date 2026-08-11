@@ -24,6 +24,9 @@ import { HeatmapGrid } from "@/components/heatmap-grid";
 import { mockContentPieces, mockContentFunnel, mockVariationHeatmap, mockContentCoaching, mockContentClassification, withMockDelay } from "@/lib/dev-mock-data";
 import { MECHANISMS, MECHANISM_KEYS } from "@/lib/content-mechanisms";
 import type { Database } from "@/integrations/supabase/types";
+import { GlassTableShell } from "@/components/glass-table";
+import { EmptyState } from "@/components/empty-state";
+import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 
 type Platform = Database["public"]["Enums"]["content_platform"];
 type Angle = Database["public"]["Enums"]["content_angle"];
@@ -40,12 +43,14 @@ type PieceRow = {
 const fmtN = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(n));
 
 const PIPELINE: { key: string; label: string; tone: string }[] = [
-  { key: "draft", label: "Draft", tone: "bg-muted text-muted-foreground" },
-  { key: "in_review", label: "In Review", tone: "bg-amber-500/15 text-amber-400" },
-  { key: "approved", label: "Approved", tone: "bg-blue-500/15 text-blue-400" },
-  { key: "ready_to_post", label: "Ready to Post", tone: "bg-emerald-500/15 text-emerald-400" },
-  { key: "posted", label: "Posted", tone: "bg-primary/15 text-primary" },
+  { key: "draft", label: "Draft", tone: CHIP_TONE_CLASSES.default },
+  { key: "in_review", label: "In Review", tone: CHIP_TONE_CLASSES.warning },
+  { key: "approved", label: "Approved", tone: CHIP_TONE_CLASSES.info },
+  { key: "ready_to_post", label: "Ready to Post", tone: CHIP_TONE_CLASSES.success },
+  { key: "posted", label: "Posted", tone: CHIP_TONE_CLASSES.default },
 ];
+
+const FUNNEL_TONE: Record<string, ChipTone> = { TOF: "info", MOF: "warning", BOF: "success" };
 
 type Prefill = { id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; funnel_stage?: string; transcript?: string; views?: number; leads?: number; retention?: number };
 
@@ -464,9 +469,9 @@ function ContentIntel() {
 
 
           <TabsContent value="table">
-            <div className="rounded-lg border border-border bg-card overflow-x-auto">
+            <GlassTableShell>
               <table className="w-full min-w-[1200px] text-sm">
-                <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+                <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="w-6 p-3"></th>
                     <th className="text-left p-3">Title</th><th className="text-left p-3">Platform</th><th className="text-left p-3">Angle</th>
@@ -501,12 +506,7 @@ function ContentIntel() {
                           <td className="p-3 text-xs">{p.angle ?? "—"}</td>
                           <td className="p-3 text-center">
                             {p.funnel_stage ? (
-                              <span className={`inline-block rounded px-1.5 py-0.5 text-3xs font-mono uppercase ${
-                                p.funnel_stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
-                                p.funnel_stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
-                                p.funnel_stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" :
-                                "bg-muted text-muted-foreground"
-                              }`}>{p.funnel_stage}</span>
+                              <span className={`inline-block rounded px-1.5 py-0.5 text-3xs font-mono uppercase ${CHIP_TONE_CLASSES[FUNNEL_TONE[p.funnel_stage] ?? "default"]}`}>{p.funnel_stage}</span>
                             ) : <span className="text-muted-foreground">—</span>}
                           </td>
                           <td className="p-3 text-center">{p.url ? (
@@ -548,11 +548,11 @@ function ContentIntel() {
                     );
                   })}
                   {(!pieces || pieces.length === 0) && (
-                    <tr><td colSpan={12} className="p-10 text-center text-sm text-muted-foreground">No content yet. Log your first piece.</td></tr>
+                    <tr><td colSpan={12}><EmptyState icon={<Video className="h-4 w-4" />} title="No content yet" description="Log your first piece." /></td></tr>
                   )}
                 </tbody>
               </table>
-            </div>
+            </GlassTableShell>
           </TabsContent>
 
 

@@ -23,6 +23,10 @@ import { MetricCard } from "@/components/metric-card";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { HeatmapGrid } from "@/components/heatmap-grid";
 import { mockCalls, mockCallObjectionStats } from "@/lib/dev-mock-data";
+import { GlassTableShell, Pagination, usePagination } from "@/components/glass-table";
+import { EmptyState } from "@/components/empty-state";
+import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
+import { Clock3 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/closer")({ component: Closer });
 
@@ -36,6 +40,9 @@ const STATUS_OPTIONS = [
   { value: "booked", label: "Pipeline" },
   { value: "disqualified", label: "DQ" },
 ] as const;
+
+const STATUS_LABEL: Record<string, string> = { closed: "Closed Won", follow_up: "Follow Up", booked: "Pipeline", disqualified: "DQ" };
+const STATUS_TONE_KEY: Record<string, ChipTone> = { closed: "success", follow_up: "warning", booked: "info", disqualified: "destructive" };
 
 function Closer() {
   const { data: org } = useCurrentOrg();
@@ -104,6 +111,7 @@ function Closer() {
   });
 
   const list = (calls ?? []).filter(c => member === ALL_MEMBERS || c.closer_name === member);
+  const { page: callsPage, setPage: setCallsPage, pageCount: callsPageCount, paged: pagedCalls, total: callsTotal, pageSize: callsPageSize } = usePagination(list, 25);
   // Per-call totals
   const callsBooked = list.length;
   const callsShowed = list.filter(c => c.showed).length;
@@ -442,9 +450,9 @@ function Closer() {
           </TabsContent>
 
           <TabsContent value="scorecard">
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <GlassTableShell maxHeight="420px">
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+                <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="text-left p-3">Closer</th>
                     <th className="text-right p-3 font-mono">Booked</th>
@@ -459,7 +467,7 @@ function Closer() {
                 </thead>
                 <tbody>
                   {scorecard.map(s => (
-                    <tr key={s.name} className="border-t border-border hover:bg-muted/20">
+                    <tr key={s.name} className="border-t border-border/70 hover:bg-muted/20">
                       <td className="p-3 font-medium">{s.name}</td>
                       <td className="p-3 text-right font-mono">{s.booked}</td>
                       <td className="p-3 text-right font-mono">{s.showed}</td>
@@ -471,10 +479,12 @@ function Closer() {
                       <td className="p-3 text-right font-mono text-[color:var(--color-success)]">{fmtMoney(s.cash)}</td>
                     </tr>
                   ))}
-                  {scorecard.length === 0 && <tr><td colSpan={9} className="p-10 text-center text-sm text-muted-foreground">No closers in range.</td></tr>}
+                  {scorecard.length === 0 && (
+                    <tr><td colSpan={9}><EmptyState icon={<Trophy className="h-4 w-4" />} title="No closers in range" /></td></tr>
+                  )}
                 </tbody>
               </table>
-            </div>
+            </GlassTableShell>
           </TabsContent>
 
           <TabsContent value="ttc">
@@ -502,12 +512,12 @@ function Closer() {
           </TabsContent>
 
           <TabsContent value="followups">
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
-              <div className="px-4 py-2 border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Follow-up pipeline · {followUps.length} calls awaiting next touch
-              </div>
+            <GlassTableShell
+              toolbar={<div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Follow-up pipeline · {followUps.length} calls awaiting next touch</div>}
+              maxHeight="420px"
+            >
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+                <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="text-left p-3">Closer</th>
                     <th className="text-left p-3">Lead</th>
@@ -520,32 +530,34 @@ function Closer() {
                   {followUps.map(c => {
                     const daysAgo = c.scheduled_for ? Math.floor((Date.now() - new Date(c.scheduled_for).getTime()) / 86400e3) : null;
                     return (
-                      <tr key={c.id} className="border-t border-border hover:bg-muted/20">
+                      <tr key={c.id} className="border-t border-border/70 hover:bg-muted/20">
                         <td className="p-3 font-medium">{c.closer_name || "—"}</td>
                         <td className="p-3 text-xs">{c.lead_email || c.leads?.full_name || "—"}</td>
                         <td className="p-3 text-xs">
                           {c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—"}
-                          {daysAgo !== null && <span className={`ml-2 rounded px-1.5 py-0.5 text-3xs ${daysAgo > 7 ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>{daysAgo}d ago</span>}
+                          {daysAgo !== null && <span className={`ml-2 rounded px-1.5 py-0.5 text-3xs ${daysAgo > 7 ? CHIP_TONE_CLASSES.destructive : CHIP_TONE_CLASSES.default}`}>{daysAgo}d ago</span>}
                         </td>
                         <td className="p-3 text-xs text-muted-foreground max-w-[320px] truncate">{c.call_summary || "—"}</td>
                         <td className="p-3 text-right font-mono">{c.contract_value_cents ? "$" + (c.contract_value_cents/100).toLocaleString() : "—"}</td>
                       </tr>
                     );
                   })}
-                  {followUps.length === 0 && <tr><td colSpan={5} className="p-10 text-center text-sm text-muted-foreground">No follow-ups pending. Tag calls as "Follow Up" to surface them here.</td></tr>}
+                  {followUps.length === 0 && (
+                    <tr><td colSpan={5}><EmptyState icon={<Clock3 className="h-4 w-4" />} title="No follow-ups pending" description='Tag calls as "Follow Up" to surface them here.' /></td></tr>
+                  )}
                 </tbody>
               </table>
-            </div>
+            </GlassTableShell>
           </TabsContent>
         </Tabs>
 
         {/* Closer Input Log */}
-        <div className="rounded-lg border border-border bg-card overflow-x-auto">
-          <div className="px-4 py-2 border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Closer Input · {list.length} calls
-          </div>
+        <GlassTableShell
+          toolbar={<div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Closer Input · {callsTotal} calls</div>}
+          footer={callsTotal > 0 ? <Pagination page={callsPage} pageCount={callsPageCount} onPage={setCallsPage} total={callsTotal} pageSize={callsPageSize} /> : undefined}
+        >
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+            <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left p-2.5">Closer Name</th>
                 <th className="text-left p-2.5">Date Of Call</th>
@@ -559,32 +571,25 @@ function Closer() {
               </tr>
             </thead>
             <tbody>
-              {list.map((c) => {
-                const labelMap: Record<string, string> = { closed: "Closed Won", follow_up: "Follow Up", booked: "Pipeline", disqualified: "DQ" };
-                const colorMap: Record<string, string> = {
-                  closed: "bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]",
-                  follow_up: "bg-[color:var(--color-warning)]/15 text-[color:var(--color-warning)]",
-                  booked: "bg-accent/15 text-accent",
-                  disqualified: "bg-destructive/15 text-destructive",
-                };
-                return (
-                  <tr key={c.id} className="border-t border-border hover:bg-muted/20">
-                    <td className="p-2.5 font-medium">{c.closer_name || "—"}</td>
-                    <td className="p-2.5 text-xs text-muted-foreground">{c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—"}</td>
-                    <td className="p-2.5 text-xs">{c.lead_email || c.leads?.email || "—"}</td>
-                    <td className="p-2.5 text-xs text-muted-foreground max-w-[280px] truncate">{c.call_summary || "—"}</td>
-                    <td className="p-2.5 text-center font-mono">{c.offer_made ? "TRUE" : "FALSE"}</td>
-                    <td className="p-2.5"><span className={`rounded px-1.5 py-0.5 text-3xs uppercase tracking-wide ${colorMap[c.status] ?? "bg-muted"}`}>{labelMap[c.status] ?? c.status}</span></td>
-                    <td className="p-2.5 text-right font-mono text-[color:var(--color-success)]">{c.cash_collected_cents ? "$" + (c.cash_collected_cents/100).toLocaleString() : "—"}</td>
-                    <td className="p-2.5 text-right font-mono">{c.contract_value_cents ? "$" + (c.contract_value_cents/100).toLocaleString() : "—"}</td>
-                    <td className="p-2.5 text-xs">{c.recording_url ? <a className="text-primary hover:underline" href={c.recording_url} target="_blank" rel="noreferrer">link</a> : "—"}</td>
-                  </tr>
-                );
-              })}
-              {list.length === 0 && <tr><td colSpan={9} className="p-10 text-center text-sm text-muted-foreground">No calls in this date range. Log your first call.</td></tr>}
+              {pagedCalls.map((c) => (
+                <tr key={c.id} className="border-t border-border/70 hover:bg-muted/20">
+                  <td className="p-2.5 font-medium">{c.closer_name || "—"}</td>
+                  <td className="p-2.5 text-xs text-muted-foreground">{c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—"}</td>
+                  <td className="p-2.5 text-xs">{c.lead_email || c.leads?.email || "—"}</td>
+                  <td className="p-2.5 text-xs text-muted-foreground max-w-[280px] truncate">{c.call_summary || "—"}</td>
+                  <td className="p-2.5 text-center font-mono">{c.offer_made ? "TRUE" : "FALSE"}</td>
+                  <td className="p-2.5"><span className={`rounded px-1.5 py-0.5 text-3xs uppercase tracking-wide ${CHIP_TONE_CLASSES[STATUS_TONE_KEY[c.status] ?? "default"]}`}>{STATUS_LABEL[c.status] ?? c.status}</span></td>
+                  <td className="p-2.5 text-right font-mono text-[color:var(--color-success)]">{c.cash_collected_cents ? "$" + (c.cash_collected_cents/100).toLocaleString() : "—"}</td>
+                  <td className="p-2.5 text-right font-mono">{c.contract_value_cents ? "$" + (c.contract_value_cents/100).toLocaleString() : "—"}</td>
+                  <td className="p-2.5 text-xs">{c.recording_url ? <a className="text-primary hover:underline" href={c.recording_url} target="_blank" rel="noreferrer">link</a> : "—"}</td>
+                </tr>
+              ))}
+              {callsTotal === 0 && (
+                <tr><td colSpan={9}><EmptyState icon={<PhoneCall className="h-4 w-4" />} title="No calls in this date range" description="Log your first call." /></td></tr>
+              )}
             </tbody>
           </table>
-        </div>
+        </GlassTableShell>
       </div>
     </>
   );

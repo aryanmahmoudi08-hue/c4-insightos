@@ -7,14 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Power, Trash2, Pencil, Check, X, GripVertical } from "lucide-react";
 import { toast } from "sonner";
+import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
 
 type RoleKey = "dm_setter" | "inbound_dialer" | "closer";
 type Member = { id: string; name: string; role: RoleKey; active: boolean; created_at: string };
 
 const ROLES: { value: RoleKey; label: string; accent: string }[] = [
-  { value: "dm_setter", label: "DM Setter", accent: "bg-primary/15 text-primary" },
-  { value: "inbound_dialer", label: "Inbound Dialer", accent: "bg-accent/15 text-accent" },
-  { value: "closer", label: "Closer", accent: "bg-[color:var(--color-success)]/15 text-[color:var(--color-success)]" },
+  { value: "dm_setter", label: "DM Setter", accent: CHIP_TONE_CLASSES.default },
+  { value: "inbound_dialer", label: "Inbound Dialer", accent: CHIP_TONE_CLASSES.info },
+  { value: "closer", label: "Closer", accent: CHIP_TONE_CLASSES.success },
 ];
 
 export function TeamRosterPanel() {

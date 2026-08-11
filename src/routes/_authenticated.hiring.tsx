@@ -16,18 +16,20 @@ import { Plus, Search, Users, Star, Trash2, Pencil, CheckSquare, Square, Video, 
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { gradeLoomFn } from "@/lib/hiring.functions";
+import { KanbanBoard } from "@/components/kanban-board";
+import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 
 export const Route = createFileRoute("/_authenticated/hiring")({ component: Hiring });
 
 const STAGES = [
-  { key: "applied", label: "Applied", tone: "bg-muted text-muted-foreground" },
-  { key: "needs_grading", label: "Needs Grading", tone: "bg-[color:var(--color-warning)]/15 text-[color:var(--color-warning)]" },
-  { key: "interview_worthy", label: "Interview Worthy", tone: "bg-accent/15 text-accent" },
-  { key: "trial_call", label: "Trial Call", tone: "bg-primary/15 text-primary" },
-  { key: "offer_sent", label: "Offer Sent", tone: "bg-[color:var(--color-warning)]/20 text-[color:var(--color-warning)]" },
-  { key: "hired", label: "Hired", tone: "bg-[color:var(--color-success)]/15 text-[color:var(--color-success)]" },
-  { key: "rejected", label: "Rejected", tone: "bg-destructive/15 text-destructive" },
-] as const;
+  { key: "applied", label: "Applied", tone: "default" },
+  { key: "needs_grading", label: "Needs Grading", tone: "warning" },
+  { key: "interview_worthy", label: "Interview Worthy", tone: "info" },
+  { key: "trial_call", label: "Trial Call", tone: "info" },
+  { key: "offer_sent", label: "Offer Sent", tone: "warning" },
+  { key: "hired", label: "Hired", tone: "success" },
+  { key: "rejected", label: "Rejected", tone: "destructive" },
+] as const satisfies { key: string; label: string; tone: ChipTone }[];
 type Stage = typeof STAGES[number]["key"];
 
 const ROLES = ["setter", "closer", "dialer"] as const;
@@ -158,12 +160,6 @@ function Hiring() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to remove"),
   });
 
-  const onDrop = (e: React.DragEvent, stage: Stage) => {
-    e.preventDefault();
-    const id = e.dataTransfer.getData("text/plain");
-    if (id) update.mutate({ id, patch: { stage, last_shown_at: new Date().toISOString() } });
-  };
-
   const toggleSel = (id: string) => {
     setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
@@ -216,49 +212,37 @@ function Hiring() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-          {STAGES.map(stage => {
-            const rows = byStage.get(stage.key) ?? [];
+        <KanbanBoard
+          columns={STAGES.map(s => ({ key: s.key, label: s.label, tone: s.tone }))}
+          itemsByColumn={byStage}
+          onDropItem={(id, stage) => update.mutate({ id, patch: { stage: stage as Stage, last_shown_at: new Date().toISOString() } })}
+          renderCard={(a) => {
+            const sel = selectedIds.has(a.id);
+            const scoreTone: ChipTone = Number(a.ai_score ?? 0) >= 8 ? "success" : Number(a.ai_score ?? 0) >= 6 ? "warning" : "default";
             return (
-              <div key={stage.key} onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDrop(e, stage.key)}
-                className="rounded-lg border border-border bg-card min-h-[300px]">
-                <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-                  <span className={`text-3xs uppercase tracking-wider rounded px-1.5 py-0.5 ${stage.tone}`}>{stage.label}</span>
-                  <span className="text-3xs font-mono text-muted-foreground">{rows.length}</span>
+              <div className={sel ? "-m-2 rounded-md border border-primary p-2" : ""}>
+                <div className="flex items-start justify-between gap-2">
+                  <button onClick={() => toggleSel(a.id)} className="mt-0.5 text-muted-foreground hover:text-foreground">
+                    {sel ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <button onClick={() => setEditing(a)} className="text-left w-full">
+                      <div className="font-medium text-sm leading-tight truncate">{a.full_name}</div>
+                      <div className="text-3xs text-muted-foreground capitalize">{a.role_applied} · {a.niche ?? "—"}</div>
+                    </button>
+                  </div>
+                  <span className={`text-2xs font-mono font-semibold rounded px-1.5 py-0.5 ${CHIP_TONE_CLASSES[scoreTone]}`}>
+                    {a.ai_score?.toFixed(1) ?? "—"}
+                  </span>
                 </div>
-                <div className="p-2 space-y-2">
-                  {rows.map(a => {
-                    const sel = selectedIds.has(a.id);
-                    return (
-                      <div key={a.id} draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", a.id)}
-                        className={`cursor-grab active:cursor-grabbing rounded-md border ${sel ? "border-primary" : "border-border"} bg-background p-2 hover:border-primary/50 hover:shadow-md transition-all active:scale-[0.97] active:opacity-70`}>
-                        <div className="flex items-start justify-between gap-2">
-                          <button onClick={() => toggleSel(a.id)} className="mt-0.5 text-muted-foreground hover:text-foreground">
-                            {sel ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
-                          </button>
-                          <div className="flex-1 min-w-0">
-                            <button onClick={() => setEditing(a)} className="text-left w-full">
-                              <div className="font-medium text-sm leading-tight truncate">{a.full_name}</div>
-                              <div className="text-3xs text-muted-foreground capitalize">{a.role_applied} · {a.niche ?? "—"}</div>
-                            </button>
-                          </div>
-                          <span className={`text-2xs font-mono font-semibold rounded px-1.5 py-0.5 ${Number(a.ai_score ?? 0) >= 8 ? "bg-[color:var(--color-success)]/15 text-[color:var(--color-success)]" : Number(a.ai_score ?? 0) >= 6 ? "bg-[color:var(--color-warning)]/15 text-[color:var(--color-warning)]" : "bg-muted text-muted-foreground"}`}>
-                            {a.ai_score?.toFixed(1) ?? "—"}
-                          </span>
-                        </div>
-                        <div className="mt-1.5 flex items-center justify-between text-3xs text-muted-foreground">
-                          <span>Applied {new Date(a.applied_at).toLocaleDateString()}</span>
-                          {a.last_shown_at && <span>Moved {new Date(a.last_shown_at).toLocaleDateString()}</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {rows.length === 0 && <div className="text-2xs text-muted-foreground text-center py-6">Drop here</div>}
+                <div className="mt-1.5 flex items-center justify-between text-3xs text-muted-foreground">
+                  <span>Applied {new Date(a.applied_at).toLocaleDateString()}</span>
+                  {a.last_shown_at && <span>Moved {new Date(a.last_shown_at).toLocaleDateString()}</span>}
                 </div>
               </div>
             );
-          })}
-        </div>
+          }}
+        />
 
         <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null); }}>
           <DialogContent className="max-h-[90vh] overflow-y-auto">

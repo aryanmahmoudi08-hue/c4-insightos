@@ -4,7 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
-import { ArrowRight, Film, Users, PhoneCall, DollarSign } from "lucide-react";
+import { ArrowRight, Film, Users, PhoneCall, DollarSign, Route as RouteIcon } from "lucide-react";
+import { GlassTableShell } from "@/components/glass-table";
+import { EmptyState } from "@/components/empty-state";
 
 export const Route = createFileRoute("/_authenticated/attribution")({ component: Attribution });
 
@@ -85,10 +87,9 @@ function Attribution() {
         </div>
 
         {/* Top content paths */}
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider">Top revenue-driving content paths</div>
+        <GlassTableShell toolbar={<div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Top revenue-driving content paths</div>}>
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+            <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left p-3">#</th>
                 <th className="text-left p-3">Content</th>
@@ -104,7 +105,7 @@ function Attribution() {
               {(data?.paths ?? []).slice(0, 20).map((p, i) => {
                 const w = Math.max(4, Math.round((p.cash / Math.max(1, data!.paths[0].cash)) * 100));
                 return (
-                  <tr key={p.id} className="border-t border-border hover:bg-muted/20">
+                  <tr key={p.id} className="border-t border-border/70 hover:bg-muted/20">
                     <td className="p-3 font-mono text-xs text-muted-foreground">{i + 1}</td>
                     <td className="p-3 font-medium">{p.title}</td>
                     <td className="p-3 text-xs uppercase">{p.platform}</td>
@@ -116,10 +117,16 @@ function Attribution() {
                   </tr>
                 );
               })}
-              {(data?.paths ?? []).length === 0 && <tr><td colSpan={8} className="p-10 text-center text-xs text-muted-foreground">No attributed content yet. Log content_metrics rows with leads_generated + cash_collected_cents to populate this.</td></tr>}
+              {(data?.paths ?? []).length === 0 && (
+                <tr>
+                  <td colSpan={8}>
+                    <EmptyState icon={<RouteIcon className="h-4 w-4" />} title="No attributed content yet" description="Log content_metrics rows with leads_generated + cash_collected_cents to populate this." />
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
-        </div>
+        </GlassTableShell>
       </div>
     </>
   );

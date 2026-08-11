@@ -18,12 +18,14 @@ import { toast } from "sonner";
 import { generatePreCloseFn } from "@/lib/pre-close.functions";
 import { notifyClientStageChangedFn } from "@/lib/client-events.functions";
 import { KanbanBoard, KanbanCardAnatomy } from "@/components/kanban-board";
+import { GlassTableShell, Pagination, usePagination } from "@/components/glass-table";
+import { EmptyState } from "@/components/empty-state";
 
 export const Route = createFileRoute("/_authenticated/clients")({ component: Clients });
 
 const STAGES = [
   { key: "not_started", label: "Not Started", tone: "default" },
-  { key: "conversation", label: "Conversation", tone: "accent" },
+  { key: "conversation", label: "Conversation", tone: "info" },
   { key: "proposal", label: "Proposal Sent", tone: "warning" },
   { key: "won", label: "Renewed", tone: "success" },
   { key: "churned", label: "Churned", tone: "destructive" },
@@ -193,6 +195,7 @@ function Clients() {
     if (!q) return clients ?? [];
     return (clients ?? []).filter(c => [c.full_name, c.email, c.phone, c.offer_name, c.notes].some(v => (v ?? "").toLowerCase().includes(q)));
   }, [clients, query]);
+  const { page: tablePage, setPage: setTablePage, pageCount: tablePageCount, paged: pagedView, total: tableTotal, pageSize: tablePageSize } = usePagination(view, 25);
 
   // At-risk list (auto-tagged)
   const atRisk = useMemo(() => {
@@ -275,7 +278,7 @@ function Clients() {
               columns={STAGES.map(s => ({ key: s.key, label: s.label, tone: s.tone }))}
               itemsByColumn={byStage}
               onDropItem={(id, stage) => updateStage.mutate({ id, stage: stage as Stage })}
-              valueOf={(c) => c.contract_value_cents ?? 0}
+              sumBy={(c) => c.contract_value_cents ?? 0}
               loading={clientsLoading}
               renderCard={(c) => {
                 const risk = atRiskReason(c);
@@ -297,12 +300,15 @@ function Clients() {
           </TabsContent>
 
           <TabsContent value="atrisk">
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
-              <div className="px-4 py-2 border-b border-border bg-destructive/5 text-xs font-semibold uppercase tracking-wider text-destructive">
-                Auto-flagged: health &lt; 50, or renewal &lt; 30d with no conversation started, or renewal overdue
-              </div>
+            <GlassTableShell
+              toolbar={
+                <div className="text-2xs font-semibold uppercase tracking-wider text-destructive">
+                  Auto-flagged: health &lt; 50, or renewal &lt; 30d with no conversation started, or renewal overdue
+                </div>
+              }
+            >
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+                <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="text-left p-3">Client</th>
                     <th className="text-left p-3">Offer</th>
@@ -315,7 +321,7 @@ function Clients() {
                 </thead>
                 <tbody>
                   {atRisk.map(({ c, reason }) => (
-                    <tr key={c.id} className="border-t border-border hover:bg-muted/20">
+                    <tr key={c.id} className="border-t border-border/70 hover:bg-muted/20">
                       <td className="p-3"><div className="font-medium">{c.full_name}</div><div className="text-2xs text-muted-foreground">{c.email}</div></td>
                       <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
                       <td className="p-3 text-right font-mono text-destructive">{Number(c.health_score ?? 0)}</td>
@@ -326,16 +332,18 @@ function Clients() {
                     </tr>
                   ))}
                   {clientsLoading && <tr><td colSpan={7} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
-                  {!clientsLoading && atRisk.length === 0 && <tr><td colSpan={7} className="p-10 text-center text-sm text-muted-foreground">No clients at risk. 🟢</td></tr>}
+                  {!clientsLoading && atRisk.length === 0 && (
+                    <tr><td colSpan={7}><EmptyState icon={<HeartPulse className="h-4 w-4" />} title="No clients at risk" /></td></tr>
+                  )}
                 </tbody>
               </table>
-            </div>
+            </GlassTableShell>
           </TabsContent>
 
           <TabsContent value="ltv">
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <GlassTableShell>
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+                <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="text-left p-3">Offer</th>
                     <th className="text-right p-3 font-mono">Clients</th>
@@ -348,7 +356,7 @@ function Clients() {
                   {ltvByOffer.map(o => {
                     const sharePct = ltv > 0 ? (o.total / 100 / ltv) * 100 : 0;
                     return (
-                      <tr key={o.offer} className="border-t border-border hover:bg-muted/20">
+                      <tr key={o.offer} className="border-t border-border/70 hover:bg-muted/20">
                         <td className="p-3 font-medium">{o.offer}</td>
                         <td className="p-3 text-right font-mono">{o.count}</td>
                         <td className="p-3 text-right font-mono text-[color:var(--color-success)]">${Math.round(o.total/100).toLocaleString()}</td>
@@ -364,23 +372,27 @@ function Clients() {
                       </tr>
                     );
                   })}
-                  {ltvByOffer.length === 0 && <tr><td colSpan={5} className="p-10 text-center text-sm text-muted-foreground">No offers yet.</td></tr>}
+                  {ltvByOffer.length === 0 && (
+                    <tr><td colSpan={5}><EmptyState icon={<Repeat className="h-4 w-4" />} title="No offers yet" /></td></tr>
+                  )}
                 </tbody>
               </table>
-            </div>
+            </GlassTableShell>
           </TabsContent>
 
           <TabsContent value="table">
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <GlassTableShell
+              footer={tableTotal > 0 ? <Pagination page={tablePage} pageCount={tablePageCount} onPage={setTablePage} total={tableTotal} pageSize={tablePageSize} /> : undefined}
+            >
               <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+                <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr><th className="text-left p-3">Client</th><th className="text-left p-3">Offer</th><th className="text-left p-3">Start</th>
                     <th className="text-right p-3 font-mono">Contract</th><th className="text-center p-3">Plan</th>
                     <th className="text-right p-3 font-mono">Health</th><th className="text-left p-3">Renewal</th><th className="text-left p-3">Stage</th></tr>
                 </thead>
                 <tbody>
-                  {view.map(c => (
-                    <tr key={c.id} className="border-t border-border hover:bg-muted/20 cursor-pointer" onClick={() => { setEditing(c); setPlanChecked(!!c.payment_plan); }}>
+                  {pagedView.map(c => (
+                    <tr key={c.id} className="border-t border-border/70 hover:bg-muted/20 cursor-pointer" onClick={() => { setEditing(c); setPlanChecked(!!c.payment_plan); }}>
                       <td className="p-3"><div className="font-medium flex items-center gap-2">{c.full_name}<Pencil className="h-3 w-3 text-muted-foreground" /></div><div className="text-2xs text-muted-foreground">{c.email}</div></td>
                       <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
                       <td className="p-3 text-xs text-muted-foreground">{c.start_date}</td>
@@ -392,10 +404,12 @@ function Clients() {
                     </tr>
                   ))}
                   {clientsLoading && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
-                  {!clientsLoading && view.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">{query ? "No matches." : "No clients yet."}</td></tr>}
+                  {!clientsLoading && tableTotal === 0 && (
+                    <tr><td colSpan={8}><EmptyState icon={<Search className="h-4 w-4" />} title={query ? "No matches" : "No clients yet"} /></td></tr>
+                  )}
                 </tbody>
               </table>
-            </div>
+            </GlassTableShell>
           </TabsContent>
         </Tabs>
 
