@@ -414,8 +414,10 @@ export function mockContentClassification() {
 
 export function mockContentSystemInsight(demand: ReturnType<typeof mockContentDemand>) {
   return {
-    insight: `## Root cause chain
-Cash is inconsistent because posting is inconsistent, and posting is inconsistent because performance isn't tracked closely enough to know what to repeat. This is mock data — connect a real LOVABLE_API_KEY to get a live read.
+    insight: `[MOCK — Dev Bypass, no live AI key]
+
+## Root cause chain
+Cash is inconsistent because posting is inconsistent, and posting is inconsistent because performance isn't tracked closely enough to know what to repeat. Connect a real LOVABLE_API_KEY to get a live read.
 
 ## Recommended mix this week
 | Mechanism | % of posts | Reels | Why |

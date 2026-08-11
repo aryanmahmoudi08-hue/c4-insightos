@@ -15,8 +15,9 @@ import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { MECHANISMS, MECHANISM_KEYS, variationLabel, reelSplit, type MechanismKey } from "@/lib/content-mechanisms";
 import { contentDemandFn, analyzeContentSystemFn, logSetterSignalFn } from "@/lib/content-signals.functions";
 import { mockContentDemand, mockContentSystemInsight, withMockDelay } from "@/lib/dev-mock-data";
-import { Radar, Sparkles, Loader2, TrendingUp, TriangleAlert, PhoneCall, CalendarCheck } from "lucide-react";
+import { Radar, Sparkles, Loader2, TrendingUp, TriangleAlert, PhoneCall, CalendarCheck, ArrowRight, ChevronDown, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 
 export const Route = createFileRoute("/_authenticated/content-signals")({
   component: ContentSignalsPage,
@@ -47,6 +48,8 @@ function ContentSignalsPage() {
   const [days, setDays] = useState(30);
   const [reelTarget, setReelTarget] = useState(6);
   const [insight, setInsight] = useState("");
+  const [expandedMix, setExpandedMix] = useState<Set<MechanismKey>>(new Set());
+  const toggleMix = (k: MechanismKey) => setExpandedMix(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   const demandFn = useServerFn(contentDemandFn);
   const { data: demand, isLoading } = useQuery({
@@ -78,17 +81,18 @@ function ContentSignalsPage() {
         .limit(200);
       if (error) throw error;
       const ids = (pieces ?? []).map(p => p.id);
-      let metrics: Record<string, { dms: number; calls: number; cash: number; views: number; eng: number; drop: number }> = {};
+      const metrics: Record<string, { dms: number; calls: number; cash: number; views: number; eng: number; drop: number; retention: number }> = {};
       if (ids.length) {
         const { data: ms } = await supabase
           .from("content_metrics")
-          .select("content_id, views, dms_generated, calls_booked, cash_collected_cents, engagement_rate_pct, drop_off_rate_pct")
+          .select("content_id, views, dms_generated, calls_booked, cash_collected_cents, engagement_rate_pct, drop_off_rate_pct, hook_retention_pct")
           .in("content_id", ids);
         for (const m of ms ?? []) {
           metrics[m.content_id] = {
             dms: m.dms_generated ?? 0, calls: m.calls_booked ?? 0,
             cash: m.cash_collected_cents ?? 0, views: m.views ?? 0,
             eng: Number(m.engagement_rate_pct ?? 0), drop: Number(m.drop_off_rate_pct ?? 0),
+            retention: Number(m.hook_retention_pct ?? 0),
           };
         }
       }
@@ -99,22 +103,51 @@ function ContentSignalsPage() {
   const weekly = useMemo(() => {
     const pieces = week?.pieces ?? [];
     const metrics = week?.metrics ?? {};
-    const per: Record<string, { count: number; dms: number; calls: number; cash: number; views: number; eng: number[] }> = {};
-    for (const k of MECHANISM_KEYS) per[k] = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, eng: [] };
-    per["untagged"] = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, eng: [] };
+    const per: Record<string, { count: number; dms: number; calls: number; cash: number; views: number; eng: number[]; retention: number[]; withMetrics: number }> = {};
+    for (const k of MECHANISM_KEYS) per[k] = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, eng: [], retention: [], withMetrics: 0 };
+    per["untagged"] = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, eng: [], retention: [], withMetrics: 0 };
     for (const p of pieces) {
       const k = (p.mechanism as string) ?? "untagged";
       const bucket = per[k] ?? per["untagged"];
       bucket.count += 1;
       const m = metrics[p.id];
-      if (m) { bucket.dms += m.dms; bucket.calls += m.calls; bucket.cash += m.cash; bucket.views += m.views; if (m.eng) bucket.eng.push(m.eng); }
+      if (m) {
+        bucket.dms += m.dms; bucket.calls += m.calls; bucket.cash += m.cash; bucket.views += m.views;
+        if (m.eng) bucket.eng.push(m.eng);
+        if (m.retention) bucket.retention.push(m.retention);
+        if (m.views || m.dms || m.calls || m.eng || m.retention) bucket.withMetrics += 1;
+      }
     }
     const reels = pieces.filter(p => ["reel", "tiktok", "youtube_short"].includes(p.platform as string)).length;
     const missing = MECHANISM_KEYS.filter(k => per[k].count === 0);
+    const untracked = pieces.filter(p => !metrics[p.id]).length;
     const best = MECHANISM_KEYS.slice().sort((a, b) => (per[b].dms + per[b].calls * 3) - (per[a].dms + per[a].calls * 3))[0];
     const worst = MECHANISM_KEYS.filter(k => per[k].count > 0)
       .sort((a, b) => (per[a].dms + per[a].calls * 3) - (per[b].dms + per[b].calls * 3))[0];
-    return { per, reels, missing, best, worst, total: pieces.length };
+
+    // Underperformance reasoning — retention vs reach vs mechanism-mismatch, not just a flag.
+    const avg = (arr: number[]) => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : 0;
+    const overallAvgViews = pieces.length ? MECHANISM_KEYS.reduce((s, k) => s + per[k].views, 0) / Math.max(1, pieces.filter(p => metrics[p.id]).length) : 0;
+    let worstReason: { label: string; detail: string } | null = null;
+    if (worst && per[worst].count > 0) {
+      const b = per[worst];
+      const avgViews = b.withMetrics ? b.views / b.withMetrics : 0;
+      const avgRetention = avg(b.retention);
+      const avgEng = avg(b.eng);
+      const converted = b.dms + b.calls > 0;
+      if (b.withMetrics === 0) {
+        worstReason = { label: "Untracked", detail: `${b.count} posts with no metrics logged — can't diagnose without data. Log views/retention/engagement to find out.` };
+      } else if (avgViews < overallAvgViews * 0.5) {
+        worstReason = { label: "Low reach", detail: `Avg ${Math.round(avgViews).toLocaleString()} views vs ${Math.round(overallAvgViews).toLocaleString()} org avg — it barely got seen. Check hook, posting time, or distribution.` };
+      } else if (avgRetention > 0 && avgRetention < 40) {
+        worstReason = { label: "Low retention", detail: `Avg ${Math.round(avgRetention)}% hook retention — reached people but lost them fast. The hook or first 3s isn't landing for this mechanism.` };
+      } else if (!converted && (avgViews >= overallAvgViews * 0.5 || avgEng >= 3)) {
+        worstReason = { label: "Wrong mechanism", detail: `Reached and held attention (${Math.round(avgViews).toLocaleString()} views) but drove 0 DMs/calls — the audience saw it fine, they just don't want this mechanism right now.` };
+      } else {
+        worstReason = { label: "Underperforming", detail: `${b.count} posts, ${b.dms} DMs, ${b.calls} calls booked — below the mix's other mechanisms this week.` };
+      }
+    }
+    return { per, reels, missing, untracked, best, worst, worstReason, total: pieces.length };
   }, [week]);
 
   const split = demand ? reelSplit(demand.mix as Record<MechanismKey, number>, reelTarget) : [];
@@ -141,6 +174,8 @@ function ContentSignalsPage() {
           </div>
         </header>
 
+        <RootCauseChain untaggedCount={weekly.per["untagged"]?.count ?? 0} untrackedCount={weekly.untracked} totalPosts={weekly.total} />
+
         {/* Demand mix */}
         <Card className="p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -159,6 +194,9 @@ function ContentSignalsPage() {
                 const reels = split.find(s => s.mechanism === k)?.reels ?? 0;
                 const posted = weekly.per[k]?.count ?? 0;
                 const gap = reels - posted;
+                const kDrivers = (demand?.drivers ?? []).filter(d => d.mechanism === k).sort((a, b) => b.weight - a.weight);
+                const kWeight = kDrivers.reduce((s, d) => s + d.weight, 0);
+                const expanded = expandedMix.has(k);
                 return (
                   <div key={k} className="rounded-md border border-border p-3 space-y-1.5">
                     <div className="flex items-center justify-between">
@@ -173,6 +211,22 @@ function ContentSignalsPage() {
                       gap > 0 ? "text-destructive" : "text-[color:var(--color-success)]")}>
                       {gap > 0 ? `${gap} short — posted ${posted}` : `On target — posted ${posted}`}
                     </div>
+                    <button type="button" onClick={() => toggleMix(k)}
+                      className="flex w-full items-center justify-between text-3xs text-muted-foreground hover:text-foreground pt-1 border-t border-border/60">
+                      <span>{kDrivers.length ? `Why ${pct}%? ${kDrivers.length} signal${kDrivers.length === 1 ? "" : "s"} · w${Math.round(kWeight)}` : "No signals yet"}</span>
+                      {kDrivers.length > 0 && <ChevronDown className={cn("h-3 w-3 transition-transform", expanded && "rotate-180")} />}
+                    </button>
+                    {expanded && kDrivers.length > 0 && (
+                      <div className="space-y-1 pt-1 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                        {kDrivers.map((d, i) => (
+                          <div key={i} className="flex items-start gap-1.5 text-3xs">
+                            <span className="shrink-0 text-muted-foreground">{d.source}</span>
+                            <span className="flex-1 truncate">{d.detail}</span>
+                            <span className="shrink-0 font-mono text-muted-foreground">w{Math.round(d.weight)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -212,9 +266,13 @@ function ContentSignalsPage() {
               <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-3xs text-destructive">
                 <TriangleAlert className="h-3.5 w-3.5" /> Underperformed
               </div>
-              {weekly.worst
-                ? <div>{MECHANISMS[weekly.worst].label} — {weekly.per[weekly.worst].count} posts, {weekly.per[weekly.worst].dms} DMs, {weekly.per[weekly.worst].calls} calls. Check hook, format fit, and whether demand actually wants this mechanism right now.</div>
-                : <div className="text-muted-foreground">Nothing posted with a mechanism tag this week.</div>}
+              {weekly.worst && weekly.worstReason ? (
+                <div>
+                  <span className="font-medium">{MECHANISMS[weekly.worst].label}</span>
+                  <span className="ml-1.5 rounded bg-destructive/15 px-1.5 py-0.5 text-3xs uppercase tracking-wide text-destructive">{weekly.worstReason.label}</span>
+                  <div className="mt-1 text-muted-foreground">{weekly.worstReason.detail}</div>
+                </div>
+              ) : <div className="text-muted-foreground">Nothing posted with a mechanism tag this week.</div>}
             </div>
           </div>
         </Card>
@@ -256,6 +314,51 @@ function ContentSignalsPage() {
         <SetterSignals orgId={orgId} days={days} />
       </main>
     </>
+  );
+}
+
+/**
+ * First-class, always-visible root-cause chain: cash inconsistency traces back to
+ * an untracked posting mix, which traces back to untracked performance — fixing
+ * tracking fixes the whole read. Each node's tone reflects real current data, and
+ * whichever node is broken right now gets called out explicitly, not just implied.
+ */
+function RootCauseChain({ untaggedCount, untrackedCount, totalPosts }: { untaggedCount: number; untrackedCount: number; totalPosts: number }) {
+  const nodes: { key: string; label: string; tone: ChipTone }[] = [
+    { key: "cash", label: "Cash inconsistent", tone: "destructive" },
+    { key: "mix", label: untaggedCount > 0 ? `${untaggedCount} posts untagged` : "Posting mix tracked", tone: untaggedCount > 0 ? "destructive" : "success" },
+    { key: "perf", label: untrackedCount > 0 ? `${untrackedCount} posts w/o metrics` : "Performance tracked", tone: untrackedCount > 0 ? "destructive" : "success" },
+    { key: "fix", label: "Fix tracking → fixes everything", tone: "info" },
+  ];
+  const gap = untaggedCount > 0 ? "mix" : untrackedCount > 0 ? "perf" : null;
+  const gapNode = nodes.find(n => n.key === gap);
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted-foreground">
+        <Wrench className="h-3.5 w-3.5" /> Root cause — why the numbers move
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {nodes.map((n, i) => (
+          <div key={n.key} className="flex items-center gap-1.5">
+            <div className={cn("flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-2xs font-medium",
+              n.tone === "destructive" && "border-destructive/40 bg-destructive/10 text-destructive",
+              n.tone === "success" && "border-[color:var(--color-success)]/40 bg-[color:var(--color-success)]/10 text-[color:var(--color-success)]",
+              n.tone === "info" && "border-accent/40 bg-accent/10 text-accent",
+            )}>
+              {n.key === gap && <TriangleAlert className="h-3 w-3" />}
+              {n.label}
+            </div>
+            {i < nodes.length - 1 && <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+          </div>
+        ))}
+      </div>
+      <div className="text-2xs text-muted-foreground">
+        {gapNode
+          ? <>Current gap: <span className={cn("font-medium", gapNode.tone === "destructive" && "text-destructive")}>{gapNode.label}</span> out of {totalPosts} posts this week — fix that first, every downstream read (mix %, bottleneck engine, double-down calls) sharpens automatically once it's closed.</>
+          : <>Tracking is healthy — {totalPosts} posts this week are all mechanism-tagged with metrics logged. The mix below reflects real signal, not guesswork.</>}
+      </div>
+    </Card>
   );
 }
 

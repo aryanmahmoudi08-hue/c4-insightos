@@ -143,22 +143,23 @@ export async function analyzeContentSystem(sb: Sb, orgId: string, days: number) 
   const sinceDate = sinceIso.slice(0, 10);
   const demand = await computeDemand(sb, orgId, days);
 
-  const [pieces, metrics, vslSnaps, faq, setters, calls, payments] = await Promise.all([
+  const [pieces, metrics, vslSnaps, faq, setters, calls, payments, intakes] = await Promise.all([
     sb.from("content_pieces").select("id, title, mechanism, variation, platform, posted_at, pipeline_status").eq("org_id", orgId).gte("created_at", sinceIso).limit(300),
-    sb.from("content_metrics").select("content_id, views, reach, shares, saves, likes, comments, dms_generated, calls_booked, closes, cash_collected_cents, avg_watch_pct, three_sec_hold_pct, drop_off_rate_pct, engagement_rate_pct, follower_views, non_follower_views, followers_gained").eq("org_id", orgId).gte("captured_at", sinceIso).limit(600),
+    sb.from("content_metrics").select("content_id, views, reach, shares, saves, likes, comments, dms_generated, calls_booked, closes, cash_collected_cents, avg_watch_pct, hook_retention_pct, three_sec_hold_pct, drop_off_rate_pct, engagement_rate_pct, follower_views, non_follower_views, followers_gained").eq("org_id", orgId).gte("captured_at", sinceIso).limit(600),
     sb.from("vsl_metric_snapshots").select("video_name, total_plays, unique_viewers, play_rate, avg_percent_watched, page_loads, captured_at").eq("org_id", orgId).gte("captured_at", sinceIso).limit(60),
     sb.from("faq_videos").select("title, question, mechanism, clicks, plays, avg_watch_pct").eq("org_id", orgId).limit(60),
-    sb.from("setter_call_signals").select("setter_name, call_date, limiting_beliefs, objections, ai_summary").eq("org_id", orgId).gte("call_date", sinceDate).limit(120),
+    sb.from("setter_call_signals").select("setter_name, call_date, source, limiting_beliefs, objections, ai_summary").eq("org_id", orgId).gte("call_date", sinceDate).limit(120),
     sb.from("calls").select("status, showed, closed, cash_collected_cents, scheduled_for").eq("org_id", orgId).gte("created_at", sinceIso).limit(500),
     sb.from("payments").select("amount_cents, collected_at").eq("org_id", orgId).gte("collected_at", sinceIso).limit(500),
+    sb.from("onboarding_responses").select("mechanism_signals").eq("org_id", orgId).gte("created_at", sinceIso).limit(200),
   ]);
 
   const byId = new Map<string, any>();
   for (const m of (metrics.data ?? []) as any[]) byId.set(m.content_id, m);
-  const perMech: Record<string, { pieces: number; views: number; dms: number; calls: number; cash: number; eng: number }> = {};
+  const perMech: Record<string, { pieces: number; views: number; dms: number; calls: number; cash: number; eng: number; retention: number; dropOff: number; followerViews: number; nonFollowerViews: number; withMetrics: number }> = {};
   for (const p of (pieces.data ?? []) as any[]) {
     const k = p.mechanism ?? "untagged";
-    perMech[k] ??= { pieces: 0, views: 0, dms: 0, calls: 0, cash: 0, eng: 0 };
+    perMech[k] ??= { pieces: 0, views: 0, dms: 0, calls: 0, cash: 0, eng: 0, retention: 0, dropOff: 0, followerViews: 0, nonFollowerViews: 0, withMetrics: 0 };
     perMech[k].pieces += 1;
     const m = byId.get(p.id);
     if (m) {
@@ -167,7 +168,22 @@ export async function analyzeContentSystem(sb: Sb, orgId: string, days: number) 
       perMech[k].calls += Number(m.calls_booked ?? 0);
       perMech[k].cash += Number(m.cash_collected_cents ?? 0);
       perMech[k].eng += Number(m.engagement_rate_pct ?? 0);
+      perMech[k].retention += Number(m.hook_retention_pct ?? 0);
+      perMech[k].dropOff += Number(m.drop_off_rate_pct ?? 0);
+      perMech[k].followerViews += Number(m.follower_views ?? 0);
+      perMech[k].nonFollowerViews += Number(m.non_follower_views ?? 0);
+      perMech[k].withMetrics += 1;
     }
+  }
+
+  // Onboarding mechanism tags (2.9) — per-mechanism tag counts from the Onboarding page's scoring.
+  const onboardingTags: Record<MechanismKey, number> = { educational: 0, credibility: 0, authoritative: 0, relatability: 0 };
+  let onboardingUntagged = 0;
+  for (const i of (intakes.data ?? []) as any[]) {
+    const w = (i.mechanism_signals ?? {}) as Partial<MechanismWeights>;
+    let top: MechanismKey | null = null, topVal = 0;
+    for (const k of MECHANISM_KEYS) { const v = Number(w[k] ?? 0); if (v > topVal) { topVal = v; top = k; } }
+    if (top) onboardingTags[top] += 1; else onboardingUntagged += 1;
   }
 
   const cash = ((payments.data ?? []) as any[]).reduce((s, p) => s + Number(p.amount_cents ?? 0), 0) / 100;
@@ -181,17 +197,23 @@ RECOMMENDED MIX (from demand signals): ${MECHANISM_KEYS.map(k => `${k} ${demand.
 TOP DEMAND DRIVERS:
 ${demand.drivers.slice(0, 12).map(d => `- [${d.mechanism}] ${d.source}: ${d.detail} (weight ${d.weight})`).join("\n") || "- none"}
 
-CONTENT PERFORMANCE BY MECHANISM:
-${Object.entries(perMech).map(([k, v]) => `- ${k}: ${v.pieces} pieces · ${v.views} views · ${v.dms} DMs · ${v.calls} calls booked · $${Math.round(v.cash / 100)} cash`).join("\n") || "- no content logged"}
+CONTENT PERFORMANCE BY MECHANISM (reel-level detail, not aggregate):
+${Object.entries(perMech).map(([k, v]) => {
+    const n = Math.max(1, v.withMetrics);
+    return `- ${k}: ${v.pieces} pieces (${v.withMetrics} with metrics logged) · ${v.views} views · ${v.dms} DMs · ${v.calls} calls booked · $${Math.round(v.cash / 100)} cash · avg retention ${Math.round(v.retention / n)}% · avg drop-off ${Math.round(v.dropOff / n)}% · ${v.followerViews} follower / ${v.nonFollowerViews} non-follower views`;
+  }).join("\n") || "- no content logged"}
 
-FAQ VIDEO CLICKS (subconscious objections):
+FAQ VIDEO CLICKS (subconscious objections — the real data source, not mocked):
 ${((faq.data ?? []) as any[]).map(f => `- ${f.title} (${f.mechanism ?? "unmapped"}): ${f.clicks} clicks, ${f.plays} plays, ${f.avg_watch_pct}% watched`).join("\n") || "- none"}
 
 VSL SNAPSHOTS:
 ${((vslSnaps.data ?? []) as any[]).slice(0, 12).map(v => `- ${v.video_name ?? "VSL"}: play rate ${v.play_rate}%, avg watched ${v.avg_percent_watched}%, plays ${v.total_plays}, page loads ${v.page_loads}`).join("\n") || "- none"}
 
-SETTING CALL SIGNALS:
-${((setters.data ?? []) as any[]).slice(0, 30).map(s => `- ${s.call_date} ${s.setter_name}: beliefs[${(s.limiting_beliefs ?? []).join("; ")}] objections[${(s.objections ?? []).join("; ")}]`).join("\n") || "- none"}
+SETTING CALL SIGNALS (includes auto-ingested from closed calls, not just manual paste):
+${((setters.data ?? []) as any[]).slice(0, 30).map(s => `- ${s.call_date} ${s.setter_name} [${s.source ?? "manual"}]: beliefs[${(s.limiting_beliefs ?? []).join("; ")}] objections[${(s.objections ?? []).join("; ")}]`).join("\n") || "- none"}
+
+ONBOARDING MECHANISM TAGS (from client intake first-touchpoint/decision/join-sooner answers):
+${MECHANISM_KEYS.map(k => `- ${k}: ${onboardingTags[k]} intakes tagged`).join("\n")}${onboardingUntagged ? `\n- untagged: ${onboardingUntagged} intakes with no keyword match` : ""}
 
 SALES: ${booked} calls booked · ${showed} showed · ${closed} closed · $${Math.round(cash)} collected`;
 
@@ -205,7 +227,7 @@ Return markdown with these EXACT sections:
 Walk cash → posting → tracking for THIS data. Say plainly where the chain breaks and what's actually unknown.
 
 ## Recommended mix this week
-A table: Mechanism | % of posts | Reels (out of 5-7) | Why (cite the signal: FAQ clicks, intake answer, setter objection, VSL drop-off).
+A table: Mechanism | % of posts | Reels (out of 5-7) | Why (cite the signal: FAQ clicks, intake answer, setter objection, VSL drop-off, reel performance, or onboarding mechanism tag).
 
 ## Double down (green)
 3-5 bullets. Formats/variations that produced DMs, calls, or cash. Name the piece and the number.
