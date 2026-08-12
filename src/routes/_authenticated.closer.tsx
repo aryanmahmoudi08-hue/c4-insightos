@@ -22,8 +22,9 @@ import { TeamMemberFilter, ALL_MEMBERS } from "@/components/team-member-filter";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from "recharts";
 import { PageHero } from "@/components/page-hero";
 import { MetricCard } from "@/components/metric-card";
-import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { HeatmapGrid } from "@/components/heatmap-grid";
+import { RepLeaderboard, type RepMetricOption } from "@/components/rep-leaderboard";
+import type { DateRange } from "@/components/date-range-picker";
 import { mockCalls, mockCallObjectionStats } from "@/lib/dev-mock-data";
 import { GlassTableShell, Pagination, usePagination } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
@@ -35,6 +36,22 @@ export const Route = createFileRoute("/_authenticated/closer")({ component: Clos
 const fmtMoney = (cents: number) => `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (n: number, d: number) => d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%";
 const fmtN0 = (n: number) => Math.round(n).toLocaleString();
+
+interface CloserLbPerson {
+  name: string; cash: number; closes: number; closeRate: number; showRate: number;
+  offers: number; avgCashCall: number; deposits: number;
+}
+
+// Part C3 — exact per-role metric option list for Closer's leaderboard selector.
+const CLOSER_METRICS: RepMetricOption<CloserLbPerson>[] = [
+  { key: "cash", label: "Cash Collected", spectrum: "hot", primary: (p) => fmtMoney(p.cash), secondary: (p) => `${p.closeRate.toFixed(0)}% close`, rankBy: (p) => p.cash },
+  { key: "closes", label: "Closes", spectrum: "hot", primary: (p) => `${p.closes} closes`, secondary: (p) => fmtMoney(p.cash), rankBy: (p) => p.closes },
+  { key: "closeRate", label: "Close Rate", spectrum: "hot", primary: (p) => `${p.closeRate.toFixed(0)}%`, secondary: (p) => `${p.closes} closes`, rankBy: (p) => p.closeRate },
+  { key: "showRate", label: "Show Rate", spectrum: "mid", primary: (p) => `${p.showRate.toFixed(0)}%`, secondary: (p) => `${p.offers} offers`, rankBy: (p) => p.showRate },
+  { key: "offers", label: "Offers Made", spectrum: "mid", primary: (p) => `${p.offers} offers`, secondary: (p) => `${p.closeRate.toFixed(0)}% close`, rankBy: (p) => p.offers },
+  { key: "avgCashCall", label: "Avg Cash-Call", spectrum: "hot", primary: (p) => fmtMoney(p.avgCashCall), secondary: (p) => `${p.closes} closes`, rankBy: (p) => p.avgCashCall },
+  { key: "deposits", label: "Deposits", spectrum: "mid", primary: (p) => `${p.deposits} deposits`, secondary: (p) => `${p.closeRate.toFixed(0)}% close`, rankBy: (p) => p.deposits },
+];
 
 const STATUS_OPTIONS = [
   { value: "closed", label: "Closed Won" },
@@ -64,6 +81,11 @@ function Closer() {
   }, [actionSearch.action]);
   const { range } = useDateRange();
   const [member, setMember] = useState<string>(ALL_MEMBERS);
+  // Part C3 — leaderboard's own metric selector + independent date range,
+  // defaulting to inherit the page range until explicitly overridden.
+  const [lbMetric, setLbMetric] = useState<string>("cash");
+  const [lbOverride, setLbOverride] = useState<DateRange | null>(null);
+  const lbRange = lbOverride ?? range;
 
   const { data: calls } = useQuery({
     queryKey: ["calls", orgId, range.from, range.to, devBypass],
@@ -82,6 +104,51 @@ function Closer() {
       return data;
     },
   });
+
+  // Leaderboard's own independently-ranged query (Part C3) — separate from the
+  // page-range `calls` query above so overriding the leaderboard's date range
+  // never touches the rest of the page.
+  const { data: lbCalls } = useQuery({
+    queryKey: ["closer-lb-calls", orgId, lbRange.from, lbRange.to, devBypass],
+    enabled: !!orgId,
+    queryFn: async () => {
+      if (devBypass) return mockCalls() as unknown as { closer_name: string | null; showed: boolean; offer_made: boolean; closed: boolean; status: string; cash_collected_cents: number | null; deposit_cents: number | null }[];
+      const { data, error } = await supabase
+        .from("calls")
+        .select("closer_name, showed, offer_made, closed, status, cash_collected_cents, deposit_cents")
+        .eq("org_id", orgId!)
+        .gte("scheduled_for", `${lbRange.from}T00:00:00`)
+        .lte("scheduled_for", `${lbRange.to}T23:59:59`)
+        .limit(500);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const lbPeople = useMemo<CloserLbPerson[]>(() => {
+    const byName = new Map<string, { booked: number; showed: number; offers: number; closes: number; cash: number; deposits: number }>();
+    for (const c of lbCalls ?? []) {
+      if (!c.closer_name) continue;
+      const x = byName.get(c.closer_name) ?? { booked: 0, showed: 0, offers: 0, closes: 0, cash: 0, deposits: 0 };
+      x.booked += 1;
+      if (c.showed) x.showed += 1;
+      if (c.offer_made) x.offers += 1;
+      if (c.closed || c.status === "closed") x.closes += 1;
+      x.cash += c.cash_collected_cents ?? 0;
+      if ((c.deposit_cents ?? 0) > 0) x.deposits += 1;
+      byName.set(c.closer_name, x);
+    }
+    return Array.from(byName.entries()).map(([name, x]) => ({
+      name,
+      cash: x.cash,
+      closes: x.closes,
+      closeRate: x.showed ? (x.closes / x.showed) * 100 : 0,
+      showRate: x.booked ? (x.showed / x.booked) * 100 : 0,
+      offers: x.offers,
+      avgCashCall: x.booked ? x.cash / x.booked : 0,
+      deposits: x.deposits,
+    }));
+  }, [lbCalls]);
 
   // Pull setter/dialer day-log aggregates so the Closer Dashboard isn't empty
   // when closes & cash are logged through DM Setter / Inbound Dialer daily entries.
@@ -319,44 +386,32 @@ function Closer() {
 
         {/* Enterprise metric visualizers */}
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 stagger-fade">
-          <MetricCard label="Show rate" value={pct(showed, onCalendar)} icon={<ActivityIcon className="h-3 w-3" />} deltaPct={5} spark={[60, 64, 61, 68, 70, 66, 72]} tone="default" />
-          <MetricCard label="Close rate" value={pct(closes, showed)} icon={<Trophy className="h-3 w-3" />} deltaPct={-3} spark={[28, 30, 27, 31, 29, 26, 28]} tone="warning" />
-          <MetricCard label="Avg cash / booked" value={fmtMoney(avgCashPerBooked)} icon={<PhoneCall className="h-3 w-3" />} deltaPct={11} spark={[180, 210, 195, 230, 250, 240, 260]} tone="success" />
-          <MetricCard label="Offer → close" value={pct(closes, offers)} icon={<Trophy className="h-3 w-3" />} deltaPct={2} spark={[35, 38, 36, 40, 42, 39, 41]} tone="accent" />
+          <MetricCard label="Show rate" value={pct(showed, onCalendar)} icon={<ActivityIcon className="h-3 w-3" />} spectrum="mid" deltaPct={5} spark={[60, 64, 61, 68, 70, 66, 72]} numericValue={onCalendar ? (showed / onCalendar) * 100 : 0} format={(n) => `${n.toFixed(1)}%`} />
+          <MetricCard label="Close rate" value={pct(closes, showed)} icon={<Trophy className="h-3 w-3" />} spectrum="hot" deltaPct={-3} spark={[28, 30, 27, 31, 29, 26, 28]} numericValue={showed ? (closes / showed) * 100 : 0} format={(n) => `${n.toFixed(1)}%`} />
+          <MetricCard label="Avg cash / booked" value={fmtMoney(avgCashPerBooked)} icon={<PhoneCall className="h-3 w-3" />} spectrum="hot" deltaPct={11} spark={[180, 210, 195, 230, 250, 240, 260]} numericValue={avgCashPerBooked} format={(n) => fmtMoney(n)} />
+          <MetricCard label="Offer → close" value={pct(closes, offers)} icon={<Trophy className="h-3 w-3" />} spectrum="mid" deltaPct={2} spark={[35, 38, 36, 40, 42, 39, 41]} numericValue={offers ? (closes / offers) * 100 : 0} format={(n) => `${n.toFixed(1)}%`} />
         </div>
 
-        {/* Leaderboard with avatars + closing-rate breakdown */}
+        {/* Leaderboard with metric selector + independent date range (Part C3) + spectrum activity heatmap (Part C4) */}
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-border bg-muted/30 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
-              <Trophy className="h-3.5 w-3.5 text-[color:var(--color-success)]" /> Closer leaderboard · by cash
-            </div>
-            <div className="divide-y divide-border stagger-fade">
-              {scorecard.slice(0, 6).map((s, i) => (
-                <div key={s.name} className="hover-lift flex items-center gap-3 px-4 py-2.5">
-                  <div className="grid h-6 w-6 place-items-center rounded-md bg-muted text-3xs font-mono font-bold text-muted-foreground">{i + 1}</div>
-                  <AvatarInitials name={s.name} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{s.name}</div>
-                    <div className="mt-1 h-1.5 w-full rounded bg-muted/40 overflow-hidden">
-                      <div className="h-full rounded bg-[color:var(--color-success)] transition-all duration-500" style={{ width: `${Math.min(100, s.closeRate)}%` }} />
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-mono text-sm font-semibold text-[color:var(--color-success)]">{fmtMoney(s.cash)}</div>
-                    <div className="text-3xs text-muted-foreground">{s.closeRate.toFixed(0)}% close</div>
-                  </div>
-                </div>
-              ))}
-              {scorecard.length === 0 && <div className="p-8 text-center text-xs text-muted-foreground">No closers in range.</div>}
-            </div>
-          </div>
+          <RepLeaderboard
+            titlePrefix="Closer leaderboard"
+            metrics={CLOSER_METRICS}
+            metricKey={lbMetric}
+            onMetricChange={setLbMetric}
+            people={lbPeople}
+            emptyLabel="No closers in range."
+            dateRange={lbRange}
+            onDateRangeChange={setLbOverride}
+            overridden={!!lbOverride}
+            onResetRange={() => setLbOverride(null)}
+          />
 
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-3">
               <ActivityIcon className="h-3.5 w-3.5 text-accent" /> Rep activity heatmap · calls by weekday
             </div>
-            <HeatmapGrid rowLabels={activityHeatmap.rows} colLabels={activityHeatmap.cols} data={activityHeatmap.data} valueFmt={(v) => `${v} calls`} tone="var(--accent)" />
+            <HeatmapGrid rowLabels={activityHeatmap.rows} colLabels={activityHeatmap.cols} data={activityHeatmap.data} valueFmt={(v) => `${v} calls`} variant="spectrum" />
           </div>
         </div>
 

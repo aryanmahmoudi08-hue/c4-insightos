@@ -20,8 +20,9 @@ import { TeamMemberFilter, ALL_MEMBERS } from "@/components/team-member-filter";
 import { GlassTableShell, Pagination, usePagination } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
 import { ClipboardList } from "lucide-react";
-import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { HeatmapGrid } from "@/components/heatmap-grid";
+import { RepLeaderboard, type RepMetricOption } from "@/components/rep-leaderboard";
+import { MetricCard } from "@/components/metric-card";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend,
@@ -36,6 +37,34 @@ const fmtMoney = (cents: number) => `$${(cents / 100).toLocaleString(undefined, 
 const pct = (n: number, d: number) => d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%";
 
 const LEAD_SOURCES = ["Instagram Spiderweb", "Keyword", "Inbound", "Referral", "Ads", "Other"];
+
+interface ActivityLbPerson {
+  name: string; cash: number; sets: number; qualified: number; closes: number;
+  showRate: number; closeRate: number; linksSent: number; contacted: number;
+  connections: number; dials: number; pickupRate: number;
+}
+
+// Part C3 — exact per-role metric option lists for the setter/dialer leaderboard selector.
+const SETTER_METRICS: RepMetricOption<ActivityLbPerson>[] = [
+  { key: "cash", label: "Cash Collected", spectrum: "hot", primary: (p) => fmtMoney(p.cash), secondary: (p) => `${p.sets} sets`, rankBy: (p) => p.cash },
+  { key: "sets", label: "Sets", spectrum: "mid", primary: (p) => `${p.sets} sets`, secondary: (p) => `${p.qualified} qualified`, rankBy: (p) => p.sets },
+  { key: "qualified", label: "Qualified Convos", spectrum: "mid", primary: (p) => `${p.qualified}`, secondary: (p) => `${p.contacted} contacted`, rankBy: (p) => p.qualified },
+  { key: "closes", label: "Closes", spectrum: "hot", primary: (p) => `${p.closes}`, secondary: (p) => fmtMoney(p.cash), rankBy: (p) => p.closes },
+  { key: "showRate", label: "Show Rate", spectrum: "mid", primary: (p) => `${p.showRate.toFixed(0)}%`, secondary: (p) => `${p.sets} sets`, rankBy: (p) => p.showRate },
+  { key: "closeRate", label: "Close Rate", spectrum: "hot", primary: (p) => `${p.closeRate.toFixed(0)}%`, secondary: (p) => `${p.closes} closes`, rankBy: (p) => p.closeRate },
+  { key: "linksSent", label: "Links Sent", spectrum: "cold", primary: (p) => `${p.linksSent}`, secondary: (p) => `${p.contacted} contacted`, rankBy: (p) => p.linksSent },
+  { key: "contacted", label: "Leads Contacted", spectrum: "cold", primary: (p) => `${p.contacted}`, secondary: (p) => `${p.qualified} qualified`, rankBy: (p) => p.contacted },
+];
+
+const DIALER_METRICS: RepMetricOption<ActivityLbPerson>[] = [
+  { key: "cash", label: "Cash Collected", spectrum: "hot", primary: (p) => fmtMoney(p.cash), secondary: (p) => `${p.sets} sets`, rankBy: (p) => p.cash },
+  { key: "sets", label: "Sets", spectrum: "mid", primary: (p) => `${p.sets} sets`, secondary: (p) => `${p.connections} connects`, rankBy: (p) => p.sets },
+  { key: "connections", label: "Connects", spectrum: "cold", primary: (p) => `${p.connections}`, secondary: (p) => `${p.dials} dials`, rankBy: (p) => p.connections },
+  { key: "qualified", label: "Qualified Convos", spectrum: "mid", primary: (p) => `${p.qualified}`, secondary: (p) => `${p.connections} connects`, rankBy: (p) => p.qualified },
+  { key: "dials", label: "Dials", spectrum: "cold", primary: (p) => `${p.dials}`, secondary: (p) => `${p.connections} connects`, rankBy: (p) => p.dials },
+  { key: "pickupRate", label: "Pick-up Rate", spectrum: "cold", primary: (p) => `${p.pickupRate.toFixed(0)}%`, secondary: (p) => `${p.connections} connects`, rankBy: (p) => p.pickupRate },
+  { key: "closes", label: "Closes", spectrum: "hot", primary: (p) => `${p.closes}`, secondary: (p) => fmtMoney(p.cash), rankBy: (p) => p.closes },
+];
 
 export function ActivityModule({ role, title, subtitle }: Props) {
   const { data: org } = useCurrentOrg();
@@ -55,6 +84,12 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const [range, setRange] = useState<DateRange>(RANGES.last30());
   const [member, setMember] = useState<string>(ALL_MEMBERS);
   const isDialer = role === "inbound_dialer";
+  // Part C3 — leaderboard's own metric selector + independent date range,
+  // defaulting to inherit the page range until explicitly overridden.
+  const [lbMetric, setLbMetric] = useState<string>("cash");
+  const [lbOverride, setLbOverride] = useState<DateRange | null>(null);
+  const lbRange = lbOverride ?? range;
+  const lbMetrics = isDialer ? DIALER_METRICS : SETTER_METRICS;
 
   const { data: allRows } = useQuery({
     queryKey: ["activity", role, orgId, range.from, range.to],
@@ -186,6 +221,55 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     })).sort((a, b) => b.rankScore - a.rankScore);
   }, [allRows, isDialer]);
 
+  // Leaderboard's own independently-ranged query (Part C3) — separate from the
+  // page-range `allRows` query above so overriding the leaderboard's date
+  // range never touches the rest of the page.
+  const { data: lbRows } = useQuery({
+    queryKey: ["activity-lb", role, orgId, lbRange.from, lbRange.to],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("setter_activity")
+        .select("team_member_name, sets, qualified_convos, leads_contacted, connections, dials, closes, live_calls, calls_on_calendar, links_sent, cash_collected_cents")
+        .eq("org_id", orgId!).eq("role", role)
+        .gte("activity_date", lbRange.from).lte("activity_date", lbRange.to)
+        .limit(1000);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const lbPeople = useMemo<ActivityLbPerson[]>(() => {
+    const byName = new Map<string, { sets: number; qualified: number; contacted: number; connections: number; dials: number; closes: number; live: number; oncal: number; linksSent: number; cash: number }>();
+    for (const r of lbRows ?? []) {
+      const x = byName.get(r.team_member_name) ?? { sets: 0, qualified: 0, contacted: 0, connections: 0, dials: 0, closes: 0, live: 0, oncal: 0, linksSent: 0, cash: 0 };
+      x.sets += r.sets ?? 0;
+      x.qualified += r.qualified_convos ?? 0;
+      x.contacted += r.leads_contacted ?? 0;
+      x.connections += r.connections ?? 0;
+      x.dials += r.dials ?? 0;
+      x.closes += r.closes ?? 0;
+      x.live += r.live_calls ?? 0;
+      x.oncal += r.calls_on_calendar ?? 0;
+      x.linksSent += r.links_sent ?? 0;
+      x.cash += r.cash_collected_cents ?? 0;
+      byName.set(r.team_member_name, x);
+    }
+    return Array.from(byName.entries()).map(([name, x]) => ({
+      name,
+      cash: x.cash,
+      sets: x.sets,
+      qualified: x.qualified,
+      closes: x.closes,
+      showRate: x.oncal ? (x.live / x.oncal) * 100 : 0,
+      closeRate: x.live ? (x.closes / x.live) * 100 : 0,
+      linksSent: x.linksSent,
+      contacted: x.contacted,
+      connections: x.connections,
+      dials: x.dials,
+      pickupRate: x.dials ? (x.connections / x.dials) * 100 : 0,
+    }));
+  }, [lbRows]);
+
   // Activity heatmap — DM Setter tracks leads_contacted (the per-day "DMs sent"
   // volume field); Inbound Dialer tracks dials. Same weekday-grid pattern as Closer.
   const activityHeatmap = useMemo(() => {
@@ -241,44 +325,46 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       <div className="p-6 space-y-4">
         <DashboardBar title={isDialer ? "SETTER DASHBOARD (INBOUND DIALER)" : "DM SETTER DASHBOARD"} accent={isDialer ? "accent" : "primary"} />
 
-        {/* Leaderboard + activity heatmap — ranked/tracked by what this role is actually paid on */}
+        {/* Featured rate cards (Part C2) — spectrum-tinted funnel-position rates, distinct from and above the flat KPI tile grid below, which keeps every existing metric. */}
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 stagger-fade">
+          {isDialer ? (
+            <>
+              <MetricCard label="Pick-up rate" value={pct(conns, dials)} spectrum="cold" numericValue={dials ? (conns / dials) * 100 : 0} format={(n) => `${n.toFixed(1)}%`} subLabel={`${conns} of ${dials} dials`} />
+              <MetricCard label="Qualified convo rate" value={pct(qualified, conns)} spectrum="mid" numericValue={conns ? (qualified / conns) * 100 : 0} format={(n) => `${n.toFixed(1)}%`} subLabel={`${qualified} qualified`} />
+              <MetricCard label="Set rate" value={pct(sets, qualified)} spectrum="mid" numericValue={qualified ? (sets / qualified) * 100 : 0} format={(n) => `${n.toFixed(1)}%`} subLabel={`${sets} sets`} />
+              <MetricCard label="Show rate" value={pct(showed, onCalendar)} spectrum="mid" numericValue={onCalendar ? (showed / onCalendar) * 100 : 0} format={(n) => `${n.toFixed(1)}%`} subLabel={`${showed} showed`} />
+            </>
+          ) : (
+            <>
+              <MetricCard label="Qualified convo rate" value={pct(qualified, contacted)} spectrum="mid" numericValue={contacted ? (qualified / contacted) * 100 : 0} format={(n) => `${n.toFixed(1)}%`} subLabel={`${qualified} qualified`} />
+              <MetricCard label="Set rate" value={pct(sets, qualified)} spectrum="mid" numericValue={qualified ? (sets / qualified) * 100 : 0} format={(n) => `${n.toFixed(1)}%`} subLabel={`${sets} sets`} />
+              <MetricCard label="Show rate" value={pct(showed, onCalendar)} spectrum="mid" numericValue={onCalendar ? (showed / onCalendar) * 100 : 0} format={(n) => `${n.toFixed(1)}%`} subLabel={`${showed} showed`} />
+              <MetricCard label="Cash per set" value={fmtMoney(sets ? cashCents / sets : 0)} spectrum="hot" numericValue={sets ? cashCents / sets : 0} format={(n) => fmtMoney(n)} subLabel={`${sets} sets`} />
+            </>
+          )}
+        </div>
+
+        {/* Leaderboard with metric selector + independent date range (Part C3) + spectrum activity heatmap (Part C4) */}
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-border bg-muted/30 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
-              <Trophy className="h-3.5 w-3.5 text-[color:var(--color-success)]" />
-              {isDialer ? "Dialer leaderboard · by sets" : "Setter leaderboard · by sets"}
-            </div>
-            <div className="divide-y divide-border stagger-fade">
-              {leaderboard.slice(0, 6).map((p, i) => (
-                <div key={p.name} className="hover-lift flex items-center gap-3 px-4 py-2.5">
-                  <div className="grid h-6 w-6 place-items-center rounded-md bg-muted text-3xs font-mono font-bold text-muted-foreground">{i + 1}</div>
-                  <AvatarInitials name={p.name} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{p.name}</div>
-                    <div className="mt-1 h-1.5 w-full rounded bg-muted/40 overflow-hidden">
-                      <div className="h-full rounded bg-[color:var(--color-success)] transition-all duration-500" style={{ width: `${Math.min(100, isDialer ? p.pickupRate : p.qualRate)}%` }} />
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-mono text-sm font-semibold text-[color:var(--color-success)]">{p.sets} sets</div>
-                    <div className="text-3xs text-muted-foreground">
-                      {isDialer
-                        ? `${p.pickupRate.toFixed(0)}% pickup · ${p.connections} connects`
-                        : `${p.qualRate.toFixed(0)}% qual rate · ${p.shareOfSets.toFixed(0)}% of sets`}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {leaderboard.length === 0 && <div className="p-8 text-center text-xs text-muted-foreground">No {isDialer ? "dialers" : "setters"} in range.</div>}
-            </div>
-          </div>
+          <RepLeaderboard
+            titlePrefix={isDialer ? "Dialer leaderboard" : "Setter leaderboard"}
+            metrics={lbMetrics}
+            metricKey={lbMetric}
+            onMetricChange={setLbMetric}
+            people={lbPeople}
+            emptyLabel={`No ${isDialer ? "dialers" : "setters"} in range.`}
+            dateRange={lbRange}
+            onDateRangeChange={setLbOverride}
+            overridden={!!lbOverride}
+            onResetRange={() => setLbOverride(null)}
+          />
 
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-3">
               <ActivityIcon className="h-3.5 w-3.5 text-accent" />
               {isDialer ? "Dialer activity heatmap · dials by weekday" : "Setter activity heatmap · DMs sent by weekday"}
             </div>
-            <HeatmapGrid rowLabels={activityHeatmap.rows} colLabels={activityHeatmap.cols} data={activityHeatmap.data} valueFmt={(v) => isDialer ? `${v} dials` : `${v} DMs`} tone="var(--accent)" />
+            <HeatmapGrid rowLabels={activityHeatmap.rows} colLabels={activityHeatmap.cols} data={activityHeatmap.data} valueFmt={(v) => isDialer ? `${v} dials` : `${v} DMs`} variant="spectrum" />
           </div>
         </div>
 
