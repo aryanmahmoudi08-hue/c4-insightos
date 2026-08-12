@@ -12,13 +12,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Plus, TrendingUp, TrendingDown, Minus, Trophy, Activity as ActivityIcon } from "lucide-react";
 import { toast } from "sonner";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { TeamMemberFilter, ALL_MEMBERS } from "@/components/team-member-filter";
 import { GlassTableShell, Pagination, usePagination } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
 import { ClipboardList } from "lucide-react";
+import { AvatarInitials } from "@/components/ui/avatar-initials";
+import { HeatmapGrid } from "@/components/heatmap-grid";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend,
@@ -144,6 +146,53 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   }, [allRows]);
   const radarColors = ["oklch(0.7 0.2 258)", "oklch(0.72 0.18 25)", "oklch(0.7 0.18 145)", "oklch(0.72 0.18 60)", "oklch(0.7 0.18 320)"];
 
+  // Leaderboard — ranked by what this role is actually paid on, not cash (setters/
+  // dialers earn a flat % of collected cash regardless of who closes it). Dialer
+  // ranks by connects + sets (pickup rate is its unique differentiator); Setter
+  // ranks by qualified convos + sets (qual rate + share of total sets differentiate).
+  // Org-wide (ignores the member filter), matching this file's own objections/
+  // momentum/scorecard convention of deriving cross-rep comparisons from allRows.
+  const leaderboard = useMemo(() => {
+    const byName = new Map<string, { sets: number; qualified: number; contacted: number; connections: number; dials: number }>();
+    for (const r of allRows ?? []) {
+      const x = byName.get(r.team_member_name) ?? { sets: 0, qualified: 0, contacted: 0, connections: 0, dials: 0 };
+      x.sets += r.sets ?? 0;
+      x.qualified += r.qualified_convos ?? 0;
+      x.contacted += r.leads_contacted ?? 0;
+      x.connections += r.connections ?? 0;
+      x.dials += r.dials ?? 0;
+      byName.set(r.team_member_name, x);
+    }
+    const totalSets = Array.from(byName.values()).reduce((s, x) => s + x.sets, 0);
+    return Array.from(byName.entries()).map(([name, x]) => ({
+      name,
+      sets: x.sets,
+      qualRate: x.contacted ? (x.qualified / x.contacted) * 100 : 0,
+      pickupRate: x.dials ? (x.connections / x.dials) * 100 : 0,
+      connections: x.connections,
+      shareOfSets: totalSets ? (x.sets / totalSets) * 100 : 0,
+      rankScore: isDialer ? x.connections + x.sets : x.qualified + x.sets,
+    })).sort((a, b) => b.rankScore - a.rankScore);
+  }, [allRows, isDialer]);
+
+  // Activity heatmap — DM Setter tracks leads_contacted (the per-day "DMs sent"
+  // volume field); Inbound Dialer tracks dials. Same weekday-grid pattern as Closer.
+  const activityHeatmap = useMemo(() => {
+    const names = leaderboard.map(p => p.name).slice(0, 6);
+    const cols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const field = isDialer ? "dials" : "leads_contacted";
+    const data = names.map(name => {
+      const row = new Array(7).fill(0);
+      for (const r of allRows ?? []) {
+        if (r.team_member_name !== name || !r.activity_date) continue;
+        const day = (new Date(`${r.activity_date}T12:00:00`).getDay() + 6) % 7; // Mon=0..Sun=6
+        row[day] += Number((r as Record<string, unknown>)[field] ?? 0);
+      }
+      return row;
+    });
+    return { rows: names, cols, data };
+  }, [allRows, leaderboard, isDialer]);
+
   const create = useMutation({
     mutationFn: async (f: FormData) => {
       const payload = {
@@ -180,6 +229,47 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       <TopBar title={title} subtitle={subtitle} />
       <div className="p-6 space-y-4">
         <DashboardBar title={isDialer ? "SETTER DASHBOARD (INBOUND DIALER)" : "DM SETTER DASHBOARD"} accent={isDialer ? "accent" : "primary"} />
+
+        {/* Leaderboard + activity heatmap — ranked/tracked by what this role is actually paid on */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-border bg-muted/30 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
+              <Trophy className="h-3.5 w-3.5 text-[color:var(--color-success)]" />
+              {isDialer ? "Dialer leaderboard · by sets" : "Setter leaderboard · by sets"}
+            </div>
+            <div className="divide-y divide-border stagger-fade">
+              {leaderboard.slice(0, 6).map((p, i) => (
+                <div key={p.name} className="hover-lift flex items-center gap-3 px-4 py-2.5">
+                  <div className="grid h-6 w-6 place-items-center rounded-md bg-muted text-3xs font-mono font-bold text-muted-foreground">{i + 1}</div>
+                  <AvatarInitials name={p.name} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{p.name}</div>
+                    <div className="mt-1 h-1.5 w-full rounded bg-muted/40 overflow-hidden">
+                      <div className="h-full rounded bg-[color:var(--color-success)] transition-all duration-500" style={{ width: `${Math.min(100, isDialer ? p.pickupRate : p.qualRate)}%` }} />
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-mono text-sm font-semibold text-[color:var(--color-success)]">{p.sets} sets</div>
+                    <div className="text-3xs text-muted-foreground">
+                      {isDialer
+                        ? `${p.pickupRate.toFixed(0)}% pickup · ${p.connections} connects`
+                        : `${p.qualRate.toFixed(0)}% qual rate · ${p.shareOfSets.toFixed(0)}% of sets`}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {leaderboard.length === 0 && <div className="p-8 text-center text-xs text-muted-foreground">No {isDialer ? "dialers" : "setters"} in range.</div>}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-3">
+              <ActivityIcon className="h-3.5 w-3.5 text-accent" />
+              {isDialer ? "Dialer activity heatmap · dials by weekday" : "Setter activity heatmap · DMs sent by weekday"}
+            </div>
+            <HeatmapGrid rowLabels={activityHeatmap.rows} colLabels={activityHeatmap.cols} data={activityHeatmap.data} valueFmt={(v) => isDialer ? `${v} dials` : `${v} DMs`} tone="var(--accent)" />
+          </div>
+        </div>
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
