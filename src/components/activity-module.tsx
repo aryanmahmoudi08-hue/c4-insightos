@@ -419,13 +419,15 @@ export function ActivityModule({ role, title, subtitle }: Props) {
           </Dialog>
         </div>
 
-        {/* KPI Grid */}
+        {/* KPI Grid — every cash/rate tile takes its funnel position (B4), not the
+            old money=green/rate=accent semantic tone. Untinted tiles stay plain
+            (they were never miscolored, so left alone rather than over-colored). */}
         {(() => {
           const payoutLabel = member === ALL_MEMBERS
             ? `PAYOUT OWED (5% · ALL ${isDialer ? "DIALERS" : "SETTERS"})`
             : `PAYOUT OWED · ${member.toUpperCase()} (5%)`;
           const payoutTile = (
-            <KpiTile label={payoutLabel} value={fmtMoney(cashCents * 0.05)} tone="money" hint="5% of cash collected in range" />
+            <KpiTile label={payoutLabel} value={fmtMoney(cashCents * 0.05)} spectrum="hot" hint="5% of cash collected in range" />
           );
           return isDialer ? (
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
@@ -433,17 +435,17 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             <KpiTile label="TOTAL CONNECTIONS" value={conns} />
             <KpiTile label="TOTAL QUALIFIED CONVOS" value={qualified} />
             <KpiTile label="TOTAL APPOINTMENTS SET" value={sets} />
-            <KpiTile label="TOTAL CASH COLLECTED" value={fmtMoney(cashCents)} tone="money" />
+            <KpiTile label="TOTAL CASH COLLECTED" value={fmtMoney(cashCents)} spectrum="hot" />
             <KpiTile label="TOTAL CALLS ON CALENDAR" value={onCalendar} />
             <KpiTile label="TOTAL CALLS THAT SHOWED" value={showed} />
             <KpiTile label="TOTAL CLOSES" value={closes} />
             <KpiTile label="TOTAL DOWNSELLS" value={downsells} />
-            <KpiTile label="TOTAL REVENUE GENERATED" value={fmtMoney(revCents)} tone="money" />
-            <KpiTile label="AVERAGE SHOW RATE" value={pct(showed, onCalendar)} tone="rate" />
-            <KpiTile label="AVERAGE CLOSE RATE" value={pct(closes, showed)} tone="rate" />
-            <KpiTile label="PICKUP RATE" value={pct(conns, dials)} tone="rate" />
-            <KpiTile label="QUALIFIED CONVO RATE" value={pct(qualified, conns)} tone="rate" />
-            <KpiTile label="SET RATE" value={pct(sets, qualified)} tone="rate" />
+            <KpiTile label="TOTAL REVENUE GENERATED" value={fmtMoney(revCents)} spectrum="hot" />
+            <KpiTile label="AVERAGE SHOW RATE" value={pct(showed, onCalendar)} spectrum="mid" />
+            <KpiTile label="AVERAGE CLOSE RATE" value={pct(closes, showed)} spectrum="hot" />
+            <KpiTile label="PICKUP RATE" value={pct(conns, dials)} spectrum="cold" />
+            <KpiTile label="QUALIFIED CONVO RATE" value={pct(qualified, conns)} spectrum="mid" />
+            <KpiTile label="SET RATE" value={pct(sets, qualified)} spectrum="mid" />
             {payoutTile}
           </div>
         ) : (
@@ -456,10 +458,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             <KpiTile label="TOTAL CALLS THAT SHOWED" value={showed} />
             <KpiTile label="TOTAL CLOSES" value={closes} />
             <KpiTile label="TOTAL DOWNSELLS" value={downsells} />
-            <KpiTile label="AVERAGE SHOW RATE" value={pct(showed, onCalendar)} tone="rate" />
-            <KpiTile label="AVERAGE CLOSE RATE" value={pct(closes, showed)} tone="rate" />
-            <KpiTile label="TOTAL CASH COLLECTED" value={fmtMoney(cashCents)} tone="money" />
-            <KpiTile label="TOTAL REVENUE GENERATED" value={fmtMoney(revCents)} tone="money" />
+            <KpiTile label="AVERAGE SHOW RATE" value={pct(showed, onCalendar)} spectrum="mid" />
+            <KpiTile label="AVERAGE CLOSE RATE" value={pct(closes, showed)} spectrum="hot" />
+            <KpiTile label="TOTAL CASH COLLECTED" value={fmtMoney(cashCents)} spectrum="hot" />
+            <KpiTile label="TOTAL REVENUE GENERATED" value={fmtMoney(revCents)} spectrum="hot" />
             {payoutTile}
           </div>
         );

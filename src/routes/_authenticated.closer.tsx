@@ -469,29 +469,31 @@ function Closer() {
           </Dialog>
         </div>
 
-        {/* KPI Grid */}
+        {/* KPI Grid — every cash/rate tile takes its funnel position (B4), not the
+            old money=green/rate=accent semantic tone. Untinted tiles stay plain
+            (they were never miscolored, so left alone rather than over-colored). */}
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
           <KpiTile label="TOTAL CALLS ON CALENDAR" value={onCalendar} />
           <KpiTile label="TOTAL CALLS THAT SHOWED" value={showed} />
           <KpiTile label="TOTAL OFFERS MADE" value={offers} />
           <KpiTile label="TOTAL CLOSES" value={closes} />
-          <KpiTile label="AVG CASH PER CALL BOOKED" value={fmtMoney(avgCashPerBooked)} tone="money" />
+          <KpiTile label="AVG CASH PER CALL BOOKED" value={fmtMoney(avgCashPerBooked)} spectrum="hot" />
 
-          <KpiTile label="AVERAGE SHOW RATE" value={pct(showed, onCalendar)} tone="rate" />
-          <KpiTile label="AVERAGE CLOSE RATE" value={pct(closes, showed)} tone="rate" />
-          <KpiTile label="AVG OFFER TO CLOSE RATE" value={pct(closes, offers)} tone="rate" />
+          <KpiTile label="AVERAGE SHOW RATE" value={pct(showed, onCalendar)} spectrum="mid" />
+          <KpiTile label="AVERAGE CLOSE RATE" value={pct(closes, showed)} spectrum="hot" />
+          <KpiTile label="AVG OFFER TO CLOSE RATE" value={pct(closes, offers)} spectrum="hot" />
           <KpiTile label="TOTAL DEPOSITS" value={depositCount} />
-          <KpiTile label="AVG CASH PER CALL SHOWED" value={fmtMoney(avgCashPerShowed)} tone="money" />
+          <KpiTile label="AVG CASH PER CALL SHOWED" value={fmtMoney(avgCashPerShowed)} spectrum="hot" />
 
-          <KpiTile label="TOTAL CASH COLLECTED" value={fmtMoney(cashCents)} tone="money" />
-          <KpiTile label="TOTAL REVENUE GENERATED" value={fmtMoney(revCents)} tone="money" />
-          <KpiTile label="OFFER RATE" value={pct(offers, showed)} tone="rate" />
-          <KpiTile label="CASH COLLECTED RATE" value={pct(cashCents, revCents)} tone="rate" hint={`${downsells} downsells`} />
-          <KpiTile label="AVG CASH PER CALL CLOSED" value={fmtMoney(avgCashPerClosed)} tone="money" />
+          <KpiTile label="TOTAL CASH COLLECTED" value={fmtMoney(cashCents)} spectrum="hot" />
+          <KpiTile label="TOTAL REVENUE GENERATED" value={fmtMoney(revCents)} spectrum="hot" />
+          <KpiTile label="OFFER RATE" value={pct(offers, showed)} spectrum="mid" />
+          <KpiTile label="CASH COLLECTED RATE" value={pct(cashCents, revCents)} spectrum="hot" hint={`${downsells} downsells`} />
+          <KpiTile label="AVG CASH PER CALL CLOSED" value={fmtMoney(avgCashPerClosed)} spectrum="hot" />
           <KpiTile
             label={member === ALL_MEMBERS ? "PAYOUT OWED (10% · ALL CLOSERS)" : `PAYOUT OWED · ${member.toUpperCase()} (10%)`}
             value={fmtMoney(cashCents * 0.10)}
-            tone="money"
+            spectrum="hot"
             hint="10% of cash collected in range"
           />
         </div>

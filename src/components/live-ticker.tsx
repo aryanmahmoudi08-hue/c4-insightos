@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { DollarSign, PhoneCall } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const fmtMoney = (cents: number) => `$${Math.round(cents / 100).toLocaleString()}`;
+// No leading "$" here — the DollarSign icon next to it already carries that glyph.
+const fmtMoney = (cents: number) => Math.round(cents / 100).toLocaleString();
 
 /**
  * Thin persistent live-status bar (B6) — today's cash and calls booked,

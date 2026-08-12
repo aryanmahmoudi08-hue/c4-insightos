@@ -243,17 +243,24 @@ function Leads() {
             relocated, PageHero above stays exactly as it was). Bars fill in stage-by-stage
             in strict spectrum order (cold→mid→hot) on mount — the funnel-fill signature
             moment (B5). */}
-        <BentoGrid rowHeight="9.5rem">
+        {/* cols={2} — this grid's only cell is the funnel hero, so it should fully cover
+            the grid rather than leaving 2 of 4 tracks empty; rowHeight trimmed to match
+            what 3 funnel bars actually need instead of the taller default. */}
+        <BentoGrid cols={2} rowHeight="8rem">
           <BentoCell span="hero">
             <LeadsFunnelHero funnel={funnelStats} />
           </BentoCell>
         </BentoGrid>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger-fade">
-          <MetricCard label="Total leads" value={stats.total} icon={<Users className="h-3 w-3" />} deltaPct={9} spark={[12, 15, 14, 18, 20, 19, 24]} />
-          <MetricCard label="Call booked" value={stats.booked} icon={<PhoneCall className="h-3 w-3" />} deltaPct={4} spark={[2, 3, 2, 4, 3, 4, 5]} sparkVariant="bar" tone="warning" />
-          <MetricCard label="Closed" value={stats.closed} icon={<Sparkles className="h-3 w-3" />} deltaPct={17} spark={[1, 1, 2, 1, 2, 3, 3]} sparkVariant="bar" tone="success" />
-          <MetricCard label="💎 Diamond leads" value={stats.diamond} icon={<Gem className="h-3 w-3" />} deltaPct={-2} spark={[3, 4, 3, 4, 4, 3, 4]} tone="accent" />
+          {/* Volume/conversion metrics take their funnel position (B4) — never a semantic
+              tone. The delta badge's up/down green/red is untouched by this (trend
+              direction is a different signal than funnel temperature — MetricCard keeps
+              those separate by design). */}
+          <MetricCard label="Total leads" value={stats.total} icon={<Users className="h-3 w-3" />} spectrum="cold" deltaPct={9} spark={[12, 15, 14, 18, 20, 19, 24]} />
+          <MetricCard label="Call booked" value={stats.booked} icon={<PhoneCall className="h-3 w-3" />} spectrum="mid" deltaPct={4} spark={[2, 3, 2, 4, 3, 4, 5]} sparkVariant="bar" />
+          <MetricCard label="Closed" value={stats.closed} icon={<Sparkles className="h-3 w-3" />} spectrum="hot" deltaPct={17} spark={[1, 1, 2, 1, 2, 3, 3]} sparkVariant="bar" />
+          <MetricCard label="💎 Diamond leads" value={stats.diamond} icon={<Gem className="h-3 w-3" />} spectrum="hot" deltaPct={-2} spark={[3, 4, 3, 4, 4, 3, 4]} />
         </div>
 
         <LeadInsightsPanel orgId={orgId} />

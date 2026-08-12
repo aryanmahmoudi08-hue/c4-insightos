@@ -16,17 +16,25 @@ const SPAN_CLASS: Record<BentoSpan, string> = {
   compact: "md:col-span-1 md:row-span-1 md:self-start",
 };
 
+const COLS_CLASS: Record<2 | 3 | 4, string> = {
+  2: "md:grid-cols-2",
+  3: "md:grid-cols-3",
+  4: "md:grid-cols-4",
+};
+
 /**
- * Bento layout primitive (B1) — a 4-column responsive grid with importance-
- * sized cells (hero 2x2, wide 2x1, tall 1x2, standard 1x1, compact 1x½).
- * Stacks to a single column below `md`. Every direct BentoCell staggers in on
- * mount (~40ms apart, fading up) — the app-wide default entrance, not opt-in.
+ * Bento layout primitive (B1) — a responsive grid (4 columns by default, or
+ * `cols` for a grid whose cells fully cover it — e.g. a 2x2 hero paired with
+ * nothing else should use `cols={2}` rather than leaving two empty tracks) with
+ * importance-sized cells (hero 2x2, wide 2x1, tall 1x2, standard 1x1, compact
+ * 1x½). Stacks to a single column below `md`. Every direct BentoCell staggers
+ * in on mount (~40ms apart, fading up) — the app-wide default entrance, not opt-in.
  */
-export function BentoGrid({ children, className, rowHeight = "9rem" }: { children: ReactNode; className?: string; rowHeight?: string }) {
+export function BentoGrid({ children, className, rowHeight = "9rem", cols = 4 }: { children: ReactNode; className?: string; rowHeight?: string; cols?: 2 | 3 | 4 }) {
   const reduce = useReducedMotion();
   return (
     <motion.div
-      className={cn("grid grid-cols-1 gap-3 md:grid-cols-4", className)}
+      className={cn("grid grid-cols-1 gap-3", COLS_CLASS[cols], className)}
       style={{ gridAutoRows: rowHeight }}
       initial="hidden"
       animate="visible"

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { HubMetrics, HubQuickLinks } from "@/components/hub-metrics";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { useCountUp } from "@/hooks/use-count-up";
+import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, SPECTRUM_CHIP_CLASS, type SpectrumPosition } from "@/lib/spectrum";
 
 
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: Dashboard });
@@ -262,13 +263,13 @@ function Dashboard() {
           </div>
         ) : (
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 animate-in fade-in-0 duration-300">
-            <DeltaKpi label="CONTRACT VALUE" value={money(c?.contractValue ?? 0)} curr={c?.contractValue ?? 0} prev={p?.contractValue ?? 0} tone="money" spark={(stats?.series ?? []).map(s => s.contractValue)} />
-            <DeltaKpi label="NEW LEADS" value={fmt(c?.newLeads ?? 0)} curr={c?.newLeads ?? 0} prev={p?.newLeads ?? 0} spark={(stats?.series ?? []).map(s => s.leads)} />
-            <DeltaKpi label="TOTAL VIEWS" value={fmt(c?.views ?? 0)} curr={c?.views ?? 0} prev={p?.views ?? 0} spark={(stats?.series ?? []).map(s => s.views)} />
-            <DeltaKpi label="CALLS BOOKED" value={fmt(c?.totalCalls ?? 0)} curr={c?.totalCalls ?? 0} prev={p?.totalCalls ?? 0} spark={(stats?.series ?? []).map(s => s.calls)} />
-            <DeltaKpi label="SHOWED" value={fmt(c?.showed ?? 0)} curr={c?.showed ?? 0} prev={p?.showed ?? 0} hint={showRate} spark={(stats?.series ?? []).map(s => s.showed)} />
-            <DeltaKpi label="OFFERS MADE" value={fmt(c?.offers ?? 0)} curr={c?.offers ?? 0} prev={p?.offers ?? 0} hint={offerRate} spark={(stats?.series ?? []).map(s => s.offers)} />
-            <DeltaKpi label="CLOSES" value={fmt(c?.closed ?? 0)} curr={c?.closed ?? 0} prev={p?.closed ?? 0} hint={closeRate} tone="rate" spark={(stats?.series ?? []).map(s => s.closed)} />
+            <DeltaKpi label="CONTRACT VALUE" value={money(c?.contractValue ?? 0)} curr={c?.contractValue ?? 0} prev={p?.contractValue ?? 0} spectrum="hot" spark={(stats?.series ?? []).map(s => s.contractValue)} />
+            <DeltaKpi label="NEW LEADS" value={fmt(c?.newLeads ?? 0)} curr={c?.newLeads ?? 0} prev={p?.newLeads ?? 0} spectrum="cold" spark={(stats?.series ?? []).map(s => s.leads)} />
+            <DeltaKpi label="TOTAL VIEWS" value={fmt(c?.views ?? 0)} curr={c?.views ?? 0} prev={p?.views ?? 0} spectrum="cold" spark={(stats?.series ?? []).map(s => s.views)} />
+            <DeltaKpi label="CALLS BOOKED" value={fmt(c?.totalCalls ?? 0)} curr={c?.totalCalls ?? 0} prev={p?.totalCalls ?? 0} spectrum="mid" spark={(stats?.series ?? []).map(s => s.calls)} />
+            <DeltaKpi label="SHOWED" value={fmt(c?.showed ?? 0)} curr={c?.showed ?? 0} prev={p?.showed ?? 0} hint={showRate} spectrum="mid" spark={(stats?.series ?? []).map(s => s.showed)} />
+            <DeltaKpi label="OFFERS MADE" value={fmt(c?.offers ?? 0)} curr={c?.offers ?? 0} prev={p?.offers ?? 0} hint={offerRate} spectrum="mid" spark={(stats?.series ?? []).map(s => s.offers)} />
+            <DeltaKpi label="CLOSES" value={fmt(c?.closed ?? 0)} curr={c?.closed ?? 0} prev={p?.closed ?? 0} hint={closeRate} spectrum="hot" spark={(stats?.series ?? []).map(s => s.closed)} />
           </div>
         )}
 
@@ -396,21 +397,19 @@ function KpiSkeleton() {
   );
 }
 
-function DeltaKpi({ label, value, curr, prev, hint, tone = "default", spark }: { label: string; value: string; curr: number; prev: number; hint?: string; tone?: "default" | "money" | "rate"; spark?: number[] }) {
+function DeltaKpi({ label, value, curr, prev, hint, spectrum, spark }: { label: string; value: string; curr: number; prev: number; hint?: string; /** Funnel position (B4) — takes precedence over the old tone vocabulary for the label chip, value, and sparkline color. The delta arrow badge stays trend-colored regardless (a different signal: performance direction, not funnel temperature). */ spectrum?: SpectrumPosition; spark?: number[] }) {
   const delta = prev > 0 ? ((curr - prev) / prev) * 100 : (curr > 0 ? 100 : 0);
   const Icon = delta > 1 ? TrendingUp : delta < -1 ? TrendingDown : Minus;
   const deltaTone = delta > 1 ? "text-[color:var(--color-success)]" : delta < -1 ? "text-destructive" : "text-muted-foreground";
-  const sparkStroke = delta > 1 ? "var(--color-success)" : delta < -1 ? "var(--destructive)" : "var(--muted-foreground)";
+  const sparkStroke = spectrum ? SPECTRUM_VAR[spectrum] : (delta > 1 ? "var(--color-success)" : delta < -1 ? "var(--destructive)" : "var(--muted-foreground)");
   return (
     <div className="rounded-md border border-border bg-card overflow-hidden flex flex-col">
       <div className={cn(
         "px-3 py-1.5 text-3xs font-medium uppercase tracking-wider text-center border-b border-border",
-        tone === "money" && "bg-[color:var(--color-success)]/10 text-[color:var(--color-success)]",
-        tone === "rate" && "bg-accent/10 text-accent",
-        tone === "default" && "bg-muted/40 text-muted-foreground",
+        spectrum ? SPECTRUM_CHIP_CLASS[spectrum] : "bg-muted/40 text-muted-foreground",
       )}>{label}</div>
       <div className="flex-1 grid place-items-center px-3 py-3 min-h-[72px]">
-        <div className="font-mono text-xl font-bold tabular-nums">{value}</div>
+        <div className={cn("font-mono text-xl font-bold tabular-nums", spectrum && SPECTRUM_TEXT_CLASS[spectrum])}>{value}</div>
         <div className="flex items-center gap-2 mt-1">
           <span className={`flex items-center gap-1 text-3xs font-mono ${deltaTone}`}>
             <Icon className="h-3 w-3" />{Math.abs(delta).toFixed(0)}%
@@ -442,14 +441,19 @@ function WeeklyDigest({ pace, curr, prev }: { pace?: { monthCash: number; projec
   cmp("Leads", curr.newLeads, prev?.newLeads ?? 0, fmt);
   cmp("Closes", curr.closed, prev?.closed ?? 0, fmt);
   cmp("Views", curr.views, prev?.views ?? 0, fmt);
+  // Wins/Pressure keep green/red — this is a genuine state signal (trending up
+  // vs down), the same category as a delta badge's arrow, not a funnel-position
+  // volume metric. What was missing was the L1 depth/typography treatment every
+  // other card on this page now has.
   return (
-    <div className="rounded-lg border border-border bg-gradient-to-br from-accent/10 via-card to-card p-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <div className="grid h-8 w-8 place-items-center rounded-md bg-accent/15 text-accent"><Calendar className="h-4 w-4" /></div>
+    <div className="hover-lift relative overflow-hidden rounded-2xl border border-border bg-card p-4">
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-muted/60 text-foreground"><Calendar className="h-4 w-4" /></div>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Period digest</div>
-            <div className="text-sm font-medium">vs prior period of equal length</div>
+            <div className="text-3xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Period Digest</div>
+            <div className="display-serif text-lg leading-tight">vs prior period of equal length</div>
           </div>
         </div>
         {pace && (
@@ -458,16 +462,16 @@ function WeeklyDigest({ pace, curr, prev }: { pace?: { monthCash: number; projec
           </div>
         )}
       </div>
-      <div className="mt-3 grid sm:grid-cols-2 gap-3">
-        <div className="rounded-md border border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/5 p-3 space-y-1">
-          <div className="text-3xs font-semibold uppercase tracking-wider text-[color:var(--color-success)] flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Wins</div>
-          {winners.length === 0 ? <div className="text-2xs text-muted-foreground italic">No metrics up &gt;5% vs prior.</div>
-            : <ul className="text-2xs space-y-0.5">{winners.map((w, i) => <li key={i} className="font-mono">• {w}</li>)}</ul>}
+      <div className="relative mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-[color:var(--color-success)]/25 bg-[color:var(--color-success)]/[0.06] p-3 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-[color:var(--color-success)]"><TrendingUp className="h-3 w-3" /> Wins</div>
+          {winners.length === 0 ? <div className="text-2xs italic text-muted-foreground">No metrics up &gt;5% vs prior.</div>
+            : <ul className="space-y-1 text-2xs">{winners.map((w, i) => <li key={i} className="font-mono">↑ {w}</li>)}</ul>}
         </div>
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-1">
-          <div className="text-3xs font-semibold uppercase tracking-wider text-destructive flex items-center gap-1"><TrendingDown className="h-3 w-3" /> Pressure</div>
-          {losers.length === 0 ? <div className="text-2xs text-muted-foreground italic">Nothing falling &gt;5% vs prior.</div>
-            : <ul className="text-2xs space-y-0.5">{losers.map((w, i) => <li key={i} className="font-mono">• {w}</li>)}</ul>}
+        <div className="rounded-xl border border-destructive/25 bg-destructive/[0.06] p-3 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-destructive"><TrendingDown className="h-3 w-3" /> Pressure</div>
+          {losers.length === 0 ? <div className="text-2xs italic text-muted-foreground">Nothing falling &gt;5% vs prior.</div>
+            : <ul className="space-y-1 text-2xs">{losers.map((w, i) => <li key={i} className="font-mono">↓ {w}</li>)}</ul>}
         </div>
       </div>
     </div>
@@ -591,21 +595,38 @@ function CashHero({ curr, prev, series, pace }: { curr?: number; prev?: number; 
 function PaceTallCard({ pace }: { pace?: PaceStats }) {
   if (!pace) return null;
   const progress = Math.min(100, (pace.dayOfMonth / pace.daysInMonth) * 100);
+  const remaining = Math.max(0, pace.daysInMonth - pace.dayOfMonth);
   return (
-    <div className="flex h-full flex-col justify-between rounded-2xl border border-border bg-gradient-to-b from-spectrum-mid/10 via-card to-card p-4">
+    <div className="flex h-full flex-col gap-4 rounded-2xl border border-border bg-gradient-to-b from-spectrum-mid/10 via-card to-card p-4">
       <div className="flex items-center gap-2">
         <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-spectrum-mid/15 text-spectrum-mid"><Target className="h-4 w-4" /></div>
         <div className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">Month-end pace</div>
       </div>
-      <div>
-        <div className="font-mono text-2xl font-bold tabular-nums">{money(pace.projection)}</div>
-        <div className="mt-0.5 text-2xs text-muted-foreground">projected · {money(pace.monthCash)} collected</div>
-        <div className="text-2xs text-muted-foreground">{money(pace.dailyPace)} / day</div>
+
+      <div className="flex flex-1 flex-col justify-center gap-3">
+        <div>
+          <div className="font-mono text-3xl font-bold tabular-nums text-spectrum-mid">{money(pace.projection)}</div>
+          <div className="mt-0.5 text-2xs text-muted-foreground">projected close</div>
+        </div>
+        {/* Same monthCash/dailyPace values as before, just grouped into a real
+            content block instead of two loose lines — fills the tall cell's
+            middle instead of leaving it as dead space. */}
+        <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted/20 p-2.5">
+          <div>
+            <div className="font-mono text-sm font-semibold">{money(pace.monthCash)}</div>
+            <div className="text-3xs text-muted-foreground">collected so far</div>
+          </div>
+          <div>
+            <div className="font-mono text-sm font-semibold">{money(pace.dailyPace)}</div>
+            <div className="text-3xs text-muted-foreground">per day</div>
+          </div>
+        </div>
       </div>
+
       <div>
         <div className="mb-1 flex justify-between text-3xs uppercase tracking-wider text-muted-foreground">
           <span>Day {pace.dayOfMonth}/{pace.daysInMonth}</span>
-          <span>{progress.toFixed(0)}%</span>
+          <span>{remaining} left · {progress.toFixed(0)}%</span>
         </div>
         <div className="h-1.5 rounded bg-muted overflow-hidden">
           <div className="h-full rounded bg-spectrum-mid" style={{ width: `${progress}%` }} />
