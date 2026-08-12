@@ -5,8 +5,9 @@ import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
-import { Briefcase, Target, TrendingUp, Search } from "lucide-react";
+import { Briefcase, Target, TrendingUp, Search, HeartPulse } from "lucide-react";
 import { DailyWinsPanel } from "@/components/daily-wins-panel";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
 
 export const Route = createFileRoute("/_authenticated/fulfillment")({ component: Fulfillment });
 
@@ -59,10 +60,36 @@ function Fulfillment() {
 
   const activeClient = useMemo(() => clients?.find((c) => c.id === selected) ?? null, [clients, selected]);
   const answers = (intake?.responses ?? {}) as Record<string, string>;
+  const avgHealth = clients?.length ? Math.round(clients.reduce((s, c) => s + Number(c.health_score ?? 0), 0) / clients.length) : 0;
 
   return (
     <>
       <TopBar title="Client Results" subtitle="Track active client goals + progress from intake → outcome" />
+      <div className="px-6 pt-6">
+        {/* Page hero (B1) — this list's own scope, headcount isn't a funnel metric
+            here (no conversion story on a fulfillment roster) so it stays neutral;
+            health keeps its threshold-driven semantic color from Clients. */}
+        <BentoGrid rowHeight="7rem">
+          <BentoCell span="wide">
+            <div className="hover-lift relative flex h-full items-center gap-6 overflow-hidden rounded-2xl border border-border bg-card p-5">
+              <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+              <div className="relative">
+                <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Fulfillment Roster</div>
+                <div className="font-mono text-4xl font-bold tabular-nums">{clients?.length ?? 0}</div>
+                <div className="text-2xs text-muted-foreground">active client{(clients?.length ?? 0) === 1 ? "" : "s"}</div>
+              </div>
+              <div className="relative h-10 w-px bg-border" />
+              <div className="relative flex items-center gap-2">
+                <HeartPulse className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <div className={`font-mono text-2xl font-bold tabular-nums ${avgHealth > 70 ? "text-[color:var(--color-success)]" : avgHealth > 40 ? "text-[color:var(--color-warning)]" : "text-destructive"}`}>{avgHealth}</div>
+                  <div className="text-2xs text-muted-foreground">avg health</div>
+                </div>
+              </div>
+            </div>
+          </BentoCell>
+        </BentoGrid>
+      </div>
       <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="bg-muted/40 px-3 py-2 text-2xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">

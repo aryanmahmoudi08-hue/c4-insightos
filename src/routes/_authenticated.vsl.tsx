@@ -24,6 +24,7 @@ import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { mockVsls, mockVslSnapshots, mockVslInsights, mockTranscriptLines, mockFaqVideos, withMockDelay } from "@/lib/dev-mock-data";
 import { MECHANISM_KEYS, MECHANISMS, type MechanismKey } from "@/lib/content-mechanisms";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
 
 export const Route = createFileRoute("/_authenticated/vsl")({ component: VslPage });
 
@@ -198,10 +199,13 @@ function VslCard({ vsl }: { vsl: any }) {
         </div>
       </div>
 
+      {/* Unique viewers (reach) and play rate (a conversion, not a fixed-green
+          decoration) now take their funnel position. Avg % watched keeps its
+          threshold-driven destructive/success — a genuine retention-quality bar. */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4">
         <StatCard label="Total plays" value={latest ? fmtNum(latest.total_plays) : "—"} hint={<Sparkline data={spark("total_plays")} /> as any} />
-        <StatCard label="Unique viewers" value={latest ? fmtNum(latest.unique_viewers) : "—"} accent="accent" hint={<Sparkline data={spark("unique_viewers")} /> as any} />
-        <StatCard label="Play rate" value={latest ? fmtPct(latest.play_rate) : "—"} accent="success" hint={<Sparkline data={spark("play_rate")} /> as any} />
+        <StatCard label="Unique viewers" value={latest ? fmtNum(latest.unique_viewers) : "—"} spectrum="cold" hint={<Sparkline data={spark("unique_viewers")} /> as any} />
+        <StatCard label="Play rate" value={latest ? fmtPct(latest.play_rate) : "—"} spectrum="mid" hint={<Sparkline data={spark("play_rate")} /> as any} />
         <StatCard label="Avg % watched" value={latest ? fmtPct(latest.avg_percent_watched) : "—"} accent={latest && latest.avg_percent_watched < 40 ? "destructive" : "success"} hint={<Sparkline data={spark("avg_percent_watched")} /> as any} />
         <StatCard label="Page loads" value={latest ? fmtNum(latest.page_loads) : "—"} hint={<Sparkline data={spark("page_loads")} /> as any} />
       </div>
@@ -480,14 +484,25 @@ function FaqVideosSection() {
         right={<Button size="sm" className="gap-1.5" onClick={() => { setEditing(null); setOpen(true); }}><Plus className="h-3.5 w-3.5" />Add FAQ video</Button>}
       />
 
+      {/* Section hero (B1) — the existing "dominant belief" callout, promoted
+          into a bento hero. Mechanism chip stays categorical/uncolored (4 equal
+          content types), not a funnel-position value. */}
       {topBelief && topBelief.clicks > 0 && (
-        <div className="rounded-lg border border-accent/30 bg-accent/5 p-3 flex items-start gap-2">
-          <TrendingUp className="h-4 w-4 text-accent shrink-0 mt-0.5" />
-          <div className="text-xs">
-            <span className="font-semibold">Dominant limiting belief:</span> "{topBelief.title}" — {topBelief.clicks} clicks
-            {topBelief.mechanism && <span className="text-muted-foreground"> · feeds the {MECHANISMS[topBelief.mechanism as MechanismKey]?.label ?? topBelief.mechanism} mix</span>}
-          </div>
-        </div>
+        <BentoGrid rowHeight="7rem">
+          <BentoCell span="wide">
+            <div className="hover-lift relative flex h-full items-center gap-3 overflow-hidden rounded-2xl border border-border bg-card p-5">
+              <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+              <TrendingUp className="relative h-5 w-5 shrink-0 text-spectrum-mid" />
+              <div className="relative min-w-0">
+                <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Dominant Limiting Belief</div>
+                <div className="display-serif mt-0.5 text-lg leading-snug">
+                  "{topBelief.title}" — <span className="font-mono text-base text-spectrum-mid">{topBelief.clicks}</span> clicks
+                </div>
+                {topBelief.mechanism && <div className="mt-0.5 text-xs text-muted-foreground">feeds the {MECHANISMS[topBelief.mechanism as MechanismKey]?.label ?? topBelief.mechanism} mix</div>}
+              </div>
+            </div>
+          </BentoCell>
+        </BentoGrid>
       )}
 
       {isLoading && <div className="text-sm text-muted-foreground">Loading…</div>}

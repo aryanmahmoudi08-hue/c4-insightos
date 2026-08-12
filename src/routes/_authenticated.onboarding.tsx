@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeIntake, analyzeIntakesAggregate } from "@/lib/intake-insights.functions";
 import { MECHANISM_KEYS, MECHANISMS, emptyWeights, scoreText, addWeights, type MechanismWeights } from "@/lib/content-mechanisms";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({ component: Onboarding });
 
@@ -252,32 +253,43 @@ function Onboarding() {
       <TopBar title="Client Onboarding Psychology" subtitle="Deep intake — pain, beliefs, identity shifts feeding the content engine" />
       <div className="p-6 space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Total intakes" value={total} icon={<Brain className="h-4 w-4" />} accent="accent" />
-          <StatCard label="Submitted" value={submitted} accent="success" />
+          {/* Total -> Submitted reads as a simple 2-stage completion funnel. Pending's
+              amber and Insight signals' neutral white are already correct as-is
+              (a waiting-state cue and a plain derived count, not funnel miscolors). */}
+          <StatCard label="Total intakes" value={total} icon={<Brain className="h-4 w-4" />} spectrum="cold" />
+          <StatCard label="Submitted" value={submitted} spectrum="hot" />
           <StatCard label="Pending" value={total - submitted} accent="warning" />
           <StatCard label="Insight signals" value={submitted * QUESTIONS.length} icon={<Sparkles className="h-4 w-4" />} accent="primary" />
         </div>
 
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-            <Brain className="h-3.5 w-3.5" /> Mechanism signal tags
-          </div>
-          <div className="text-2xs text-muted-foreground mb-3">
-            Every submission's "first touchpoint" / "decision to join" / "join sooner" answers are scored against the 4 content mechanisms and tagged here — this feeds Content Signals' mix directly instead of being buried in a footnote.
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
-            {MECHANISM_KEYS.map(k => (
-              <div key={k} className="rounded-md border border-border bg-muted/20 p-2.5">
-                <div className="text-3xs uppercase tracking-wider text-muted-foreground truncate">{MECHANISMS[k].label}</div>
-                <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums">{mechanismTagCounts.counts[k]}</div>
+        {/* Page hero (B1) — mechanism tags are categorical (4 equal content types),
+            so they stay neutral/uncolored rather than borrowing spectrum
+            decoratively; only the container gets the depth treatment. */}
+        <BentoGrid rowHeight="9.5rem">
+          <BentoCell span="hero">
+            <div className="hover-lift relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-5">
+              <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+              <div className="relative flex items-center gap-2 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                <Brain className="h-3.5 w-3.5" /> Mechanism Signal Tags
               </div>
-            ))}
-            <div className="rounded-md border border-dashed border-border p-2.5">
-              <div className="text-3xs uppercase tracking-wider text-muted-foreground truncate">Untagged</div>
-              <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-muted-foreground">{mechanismTagCounts.untagged}</div>
+              <div className="relative mt-1 text-2xs text-muted-foreground">
+                Every submission's "first touchpoint" / "decision to join" / "join sooner" answers are scored against the 4 content mechanisms and tagged here — feeds Content Signals' mix directly.
+              </div>
+              <div className="relative mt-3 grid flex-1 grid-cols-2 gap-2 lg:grid-cols-5">
+                {MECHANISM_KEYS.map(k => (
+                  <div key={k} className="rounded-md border border-border bg-muted/20 p-2.5">
+                    <div className="text-3xs uppercase tracking-wider text-muted-foreground truncate">{MECHANISMS[k].label}</div>
+                    <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums">{mechanismTagCounts.counts[k]}</div>
+                  </div>
+                ))}
+                <div className="rounded-md border border-dashed border-border p-2.5">
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground truncate">Untagged</div>
+                  <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-muted-foreground">{mechanismTagCounts.untagged}</div>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </BentoCell>
+        </BentoGrid>
 
         <div className="flex items-center justify-between">
           <div className="text-xs text-muted-foreground">Each submission triggers a content-team event with extracted beliefs & pain</div>

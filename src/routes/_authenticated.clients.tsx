@@ -20,6 +20,7 @@ import { notifyClientStageChangedFn } from "@/lib/client-events.functions";
 import { KanbanBoard, KanbanCardAnatomy } from "@/components/kanban-board";
 import { GlassTableShell, Pagination, usePagination } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
 
 export const Route = createFileRoute("/_authenticated/clients")({ component: Clients });
 
@@ -78,6 +79,24 @@ function atRiskReason(c: ClientRow): string | null {
   if (dru !== null && dru >= 0 && dru < 30 && !c.renewal_conv_started) reasons.push(`renewal in ${dru}d, no convo`);
   if (dru !== null && dru < 0) reasons.push(`renewal ${Math.abs(dru)}d overdue`);
   return reasons.length ? reasons.join(" · ") : null;
+}
+
+function ClientPortfolioHero({ ltv, active, atRisk }: { ltv: number; active: number; atRisk: number }) {
+  return (
+    <div className="hover-lift relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative flex items-start justify-between gap-3">
+        <div>
+          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Total Client LTV</div>
+          <div className="display-serif mt-1 text-5xl font-bold tabular-nums text-spectrum-hot md:text-6xl">${ltv.toLocaleString()}</div>
+        </div>
+        {atRisk > 0 && (
+          <span className="badge-glass shrink-0 font-mono normal-case tracking-normal text-destructive">{atRisk} at-risk</span>
+        )}
+      </div>
+      <div className="relative text-2xs text-muted-foreground">{active} active client{active === 1 ? "" : "s"}</div>
+    </div>
+  );
 }
 
 function Clients() {
@@ -236,9 +255,19 @@ function Clients() {
     <>
       <TopBar title="Clients & Renewals" subtitle="Lifetime value, health, and renewal pipeline" />
       <div className="p-6 space-y-5">
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <StatCard label="Active clients" value={active} accent="success" icon={<BadgeCheck className="h-4 w-4" />} />
-          <StatCard label="Total LTV" value={`$${ltv.toLocaleString()}`} accent="primary" />
+        {/* Page hero (B1) — Total LTV relocated into a richer mega-number (same
+            value, not duplicated below); everything else stays in the flat grid.
+            Health/renewals/at-risk are threshold-driven semantic state, correctly
+            left untouched. */}
+        <BentoGrid rowHeight="8rem">
+          <BentoCell span="hero">
+            <ClientPortfolioHero ltv={ltv} active={active} atRisk={atRisk.length} />
+          </BentoCell>
+        </BentoGrid>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard label="Active clients" value={active} spectrum="hot" icon={<BadgeCheck className="h-4 w-4" />} />
+          {/* Threshold-driven state signals, correctly kept semantic. */}
           <StatCard label="Avg health" value={`${avgHealth}`} accent={avgHealth > 70 ? "success" : avgHealth > 40 ? "warning" : "destructive"} icon={<HeartPulse className="h-4 w-4" />} />
           <StatCard label="Renewals <30d" value={renewalsDue} accent={renewalsDue ? "warning" : "primary"} icon={<Repeat className="h-4 w-4" />} />
           <StatCard label="At-risk" value={atRisk.length} accent={atRisk.length ? "destructive" : "primary"} icon={<AlertTriangle className="h-4 w-4" />} hint="Auto-flagged" />
@@ -290,7 +319,7 @@ function Clients() {
                     chip={
                       <div className="flex items-center justify-between text-2xs font-mono">
                         <span className="text-muted-foreground">{c.renewal_date ?? "no date"}</span>
-                        <span className="text-[color:var(--color-success)]">${Math.round((c.contract_value_cents ?? 0) / 100).toLocaleString()}</span>
+                        <span className="text-spectrum-hot">${Math.round((c.contract_value_cents ?? 0) / 100).toLocaleString()}</span>
                       </div>
                     }
                   />
@@ -359,7 +388,7 @@ function Clients() {
                       <tr key={o.offer} className="border-t border-border/70 hover:bg-muted/20">
                         <td className="p-3 font-medium">{o.offer}</td>
                         <td className="p-3 text-right font-mono">{o.count}</td>
-                        <td className="p-3 text-right font-mono text-[color:var(--color-success)]">${Math.round(o.total/100).toLocaleString()}</td>
+                        <td className="p-3 text-right font-mono text-spectrum-hot">${Math.round(o.total/100).toLocaleString()}</td>
                         <td className="p-3 text-right font-mono">${Math.round(o.avg/100).toLocaleString()}</td>
                         <td className="p-3">
                           <div className="flex items-center gap-2">
@@ -484,7 +513,7 @@ function ClientForm({ initial, onSubmit, planChecked, setPlanChecked, pending }:
           </div>
           <div className="flex items-center justify-between text-xs px-1">
             <span className="text-muted-foreground">Remaining balance</span>
-            <span className="font-mono font-semibold text-[color:var(--color-success)]">
+            <span className="font-mono font-semibold text-spectrum-hot">
               ${remainingBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}
             </span>
           </div>
