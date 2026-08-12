@@ -14,6 +14,7 @@ import { Plus, TrendingUp, Target, Sparkles, Signpost } from "lucide-react";
 import { toast } from "sonner";
 import { GlassTableShell } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
 
 
 export const Route = createFileRoute("/_authenticated/traffic")({ component: Traffic });
@@ -164,36 +165,45 @@ function Traffic() {
       <div className="p-4 md:p-6 space-y-5">
         {/* Plain-language headline numbers */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Revenue from tracked channels" value={fmtMoney(totalRevenue * 100)} accent="success" icon={<TrendingUp className="h-4 w-4" />} />
-          <StatCard label="Revenue per lead" value={`$${avgRevPerLead.toLocaleString()}`} accent="primary" hint="Across every tracked channel" />
-          <StatCard label="Leads tracked" value={attributedLeads} hint={`${totalSources} channels`} />
+          <StatCard label="Revenue from tracked channels" value={fmtMoney(totalRevenue * 100)} spectrum="hot" icon={<TrendingUp className="h-4 w-4" />} />
+          <StatCard label="Revenue per lead" value={`$${avgRevPerLead.toLocaleString()}`} spectrum="hot" hint="Across every tracked channel" />
+          <StatCard label="Leads tracked" value={attributedLeads} spectrum="cold" hint={`${totalSources} channels`} />
+          {/* Threshold-based at-risk signal (unattributed share crossing 25%) — a
+              genuine state indicator, not a funnel-position miscolor. */}
           <StatCard label="Leads with no source" value={unattributed}
             accent={unattributed > totalLeads / 4 ? "warning" : "primary"}
             hint={totalLeads ? `${Math.round((unattributed / totalLeads) * 100)}% of all leads — tag these` : ""} />
         </div>
 
-        {/* One-line read */}
-        {bestSource ? (
-          <div className="rounded-lg border border-border bg-card p-4">
-            <div className="flex items-start gap-3">
-              <Target className="mt-0.5 h-5 w-5 shrink-0 text-[color:var(--color-success)]" />
-              <div className="min-w-0 flex-1">
-                <div className="mb-0.5 flex items-center gap-1 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <Sparkles className="h-3 w-3" /> What the data says
+        {/* Page hero (B1) — the "what the data says" read, promoted into a bento
+            hero. Same content as before, richer container. */}
+        <BentoGrid rowHeight="8rem">
+          <BentoCell span="hero">
+            {bestSource ? (
+              <div className="hover-lift relative flex h-full flex-col justify-center overflow-hidden rounded-2xl border border-border bg-card p-5">
+                <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+                <div className="relative flex items-start gap-3">
+                  <Target className="mt-0.5 h-5 w-5 shrink-0 text-spectrum-hot" />
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-0.5 flex items-center gap-1 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <Sparkles className="h-3 w-3" /> What the data says
+                    </div>
+                    <p className="display-serif text-lg leading-snug">
+                      <span className="font-semibold text-spectrum-hot">{bestSource.name}</span> is your strongest channel: {bestSource.leads} leads turned into{" "}
+                      {bestSource.clients} clients ({bestSource.closeRate}% close rate) at{" "}
+                      <span className="font-mono text-base">${bestSource.avgDeal.toLocaleString()}</span> per deal.
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">Put more time and budget here first.</p>
+                  </div>
                 </div>
-                <p className="text-sm leading-relaxed">
-                  <span className="font-semibold">{bestSource.name}</span> is your strongest channel: {bestSource.leads} leads turned into{" "}
-                  {bestSource.clients} clients ({bestSource.closeRate}% close rate) at{" "}
-                  <span className="font-mono">${bestSource.avgDeal.toLocaleString()}</span> per deal. Put more time and budget here first.
-                </p>
               </div>
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-lg border border-dashed border-border bg-card/50 p-4 text-sm text-muted-foreground">
-            Tag at least 3 leads to a channel and close one deal — then this box tells you exactly where to double down.
-          </div>
-        )}
+            ) : (
+              <div className="flex h-full items-center rounded-2xl border border-dashed border-border bg-card/50 p-5 text-sm text-muted-foreground">
+                Tag at least 3 leads to a channel and close one deal — then this box tells you exactly where to double down.
+              </div>
+            )}
+          </BentoCell>
+        </BentoGrid>
 
         {/* Share of leads — single clean bar, no mixed scales */}
         <section className="rounded-lg border border-border bg-card overflow-hidden">
@@ -251,10 +261,10 @@ function Traffic() {
                 <div>
                   <div className="flex items-baseline justify-between">
                     <span className="text-3xs uppercase tracking-wider text-muted-foreground">Revenue per lead</span>
-                    <span className="font-mono text-lg font-semibold">${b.revenuePerLead.toLocaleString()}</span>
+                    <span className="font-mono text-lg font-semibold text-spectrum-hot">${b.revenuePerLead.toLocaleString()}</span>
                   </div>
                   <div className="mt-1 h-1.5 overflow-hidden rounded bg-muted">
-                    <div className="h-full bg-[color:var(--color-success)]" style={{ width: `${Math.max(2, bar)}%` }} />
+                    <div className="h-full bg-spectrum-hot" style={{ width: `${Math.max(2, bar)}%` }} />
                   </div>
                   <div className="mt-1 text-3xs text-muted-foreground">Workspace average ${avgRevPerLead.toLocaleString()}</div>
                 </div>
@@ -302,7 +312,7 @@ function Traffic() {
                       <td className="p-3 font-medium">{b.name}</td>
                       <td className="p-3 text-xs uppercase text-muted-foreground">{b.category}</td>
                       <td className="p-3 text-right font-mono">{b.leads}</td>
-                      <td className="p-3 text-right font-mono text-[color:var(--color-success)]">{b.clients}</td>
+                      <td className="p-3 text-right font-mono text-spectrum-hot">{b.clients}</td>
                       <td className="p-3 text-right font-mono">{b.closeRate}%</td>
                       <td className="p-3 text-right font-mono">${b.avgDeal.toLocaleString()}</td>
                       <td className="p-3 text-right font-mono font-semibold">${b.revenuePerLead.toLocaleString()}</td>

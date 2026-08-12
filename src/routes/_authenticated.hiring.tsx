@@ -19,6 +19,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { gradeLoomFn } from "@/lib/hiring.functions";
 import { KanbanBoard } from "@/components/kanban-board";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
+import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, type SpectrumPosition } from "@/lib/spectrum";
 
 export const Route = createFileRoute("/_authenticated/hiring")({ component: Hiring });
 
@@ -81,6 +83,44 @@ function scoreApplicant(a: { years_experience?: number | null; niche?: string | 
   if (/remote|full.?time|available/.test(notes)) { score += 0.5; r.push("availability"); }
   score = Math.max(0, Math.min(10, score));
   return { score: Math.round(score * 10) / 10, reasoning: r.join(" · ") };
+}
+
+function HiringFunnelHero({ total, interviewWorthy, hired }: { total: number; interviewWorthy: number; hired: number }) {
+  const stages: { label: string; value: number; spectrum: SpectrumPosition }[] = [
+    { label: "Total Applicants", value: total, spectrum: "cold" },
+    { label: "Interview / Trial", value: interviewWorthy, spectrum: "mid" },
+    { label: "Hired", value: hired, spectrum: "hot" },
+  ];
+  const max = Math.max(1, stages[0].value);
+  return (
+    <div className="hover-lift relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative">
+        <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Hiring Pipeline</div>
+        <div className="display-serif mt-0.5 text-2xl">Applicants to hires</div>
+      </div>
+      <div className="relative flex flex-1 flex-col justify-center gap-2.5 py-3">
+        {stages.map((s, i) => {
+          const width = Math.max(4, Math.round((s.value / max) * 100));
+          const prev = stages[i - 1];
+          const conv = prev && prev.value > 0 ? `${((s.value / prev.value) * 100).toFixed(0)}%` : null;
+          return (
+            <div key={s.label} className="space-y-1">
+              <div className="flex items-center justify-between text-2xs">
+                <span className="font-medium">{s.label}</span>
+                <span className="font-mono text-muted-foreground">
+                  {s.value}{conv && <span className={`ml-1.5 ${SPECTRUM_TEXT_CLASS[s.spectrum]}`}>· {conv}</span>}
+                </span>
+              </div>
+              <div className="h-2 rounded bg-muted/30 overflow-hidden">
+                <div className="h-full rounded transition-all duration-500" style={{ width: `${width}%`, background: SPECTRUM_VAR[s.spectrum] }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function Hiring() {
@@ -183,10 +223,17 @@ function Hiring() {
     <>
       <TopBar title="Sales Team Hiring" subtitle="Applicant pipeline · AI-scored · drag to move stages" />
       <div className="p-6 space-y-5">
+        <BentoGrid cols={2} rowHeight="8rem">
+          <BentoCell span="hero">
+            <HiringFunnelHero total={total} interviewWorthy={interviewWorthy} hired={hired} />
+          </BentoCell>
+        </BentoGrid>
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Total applicants" value={total} icon={<Users className="h-4 w-4" />} accent="accent" />
-          <StatCard label="Interview / Trial" value={interviewWorthy} accent="primary" />
-          <StatCard label="Hired" value={hired} accent="success" />
+          <StatCard label="Total applicants" value={total} icon={<Users className="h-4 w-4" />} spectrum="cold" />
+          <StatCard label="Interview / Trial" value={interviewWorthy} spectrum="mid" />
+          <StatCard label="Hired" value={hired} spectrum="hot" />
+          {/* Avg score vs a quality bar is a genuine threshold/state signal — success/warning is correct here, not a spectrum miscolor. */}
           <StatCard label="Avg AI score" value={avgScore.toFixed(1)} icon={<Star className="h-4 w-4" />} accent={avgScore >= 7 ? "success" : "warning"} />
         </div>
 
@@ -229,8 +276,8 @@ function Hiring() {
             return (
               <TabsContent key={t.key} value={t.key} className="space-y-3">
                 <div className="grid grid-cols-3 gap-3">
-                  <StatCard label={`${t.label}s in pipeline`} value={roleApplicants.length} icon={<Users className="h-4 w-4" />} accent="accent" />
-                  <StatCard label="Hired" value={roleHired} accent="success" />
+                  <StatCard label={`${t.label}s in pipeline`} value={roleApplicants.length} icon={<Users className="h-4 w-4" />} spectrum="cold" />
+                  <StatCard label="Hired" value={roleHired} spectrum="hot" />
                   <StatCard label="Avg transcript-quality score" value={roleAvg.toFixed(1)} icon={<Star className="h-4 w-4" />} accent={roleAvg >= 7 ? "success" : "warning"} />
                 </div>
                 <KanbanBoard

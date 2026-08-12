@@ -14,10 +14,31 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { GlassTableShell } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
 
 export const Route = createFileRoute("/_authenticated/team")({ component: Team });
 
 type Member = { user_id: string; role: string; profiles: { display_name: string | null; avatar_url: string | null } | null };
+
+function TeamCashHero({ teamCash30d, topEarner, memberCount }: { teamCash30d: number; topEarner?: { profiles: { display_name: string | null } | null; cash: number; closes: number }; memberCount: number }) {
+  return (
+    <div className="hover-lift relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative">
+        <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Team Cash · Last 30d</div>
+        <div className="display-serif mt-1 text-5xl font-bold tabular-nums text-spectrum-hot">${teamCash30d.toLocaleString()}</div>
+      </div>
+      <div className="relative flex items-end justify-between gap-3 text-2xs text-muted-foreground">
+        <span>{memberCount} member{memberCount === 1 ? "" : "s"} on the roster</span>
+        {topEarner && topEarner.cash > 0 && (
+          <span className="font-mono">
+            Top: <span className="font-semibold text-foreground">{topEarner.profiles?.display_name ?? "—"}</span> · ${topEarner.cash.toLocaleString()}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function Team() {
   const { data: org } = useCurrentOrg();
@@ -108,15 +129,26 @@ function Team() {
     };
   });
 
+  const teamCash30d = byUser.reduce((s, m) => s + m.cash, 0);
+  const topEarner = [...byUser].sort((a, b) => b.cash - a.cash)[0];
+
   return (
     <>
       <TopBar title="Team" subtitle="Setters, closers, owners — last 30d performance" />
       <div className="p-6 space-y-5">
+        <BentoGrid cols={2} rowHeight="8rem">
+          <BentoCell span="hero">
+            <TeamCashHero teamCash30d={teamCash30d} topEarner={topEarner} memberCount={members?.length ?? 0} />
+          </BentoCell>
+        </BentoGrid>
+
+        {/* Headcount by role — categorical, not a funnel metric, so it stays
+            neutral rather than borrowing spectrum or semantic-state color. */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Members" value={members?.length ?? 0} icon={<Users className="h-4 w-4" />} />
-          <StatCard label="Owners / Admins" value={(members ?? []).filter(m => m.role === "owner" || m.role === "admin").length} accent="accent" />
-          <StatCard label="Setters" value={(members ?? []).filter(m => m.role === "setter").length} accent="primary" />
-          <StatCard label="Closers" value={(members ?? []).filter(m => m.role === "closer").length} accent="success" />
+          <StatCard label="Owners / Admins" value={(members ?? []).filter(m => m.role === "owner" || m.role === "admin").length} />
+          <StatCard label="Setters" value={(members ?? []).filter(m => m.role === "setter").length} />
+          <StatCard label="Closers" value={(members ?? []).filter(m => m.role === "closer").length} />
         </div>
         <TeamRosterPanel />
 

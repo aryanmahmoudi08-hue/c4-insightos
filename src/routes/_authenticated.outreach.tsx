@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Mail, MessageSquare, Plus, Send, Calendar, Users, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
+import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, type SpectrumPosition } from "@/lib/spectrum";
 
 export const Route = createFileRoute("/_authenticated/outreach")({ component: Outreach });
 
@@ -24,6 +26,45 @@ const STATUS_TONE: Record<string, string> = {
   sent: CHIP_TONE_CLASSES.success,
   failed: CHIP_TONE_CLASSES.destructive,
 };
+
+function MessagePipelineHero({ counts, lists }: { counts: { draft: number; scheduled: number; sending: number; sent: number; failed: number }; lists: number }) {
+  const stages: { label: string; value: number; spectrum: SpectrumPosition }[] = [
+    { label: "Draft", value: counts.draft, spectrum: "cold" },
+    { label: "Scheduled / Sending", value: counts.scheduled + counts.sending, spectrum: "mid" },
+    { label: "Sent", value: counts.sent, spectrum: "hot" },
+  ];
+  const max = Math.max(1, ...stages.map(s => s.value));
+  return (
+    <div className="hover-lift relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative flex items-start justify-between gap-3">
+        <div>
+          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Message Pipeline</div>
+          <div className="display-serif mt-0.5 text-2xl">{lists} list{lists === 1 ? "" : "s"} in play</div>
+        </div>
+        {counts.failed > 0 && (
+          <span className="badge-glass shrink-0 font-mono normal-case tracking-normal text-destructive">{counts.failed} failed</span>
+        )}
+      </div>
+      <div className="relative flex flex-1 flex-col justify-center gap-2.5 py-3">
+        {stages.map(s => {
+          const width = Math.max(4, Math.round((s.value / max) * 100));
+          return (
+            <div key={s.label} className="space-y-1">
+              <div className="flex items-center justify-between text-2xs">
+                <span className="font-medium">{s.label}</span>
+                <span className={`font-mono font-semibold ${SPECTRUM_TEXT_CLASS[s.spectrum]}`}>{s.value}</span>
+              </div>
+              <div className="h-2 rounded bg-muted/30 overflow-hidden">
+                <div className="h-full rounded transition-all duration-500" style={{ width: `${width}%`, background: SPECTRUM_VAR[s.spectrum] }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function Outreach() {
   const { data: org } = useCurrentOrg();
@@ -73,6 +114,16 @@ function Outreach() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
+  // Message Pipeline hero (B1) — draft/scheduled/sending are pre-send (cold/mid),
+  // sent is the converted state (hot); failed is a genuine at-risk state, kept red.
+  const statusCounts = useMemo(() => {
+    const counts = { draft: 0, scheduled: 0, sending: 0, sent: 0, failed: 0 };
+    for (const m of messages ?? []) {
+      if (m.status in counts) counts[m.status as keyof typeof counts] += 1;
+    }
+    return counts;
+  }, [messages]);
+
   const createMessage = useMutation({
     mutationFn: async (form: FormData) => {
       const kind = String(form.get("kind") || "email");
@@ -98,6 +149,12 @@ function Outreach() {
     <>
       <TopBar title="Outreach" subtitle="Schedule SMS + email blasts to your lists" />
       <div className="p-6 space-y-5">
+        <BentoGrid cols={2} rowHeight="8rem">
+          <BentoCell span="hero">
+            <MessagePipelineHero counts={statusCounts} lists={lists?.length ?? 0} />
+          </BentoCell>
+        </BentoGrid>
+
         <div className="flex justify-between items-center">
           <div className="text-xs text-muted-foreground">{lists?.length ?? 0} lists · {messages?.length ?? 0} messages</div>
           <div className="flex gap-2">
