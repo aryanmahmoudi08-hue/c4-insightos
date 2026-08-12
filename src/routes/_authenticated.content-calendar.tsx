@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { CalendarDays, Clock, Copy, CalendarPlus, Check, Film, FileText, Repeat, Mic2, Target, Lightbulb } from "lucide-react";
+import { CalendarDays, Clock, Copy, CalendarPlus, Check, FileText, Repeat, Mic2, Target, Lightbulb } from "lucide-react";
 import { toast } from "sonner";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
+import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, type SpectrumPosition } from "@/lib/spectrum";
 
 type Sched = {
   id: string; title: string | null; platform: string; hook: string | null;
@@ -66,6 +68,40 @@ function gcalLink(p: Sched) {
 }
 
 export const Route = createFileRoute("/_authenticated/content-calendar")({ component: ContentCalendar });
+
+function CalendarPipelineHero({ scheduled, ready, posted }: { scheduled: number; ready: number; posted: number }) {
+  const stages: { label: string; value: number; spectrum: SpectrumPosition }[] = [
+    { label: "Scheduled this month", value: scheduled, spectrum: "cold" },
+    { label: "Ready to post", value: ready, spectrum: "mid" },
+    { label: "Already posted", value: posted, spectrum: "hot" },
+  ];
+  const max = Math.max(1, scheduled);
+  return (
+    <div className="hover-lift relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative">
+        <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">This Month's Pipeline</div>
+        <div className="display-serif mt-0.5 text-2xl">Scheduled to posted</div>
+      </div>
+      <div className="relative flex flex-1 flex-col justify-center gap-2.5 py-3">
+        {stages.map(s => {
+          const width = Math.max(4, Math.round((s.value / max) * 100));
+          return (
+            <div key={s.label} className="space-y-1">
+              <div className="flex items-center justify-between text-2xs">
+                <span className="font-medium">{s.label}</span>
+                <span className={`font-mono font-semibold ${SPECTRUM_TEXT_CLASS[s.spectrum]}`}>{s.value}</span>
+              </div>
+              <div className="h-2 rounded bg-muted/30 overflow-hidden">
+                <div className="h-full rounded transition-all duration-500" style={{ width: `${width}%`, background: SPECTRUM_VAR[s.spectrum] }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function ContentCalendar() {
   const { data: org } = useCurrentOrg();
@@ -132,22 +168,31 @@ function ContentCalendar() {
     <>
       <TopBar title="Content Calendar" subtitle="Every approved post, scripted and scheduled — nothing left to figure out" />
       <div className="p-4 md:p-6 space-y-4">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            { label: "Scheduled this month", value: monthPieces.length, icon: CalendarDays },
-            { label: "Ready to post", value: monthPieces.filter(p => p.pipeline_status === "ready_to_post").length, icon: Check },
-            { label: "Already posted", value: monthPieces.filter(p => p.pipeline_status === "posted").length, icon: Film },
-            { label: "Long-form queued", value: monthPieces.filter(p => p.post_format === "long_form" || p.post_format === "long_to_short").length, icon: FileText },
-          ].map(s => (
-            <Card key={s.label} className="p-3 bg-gradient-to-br from-card to-muted/20">
-              <div className="flex items-center justify-between">
-                <span className="text-3xs uppercase tracking-wider text-muted-foreground">{s.label}</span>
-                <s.icon className="h-3.5 w-3.5 text-muted-foreground" />
+        {/* Page hero (B1) — this month's posting pipeline as a 3-stage funnel
+            (scheduled -> ready -> posted reads naturally as cold->mid->hot),
+            with the format-mix count as a companion tile so the grid fully
+            covers itself instead of leaving empty tracks. */}
+        <BentoGrid cols={2} rowHeight="8rem">
+          <BentoCell span="hero">
+            <CalendarPipelineHero
+              scheduled={monthPieces.length}
+              ready={monthPieces.filter(p => p.pipeline_status === "ready_to_post").length}
+              posted={monthPieces.filter(p => p.pipeline_status === "posted").length}
+            />
+          </BentoCell>
+          <BentoCell span="tall">
+            <div className="flex h-full flex-col justify-between rounded-2xl border border-border bg-card p-4">
+              <div className="flex items-center gap-2">
+                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted/60 text-foreground"><FileText className="h-4 w-4" /></div>
+                <div className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">Long-form Queued</div>
               </div>
-              <div className="text-2xl font-mono mt-1">{s.value}</div>
-            </Card>
-          ))}
-        </div>
+              <div className="font-mono text-3xl font-bold tabular-nums">
+                {monthPieces.filter(p => p.post_format === "long_form" || p.post_format === "long_to_short").length}
+              </div>
+              <div className="text-2xs text-muted-foreground">this month</div>
+            </div>
+          </BentoCell>
+        </BentoGrid>
 
         <Card className="p-4">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">

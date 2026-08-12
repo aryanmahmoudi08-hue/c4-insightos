@@ -18,6 +18,7 @@ import { mockContentDemand, mockContentSystemInsight, withMockDelay } from "@/li
 import { Radar, Sparkles, Loader2, TrendingUp, TriangleAlert, PhoneCall, CalendarCheck, ArrowRight, ChevronDown, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
 
 export const Route = createFileRoute("/_authenticated/content-signals")({
   component: ContentSignalsPage,
@@ -174,7 +175,13 @@ function ContentSignalsPage() {
           </div>
         </header>
 
-        <RootCauseChain untaggedCount={weekly.per["untagged"]?.count ?? 0} untrackedCount={weekly.untracked} totalPosts={weekly.total} />
+        {/* Page hero (B1) — presentation-only promotion into a bento hero;
+            RootCauseChain's own node logic/tones are untouched (Part F). */}
+        <BentoGrid rowHeight="9.5rem">
+          <BentoCell span="hero">
+            <RootCauseChain untaggedCount={weekly.per["untagged"]?.count ?? 0} untrackedCount={weekly.untracked} totalPosts={weekly.total} />
+          </BentoCell>
+        </BentoGrid>
 
         {/* Demand mix */}
         <Card className="p-4 space-y-3">
@@ -334,11 +341,12 @@ function RootCauseChain({ untaggedCount, untrackedCount, totalPosts }: { untagge
   const gapNode = nodes.find(n => n.key === gap);
 
   return (
-    <Card className="p-4 space-y-3">
-      <div className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted-foreground">
+    <div className="hover-lift relative flex h-full flex-col justify-center gap-3 overflow-hidden rounded-2xl border border-border bg-card p-5">
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         <Wrench className="h-3.5 w-3.5" /> Root cause — why the numbers move
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="relative flex flex-wrap items-center gap-1.5">
         {nodes.map((n, i) => (
           <div key={n.key} className="flex items-center gap-1.5">
             <div className={cn("flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-2xs font-medium",
@@ -353,12 +361,12 @@ function RootCauseChain({ untaggedCount, untrackedCount, totalPosts }: { untagge
           </div>
         ))}
       </div>
-      <div className="text-2xs text-muted-foreground">
+      <div className="relative text-2xs text-muted-foreground">
         {gapNode
           ? <>Current gap: <span className={cn("font-medium", gapNode.tone === "destructive" && "text-destructive")}>{gapNode.label}</span> out of {totalPosts} posts this week — fix that first, every downstream read (mix %, bottleneck engine, double-down calls) sharpens automatically once it's closed.</>
           : <>Tracking is healthy — {totalPosts} posts this week are all mechanism-tagged with metrics logged. The mix below reflects real signal, not guesswork.</>}
       </div>
-    </Card>
+    </div>
   );
 }
 

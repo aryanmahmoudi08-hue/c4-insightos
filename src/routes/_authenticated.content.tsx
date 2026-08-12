@@ -26,7 +26,9 @@ import { MECHANISMS, MECHANISM_KEYS, questionsFor, type MechanismKey, type Varia
 import type { Database } from "@/integrations/supabase/types";
 import { GlassTableShell } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
-import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
+import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
+import { SPECTRUM_VAR, SPECTRUM_CHIP_CLASS, type SpectrumPosition } from "@/lib/spectrum";
 
 type Platform = Database["public"]["Enums"]["content_platform"];
 type Angle = Database["public"]["Enums"]["content_angle"];
@@ -53,7 +55,12 @@ const PIPELINE: { key: string; label: string; tone: string }[] = [
   { key: "posted", label: "Posted", tone: CHIP_TONE_CLASSES.default },
 ];
 
-const FUNNEL_TONE: Record<string, ChipTone> = { TOF: "info", MOF: "warning", BOF: "success" };
+// Top/Middle/Bottom-of-funnel is literally the spectrum's own cold/mid/hot
+// vocabulary — was previously split across a semantic ChipTone mapping (table)
+// and raw hardcoded blue-500/amber-500/emerald-500 (kanban card + calendar),
+// the exact banned-default-Tailwind-hue pattern (B7). Unified to spectrum.
+const FUNNEL_SPECTRUM: Record<string, SpectrumPosition> = { TOF: "cold", MOF: "mid", BOF: "hot" };
+const funnelChip = (stage: string | null) => stage && FUNNEL_SPECTRUM[stage] ? SPECTRUM_CHIP_CLASS[FUNNEL_SPECTRUM[stage]] : CHIP_TONE_CLASSES.default;
 
 type Prefill = {
   id?: string; title?: string; hook?: string; platform?: Platform; angle?: Angle; url?: string; transcript?: string;
@@ -338,10 +345,10 @@ function ContentIntel() {
             ...(perf.inReview > 0 ? [{ label: `${perf.inReview} in review`, tone: "warning" as const }] : []),
           ]}
           stats={[
-            { label: "Views", value: fmtN(perf.totals.views) },
-            { label: "Leads", value: fmtN(perf.totals.leads) },
-            { label: "Closes", value: fmtN(perf.totals.closes) },
-            { label: "Cash", value: "$" + fmtN(perf.totals.cash / 100) },
+            { label: "Views", value: fmtN(perf.totals.views), spectrum: "cold" },
+            { label: "Leads", value: fmtN(perf.totals.leads), spectrum: "mid" },
+            { label: "Closes", value: fmtN(perf.totals.closes), spectrum: "hot" },
+            { label: "Cash", value: "$" + fmtN(perf.totals.cash / 100), spectrum: "hot" },
           ]}
           actions={
             <>
@@ -359,63 +366,69 @@ function ContentIntel() {
 
         {/* Enterprise metric visualizers */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger-fade">
-          <MetricCard label="Views" value={fmtN(perf.totals.views)} icon={<Eye className="h-3 w-3" />} deltaPct={12} spark={[40, 55, 48, 62, 70, 65, 80]} tone="default" />
-          <MetricCard label="Leads generated" value={fmtN(perf.totals.leads)} icon={<Sparkles className="h-3 w-3" />} deltaPct={8} spark={[3, 5, 4, 6, 7, 6, 9]} sparkVariant="bar" tone="accent" />
-          <MetricCard label="Closes attributed" value={fmtN(perf.totals.closes)} icon={<Flame className="h-3 w-3" />} deltaPct={-4} spark={[2, 3, 2, 3, 1, 2, 3]} sparkVariant="bar" tone="warning" />
-          <MetricCard label="Cash attributed" value={"$" + fmtN(perf.totals.cash / 100)} icon={<Layers className="h-3 w-3" />} deltaPct={21} spark={[4, 6, 5, 8, 9, 10, 12]} tone="success" />
+          <MetricCard label="Views" value={fmtN(perf.totals.views)} icon={<Eye className="h-3 w-3" />} spectrum="cold" deltaPct={12} spark={[40, 55, 48, 62, 70, 65, 80]} />
+          <MetricCard label="Leads generated" value={fmtN(perf.totals.leads)} icon={<Sparkles className="h-3 w-3" />} spectrum="mid" deltaPct={8} spark={[3, 5, 4, 6, 7, 6, 9]} sparkVariant="bar" />
+          <MetricCard label="Closes attributed" value={fmtN(perf.totals.closes)} icon={<Flame className="h-3 w-3" />} spectrum="hot" deltaPct={-4} spark={[2, 3, 2, 3, 1, 2, 3]} sparkVariant="bar" />
+          <MetricCard label="Cash attributed" value={"$" + fmtN(perf.totals.cash / 100)} icon={<Layers className="h-3 w-3" />} spectrum="hot" deltaPct={21} spark={[4, 6, 5, 8, 9, 10, 12]} />
         </div>
 
-        {/* Funnel + hook comparison + variation heatmap */}
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="text-sm font-semibold mb-3">Content → Cash funnel</div>
-            <div className="space-y-1.5">
-              {[
-                { stage: "Views", value: perf.totals.views },
-                { stage: "Leads", value: perf.totals.leads },
-                { stage: "Closes", value: perf.totals.closes },
-              ].map((f, i, arr) => {
-                const max = arr[0].value || 1;
-                const width = Math.max(6, Math.round((f.value / max) * 100));
-                return (
-                  <div key={f.stage} className="space-y-0.5">
-                    <div className="flex items-center justify-between text-2xs">
-                      <span className="font-medium">{f.stage}</span>
-                      <span className="font-mono text-muted-foreground">{fmtN(f.value)}</span>
+        {/* Content -> Cash funnel — the page's hero moment (B1), promoted into a
+            bento hero with bands now in strict spectrum order instead of a flat
+            foreground-opacity ramp. Hook comparison stays alongside it. */}
+        <BentoGrid rowHeight="9.5rem">
+          <BentoCell span="hero">
+            <div className="hover-lift relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-5">
+              <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+              <div className="relative text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Content → Cash Funnel</div>
+              <div className="relative flex-1 flex flex-col justify-center space-y-2 py-3">
+                {([
+                  { stage: "Views", value: perf.totals.views, spectrum: "cold" },
+                  { stage: "Leads", value: perf.totals.leads, spectrum: "mid" },
+                  { stage: "Closes", value: perf.totals.closes, spectrum: "hot" },
+                ] as { stage: string; value: number; spectrum: SpectrumPosition }[]).map((f, i, arr) => {
+                  const max = arr[0].value || 1;
+                  const width = Math.max(6, Math.round((f.value / max) * 100));
+                  return (
+                    <div key={f.stage} className="space-y-0.5">
+                      <div className="flex items-center justify-between text-2xs">
+                        <span className="font-medium">{f.stage}</span>
+                        <span className="font-mono text-muted-foreground">{fmtN(f.value)}</span>
+                      </div>
+                      <div className="h-5 rounded bg-muted/30 overflow-hidden">
+                        <div className="h-full rounded transition-all duration-500" style={{ width: `${width}%`, background: SPECTRUM_VAR[f.spectrum] }} />
+                      </div>
                     </div>
-                    <div className="h-5 rounded bg-muted/30 overflow-hidden">
-                      <div className="h-full rounded transition-all duration-500" style={{ width: `${width}%`, background: `color-mix(in oklch, var(--foreground) ${92 - i * 20}%, var(--muted-foreground))` }} />
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          </BentoCell>
+        </BentoGrid>
 
-          <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
-            <div className="text-sm font-semibold mb-3">Top hooks by retention</div>
-            <div className="grid sm:grid-cols-2 gap-2.5 stagger-fade">
-              {perf.topHooks.map((p) => {
-                const m = p.content_metrics?.[0];
-                const retention = m?.hook_retention_pct ?? 0;
-                return (
-                  <div key={p.id} className="hover-lift rounded-lg border border-border bg-background/60 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="text-xs font-medium leading-snug line-clamp-2">{p.title || p.hook || "(untitled)"}</div>
-                      <span className={`badge-glass normal-case tracking-normal shrink-0 ${retention >= 55 ? "text-[color:var(--color-success)]" : "text-muted-foreground"}`}>
-                        <Flame className="h-2.5 w-2.5" />{retention}% retention
-                      </span>
-                    </div>
-                    <div className="mt-2 flex items-center gap-3 text-3xs font-mono text-muted-foreground">
-                      <span>{fmtN(m?.views ?? 0)} views</span>
-                      <span>{m?.leads_generated ?? 0} leads</span>
-                      <span className="capitalize">{p.platform?.replace(/_/g, " ")}</span>
-                    </div>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="text-sm font-semibold mb-3">Top hooks by retention</div>
+          <div className="grid sm:grid-cols-2 gap-2.5 stagger-fade">
+            {perf.topHooks.map((p) => {
+              const m = p.content_metrics?.[0];
+              const retention = m?.hook_retention_pct ?? 0;
+              return (
+                <div key={p.id} className="hover-lift rounded-lg border border-border bg-background/60 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-xs font-medium leading-snug line-clamp-2">{p.title || p.hook || "(untitled)"}</div>
+                    {/* Threshold-based quality signal, correctly kept semantic (not a spectrum miscolor). */}
+                    <span className={`badge-glass normal-case tracking-normal shrink-0 ${retention >= 55 ? "text-[color:var(--color-success)]" : "text-muted-foreground"}`}>
+                      <Flame className="h-2.5 w-2.5" />{retention}% retention
+                    </span>
                   </div>
-                );
-              })}
-              {perf.topHooks.length === 0 && <div className="text-xs text-muted-foreground italic sm:col-span-2">Log content with hook retention % to see top performers here.</div>}
-            </div>
+                  <div className="mt-2 flex items-center gap-3 text-3xs font-mono text-muted-foreground">
+                    <span>{fmtN(m?.views ?? 0)} views</span>
+                    <span>{m?.leads_generated ?? 0} leads</span>
+                    <span className="capitalize">{p.platform?.replace(/_/g, " ")}</span>
+                  </div>
+                </div>
+              );
+            })}
+            {perf.topHooks.length === 0 && <div className="text-xs text-muted-foreground italic sm:col-span-2">Log content with hook retention % to see top performers here.</div>}
           </div>
         </div>
 
@@ -424,7 +437,7 @@ function ContentIntel() {
             <div className="text-sm font-semibold">Mechanism × variation heatmap</div>
             <div className="text-3xs text-muted-foreground">Avg views per piece</div>
           </div>
-          <HeatmapGrid rowLabels={perf.heatmapRows} colLabels={perf.heatmapCols} data={perf.heatmapData} valueFmt={(v) => fmtN(v) + " views"} tone="var(--accent)" />
+          <HeatmapGrid rowLabels={perf.heatmapRows} colLabels={perf.heatmapCols} data={perf.heatmapData} valueFmt={(v) => fmtN(v) + " views"} variant="spectrum" />
         </div>
 
         <Tabs defaultValue="pipeline">
@@ -455,12 +468,7 @@ function ContentIntel() {
                           <div className="flex items-start justify-between gap-2">
                             <button onClick={() => setOverviewFor(p)} className="text-xs font-medium leading-snug text-left hover:text-accent line-clamp-2">{p.title || "(untitled)"}</button>
                             {p.funnel_stage && (
-                              <span className={`shrink-0 inline-block rounded px-1 py-0.5 text-4xs font-mono uppercase ${
-                                p.funnel_stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
-                                p.funnel_stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
-                                p.funnel_stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" :
-                                "bg-muted text-muted-foreground"
-                              }`}>{p.funnel_stage}</span>
+                              <span className={`shrink-0 inline-block rounded px-1 py-0.5 text-4xs font-mono uppercase ${funnelChip(p.funnel_stage)}`}>{p.funnel_stage}</span>
                             )}
                           </div>
                           {p.hook && <div className="text-2xs text-muted-foreground line-clamp-2">{p.hook}</div>}
@@ -535,7 +543,7 @@ function ContentIntel() {
                           <td className="p-3 text-xs">{p.angle ?? "—"}</td>
                           <td className="p-3 text-center">
                             {p.funnel_stage ? (
-                              <span className={`inline-block rounded px-1.5 py-0.5 text-3xs font-mono uppercase ${CHIP_TONE_CLASSES[FUNNEL_TONE[p.funnel_stage] ?? "default"]}`}>{p.funnel_stage}</span>
+                              <span className={`inline-block rounded px-1.5 py-0.5 text-3xs font-mono uppercase ${funnelChip(p.funnel_stage)}`}>{p.funnel_stage}</span>
                             ) : <span className="text-muted-foreground">—</span>}
                           </td>
                           <td className="p-3 text-center">{p.url ? (
@@ -616,9 +624,7 @@ function ContentIntel() {
                             {slot.pieces.slice(0, 3).map(p => {
                               const m = (p.content_metrics ?? [])[0];
                               const stage = p.funnel_stage ?? "—";
-                              const stageCls = stage === "TOF" ? "bg-blue-500/15 text-blue-400" :
-                                stage === "MOF" ? "bg-amber-500/15 text-amber-400" :
-                                stage === "BOF" ? "bg-emerald-500/15 text-emerald-400" : "bg-muted text-muted-foreground";
+                              const stageCls = funnelChip(p.funnel_stage);
                               return (
                                 <button key={p.id} onClick={() => setOverviewFor(p)} className="w-full flex items-center gap-1 rounded px-1 py-0.5 hover:bg-accent/10 text-left" title={p.title ?? ""}>
                                   <span className={`rounded px-1 py-px text-4xs font-mono uppercase ${stageCls}`}>{stage}</span>
@@ -1003,7 +1009,7 @@ function OverviewPanel({ piece, onClose, onEdit }: { piece: PieceRow | null; onC
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="uppercase text-muted-foreground">{piece.platform}</span>
-          {stage && <span className={`rounded px-1.5 py-0.5 font-mono uppercase text-3xs ${CHIP_TONE_CLASSES[FUNNEL_TONE[stage] ?? "default"]}`}>{stage}</span>}
+          {stage && <span className={`rounded px-1.5 py-0.5 font-mono uppercase text-3xs ${funnelChip(stage)}`}>{stage}</span>}
           {piece.angle && <span className="rounded bg-muted px-1.5 py-0.5">{piece.angle}</span>}
           {piece.mechanism && (
             <span className="rounded bg-accent/15 px-1.5 py-0.5 text-accent">
