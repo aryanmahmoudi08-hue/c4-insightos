@@ -1,8 +1,11 @@
 import { cn } from "@/lib/utils";
 
+// Identity colors (per-person, categorical) — deliberately lower saturation than
+// the spectrum data-language, and hue-clear of the spectrum's 230-350 arc (cold
+// blue through hot pink), so a teammate avatar never reads as a data temperature.
 const PALETTE = [
-  "oklch(0.72 0.14 152)", "oklch(0.7 0.16 258)", "oklch(0.75 0.15 78)",
-  "oklch(0.72 0.16 25)", "oklch(0.72 0.13 300)", "oklch(0.72 0.14 200)",
+  "oklch(0.7 0.09 40)", "oklch(0.7 0.09 75)", "oklch(0.7 0.09 110)",
+  "oklch(0.7 0.09 145)", "oklch(0.7 0.09 178)", "oklch(0.7 0.09 210)",
 ];
 
 function hashHue(name: string) {

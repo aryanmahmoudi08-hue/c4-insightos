@@ -1,12 +1,15 @@
 import { cn } from "@/lib/utils";
 import { useCountUp } from "@/hooks/use-count-up";
+import { SPECTRUM_CHIP_CLASS, SPECTRUM_TEXT_CLASS, type SpectrumPosition } from "@/lib/spectrum";
 
 type Tone = "default" | "header" | "money" | "rate";
 
-export function KpiTile({ label, value, tone = "default", hint, numericValue, format }: {
+export function KpiTile({ label, value, tone = "default", spectrum, hint, numericValue, format }: {
   label: string;
   value: string | number;
   tone?: Tone;
+  /** Opt-in funnel-position data encoding (B4) — takes precedence over `tone` for the label chip and value color when set. Use for genuinely funnel-positioned metrics only (views=cold, sets/booked=mid, cash/closes=hot), never decoratively. */
+  spectrum?: SpectrumPosition;
   hint?: string;
   /** Opt-in: pass the raw number + a formatter to get a count-up animation on change (e.g. date-range switches). Omit to render `value` as-is. */
   numericValue?: number;
@@ -18,13 +21,15 @@ export function KpiTile({ label, value, tone = "default", hint, numericValue, fo
     <div className="hover-lift rounded-md border border-border bg-card overflow-hidden flex flex-col">
       <div className={cn(
         "px-3 py-1.5 text-3xs font-medium uppercase tracking-wider text-center border-b border-border",
-        tone === "money" && "bg-[color:var(--color-success)]/10 text-[color:var(--color-success)]",
-        tone === "rate" && "bg-accent/10 text-accent",
-        tone === "header" && "bg-primary/15 text-primary",
-        tone === "default" && "bg-muted/40 text-muted-foreground",
+        spectrum ? SPECTRUM_CHIP_CLASS[spectrum] : [
+          tone === "money" && "bg-[color:var(--color-success)]/10 text-[color:var(--color-success)]",
+          tone === "rate" && "bg-accent/10 text-accent",
+          tone === "header" && "bg-primary/15 text-primary",
+          tone === "default" && "bg-muted/40 text-muted-foreground",
+        ],
       )}>{label}</div>
       <div className="flex-1 grid place-items-center px-3 py-3 min-h-[60px]">
-        <div className="font-mono text-xl font-bold tabular-nums">{display}</div>
+        <div className={cn("font-mono text-xl font-bold tabular-nums", spectrum && SPECTRUM_TEXT_CLASS[spectrum])}>{display}</div>
         {hint && <div className="text-3xs text-muted-foreground mt-0.5">{hint}</div>}
       </div>
     </div>

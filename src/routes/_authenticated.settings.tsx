@@ -47,7 +47,7 @@ function Settings() {
     <>
       <TopBar title="Settings" subtitle="Appearance, workspace and access" />
       <div className="mx-auto max-w-3xl space-y-4 p-6">
-        <Section title="Appearance" description="Dark is the default. Both themes are strictly black, white and grey — colour only signals meaning.">
+        <Section title="Appearance" description="Dark is the default. Black, white, and a violet → pink → light-blue spectrum that encodes funnel temperature (cold → hot) in data only — never decoration or UI chrome.">
           <div className="grid grid-cols-2 gap-3">
             {([
               { key: "dark" as const, label: "Dark", icon: Moon, swatch: ["#151515", "#232323", "#f7f7f7"] },

@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/sparkline";
 import { useCountUp } from "@/hooks/use-count-up";
+import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, type SpectrumPosition } from "@/lib/spectrum";
 
 type Tone = "default" | "success" | "warning" | "destructive" | "accent";
 
@@ -27,7 +28,7 @@ const TONE_GLOW: Record<Tone, string> = {
  * a number needs more context than "here's a value" — trend direction and shape matter too.
  */
 export function MetricCard({
-  label, value, subLabel, icon, tone = "default",
+  label, value, subLabel, icon, tone = "default", spectrum,
   deltaPct, spark, sparkVariant = "line",
   numericValue, format,
 }: {
@@ -36,6 +37,8 @@ export function MetricCard({
   subLabel?: string;
   icon?: ReactNode;
   tone?: Tone;
+  /** Opt-in funnel-position data encoding (B4) — takes precedence over `tone` for the value color, ambient glow, and sparkline color when set. Leaves the delta badge's up/down semantics untouched — temperature and trend are different signals. */
+  spectrum?: SpectrumPosition;
   /** Signed percent change vs. the prior period — renders the trend badge. Omit to hide it. */
   deltaPct?: number;
   spark?: number[];
@@ -51,10 +54,14 @@ export function MetricCard({
   const deltaTone = up ? "success" : down ? "destructive" : "default";
   const animated = useCountUp(numericValue ?? 0);
   const display: ReactNode = numericValue !== undefined ? (format ? format(animated) : Math.round(animated)) : value;
+  const sparkColor = spectrum ? SPECTRUM_VAR[spectrum] : (up ? "var(--color-success)" : down ? "var(--destructive)" : "var(--muted-foreground)");
 
   return (
     <div className="hover-lift group relative overflow-hidden rounded-xl border border-border bg-card p-4">
-      <div className={cn("pointer-events-none absolute inset-0 bg-gradient-to-br to-transparent opacity-70 transition-opacity group-hover:opacity-100", TONE_GLOW[tone])} />
+      <div className={cn(
+        "pointer-events-none absolute inset-0 bg-gradient-to-br to-transparent opacity-70 transition-opacity group-hover:opacity-100",
+        spectrum ? undefined : TONE_GLOW[tone],
+      )} style={spectrum ? { backgroundImage: `linear-gradient(to bottom right, color-mix(in oklch, ${SPECTRUM_VAR[spectrum]} 15%, transparent), transparent)` } : undefined} />
       <div className="glass-highlight pointer-events-none absolute inset-0 rounded-xl" />
       <div className="relative flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -62,7 +69,7 @@ export function MetricCard({
             {icon && <span className="text-muted-foreground/80">{icon}</span>}
             <span className="truncate">{label}</span>
           </div>
-          <div className={cn("mt-1.5 font-mono text-2xl font-bold tabular-nums tracking-tight", TONE_TEXT[tone])}>{display}</div>
+          <div className={cn("mt-1.5 font-mono text-2xl font-bold tabular-nums tracking-tight", spectrum ? SPECTRUM_TEXT_CLASS[spectrum] : TONE_TEXT[tone])}>{display}</div>
           {subLabel && <div className="mt-0.5 text-2xs text-muted-foreground">{subLabel}</div>}
         </div>
         {hasDelta && (
@@ -84,8 +91,8 @@ export function MetricCard({
             variant={sparkVariant}
             width={220}
             height={32}
-            stroke={up ? "var(--color-success)" : down ? "var(--destructive)" : "var(--muted-foreground)"}
-            fill={up ? "var(--color-success)" : down ? "var(--destructive)" : "var(--muted-foreground)"}
+            stroke={sparkColor}
+            fill={sparkColor}
             strokeWidth={1.5}
           />
         </div>

@@ -43,6 +43,16 @@
   --color-sidebar-ring: var(--sidebar-ring);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  /* Spectrum — the funnel-position data language (B4). Never used for chrome. */
+  --color-spectrum-cold: var(--spectrum-cold);
+  --color-spectrum-mid: var(--spectrum-mid);
+  --color-spectrum-hot: var(--spectrum-hot);
+  /* Depth-layer aliases (B2) — same source colors as background/card/popover,
+     named for the L0/L1/L2 vocabulary so new depth-aware components (BentoGrid,
+     live ticker, command palette) can reference them semantically. */
+  --color-canvas: var(--background);
+  --color-surface: var(--card);
+  --color-raised: var(--popover);
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-serif: "Instrument Serif", "Times New Roman", ui-serif, Georgia, serif;
 
@@ -76,29 +86,49 @@
 }
 
 /* ==========================================================================
-   C4 InsightOS — "Mission Control" monochrome system.
-   Brand is black, white and grey. Colour is reserved for *meaning only* —
-   exactly 4 semantic accents (success green / warning amber / danger red /
-   info blue), never decoration. No other hues anywhere in the product,
-   except two explicitly scoped identity exceptions: per-person avatar
-   colors and content-format category badges (see avatar-initials.tsx and
-   content-calendar.tsx) — those distinguish *who*/*what-kind*, not state.
-   Dark is the default theme; `.light` on <html> flips it.
+   C4 InsightOS — "Spectrum Terminal" system.
+   Brand is black, white, and a purple → pink → light-blue spectrum that is a
+   DATA LANGUAGE, not decoration: cold light-blue = top-of-funnel volume
+   (views, dials, leads contacted), mid violet = qualified/booked (convos,
+   sets, applications), hot pink = converted/cash (closes, revenue, renewals).
+   UI chrome — nav, buttons, borders, inputs, tabs, table chrome — stays
+   achromatic; the one sanctioned exception is the active-nav indicator and
+   focus ring (--ring / --accent), which carry spectrum-mid. The spectrum
+   lives in DATA only: chart series, heatmap scales, funnel stages, progress
+   bars, rank indicators, sparklines, KPI value colors, card glows — never a
+   filled button, never a card background, never gradient text. Two-stop
+   gradients only (blue→purple or purple→pink, adjacent stops) — never all
+   three stops in one element; the full spectrum only ever appears across a
+   SEQUENCE (funnel stages, heatmap scale, rank ladder).
+   Semantic accents are separate from the spectrum and stay grounded: success
+   green, warning amber, danger red. Danger red is deliberately pushed toward
+   crimson — lower chroma AND lower lightness than spectrum-hot pink, plus
+   chrome-only usage (small badges/borders/text, never a glow or chart fill)
+   — so a failing threshold is never mistakable for a cash figure. The two
+   explicitly scoped identity exceptions (per-person avatar colors and
+   content-format category badges — see avatar-initials.tsx and
+   content-calendar.tsx) sit at a visibly lower saturation than the spectrum,
+   so a teammate avatar never reads as a data temperature.
+   Dark is the default theme; `.light` on <html> flips it — same three-zone
+   data language, spectrum carried as saturated accent rather than glow
+   (glow doesn't read on light backgrounds).
    ========================================================================== */
 
 :root,
 .dark {
   --radius: 0.375rem;
 
-  /* Surfaces — true neutral greys, no hue */
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.975 0 0);
-  --card: oklch(0.185 0 0);
-  --card-foreground: oklch(0.975 0 0);
-  --popover: oklch(0.2 0 0);
-  --popover-foreground: oklch(0.975 0 0);
+  /* Surfaces — L0 canvas / L1 surface / L2 raised (B2). Near-black with a
+     deliberate violet undertone (not neutral grey, not blue-black) — this is
+     what the depth model reads against. */
+  --background: oklch(0.14 0.018 300);
+  --foreground: oklch(0.98 0 0);
+  --card: oklch(0.18 0.02 300);
+  --card-foreground: oklch(0.98 0 0);
+  --popover: oklch(0.22 0.022 300);
+  --popover-foreground: oklch(0.98 0 0);
 
-  /* Brand — white on black */
+  /* Brand — white on black. White is the primary ACTION color (B4 rule #1). */
   --primary: oklch(0.97 0 0);
   --primary-foreground: oklch(0.16 0 0);
   --primary-glow: oklch(1 0 0);
@@ -106,38 +136,49 @@
   --secondary: oklch(0.245 0 0);
   --secondary-foreground: oklch(0.97 0 0);
   --muted: oklch(0.225 0 0);
-  --muted-foreground: oklch(0.66 0 0);
+  /* A whisper of violet cast so secondary text never looks muddy against the
+     violet-undertoned canvas above. */
+  --muted-foreground: oklch(0.72 0.01 300);
 
-  /* Accent — the 4th semantic hue: info / links / active-selected state.
-     Matches success/warning/destructive's chroma magnitude so all four read
-     as one deliberate family, not three "real" colors plus a grey afterthought. */
-  --accent: oklch(0.7 0.15 255);
+  /* Accent = spectrum-mid, doing double duty as the active-nav/focus-ring
+     color (the one sanctioned chrome exception) AND the color every existing
+     "info"-toned chip/status already renders through — no separate blue
+     info accent exists anymore, this IS what covers it now. */
+  --accent: oklch(0.62 0.24 295);
   --accent-foreground: oklch(0.15 0 0);
 
-  --destructive: oklch(0.6 0.19 25);
+  /* Danger red — pushed toward crimson (lower chroma + lightness than
+     spectrum-hot's oklch(0.68 0.26 350)) so it can't be mistaken for cash. */
+  --destructive: oklch(0.56 0.17 22);
   --destructive-foreground: oklch(0.98 0 0);
   --success: oklch(0.7 0.13 152);
   --warning: oklch(0.78 0.12 78);
 
+  /* Spectrum — the funnel-position data language. Cold → mid → hot. */
+  --spectrum-cold: oklch(0.78 0.14 230);
+  --spectrum-mid: oklch(0.62 0.24 295);
+  --spectrum-hot: oklch(0.68 0.26 350);
+
   --border: oklch(1 0 0 / 11%);
   --input: oklch(0.25 0 0);
-  --ring: oklch(0.85 0 0 / 45%);
+  /* Ring = spectrum-mid tinted (the other sanctioned chrome exception). */
+  --ring: oklch(0.62 0.24 295 / 55%);
 
   /* Charts — a monochrome ramp, with two semantic outliers at the end */
   --chart-1: oklch(0.95 0 0);
   --chart-2: oklch(0.76 0 0);
   --chart-3: oklch(0.58 0 0);
   --chart-4: oklch(0.7 0.13 152);
-  --chart-5: oklch(0.6 0.19 25);
+  --chart-5: oklch(0.56 0.17 22);
 
-  --sidebar: oklch(0.115 0 0);
+  --sidebar: oklch(0.105 0.016 300);
   --sidebar-foreground: oklch(0.9 0 0);
   --sidebar-primary: oklch(0.97 0 0);
   --sidebar-primary-foreground: oklch(0.16 0 0);
-  --sidebar-accent: oklch(0.215 0 0);
+  --sidebar-accent: oklch(0.215 0.018 300);
   --sidebar-accent-foreground: oklch(0.98 0 0);
   --sidebar-border: oklch(1 0 0 / 9%);
-  --sidebar-ring: oklch(0.85 0 0 / 45%);
+  --sidebar-ring: oklch(0.62 0.24 295 / 55%);
 
   /* Editorial flourishes — kept, now neutral */
   --gradient-gold: linear-gradient(135deg, oklch(1 0 0), oklch(0.72 0 0));
@@ -161,9 +202,11 @@
 }
 
 .light {
-  --background: oklch(0.99 0 0);
+  /* Not an inversion — a real warm-white second theme. Same violet whisper
+     the dark canvas carries, just at the opposite end of the lightness scale. */
+  --background: oklch(0.99 0.004 300);
   --foreground: oklch(0.16 0 0);
-  --card: oklch(1 0 0);
+  --card: oklch(1 0.002 300);
   --card-foreground: oklch(0.16 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.16 0 0);
@@ -175,34 +218,40 @@
   --secondary: oklch(0.96 0 0);
   --secondary-foreground: oklch(0.19 0 0);
   --muted: oklch(0.965 0 0);
-  --muted-foreground: oklch(0.46 0 0);
+  --muted-foreground: oklch(0.46 0.01 300);
 
-  --accent: oklch(0.5 0.18 255);
+  --accent: oklch(0.48 0.22 295);
   --accent-foreground: oklch(0.99 0 0);
 
-  --destructive: oklch(0.55 0.2 25);
+  --destructive: oklch(0.44 0.18 20);
   --destructive-foreground: oklch(0.99 0 0);
   --success: oklch(0.55 0.13 152);
   --warning: oklch(0.62 0.13 70);
 
+  /* Spectrum — same hues as dark mode, darkened for legibility as saturated
+     accents rather than glow (glow doesn't read on light backgrounds). */
+  --spectrum-cold: oklch(0.55 0.16 230);
+  --spectrum-mid: oklch(0.48 0.22 295);
+  --spectrum-hot: oklch(0.52 0.24 350);
+
   --border: oklch(0.16 0 0 / 12%);
   --input: oklch(0.97 0 0);
-  --ring: oklch(0.3 0 0 / 35%);
+  --ring: oklch(0.48 0.22 295 / 45%);
 
   --chart-1: oklch(0.22 0 0);
   --chart-2: oklch(0.45 0 0);
   --chart-3: oklch(0.68 0 0);
   --chart-4: oklch(0.55 0.13 152);
-  --chart-5: oklch(0.55 0.2 25);
+  --chart-5: oklch(0.44 0.18 20);
 
-  --sidebar: oklch(0.975 0 0);
+  --sidebar: oklch(0.975 0.003 300);
   --sidebar-foreground: oklch(0.24 0 0);
   --sidebar-primary: oklch(0.19 0 0);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.93 0 0);
+  --sidebar-accent: oklch(0.93 0.006 300);
   --sidebar-accent-foreground: oklch(0.16 0 0);
   --sidebar-border: oklch(0.16 0 0 / 10%);
-  --sidebar-ring: oklch(0.3 0 0 / 35%);
+  --sidebar-ring: oklch(0.48 0.22 295 / 45%);
 
   --gradient-gold: linear-gradient(135deg, oklch(0.2 0 0), oklch(0.5 0 0));
   --gradient-noir: linear-gradient(180deg, oklch(1 0 0), oklch(0.96 0 0));
@@ -235,7 +284,46 @@
   body {
     font-feature-settings: "ss01","cv02","cv11";
     letter-spacing: -0.005em;
+    position: relative;
   }
+
+  /* L0 canvas depth (B2) — an extremely low-contrast gradient mesh drifting
+     behind every page, plus a fine grain texture. This alone is what stops the
+     app from reading as one flat plane; kept under ~3% contrast so it's felt,
+     not seen. Pure CSS pseudo-elements — no extra DOM, no JS, no per-page
+     opt-in needed. Static (no drift) when the user has reduced motion set. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 15%, color-mix(in oklch, var(--spectrum-mid) 10%, transparent), transparent 60%),
+      radial-gradient(ellipse 70% 60% at 85% 75%, color-mix(in oklch, var(--spectrum-cold) 8%, transparent), transparent 60%),
+      radial-gradient(ellipse 60% 50% at 60% 30%, color-mix(in oklch, var(--spectrum-hot) 6%, transparent), transparent 65%);
+    background-size: 140% 140%;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    body::before { animation: canvas-drift 42s ease-in-out infinite alternate; }
+  }
+  @keyframes canvas-drift {
+    0% { background-position: 0% 0%, 100% 100%, 50% 20%; }
+    100% { background-position: 12% 8%, 88% 92%, 42% 34%; }
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.03;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .light body::before { opacity: 0.6; }
+  .light body::after { opacity: 0.02; }
+
   .font-mono, .tabular { font-variant-numeric: tabular-nums; }
 
   /* Magazine-style editorial headings — opt-in */

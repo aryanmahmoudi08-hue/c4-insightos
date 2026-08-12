@@ -20,13 +20,17 @@ type Sched = {
   voice_notes: string | null; why_it_works: string | null; posting_instructions: string | null;
 };
 
+// Identity colors (content-format, categorical) — deliberately lower saturation
+// than the spectrum data-language and hue-clear of its 230-350 arc, so a format
+// badge never reads as funnel-position data. See avatar-initials.tsx for the
+// same rule applied to per-person colors.
 const FMT_TONE: Record<string, string> = {
-  short_form: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  long_form: "bg-violet-500/15 text-violet-400 border-violet-500/30",
-  long_to_short: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  story: "bg-pink-500/15 text-pink-400 border-pink-500/30",
-  carousel: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  email: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+  short_form: "bg-[oklch(0.7_0.09_40/15%)] text-[oklch(0.76_0.09_40)] border-[oklch(0.7_0.09_40/30%)]",
+  long_form: "bg-[oklch(0.7_0.09_76/15%)] text-[oklch(0.76_0.09_76)] border-[oklch(0.7_0.09_76/30%)]",
+  long_to_short: "bg-[oklch(0.7_0.09_112/15%)] text-[oklch(0.76_0.09_112)] border-[oklch(0.7_0.09_112/30%)]",
+  story: "bg-[oklch(0.7_0.09_148/15%)] text-[oklch(0.76_0.09_148)] border-[oklch(0.7_0.09_148/30%)]",
+  carousel: "bg-[oklch(0.7_0.09_184/15%)] text-[oklch(0.76_0.09_184)] border-[oklch(0.7_0.09_184/30%)]",
+  email: "bg-[oklch(0.7_0.09_215/15%)] text-[oklch(0.76_0.09_215)] border-[oklch(0.7_0.09_215/30%)]",
 };
 export const FORMAT_LABEL: Record<string, string> = {
   short_form: "Short-form",

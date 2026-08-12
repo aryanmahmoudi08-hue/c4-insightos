@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/sparkline";
+import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, type SpectrumPosition } from "@/lib/spectrum";
 
-export type StatusPill = { label: string; tone?: "default" | "success" | "warning" | "destructive" | "accent" };
-export type HeroStat = { label: string; value: string; spark?: number[]; tone?: "default" | "success" | "warning" | "destructive" };
+export type StatusPill = { label: string; tone?: "default" | "success" | "warning" | "destructive" | "accent"; spectrum?: SpectrumPosition };
+/** `spectrum`, when set, takes precedence over `tone` for the value + sparkline color — a funnel-position stat (B4), not a semantic-state one. */
+export type HeroStat = { label: string; value: string; spark?: number[]; tone?: "default" | "success" | "warning" | "destructive"; spectrum?: SpectrumPosition };
 
 const PILL_TONE: Record<NonNullable<StatusPill["tone"]>, string> = {
   default: "text-muted-foreground",
@@ -48,7 +50,7 @@ export function PageHero({
             {status && status.length > 0 && (
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                 {status.map((s, i) => (
-                  <span key={i} className={cn("badge-glass normal-case tracking-normal", PILL_TONE[s.tone ?? "default"])}>
+                  <span key={i} className={cn("badge-glass normal-case tracking-normal", s.spectrum ? SPECTRUM_TEXT_CLASS[s.spectrum] : PILL_TONE[s.tone ?? "default"])}>
                     <span className="status-dot" />
                     {s.label}
                   </span>
@@ -63,12 +65,13 @@ export function PageHero({
       {stats && stats.length > 0 && (
         <div className="relative mt-4 grid grid-cols-2 gap-2 border-t border-border/60 pt-4 sm:grid-cols-3 lg:grid-cols-4">
           {stats.map((s, i) => {
-            const toneColor = s.tone === "success" ? "var(--color-success)" : s.tone === "destructive" ? "var(--destructive)" : s.tone === "warning" ? "var(--color-warning)" : "var(--muted-foreground)";
+            const toneColor = s.spectrum ? SPECTRUM_VAR[s.spectrum]
+              : s.tone === "success" ? "var(--color-success)" : s.tone === "destructive" ? "var(--destructive)" : s.tone === "warning" ? "var(--color-warning)" : "var(--muted-foreground)";
             return (
               <div key={i} className="min-w-0">
                 <div className="text-3xs uppercase tracking-wider text-muted-foreground truncate">{s.label}</div>
                 <div className="mt-0.5 flex items-center gap-2">
-                  <span className="font-mono text-sm font-semibold tabular-nums">{s.value}</span>
+                  <span className={cn("font-mono text-sm font-semibold tabular-nums", s.spectrum && SPECTRUM_TEXT_CLASS[s.spectrum])}>{s.value}</span>
                   {s.spark && s.spark.length > 1 && (
                     <span style={{ color: toneColor }}>
                       <Sparkline data={s.spark} width={48} height={16} stroke={toneColor} strokeWidth={1.25} />
