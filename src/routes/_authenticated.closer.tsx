@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useSearch, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
@@ -7,7 +7,7 @@ import { KpiTile, DashboardBar } from "@/components/kpi-tile";
 import { useDateRange } from "@/hooks/use-date-range";
 import { useServerFn } from "@tanstack/react-start";
 import { autoIngestCallSignalFn } from "@/lib/content-signals.functions";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,6 +52,16 @@ function Closer() {
   const { devBypass } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  // Command palette's "Log Call" quick action lands here with ?action=log-call.
+  const actionSearch = useSearch({ strict: false }) as { action?: string };
+  const paletteNav = useNavigate();
+  useEffect(() => {
+    if (actionSearch.action === "log-call") {
+      setOpen(true);
+      paletteNav({ search: {} as never, replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionSearch.action]);
   const { range } = useDateRange();
   const [member, setMember] = useState<string>(ALL_MEMBERS);
 

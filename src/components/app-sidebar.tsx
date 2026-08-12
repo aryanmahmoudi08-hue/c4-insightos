@@ -1,9 +1,10 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { motion } from "motion/react";
 import {
   LayoutDashboard, Video, GitBranch, MessageSquare, PhoneCall, Users, BadgeCheck,
   TrendingUp, Sparkles, Settings, LogOut, Bell, Search, Brain, Activity, PhoneIncoming,
-  ChevronDown, Briefcase, UserPlus, Menu, X, Wand2, BookOpen, Layers, CalendarDays,
-  ShieldCheck, Plug, Sun, Moon, Radar,
+  ChevronDown, ChevronsLeft, ChevronsRight, Briefcase, UserPlus, Menu, X, Wand2, BookOpen, Layers, CalendarDays,
+  ShieldCheck, Plug, Sun, Moon, Radar, Command,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,6 +16,8 @@ import c4Logo from "@/assets/c4-logo.png";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { useDateRange } from "@/hooks/use-date-range";
 import { useTheme } from "@/hooks/use-theme";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
+import { openCommandPalette } from "@/components/command-palette";
 
 type NavItem = {
   to: string;
@@ -94,6 +97,7 @@ export function AppSidebar() {
   const { data: org } = useCurrentOrg();
   const { canManage, isAdmin } = useRole();
   const { theme, toggle } = useTheme();
+  const { collapsed, setCollapsed, toggle: toggleCollapsed } = useSidebarCollapsed();
   const filterByRole = (items: NavItem[]) =>
     canManage ? items : items.filter(it => RESTRICTED_ALLOW.has(it.to));
 
@@ -121,6 +125,13 @@ export function AppSidebar() {
 
   const closeMobile = () => setMobileOpen(false);
 
+  /** Expanding a section while the rail is collapsed un-collapses it first — collapsed
+   *  mode trades hierarchy depth for space, so opening a section restores the depth. */
+  const expandSection = (setter: (v: boolean) => void, next: boolean) => {
+    if (collapsed && next) setCollapsed(false);
+    setter(next);
+  };
+
   const renderItem = (it: NavItem, nested = false, depth = 0) => {
     const searchObj = (loc.search ?? {}) as Record<string, unknown>;
     const matchesSearch = it.search
@@ -129,41 +140,54 @@ export function AppSidebar() {
     const pathActive = loc.pathname === it.to || (it.to !== "/" && loc.pathname.startsWith(it.to));
     const active = pathActive && matchesSearch;
     const Icon = it.icon;
-    const pl = depth === 0 ? "px-2.5" : depth === 1 ? "pl-8 pr-2.5" : "pl-14 pr-2.5";
+    const pl = collapsed ? "px-2.5 justify-center" : depth === 0 ? "px-2.5" : depth === 1 ? "pl-8 pr-2.5" : "pl-14 pr-2.5";
     return (
       <Link
         key={`${it.to}-${it.label}`}
         to={it.to}
         search={it.search as never}
         onClick={closeMobile}
+        title={collapsed ? it.label : undefined}
         className={cn(
           "group relative flex items-center gap-2.5 rounded-md py-1.5 text-sm transition-all",
           pl,
           active
-            ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[2px] before:-translate-y-1/2 before:rounded-full before:bg-sidebar-primary"
+            ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
             : "text-sidebar-foreground/70 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground hover:translate-x-[1px]",
           nested && depth >= 2 && "py-1",
         )}
       >
-        <Icon className={cn("shrink-0 transition-transform", depth >= 2 ? "h-3.5 w-3.5" : "h-4 w-4", active && "scale-105")} />
-        <span className="flex-1 truncate">{it.label}</span>
+        {active && (
+          <motion.div
+            layoutId="sidebar-active-indicator"
+            className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-sidebar-primary"
+            transition={{ type: "spring", stiffness: 500, damping: 35 }}
+          />
+        )}
+        <Icon className={cn("shrink-0 transition-transform", depth >= 2 && !collapsed ? "h-3.5 w-3.5" : "h-4 w-4", active && "scale-105")} />
+        {!collapsed && <span className="flex-1 truncate">{it.label}</span>}
       </Link>
     );
   };
 
-  const sectionBtn = (label: string, Icon: typeof LayoutDashboard, open: boolean, isActive: boolean, onClick: () => void, depth = 0) => (
+  const sectionBtn = (label: string, Icon: typeof LayoutDashboard, open: boolean, isActive: boolean, onClick: (next: boolean) => void, depth = 0) => (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => onClick(!open)}
+      title={collapsed ? label : undefined}
       className={cn(
         "group flex w-full items-center gap-2.5 rounded-md py-2 text-sm transition-all",
-        depth === 0 ? "px-2.5" : "pl-8 pr-2.5 py-1.5",
+        collapsed ? "px-2.5 justify-center" : depth === 0 ? "px-2.5" : "pl-8 pr-2.5 py-1.5",
         isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground",
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />
-      <span className="flex-1 text-left truncate">{label}</span>
-      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", open && "rotate-180")} />
+      {!collapsed && (
+        <>
+          <span className="flex-1 text-left truncate">{label}</span>
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", open && "rotate-180")} />
+        </>
+      )}
     </button>
   );
 
@@ -182,18 +206,24 @@ export function AppSidebar() {
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]/95 backdrop-blur-xl shadow-lg transition-transform",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]/95 backdrop-blur-xl shadow-lg transition-[transform,width] duration-200",
+          collapsed ? "w-60 md:w-14" : "w-60",
           "md:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
       >
-        <div className="flex items-center gap-2 px-4 py-4 border-b border-sidebar-border">
-          <img src={c4Logo} alt="C4 Consulting" className="h-9 w-9 object-contain" />
-          <div className="min-w-0 flex-1">
-            <div className="eyebrow truncate">C4 · Insight</div>
-            <div className="display-serif truncate text-base text-sidebar-foreground">InsightOS</div>
-            <div className="truncate text-3xs uppercase tracking-wider text-muted-foreground/80">{org?.organizations?.name ?? "Workspace"}</div>
-          </div>
+        <div className={cn("flex items-center gap-2 border-b border-sidebar-border py-4", collapsed ? "px-2.5 justify-center" : "px-4")}>
+          <img src={c4Logo} alt="C4 Consulting" className="h-9 w-9 shrink-0 object-contain" />
+          {!collapsed && (
+            <button type="button" className="group min-w-0 flex-1 text-left" title="Workspace">
+              <div className="eyebrow truncate">C4 · Insight</div>
+              <div className="display-serif truncate text-base text-sidebar-foreground">InsightOS</div>
+              <div className="flex items-center gap-1 truncate text-3xs uppercase tracking-wider text-muted-foreground/80">
+                {org?.organizations?.name ?? "Workspace"}
+                <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60 transition-transform group-hover:translate-y-px" />
+              </div>
+            </button>
+          )}
           <button
             type="button"
             onClick={closeMobile}
@@ -208,16 +238,16 @@ export function AppSidebar() {
 
           {(salesItems.length > 0 || repsItems.length > 0) && (
             <>
-              {sectionBtn("Sales Tracking", Briefcase, salesOpen, salesActive, () => setSalesOpen(o => !o))}
-              {salesOpen && (
+              {sectionBtn("Sales Tracking", Briefcase, salesOpen, salesActive, (next) => expandSection(setSalesOpen, next))}
+              {salesOpen && !collapsed && (
                 <div className="space-y-0.5">
                   {/* Leads first */}
                   {salesItems.filter(it => it.to === "/leads").map(it => renderItem(it, true, 1))}
                   {/* Reps sub-dropdown */}
                   {repsItems.length > 0 && (
                     <>
-                      {sectionBtn("Reps", Users, repsOpen, repsActive, () => setRepsOpen(o => !o), 1)}
-                      {repsOpen && (
+                      {sectionBtn("Reps", Users, repsOpen, repsActive, (next) => expandSection(setRepsOpen, next), 1)}
+                      {repsOpen && !collapsed && (
                         <div className="space-y-0.5">
                           {repsItems.map(it => renderItem(it, true, 2))}
                         </div>
@@ -233,8 +263,8 @@ export function AppSidebar() {
 
           {contentItems.length > 0 && (
             <>
-              {sectionBtn("ContentOS", CalendarDays, contentOpen, contentActive, () => setContentOpen(o => !o))}
-              {contentOpen && (
+              {sectionBtn("ContentOS", CalendarDays, contentOpen, contentActive, (next) => expandSection(setContentOpen, next))}
+              {contentOpen && !collapsed && (
                 <div className="space-y-0.5">
                   {contentItems.map(it => renderItem(it, true, 1))}
                 </div>
@@ -245,15 +275,15 @@ export function AppSidebar() {
 
           {copyItems.length > 0 && (
             <>
-              {sectionBtn("CopyOS", Sparkles, copyOpen, copyActive, () => setCopyOpen(o => !o))}
-              {copyOpen && (
+              {sectionBtn("CopyOS", Sparkles, copyOpen, copyActive, (next) => expandSection(setCopyOpen, next))}
+              {copyOpen && !collapsed && (
                 <div className="space-y-0.5">
                   {copyGenItems.length > 0 && (
                     <>
                       {sectionBtn("Generate", Wand2, genOpen, generateActive && !copyItems.some(it => {
                         const sObj = (loc.search ?? {}) as Record<string, unknown>;
                         return it.search ? Object.entries(it.search).every(([k, v]) => String(sObj[k] ?? "") === v) : false;
-                      }), () => setGenOpen(o => !o), 1)}
+                      }), (next) => expandSection(setGenOpen, next), 1)}
                       {genOpen && (
                         <div className="space-y-0.5">
                           {copyGenItems.map(it => renderItem(it, true, 2))}
@@ -269,32 +299,51 @@ export function AppSidebar() {
 
           {fulfillmentItems.length > 0 && (
             <>
-              <div className="mt-2 border-t border-sidebar-border/60 pt-3 pb-1 px-2.5 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50">Fulfillment</div>
+              <div className={cn("mt-2 border-t border-sidebar-border/60 pt-3 pb-1 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "Fulfillment"}</div>
               {fulfillmentItems.map(it => renderItem(it))}
             </>
           )}
           {bottomItems.length > 0 && (
             <>
-              <div className="mt-2 border-t border-sidebar-border/60 pt-3 pb-1 px-2.5 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50">Ops</div>
+              <div className={cn("mt-2 border-t border-sidebar-border/60 pt-3 pb-1 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "Ops"}</div>
               {bottomItems.map(it => renderItem(it))}
             </>
           )}
 
-          <div className="mt-2 border-t border-sidebar-border/60 pt-3 pb-1 px-2.5 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50">General</div>
+          <div className={cn("mt-2 border-t border-sidebar-border/60 pt-3 pb-1 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "General"}</div>
           {renderItem({ to: "/settings", label: "Settings", icon: Settings })}
           {isAdmin && renderItem({ to: "/permissions", label: "Access control", icon: ShieldCheck })}
           {isAdmin && renderItem({ to: "/connectors", label: "Connectors", icon: Plug })}
         </nav>
         <div className="border-t border-sidebar-border p-2 space-y-1">
-          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sidebar-foreground/80 hover:bg-sidebar-accent/50"
-            onClick={toggle}>
+          <button
+            type="button"
+            onClick={openCommandPalette}
+            title={collapsed ? "Search (⌘K)" : undefined}
+            className={cn("flex w-full items-center gap-2 rounded-md py-1.5 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent/50 transition-all", collapsed ? "justify-center px-2.5" : "px-2.5")}
+          >
+            <Command className="h-4 w-4 shrink-0" />
+            {!collapsed && <span className="flex-1 text-left">Search…</span>}
+            {!collapsed && <span className="badge-glass text-3xs normal-case tracking-normal">⌘K</span>}
+          </button>
+          <Button variant="ghost" size="sm" className={cn("w-full text-sidebar-foreground/80 hover:bg-sidebar-accent/50", collapsed ? "justify-center px-0" : "justify-start gap-2")}
+            onClick={toggle} title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}>
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            {theme === "dark" ? "Light mode" : "Dark mode"}
+            {!collapsed && (theme === "dark" ? "Light mode" : "Dark mode")}
           </Button>
-          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-sidebar-foreground/80 hover:bg-destructive/10 hover:text-destructive"
-            onClick={async () => { await supabase.auth.signOut(); nav({ to: "/login" }); }}>
-            <LogOut className="h-4 w-4" /> Sign out
+          <Button variant="ghost" size="sm" className={cn("w-full text-sidebar-foreground/80 hover:bg-destructive/10 hover:text-destructive", collapsed ? "justify-center px-0" : "justify-start gap-2")}
+            onClick={async () => { await supabase.auth.signOut(); nav({ to: "/login" }); }} title={collapsed ? "Sign out" : undefined}>
+            <LogOut className="h-4 w-4" />
+            {!collapsed && "Sign out"}
           </Button>
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            className={cn("hidden md:flex w-full items-center gap-2 rounded-md py-1.5 text-2xs text-sidebar-foreground/50 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/80 transition-all", collapsed ? "justify-center px-0" : "justify-start px-2.5")}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <ChevronsRight className="h-3.5 w-3.5" /> : <><ChevronsLeft className="h-3.5 w-3.5" /> Collapse</>}
+          </button>
         </div>
 
       </aside>

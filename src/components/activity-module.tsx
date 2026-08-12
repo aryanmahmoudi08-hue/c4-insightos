@@ -4,7 +4,8 @@ import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { KpiTile, DashboardBar } from "@/components/kpi-tile";
 import { DateRangePicker, RANGES, type DateRange } from "@/components/date-range-picker";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useSearch, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +42,16 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  // Command palette's "Log Day" quick action lands here with ?action=log-day.
+  const actionSearch = useSearch({ strict: false }) as { action?: string };
+  const paletteNav = useNavigate();
+  useEffect(() => {
+    if (actionSearch.action === "log-day") {
+      setOpen(true);
+      paletteNav({ search: {} as never, replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionSearch.action]);
   const [range, setRange] = useState<DateRange>(RANGES.last30());
   const [member, setMember] = useState<string>(ALL_MEMBERS);
   const isDialer = role === "inbound_dialer";

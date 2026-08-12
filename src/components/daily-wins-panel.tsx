@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSearch, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -219,6 +220,16 @@ function WinRow({ w }: { w: Win }) {
  */
 function LogWinDialog({ orgId, defaultName, onLogged }: { orgId: string | undefined; defaultName?: string; onLogged: () => void }) {
   const [open, setOpen] = useState(false);
+  // Command palette's "Log Win" quick action lands here with ?action=log-win.
+  const actionSearch = useSearch({ strict: false }) as { action?: string };
+  const paletteNav = useNavigate();
+  useEffect(() => {
+    if (actionSearch.action === "log-win") {
+      setOpen(true);
+      paletteNav({ search: {} as never, replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionSearch.action]);
   const submit = useServerFn(submitDailyWinFn);
   const { devBypass } = useAuth();
 

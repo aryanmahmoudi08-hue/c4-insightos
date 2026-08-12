@@ -26,6 +26,10 @@ export const getRouter = () => {
     // No route uses a `loader`, so there's no data to preload yet — only code.
     defaultPreload: "intent",
     defaultPreloadStaleTime: 30_000,
+    // Cross-fade + upward-drift on route change (styles.css's ::view-transition-*
+    // rules). Safely no-ops via the router's own `"startViewTransition" in
+    // document` feature check on unsupported browsers.
+    defaultViewTransition: true,
   });
 
   return router;
