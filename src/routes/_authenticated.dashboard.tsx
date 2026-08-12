@@ -16,6 +16,8 @@ import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { HubMetrics, HubQuickLinks } from "@/components/hub-metrics";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
+import { useCountUp } from "@/hooks/use-count-up";
 
 
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: Dashboard });
@@ -235,20 +237,31 @@ function Dashboard() {
           </div>
         )}
 
+        {/* Cash Collected mega-hero (Phase 4) — the page's one hero moment (B1): mega
+            number + count-up, daily-cash area chart as an ambient background, delta vs
+            prior period, and month-end pace folded in. Replaces the standalone PaceCard
+            (relocated here, not removed — same monthCash/projection/dailyPace/progress
+            values, now paired with the number they're pacing against). */}
+        <BentoGrid rowHeight="9.5rem">
+          <BentoCell span="hero">
+            <CashHero curr={c?.cash} prev={p?.cash} series={stats?.series ?? []} pace={stats?.pace} />
+          </BentoCell>
+          <BentoCell span="tall">
+            <PaceTallCard pace={stats?.pace} />
+          </BentoCell>
+        </BentoGrid>
+
         {/* Weekly digest */}
         <WeeklyDigest pace={stats?.pace} curr={c} prev={p} />
 
-        {/* Pace predictor */}
-        <PaceCard pace={stats?.pace} />
-
-        {/* Hero KPI grid with WoW deltas + sparklines */}
+        {/* Hero KPI grid with WoW deltas + sparklines. Cash Collected lives in the
+            mega-hero above now (same value + delta, richer treatment) — not duplicated here. */}
         {isLoading ? (
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-            {Array.from({ length: 8 }, (_, i) => <KpiSkeleton key={i} />)}
+            {Array.from({ length: 7 }, (_, i) => <KpiSkeleton key={i} />)}
           </div>
         ) : (
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 animate-in fade-in-0 duration-300">
-            <DeltaKpi label="CASH COLLECTED" value={money(c?.cash ?? 0)} curr={c?.cash ?? 0} prev={p?.cash ?? 0} tone="money" spark={(stats?.series ?? []).map(s => s.cash)} />
             <DeltaKpi label="CONTRACT VALUE" value={money(c?.contractValue ?? 0)} curr={c?.contractValue ?? 0} prev={p?.contractValue ?? 0} tone="money" spark={(stats?.series ?? []).map(s => s.contractValue)} />
             <DeltaKpi label="NEW LEADS" value={fmt(c?.newLeads ?? 0)} curr={c?.newLeads ?? 0} prev={p?.newLeads ?? 0} spark={(stats?.series ?? []).map(s => s.leads)} />
             <DeltaKpi label="TOTAL VIEWS" value={fmt(c?.views ?? 0)} curr={c?.views ?? 0} prev={p?.views ?? 0} spark={(stats?.series ?? []).map(s => s.views)} />
@@ -511,28 +524,91 @@ function FunnelCard({ funnel }: { funnel: { stage: string; value: number; conv: 
 
 
 
-function PaceCard({ pace }: { pace?: { monthCash: number; projection: number; dayOfMonth: number; daysInMonth: number; dailyPace: number } }) {
+type PaceStats = { monthCash: number; projection: number; dayOfMonth: number; daysInMonth: number; dailyPace: number };
+
+/** Cash Collected mega-hero (Part B1/B4) — the dashboard's one hero moment. Mega
+ * number (serif, spectrum-hot per B4's "converted/cash" position) count-up's on
+ * date-range change; the daily-cash series renders as a dim ambient background
+ * area chart, not a readable standalone chart (the full readable version stays
+ * in the Charts row below, untouched — nothing here replaces it). */
+function CashHero({ curr, prev, series, pace }: { curr?: number; prev?: number; series: { d: string; cash: number }[]; pace?: PaceStats }) {
+  const animated = useCountUp(curr ?? 0, 700);
+  const hasDelta = curr !== undefined && prev !== undefined;
+  const delta = hasDelta && prev! > 0 ? ((curr! - prev!) / prev!) * 100 : (hasDelta && curr! > 0 ? 100 : 0);
+  const up = delta > 0.5;
+  const down = delta < -0.5;
+  const DeltaIcon = up ? TrendingUp : down ? TrendingDown : Minus;
+
+  return (
+    <div className="hover-lift group relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
+      <div className="pointer-events-none absolute inset-0 opacity-40 transition-opacity group-hover:opacity-55">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={series} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="cashHeroGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--spectrum-hot)" stopOpacity={0.55} />
+                <stop offset="100%" stopColor="var(--spectrum-hot)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <Area type="monotone" dataKey="cash" stroke="var(--spectrum-hot)" strokeWidth={1.5} fill="url(#cashHeroGrad)" isAnimationActive={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+
+      <div className="relative flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Cash Collected</div>
+          <div className="display-serif mt-1 text-5xl font-bold tabular-nums text-spectrum-hot md:text-6xl">{money(animated)}</div>
+        </div>
+        {hasDelta && (
+          <span className={cn(
+            "badge-glass shrink-0 font-mono normal-case tracking-normal",
+            up && "text-[color:var(--color-success)]",
+            down && "text-destructive",
+            !up && !down && "text-muted-foreground",
+          )}>
+            <DeltaIcon className="h-2.5 w-2.5" />{Math.abs(delta).toFixed(0)}%
+          </span>
+        )}
+      </div>
+
+      <div className="relative flex items-end justify-between gap-3 text-2xs">
+        <div className="text-muted-foreground">vs prior period · {prev !== undefined ? money(prev) : "—"}</div>
+        {pace && (
+          <div className="font-mono text-muted-foreground">
+            Pace <span className="font-semibold text-foreground">{money(pace.dailyPace)}</span>/day
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Month-end pace, in a "tall" bento cell alongside the cash hero — relocated
+ * from the old standalone PaceCard (same monthCash/projection/dailyPace/progress
+ * values, vertical layout to fit the 1x2 span). */
+function PaceTallCard({ pace }: { pace?: PaceStats }) {
   if (!pace) return null;
   const progress = Math.min(100, (pace.dayOfMonth / pace.daysInMonth) * 100);
   return (
-    <div className="rounded-lg border border-border bg-gradient-to-r from-primary/10 via-card to-card p-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-md bg-primary/15 text-primary"><Target className="h-5 w-5" /></div>
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Month-end pace</div>
-            <div className="text-2xl font-mono font-bold">{money(pace.projection)}</div>
-            <div className="text-2xs text-muted-foreground">projected · {money(pace.monthCash)} collected · {money(pace.dailyPace)} / day</div>
-          </div>
+    <div className="flex h-full flex-col justify-between rounded-2xl border border-border bg-gradient-to-b from-spectrum-mid/10 via-card to-card p-4">
+      <div className="flex items-center gap-2">
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-spectrum-mid/15 text-spectrum-mid"><Target className="h-4 w-4" /></div>
+        <div className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">Month-end pace</div>
+      </div>
+      <div>
+        <div className="font-mono text-2xl font-bold tabular-nums">{money(pace.projection)}</div>
+        <div className="mt-0.5 text-2xs text-muted-foreground">projected · {money(pace.monthCash)} collected</div>
+        <div className="text-2xs text-muted-foreground">{money(pace.dailyPace)} / day</div>
+      </div>
+      <div>
+        <div className="mb-1 flex justify-between text-3xs uppercase tracking-wider text-muted-foreground">
+          <span>Day {pace.dayOfMonth}/{pace.daysInMonth}</span>
+          <span>{progress.toFixed(0)}%</span>
         </div>
-        <div className="flex-1 min-w-[200px] max-w-md">
-          <div className="flex justify-between text-3xs uppercase tracking-wider text-muted-foreground mb-1">
-            <span>Day {pace.dayOfMonth} of {pace.daysInMonth}</span>
-            <span>{progress.toFixed(0)}% through month</span>
-          </div>
-          <div className="h-2 rounded bg-muted overflow-hidden">
-            <div className="h-full rounded bg-primary" style={{ width: `${progress}%` }} />
-          </div>
+        <div className="h-1.5 rounded bg-muted overflow-hidden">
+          <div className="h-full rounded bg-spectrum-mid" style={{ width: `${progress}%` }} />
         </div>
       </div>
     </div>

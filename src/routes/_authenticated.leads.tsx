@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { motion } from "motion/react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg, useAuth } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
@@ -17,6 +18,10 @@ import { MetricCard } from "@/components/metric-card";
 import { GlassTableShell, TableSearch, FilterPills, Pagination, usePagination, ColumnGroupToggle } from "@/components/glass-table";
 import { mockLeads, mockLeadInsights, withMockDelay } from "@/lib/dev-mock-data";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
+import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, SPECTRUM_SEQUENCE } from "@/lib/spectrum";
+import { EASE } from "@/lib/motion-tokens";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/leads")({ component: Leads });
 
@@ -118,6 +123,8 @@ const STATUS_TONE: Record<string, { row: string; chip: string }> = Object.fromEn
 );
 const tone = (s: string) => STATUS_TONE[s] ?? STATUS_TONE.opt_in;
 
+const REACHED_CALL_STATUSES = ["call_booked", "rescheduling", "no_show", "deposit", "closed", "lt_closed", "no_close"];
+
 // Application data keys (match typeform mapping)
 const APP_COLS: { key: string; label: string; width?: string }[] = [
   { key: "experience", label: "Experience", width: "min-w-[140px]" },
@@ -199,6 +206,23 @@ function Leads() {
     };
   }, [leads]);
 
+  // Pipeline funnel (Part B1 hero) — net-new: no aggregate stage chart existed
+  // before, only a per-row pipeline_stage dropdown. Approximated from current
+  // `status` snapshot (this table has no "milestone reached" history), cold →
+  // mid → hot in strict spectrum order: total leads → ever reached a call →
+  // closed.
+  const funnelStats = useMemo(() => {
+    const all = leads ?? [];
+    const total = all.length;
+    const reachedCall = all.filter(l => REACHED_CALL_STATUSES.includes(l.status)).length;
+    const closed = all.filter(l => l.status === "closed" || l.status === "lt_closed").length;
+    return [
+      { stage: "Total Leads", value: total, spectrum: SPECTRUM_SEQUENCE[0] },
+      { stage: "Reached a Call", value: reachedCall, spectrum: SPECTRUM_SEQUENCE[1] },
+      { stage: "Closed", value: closed, spectrum: SPECTRUM_SEQUENCE[2] },
+    ] as const;
+  }, [leads]);
+
   return (
     <>
       <TopBar title="Leads CRM" subtitle="Pipeline stage · priority · pre-call vid tracking · notes" />
@@ -214,6 +238,16 @@ function Leads() {
             ...(stats.booked > 0 ? [{ label: `${stats.booked} awaiting show`, tone: "warning" as const }] : []),
           ]}
         />
+
+        {/* Pipeline funnel — the page's one hero moment (B1), net-new (Part F: nothing
+            relocated, PageHero above stays exactly as it was). Bars fill in stage-by-stage
+            in strict spectrum order (cold→mid→hot) on mount — the funnel-fill signature
+            moment (B5). */}
+        <BentoGrid rowHeight="9.5rem">
+          <BentoCell span="hero">
+            <LeadsFunnelHero funnel={funnelStats} />
+          </BentoCell>
+        </BentoGrid>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger-fade">
           <MetricCard label="Total leads" value={stats.total} icon={<Users className="h-3 w-3" />} deltaPct={9} spark={[12, 15, 14, 18, 20, 19, 24]} />
@@ -359,6 +393,49 @@ function Leads() {
         </Dialog>
       </div>
     </>
+  );
+}
+
+function LeadsFunnelHero({ funnel }: { funnel: readonly { stage: string; value: number; spectrum: "cold" | "mid" | "hot" }[] }) {
+  const max = funnel[0]?.value || 1;
+  return (
+    <div className="hover-lift relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative">
+        <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Pipeline Funnel</div>
+        <div className="display-serif mt-0.5 text-2xl">Where leads convert</div>
+      </div>
+      <div className="relative flex flex-1 flex-col justify-center gap-3 py-3">
+        {funnel.map((f, i) => {
+          const width = Math.max(6, Math.round((f.value / max) * 100));
+          const prev = funnel[i - 1];
+          const conv = prev && prev.value > 0 ? `${((f.value / prev.value) * 100).toFixed(0)}%` : null;
+          return (
+            <div key={f.stage} className="space-y-1">
+              <div className="flex items-center justify-between text-2xs">
+                <span className="font-medium">{f.stage}</span>
+                <span className="font-mono text-muted-foreground">
+                  {f.value.toLocaleString()}
+                  {conv && <span className={cn("ml-1.5", SPECTRUM_TEXT_CLASS[f.spectrum])}>· {conv}</span>}
+                </span>
+              </div>
+              <div className="h-7 rounded-md bg-muted/30 overflow-hidden">
+                <motion.div
+                  className="h-full rounded-md"
+                  style={{ background: SPECTRUM_VAR[f.spectrum] }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${width}%` }}
+                  transition={{ duration: 0.6, delay: i * 0.15, ease: EASE.out }}
+                />
+              </div>
+            </div>
+          );
+        })}
+        {funnel.every(f => f.value === 0) && (
+          <div className="py-4 text-center text-xs text-muted-foreground">No leads yet — the funnel fills in as leads come through.</div>
+        )}
+      </div>
+    </div>
   );
 }
 
