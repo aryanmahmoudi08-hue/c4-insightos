@@ -48,9 +48,16 @@ function installDevBypassToastFilter() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [devBypass] = useState(
-    () => import.meta.env.DEV && typeof window !== "undefined" && sessionStorage.getItem(DEV_BYPASS_KEY) === "1",
-  );
+  // Server always sees devBypass=false (no sessionStorage) — reading it synchronously
+  // in a useState initializer made the client's first hydration render diverge from
+  // the server-rendered HTML whenever the flag was set. Deferred to an effect, matching
+  // the pattern already used correctly in use-theme.tsx / use-sidebar-collapsed.tsx.
+  const [devBypass, setDevBypass] = useState(false);
+  useEffect(() => {
+    if (import.meta.env.DEV && typeof window !== "undefined" && sessionStorage.getItem(DEV_BYPASS_KEY) === "1") {
+      setDevBypass(true);
+    }
+  }, []);
   const qc = useQueryClient();
 
   useEffect(() => {

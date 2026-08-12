@@ -488,7 +488,7 @@ function FaqVideosSection() {
           into a bento hero. Mechanism chip stays categorical/uncolored (4 equal
           content types), not a funnel-position value. */}
       {topBelief && topBelief.clicks > 0 && (
-        <BentoGrid rowHeight="7rem">
+        <BentoGrid cols={2} rowHeight="7rem">
           <BentoCell span="wide">
             <div className="hover-lift relative flex h-full items-center gap-3 overflow-hidden rounded-2xl border border-border bg-card p-5">
               <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />

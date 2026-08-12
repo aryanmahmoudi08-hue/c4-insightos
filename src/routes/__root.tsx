@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet, createRootRouteWithContext, useRouter, HeadContent, Scripts, Link,
@@ -80,6 +81,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  useViewTransitionGuard();
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
@@ -90,4 +92,45 @@ function RootComponent() {
       </ThemeProvider>
     </QueryClientProvider>
   );
+}
+
+/**
+ * router.tsx's `defaultViewTransition: true` calls the native
+ * `document.startViewTransition()` on every route change (router-core's own
+ * `startViewTransition` wrapper — see node_modules/@tanstack/router-core —
+ * neither awaits nor catches it). In real browser conditions the native call
+ * can reject with `InvalidStateError: Transition was aborted because of
+ * invalid state` (e.g. the tab loses visibility mid-navigation, or a second
+ * transition starts before the first settles) — uncaught, that surfaces as a
+ * console error on navigation. Wrapping the native API here degrades any
+ * failure (sync throw or async rejection) to an instant route swap — the
+ * same behavior as an unsupported browser — instead of erroring, without
+ * disabling the cross-fade transition for the normal case.
+ */
+function useViewTransitionGuard() {
+  useEffect(() => {
+    if (typeof document === "undefined" || typeof document.startViewTransition !== "function") return;
+    const native = document.startViewTransition.bind(document);
+    const noopTransition = (): ViewTransition => ({
+      ready: Promise.resolve(),
+      updateCallbackDone: Promise.resolve(),
+      finished: Promise.resolve(),
+      skipTransition() {},
+      types: new Set(),
+    });
+    document.startViewTransition = ((cb?: ViewTransitionUpdateCallback | StartViewTransitionOptions) => {
+      try {
+        const vt = native(cb as never);
+        vt.ready.catch(() => {});
+        vt.updateCallbackDone.catch(() => {});
+        vt.finished.catch(() => {});
+        return vt;
+      } catch {
+        const update = typeof cb === "function" ? cb : cb?.update;
+        update?.();
+        return noopTransition();
+      }
+    }) as typeof document.startViewTransition;
+    return () => { document.startViewTransition = native; };
+  }, []);
 }

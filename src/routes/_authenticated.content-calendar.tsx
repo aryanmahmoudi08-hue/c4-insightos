@@ -171,8 +171,12 @@ function ContentCalendar() {
         {/* Page hero (B1) — this month's posting pipeline as a 3-stage funnel
             (scheduled -> ready -> posted reads naturally as cold->mid->hot),
             with the format-mix count as a companion tile so the grid fully
-            covers itself instead of leaving empty tracks. */}
-        <BentoGrid cols={2} rowHeight="8rem">
+            covers itself instead of leaving empty tracks. cols=3 so hero
+            (col-span-2) and the tall companion (col-span-1) sit side by side
+            and fill the row exactly — cols=2 pushed the companion to a new,
+            half-width row instead, since hero alone already claims both
+            columns of a 2-col grid. */}
+        <BentoGrid cols={3} rowHeight="8rem">
           <BentoCell span="hero">
             <CalendarPipelineHero
               scheduled={monthPieces.length}
@@ -181,15 +185,17 @@ function ContentCalendar() {
             />
           </BentoCell>
           <BentoCell span="tall">
-            <div className="flex h-full flex-col justify-between rounded-2xl border border-border bg-card p-4">
+            <div className="flex h-full flex-col gap-4 rounded-2xl border border-border bg-card p-4">
               <div className="flex items-center gap-2">
                 <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted/60 text-foreground"><FileText className="h-4 w-4" /></div>
                 <div className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">Long-form Queued</div>
               </div>
-              <div className="font-mono text-3xl font-bold tabular-nums">
-                {monthPieces.filter(p => p.post_format === "long_form" || p.post_format === "long_to_short").length}
+              <div className="flex flex-1 flex-col justify-center">
+                <div className="font-mono text-4xl font-bold tabular-nums">
+                  {monthPieces.filter(p => p.post_format === "long_form" || p.post_format === "long_to_short").length}
+                </div>
+                <div className="mt-1 text-2xs text-muted-foreground">pieces queued this month</div>
               </div>
-              <div className="text-2xs text-muted-foreground">this month</div>
             </div>
           </BentoCell>
         </BentoGrid>

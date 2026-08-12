@@ -265,7 +265,7 @@ function Onboarding() {
         {/* Page hero (B1) — mechanism tags are categorical (4 equal content types),
             so they stay neutral/uncolored rather than borrowing spectrum
             decoratively; only the container gets the depth treatment. */}
-        <BentoGrid rowHeight="9.5rem">
+        <BentoGrid cols={2} rowHeight="9.5rem">
           <BentoCell span="hero">
             <div className="hover-lift relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-5">
               <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />

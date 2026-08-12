@@ -69,7 +69,7 @@ function Fulfillment() {
         {/* Page hero (B1) — this list's own scope, headcount isn't a funnel metric
             here (no conversion story on a fulfillment roster) so it stays neutral;
             health keeps its threshold-driven semantic color from Clients. */}
-        <BentoGrid rowHeight="7rem">
+        <BentoGrid cols={2} rowHeight="7rem">
           <BentoCell span="wide">
             <div className="hover-lift relative flex h-full items-center gap-6 overflow-hidden rounded-2xl border border-border bg-card p-5">
               <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />

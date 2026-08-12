@@ -74,7 +74,7 @@ function Attribution() {
         {/* Funnel river — the page's hero moment (B1), promoted from a plain card into
             a bento hero. Bands now take their funnel position (B4) instead of the old
             arbitrary chart-1/chart-2/chart-3/success assignment. */}
-        <BentoGrid rowHeight="9.5rem">
+        <BentoGrid cols={2} rowHeight="9.5rem">
           <BentoCell span="hero">
             <div className="hover-lift relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-5">
               <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />

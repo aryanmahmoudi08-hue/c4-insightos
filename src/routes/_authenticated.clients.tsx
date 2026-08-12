@@ -259,8 +259,8 @@ function Clients() {
             value, not duplicated below); everything else stays in the flat grid.
             Health/renewals/at-risk are threshold-driven semantic state, correctly
             left untouched. */}
-        <BentoGrid rowHeight="8rem">
-          <BentoCell span="hero">
+        <BentoGrid cols={2} rowHeight="9rem">
+          <BentoCell span="wide">
             <ClientPortfolioHero ltv={ltv} active={active} atRisk={atRisk.length} />
           </BentoCell>
         </BentoGrid>

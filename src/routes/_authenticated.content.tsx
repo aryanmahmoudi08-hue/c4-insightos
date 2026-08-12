@@ -375,7 +375,7 @@ function ContentIntel() {
         {/* Content -> Cash funnel — the page's hero moment (B1), promoted into a
             bento hero with bands now in strict spectrum order instead of a flat
             foreground-opacity ramp. Hook comparison stays alongside it. */}
-        <BentoGrid rowHeight="9.5rem">
+        <BentoGrid cols={2} rowHeight="9.5rem">
           <BentoCell span="hero">
             <div className="hover-lift relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-5">
               <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />

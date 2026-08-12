@@ -177,8 +177,8 @@ function ContentSignalsPage() {
 
         {/* Page hero (B1) — presentation-only promotion into a bento hero;
             RootCauseChain's own node logic/tones are untouched (Part F). */}
-        <BentoGrid rowHeight="9.5rem">
-          <BentoCell span="hero">
+        <BentoGrid cols={2} rowHeight="9.5rem">
+          <BentoCell span="wide">
             <RootCauseChain untaggedCount={weekly.per["untagged"]?.count ?? 0} untrackedCount={weekly.untracked} totalPosts={weekly.total} />
           </BentoCell>
         </BentoGrid>

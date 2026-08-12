@@ -248,7 +248,7 @@ function Leads() {
             what 3 funnel bars actually need instead of the taller default. */}
         <BentoGrid cols={2} rowHeight="8rem">
           <BentoCell span="hero">
-            <LeadsFunnelHero funnel={funnelStats} />
+            <LeadsFunnelHero funnel={funnelStats} loading={leadsLoading} />
           </BentoCell>
         </BentoGrid>
 
@@ -403,7 +403,7 @@ function Leads() {
   );
 }
 
-function LeadsFunnelHero({ funnel }: { funnel: readonly { stage: string; value: number; spectrum: "cold" | "mid" | "hot" }[] }) {
+function LeadsFunnelHero({ funnel, loading }: { funnel: readonly { stage: string; value: number; spectrum: "cold" | "mid" | "hot" }[]; loading: boolean }) {
   const max = funnel[0]?.value || 1;
   return (
     <div className="hover-lift relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
@@ -412,7 +412,13 @@ function LeadsFunnelHero({ funnel }: { funnel: readonly { stage: string; value: 
         <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Pipeline Funnel</div>
         <div className="display-serif mt-0.5 text-2xl">Where leads convert</div>
       </div>
-      <div className="relative flex flex-1 flex-col justify-center gap-3 py-3">
+      {/* Keyed on loading -> ready: forces a clean remount (fresh initial->animate
+          mount sequence) once real values land, instead of retargeting bars whose
+          staggered `delay` transition hadn't started yet — that mid-flight retarget
+          is what left bars 2/3 stuck at their initial width: motion doesn't reliably
+          resume a still-delayed transition when its `animate` target changes before
+          it has actually started. */}
+      <div key={loading ? "loading" : "ready"} className="relative flex flex-1 flex-col justify-center gap-3 py-3">
         {funnel.map((f, i) => {
           const width = Math.max(6, Math.round((f.value / max) * 100));
           const prev = funnel[i - 1];

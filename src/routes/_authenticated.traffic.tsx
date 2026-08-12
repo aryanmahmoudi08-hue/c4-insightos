@@ -177,8 +177,8 @@ function Traffic() {
 
         {/* Page hero (B1) — the "what the data says" read, promoted into a bento
             hero. Same content as before, richer container. */}
-        <BentoGrid rowHeight="8rem">
-          <BentoCell span="hero">
+        <BentoGrid cols={2} rowHeight="8rem">
+          <BentoCell span="wide">
             {bestSource ? (
               <div className="hover-lift relative flex h-full flex-col justify-center overflow-hidden rounded-2xl border border-border bg-card p-5">
                 <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
