@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { motion } from "motion/react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg, useAuth } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
@@ -20,7 +19,6 @@ import { mockLeads, mockLeadInsights, withMockDelay } from "@/lib/dev-mock-data"
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, SPECTRUM_SEQUENCE } from "@/lib/spectrum";
-import { EASE } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/leads")({ component: Leads });
@@ -248,7 +246,7 @@ function Leads() {
             what 3 funnel bars actually need instead of the taller default. */}
         <BentoGrid cols={2} rowHeight="8rem">
           <BentoCell span="hero">
-            <LeadsFunnelHero funnel={funnelStats} loading={leadsLoading} />
+            <LeadsFunnelHero funnel={funnelStats} />
           </BentoCell>
         </BentoGrid>
 
@@ -403,7 +401,7 @@ function Leads() {
   );
 }
 
-function LeadsFunnelHero({ funnel, loading }: { funnel: readonly { stage: string; value: number; spectrum: "cold" | "mid" | "hot" }[]; loading: boolean }) {
+function LeadsFunnelHero({ funnel }: { funnel: readonly { stage: string; value: number; spectrum: "cold" | "mid" | "hot" }[] }) {
   const max = funnel[0]?.value || 1;
   return (
     <div className="hover-lift relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
@@ -412,13 +410,7 @@ function LeadsFunnelHero({ funnel, loading }: { funnel: readonly { stage: string
         <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Pipeline Funnel</div>
         <div className="display-serif mt-0.5 text-2xl">Where leads convert</div>
       </div>
-      {/* Keyed on loading -> ready: forces a clean remount (fresh initial->animate
-          mount sequence) once real values land, instead of retargeting bars whose
-          staggered `delay` transition hadn't started yet — that mid-flight retarget
-          is what left bars 2/3 stuck at their initial width: motion doesn't reliably
-          resume a still-delayed transition when its `animate` target changes before
-          it has actually started. */}
-      <div key={loading ? "loading" : "ready"} className="relative flex flex-1 flex-col justify-center gap-3 py-3">
+      <div className="relative flex flex-1 flex-col justify-center gap-3 py-3">
         {funnel.map((f, i) => {
           const width = Math.max(6, Math.round((f.value / max) * 100));
           const prev = funnel[i - 1];
@@ -432,13 +424,15 @@ function LeadsFunnelHero({ funnel, loading }: { funnel: readonly { stage: string
                   {conv && <span className={cn("ml-1.5", SPECTRUM_TEXT_CLASS[f.spectrum])}>· {conv}</span>}
                 </span>
               </div>
+              {/* `width` is a plain inline style — correct on first paint with zero JS/
+                  animation dependency. `bar-draw-in` (styles.css) only ever animates
+                  `transform`, layered on top as decoration; if it never fires (reduced
+                  motion, or anything else going wrong) the bar is still at its real
+                  width, never zero. See styles.css's .bar-draw-in comment. */}
               <div className="h-7 rounded-md bg-muted/30 overflow-hidden">
-                <motion.div
-                  className="h-full rounded-md"
-                  style={{ background: SPECTRUM_VAR[f.spectrum] }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${width}%` }}
-                  transition={{ duration: 0.6, delay: i * 0.15, ease: EASE.out }}
+                <div
+                  className="bar-draw-in h-full rounded-md"
+                  style={{ width: `${width}%`, background: SPECTRUM_VAR[f.spectrum], animationDelay: `${i * 0.15}s` }}
                 />
               </div>
             </div>

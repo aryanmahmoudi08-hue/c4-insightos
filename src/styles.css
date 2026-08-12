@@ -442,6 +442,23 @@
     50% { opacity: 0.4; }
   }
 
+  /* Bar/chart draw-in (B5) — pure decoration layered on top of an element whose
+     `width` is already set to its correct final value via inline style. The
+     animation only ever touches `transform`, never `width`, so a value is
+     visible and correct on first paint with zero JS/animation dependency; if
+     this rule doesn't apply (reduced motion) or the animation is interrupted,
+     the element's un-transformed default state is simply "fully drawn," never
+     zero. Never gate a value's visibility on an animation completing — that's
+     the inverted-dependency bug this class exists to prevent. */
+  .bar-draw-in { transform-origin: left; }
+  @media (prefers-reduced-motion: no-preference) {
+    .bar-draw-in { animation: bar-draw-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  }
+  @keyframes bar-draw-in {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+
   /* Glassy status pill — icon-less badge with a soft translucent fill + dot slot */
   .badge-glass {
     display: inline-flex;
