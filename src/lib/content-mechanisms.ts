@@ -166,21 +166,6 @@ export function addWeights(a: MechanismWeights, b: MechanismWeights): MechanismW
   return out;
 }
 
-/** Convert raw weights into a recommended posting mix (percentages, sums to 100). */
-export function toMix(w: MechanismWeights, minPct = 10): Record<MechanismKey, number> {
-  const total = MECHANISM_KEYS.reduce((s, k) => s + w[k], 0);
-  if (!total) return { educational: 25, credibility: 25, authoritative: 25, relatability: 25 };
-  // Floor every mechanism so no category ever goes to zero, then distribute the rest.
-  const floor = minPct * MECHANISM_KEYS.length;
-  const scaled = MECHANISM_KEYS.map(k => ({ k, v: Math.round(((w[k] / total) * (100 - floor)) + minPct) }));
-  const diff = 100 - scaled.reduce((s, x) => s + x.v, 0);
-  scaled.sort((a, b) => b.v - a.v);
-  if (scaled[0]) scaled[0].v += diff;
-  const out = emptyWeights() as Record<MechanismKey, number>;
-  for (const x of scaled) out[x.k] = x.v;
-  return out;
-}
-
 /** Weekly reel target split across the 4 categories from the mix. */
 export function reelSplit(mix: Record<MechanismKey, number>, totalReels: number) {
   return MECHANISM_KEYS.map(k => ({ mechanism: k, reels: Math.max(1, Math.round((mix[k] / 100) * totalReels)) }));

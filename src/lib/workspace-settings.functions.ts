@@ -60,18 +60,24 @@ function parseStoredSettings(raw: Record<string, unknown>): WorkspaceSettings {
   });
 }
 
-/** No paired .server.ts: this uses the caller's own RLS-scoped client (not
- * supabaseAdmin), same as ingest.functions.ts — RLS is the real
- * authorization boundary (see "owners update org" policy, owner/admin only). */
+type Sb = { from: (t: string) => any };
+
+/** Plain, server-side-reusable fetch — called directly by other server logic
+ * (e.g. content-signals.server.ts) that needs the resolved config, not just
+ * by this file's own RPC wrapper below. No paired .server.ts: this uses the
+ * caller's own RLS-scoped client (not supabaseAdmin), same as
+ * ingest.functions.ts — RLS is the real authorization boundary for writes
+ * (see "owners update org" policy, owner/admin only); reads are member-scoped. */
+export async function fetchWorkspaceSettings(sb: Sb, orgId: string): Promise<WorkspaceSettings> {
+  const { data: org, error } = await sb.from("organizations").select("settings").eq("id", orgId).single();
+  if (error) throw new Error(error.message);
+  return parseStoredSettings((org.settings ?? {}) as Record<string, unknown>);
+}
+
 export const getWorkspaceSettingsFn = createServerFn({ method: "POST" })
   .inputValidator((d: { orgId: string }) => d)
   .middleware([requireSupabaseAuth])
-  .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { data: org, error } = await supabase.from("organizations").select("settings").eq("id", data.orgId).single();
-    if (error) throw new Error(error.message);
-    return parseStoredSettings((org.settings ?? {}) as Record<string, unknown>);
-  });
+  .handler(async ({ data, context }) => fetchWorkspaceSettings(context.supabase, data.orgId));
 
 const UpdateInput = z.object({
   orgId: z.string().uuid(),

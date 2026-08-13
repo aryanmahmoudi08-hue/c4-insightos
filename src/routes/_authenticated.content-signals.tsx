@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/app-sidebar";
 import { Card } from "@/components/ui/card";
@@ -13,8 +13,8 @@ import { EmptyState } from "@/components/empty-state";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { MECHANISMS, MECHANISM_KEYS, variationLabel, reelSplit, type MechanismKey } from "@/lib/content-mechanisms";
-import { contentDemandFn, analyzeContentSystemFn, logSetterSignalFn } from "@/lib/content-signals.functions";
-import { mockContentDemand, mockContentSystemInsight, withMockDelay } from "@/lib/dev-mock-data";
+import { contentDemandFn, analyzeContentSystemFn, logSetterSignalFn, weeklyContentCheckFn } from "@/lib/content-signals.functions";
+import { mockContentDemand, mockContentSystemInsight, mockWeeklyContentCheck, withMockDelay } from "@/lib/dev-mock-data";
 import { Radar, Sparkles, Loader2, TrendingUp, TriangleAlert, PhoneCall, CalendarCheck, ArrowRight, ChevronDown, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
@@ -69,87 +69,26 @@ function ContentSignalsPage() {
   });
 
   // Weekly posting check — are we posting all 4 categories, 5-7 reels/week?
-  const { data: week } = useQuery({
-    queryKey: ["weekly-content-check", orgId],
+  // Server-side now (content-signals.functions.ts's weeklyContentCheckFn) —
+  // the "worst mechanism" diagnosis shares the exact same classifyPerformance()
+  // call computeDemand's reel-strength scoring uses, bucketed by mechanism ×
+  // platform against this account's own baseline. Previously this was an
+  // independent client-side implementation that compared views to an
+  // org-wide average across every mechanism AND platform combined — it could
+  // (and did) disagree with computeDemand's own read of the same data.
+  const weeklyFn = useServerFn(weeklyContentCheckFn);
+  const { data: weeklyData } = useQuery({
+    queryKey: ["weekly-content-check", orgId, devBypass],
     enabled: !!orgId,
-    queryFn: async () => {
-      const since = new Date(Date.now() - 7 * 86400000).toISOString();
-      const { data: pieces, error } = await supabase
-        .from("content_pieces")
-        .select("id, title, mechanism, variation, platform, posted_at, pipeline_status")
-        .eq("org_id", orgId!)
-        .gte("created_at", since)
-        .limit(200);
-      if (error) throw error;
-      const ids = (pieces ?? []).map(p => p.id);
-      const metrics: Record<string, { dms: number; calls: number; cash: number; views: number; eng: number; drop: number; retention: number }> = {};
-      if (ids.length) {
-        const { data: ms } = await supabase
-          .from("content_metrics")
-          .select("content_id, views, dms_generated, calls_booked, cash_collected_cents, engagement_rate_pct, drop_off_rate_pct, hook_retention_pct")
-          .in("content_id", ids);
-        for (const m of ms ?? []) {
-          metrics[m.content_id] = {
-            dms: m.dms_generated ?? 0, calls: m.calls_booked ?? 0,
-            cash: m.cash_collected_cents ?? 0, views: m.views ?? 0,
-            eng: Number(m.engagement_rate_pct ?? 0), drop: Number(m.drop_off_rate_pct ?? 0),
-            retention: Number(m.hook_retention_pct ?? 0),
-          };
-        }
-      }
-      return { pieces: pieces ?? [], metrics };
-    },
+    queryFn: () => (devBypass ? Promise.resolve(mockWeeklyContentCheck()) : weeklyFn()),
   });
-
-  const weekly = useMemo(() => {
-    const pieces = week?.pieces ?? [];
-    const metrics = week?.metrics ?? {};
-    const per: Record<string, { count: number; dms: number; calls: number; cash: number; views: number; eng: number[]; retention: number[]; withMetrics: number }> = {};
-    for (const k of MECHANISM_KEYS) per[k] = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, eng: [], retention: [], withMetrics: 0 };
-    per["untagged"] = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, eng: [], retention: [], withMetrics: 0 };
-    for (const p of pieces) {
-      const k = (p.mechanism as string) ?? "untagged";
-      const bucket = per[k] ?? per["untagged"];
-      bucket.count += 1;
-      const m = metrics[p.id];
-      if (m) {
-        bucket.dms += m.dms; bucket.calls += m.calls; bucket.cash += m.cash; bucket.views += m.views;
-        if (m.eng) bucket.eng.push(m.eng);
-        if (m.retention) bucket.retention.push(m.retention);
-        if (m.views || m.dms || m.calls || m.eng || m.retention) bucket.withMetrics += 1;
-      }
-    }
-    const reels = pieces.filter(p => ["reel", "tiktok", "youtube_short"].includes(p.platform as string)).length;
-    const missing = MECHANISM_KEYS.filter(k => per[k].count === 0);
-    const untracked = pieces.filter(p => !metrics[p.id]).length;
-    const best = MECHANISM_KEYS.slice().sort((a, b) => (per[b].dms + per[b].calls * 3) - (per[a].dms + per[a].calls * 3))[0];
-    const worst = MECHANISM_KEYS.filter(k => per[k].count > 0)
-      .sort((a, b) => (per[a].dms + per[a].calls * 3) - (per[b].dms + per[b].calls * 3))[0];
-
-    // Underperformance reasoning — retention vs reach vs mechanism-mismatch, not just a flag.
-    const avg = (arr: number[]) => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : 0;
-    const overallAvgViews = pieces.length ? MECHANISM_KEYS.reduce((s, k) => s + per[k].views, 0) / Math.max(1, pieces.filter(p => metrics[p.id]).length) : 0;
-    let worstReason: { label: string; detail: string } | null = null;
-    if (worst && per[worst].count > 0) {
-      const b = per[worst];
-      const avgViews = b.withMetrics ? b.views / b.withMetrics : 0;
-      const avgRetention = avg(b.retention);
-      const avgEng = avg(b.eng);
-      const converted = b.dms + b.calls > 0;
-      if (b.withMetrics === 0) {
-        worstReason = { label: "Untracked", detail: `${b.count} posts with no metrics logged — can't diagnose without data. Log views/retention/engagement to find out.` };
-      } else if (avgViews < overallAvgViews * 0.5) {
-        worstReason = { label: "Low reach", detail: `Avg ${Math.round(avgViews).toLocaleString()} views vs ${Math.round(overallAvgViews).toLocaleString()} org avg — it barely got seen. Check hook, posting time, or distribution.` };
-      } else if (avgRetention > 0 && avgRetention < 40) {
-        worstReason = { label: "Low retention", detail: `Avg ${Math.round(avgRetention)}% hook retention — reached people but lost them fast. The hook or first 3s isn't landing for this mechanism.` };
-      } else if (!converted && (avgViews >= overallAvgViews * 0.5 || avgEng >= 3)) {
-        worstReason = { label: "Wrong mechanism", detail: `Reached and held attention (${Math.round(avgViews).toLocaleString()} views) but drove 0 DMs/calls — the audience saw it fine, they just don't want this mechanism right now.` };
-      } else {
-        worstReason = { label: "Underperforming", detail: `${b.count} posts, ${b.dms} DMs, ${b.calls} calls booked — below the mix's other mechanisms this week.` };
-      }
-    }
-    return { per, reels, missing, untracked, best, worst, worstReason, total: pieces.length };
-  }, [week]);
+  const weekly = weeklyData ?? {
+    per: {} as Record<string, { count: number; dms: number; calls: number; cash: number; views: number; withMetrics: number }>,
+    reels: 0, missing: [] as MechanismKey[], untracked: 0,
+    best: null as MechanismKey | null, worst: null as MechanismKey | null,
+    worstDiagnosis: null as { label: string; detail: string; verdictsSampled: number } | null,
+    total: 0,
+  };
 
   const split = demand ? reelSplit(demand.mix as Record<MechanismKey, number>, reelTarget) : [];
 
@@ -269,15 +208,24 @@ function ContentSignalsPage() {
                 ? <div>{MECHANISMS[weekly.best].label} — {weekly.per[weekly.best].dms} DMs, {weekly.per[weekly.best].calls} calls booked, ${Math.round(weekly.per[weekly.best].cash / 100).toLocaleString()} cash. Double down.</div>
                 : <div className="text-muted-foreground">No performance logged yet this week.</div>}
             </div>
-            <div className="rounded-md border border-destructive/45 bg-destructive/5 p-3 text-xs space-y-1">
-              <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-3xs text-destructive">
-                <TriangleAlert className="h-3.5 w-3.5" /> Underperformed
+            {/* Red/"Underperformed" styling only applies when the diagnosis actually
+                IS that — "Not enough data" and "Typical" are neutral reads, not
+                alarms, and presenting them under a red header would be exactly the
+                false-confidence problem this project exists to remove. */}
+            <div className={cn("rounded-md border p-3 text-xs space-y-1",
+              weekly.worstDiagnosis?.label === "Underperforming" ? "border-destructive/45 bg-destructive/5" : "border-border bg-muted/20")}>
+              <div className={cn("flex items-center gap-1.5 font-semibold uppercase tracking-wider text-3xs",
+                weekly.worstDiagnosis?.label === "Underperforming" ? "text-destructive" : "text-muted-foreground")}>
+                <TriangleAlert className="h-3.5 w-3.5" /> {weekly.worstDiagnosis?.label === "Underperforming" ? "Underperformed" : "Lowest this week"}
               </div>
-              {weekly.worst && weekly.worstReason ? (
+              {weekly.worst && weekly.worstDiagnosis ? (
                 <div>
                   <span className="font-medium">{MECHANISMS[weekly.worst].label}</span>
-                  <span className="ml-1.5 rounded bg-destructive/15 px-1.5 py-0.5 text-3xs uppercase tracking-wide text-destructive">{weekly.worstReason.label}</span>
-                  <div className="mt-1 text-muted-foreground">{weekly.worstReason.detail}</div>
+                  <span className={cn("ml-1.5 rounded px-1.5 py-0.5 text-3xs uppercase tracking-wide",
+                    weekly.worstDiagnosis.label === "Underperforming" ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground")}>
+                    {weekly.worstDiagnosis.label}
+                  </span>
+                  <div className="mt-1 text-muted-foreground">{weekly.worstDiagnosis.detail}</div>
                 </div>
               ) : <div className="text-muted-foreground">Nothing posted with a mechanism tag this week.</div>}
             </div>

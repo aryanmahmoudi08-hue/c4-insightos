@@ -1,7 +1,10 @@
 import {
-  MECHANISM_KEYS, addWeights, emptyWeights, scoreText, toMix,
+  MECHANISM_KEYS, addWeights, emptyWeights, scoreText,
   type MechanismKey, type MechanismWeights,
 } from "./content-mechanisms";
+import { classifyPerformance, aggregateMix, type Bucket, type PerformanceVerdict } from "./content-performance";
+import { fetchBaseline, fetchBaselines, toPieceMetrics, bucketKey } from "./content-performance.server";
+import { DEFAULT_WORKSPACE_SETTINGS, type ContentEngineSettingsT } from "./workspace-settings.functions";
 
 type Sb = {
   from: (t: string) => any;
@@ -11,13 +14,25 @@ export type Driver = { source: string; detail: string; mechanism: MechanismKey; 
 
 export type DemandResult = {
   mix: Record<MechanismKey, number>;
+  /** True when total signal weight is below the workspace's configured
+   * minimum — the mix above is still a real, computed distribution (never a
+   * silently-swapped-in placeholder), but callers should visibly badge it
+   * rather than present it with the same confidence as a well-populated mix. */
+  insufficientData: boolean;
+  totalWeight: number;
+  minTotalWeight: number;
   weights: MechanismWeights;
   drivers: Driver[];
   counts: { faq: number; setter_calls: number; intakes: number; reels: number };
 };
 
 /** FAQ question / onboarding answer / objection text → mechanism, with the raw drivers kept for the UI. */
-export async function computeDemand(sb: Sb, orgId: string, days = 30): Promise<DemandResult> {
+export async function computeDemand(
+  sb: Sb,
+  orgId: string,
+  days = 30,
+  config: ContentEngineSettingsT = DEFAULT_WORKSPACE_SETTINGS.content_engine,
+): Promise<DemandResult> {
   const sinceIso = new Date(Date.now() - days * 86400000).toISOString();
   const sinceDate = sinceIso.slice(0, 10);
 
@@ -25,7 +40,7 @@ export async function computeDemand(sb: Sb, orgId: string, days = 30): Promise<D
     sb.from("faq_videos").select("title, question, mechanism, clicks, plays").eq("org_id", orgId).eq("active", true),
     sb.from("setter_call_signals").select("setter_name, call_date, limiting_beliefs, objections, mechanism, ai_summary, notes").eq("org_id", orgId).gte("call_date", sinceDate).limit(300),
     sb.from("onboarding_responses").select("responses, mechanism_signals, submitted_at, created_at").eq("org_id", orgId).gte("created_at", sinceIso).limit(200),
-    sb.from("content_pieces").select("id, mechanism, variation, posted_at, pipeline_status, content_metrics(leads_generated, cash_collected_cents, hook_retention_pct, engagement_rate_pct, drop_off_rate_pct)").eq("org_id", orgId).gte("created_at", sinceIso).limit(400),
+    sb.from("content_pieces").select("id, mechanism, variation, platform, posted_at, pipeline_status, content_metrics(leads_generated, cash_collected_cents, hook_retention_pct, engagement_rate_pct, drop_off_rate_pct, views)").eq("org_id", orgId).gte("created_at", sinceIso).limit(400),
   ]);
 
   let weights = emptyWeights();
@@ -73,23 +88,28 @@ export async function computeDemand(sb: Sb, orgId: string, days = 30): Promise<D
     if (top) drivers.push({ source: "Client intake", detail: truncate(text, 90), mechanism: top, weight: sc[top] });
   }
 
-  // 4) Strong-performing reels — "double down on this format" as a real signal, not
-  // just a display. A reel counts as strong if it converted (leads/cash) or held
-  // attention well (retention/engagement) with low drop-off.
-  for (const p of (reels.data ?? []) as any[]) {
-    if (!p.mechanism) continue;
+  // 4) Strong-performing reels — "double down on this format" as a real signal,
+  // not just a display. A reel counts as strong if it classifies as "strong"
+  // against ITS OWN (mechanism × platform) baseline — never a fixed
+  // percentage, and never compared across formats (a Reel vs. a Story
+  // sequence). See content-performance.ts.
+  const reelsWithBucket = (reels.data ?? []).filter((p: any) => p.mechanism && p.platform) as any[];
+  const reelBuckets: Bucket[] = reelsWithBucket.map((p) => ({ mechanism: p.mechanism as MechanismKey, platform: p.platform as string }));
+  const reelBaselines = await fetchBaselines(sb, orgId, reelBuckets, config.baselineWindowSize);
+  for (const p of reelsWithBucket) {
     const metrics = Array.isArray(p.content_metrics) ? p.content_metrics : (p.content_metrics ? [p.content_metrics] : []);
     const m = metrics[0];
     if (!m) continue;
-    const converted = Number(m.leads_generated ?? 0) > 0 || Number(m.cash_collected_cents ?? 0) > 0;
-    const heldAttention = Number(m.hook_retention_pct ?? 0) >= 45 || Number(m.engagement_rate_pct ?? 0) >= 6;
-    const lowDropOff = m.drop_off_rate_pct == null || Number(m.drop_off_rate_pct) < 40;
-    if (!converted && !(heldAttention && lowDropOff)) continue;
-    const w = (converted ? 3 : 0) + (heldAttention ? 2 : 0);
+    const piece = toPieceMetrics(m);
+    const baseline = reelBaselines.get(bucketKey({ mechanism: p.mechanism, platform: p.platform }));
+    if (!baseline) continue;
+    const verdict = classifyPerformance(piece, baseline, config.minBucketSample);
+    if (verdict.verdict !== "strong") continue;
+    const w = piece.converted ? 3 : 2;
     weights[p.mechanism as MechanismKey] += w;
     drivers.push({
       source: "Reel performance",
-      detail: `${p.mechanism}${p.variation ? "/" + p.variation : ""} · ${converted ? `${m.leads_generated ?? 0} leads` : `${m.hook_retention_pct ?? m.engagement_rate_pct ?? 0}% retention`}`,
+      detail: `${p.mechanism}${p.variation ? "/" + p.variation : ""} · ${piece.converted ? `${m.leads_generated ?? 0} leads` : `${m.hook_retention_pct ?? m.engagement_rate_pct ?? 0}% retention`} · strong vs. its own baseline (n=${baseline.sampleSize})`,
       mechanism: p.mechanism as MechanismKey,
       weight: w,
     });
@@ -97,8 +117,13 @@ export async function computeDemand(sb: Sb, orgId: string, days = 30): Promise<D
 
   drivers.sort((a, b) => b.weight - a.weight);
 
+  const mixResult = aggregateMix(weights, config.minTotalSignalWeight);
+
   return {
-    mix: toMix(weights),
+    mix: mixResult.mix,
+    insufficientData: mixResult.insufficientData,
+    totalWeight: mixResult.totalWeight,
+    minTotalWeight: mixResult.minTotalWeight,
     weights,
     drivers: drivers.slice(0, 24),
     counts: {
@@ -116,6 +141,144 @@ function pickTop(w: MechanismWeights): MechanismKey | null {
   return best;
 }
 function truncate(s: string, n: number) { return s.length > n ? `${s.slice(0, n)}…` : s; }
+
+/* ---------------------------- Weekly posting check ---------------------------- */
+
+export type WeeklyMechanismStat = {
+  count: number; dms: number; calls: number; cash: number; views: number; withMetrics: number;
+};
+
+export type WeeklyDiagnosis = {
+  label: "Untracked" | "Not enough data" | "Underperforming" | "Typical";
+  detail: string;
+  verdictsSampled: number;
+};
+
+export type WeeklyCheck = {
+  per: Record<string, WeeklyMechanismStat>;
+  reels: number;
+  missing: MechanismKey[];
+  untracked: number;
+  best: MechanismKey | null;
+  worst: MechanismKey | null;
+  worstDiagnosis: WeeklyDiagnosis | null;
+  total: number;
+};
+
+/**
+ * The weekly "are we posting all 4 categories, and is the worst one actually
+ * underperforming or just untracked" check. Previously hand-rolled directly
+ * against Supabase in the /content-signals route component with its own
+ * absolute-threshold diagnosis (avgViews < org-wide-average*0.5, etc.) that
+ * could disagree with computeDemand()'s reel-strength rule. Now server-side
+ * and sharing the exact same classifyPerformance() call — one definition of
+ * "underperforming," bucketed by (mechanism × platform) like everywhere else.
+ */
+export async function computeWeeklyContentCheck(
+  sb: Sb,
+  orgId: string,
+  config: ContentEngineSettingsT = DEFAULT_WORKSPACE_SETTINGS.content_engine,
+): Promise<WeeklyCheck> {
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data: piecesData, error } = await sb
+    .from("content_pieces")
+    .select("id, mechanism, variation, platform, posted_at, pipeline_status")
+    .eq("org_id", orgId)
+    .gte("created_at", since)
+    .limit(200);
+  if (error) throw new Error(error.message);
+  const pieces = (piecesData ?? []) as any[];
+
+  const ids = pieces.map((p) => p.id);
+  const metricsById = new Map<string, any>();
+  if (ids.length) {
+    const { data: ms } = await sb
+      .from("content_metrics")
+      .select("content_id, views, dms_generated, calls_booked, cash_collected_cents, leads_generated, engagement_rate_pct, drop_off_rate_pct, hook_retention_pct")
+      .in("content_id", ids);
+    for (const m of (ms ?? []) as any[]) metricsById.set(m.content_id, m);
+  }
+
+  const per: Record<string, WeeklyMechanismStat> = {};
+  for (const k of MECHANISM_KEYS) per[k] = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, withMetrics: 0 };
+  per.untagged = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, withMetrics: 0 };
+
+  for (const p of pieces) {
+    const k = (p.mechanism as string) ?? "untagged";
+    const bucket = per[k] ?? per.untagged;
+    bucket.count += 1;
+    const m = metricsById.get(p.id);
+    if (m) {
+      bucket.dms += Number(m.dms_generated ?? 0);
+      bucket.calls += Number(m.calls_booked ?? 0);
+      bucket.cash += Number(m.cash_collected_cents ?? 0);
+      bucket.views += Number(m.views ?? 0);
+      bucket.withMetrics += 1;
+    }
+  }
+
+  const reels = pieces.filter((p) => ["reel", "tiktok", "youtube_short"].includes(p.platform as string)).length;
+  const missing = MECHANISM_KEYS.filter((k) => per[k].count === 0);
+  const untracked = pieces.filter((p) => !metricsById.has(p.id)).length;
+  const score = (k: string) => per[k].dms + per[k].calls * 3;
+  const best = MECHANISM_KEYS.slice().sort((a, b) => score(b) - score(a))[0] ?? null;
+  const worst = MECHANISM_KEYS.filter((k) => per[k].count > 0).sort((a, b) => score(a) - score(b))[0] ?? null;
+
+  let worstDiagnosis: WeeklyDiagnosis | null = null;
+  if (worst && per[worst].count > 0) {
+    const worstPieces = pieces.filter((p) => (p.mechanism as string) === worst);
+    if (per[worst].withMetrics === 0) {
+      worstDiagnosis = {
+        label: "Untracked",
+        detail: `${per[worst].count} posts with no metrics logged — can't diagnose without data. Log views/retention/engagement to find out.`,
+        verdictsSampled: 0,
+      };
+    } else {
+      const byPlatform = new Map<string, any[]>();
+      for (const p of worstPieces) {
+        const plat = (p.platform as string) ?? "other";
+        if (!byPlatform.has(plat)) byPlatform.set(plat, []);
+        byPlatform.get(plat)!.push(p);
+      }
+      const verdicts: { platform: string; verdict: PerformanceVerdict }[] = [];
+      for (const [platform, platPieces] of byPlatform) {
+        const baseline = await fetchBaseline(sb, orgId, { mechanism: worst, platform }, config.baselineWindowSize);
+        for (const p of platPieces) {
+          const m = metricsById.get(p.id);
+          verdicts.push({ platform, verdict: classifyPerformance(toPieceMetrics(m), baseline, config.minBucketSample) });
+        }
+      }
+      const insufficient = verdicts.filter((v) => v.verdict.verdict === "insufficient_data");
+      const underperforming = verdicts.filter((v) => v.verdict.verdict === "underperforming");
+
+      if (insufficient.length === verdicts.length) {
+        const v0 = verdicts[0].verdict;
+        worstDiagnosis = {
+          label: "Not enough data",
+          detail: `Not enough data to compare this mechanism's ${verdicts[0].platform} posts yet — ${v0.sampleSize} posted, need at least ${v0.minSample} with metrics logged to compare against its own baseline.`,
+          verdictsSampled: verdicts.length,
+        };
+      } else if (underperforming.length > 0) {
+        const reason = underperforming[0].verdict.reasons[0];
+        worstDiagnosis = {
+          label: "Underperforming",
+          detail: reason
+            ? `${underperforming.length} of ${verdicts.length} posts underperforming vs. their own baseline — e.g. ${reason.metric} at ${Math.round(reason.value)} vs. this account's own ${reason.comparisonType === "p25" ? "bottom" : "top"}-quartile bar of ${Math.round(reason.comparedTo)} for ${reason.bucketLabel}.`
+            : `${underperforming.length} of ${verdicts.length} posts underperforming vs. their own baseline.`,
+          verdictsSampled: verdicts.length,
+        };
+      } else {
+        worstDiagnosis = {
+          label: "Typical",
+          detail: `Posts are within normal range for their own baseline — this mechanism's low DM/call count this week may be a demand issue right now, not a content-quality one.`,
+          verdictsSampled: verdicts.length,
+        };
+      }
+    }
+  }
+
+  return { per, reels, missing, untracked, best, worst, worstDiagnosis, total: pieces.length };
+}
 
 /* ---------------------------- AI layers ---------------------------- */
 
@@ -138,14 +301,19 @@ async function gateway(system: string, user: string) {
 }
 
 /** The business bottleneck read: VSL + FAQ + setting calls + intakes + reel performance in one. */
-export async function analyzeContentSystem(sb: Sb, orgId: string, days: number) {
+export async function analyzeContentSystem(
+  sb: Sb,
+  orgId: string,
+  days: number,
+  config: ContentEngineSettingsT = DEFAULT_WORKSPACE_SETTINGS.content_engine,
+) {
   const sinceIso = new Date(Date.now() - days * 86400000).toISOString();
   const sinceDate = sinceIso.slice(0, 10);
-  const demand = await computeDemand(sb, orgId, days);
+  const demand = await computeDemand(sb, orgId, days, config);
 
   const [pieces, metrics, vslSnaps, faq, setters, calls, payments, intakes] = await Promise.all([
     sb.from("content_pieces").select("id, title, mechanism, variation, platform, posted_at, pipeline_status").eq("org_id", orgId).gte("created_at", sinceIso).limit(300),
-    sb.from("content_metrics").select("content_id, views, reach, shares, saves, likes, comments, dms_generated, calls_booked, closes, cash_collected_cents, avg_watch_pct, hook_retention_pct, three_sec_hold_pct, drop_off_rate_pct, engagement_rate_pct, follower_views, non_follower_views, followers_gained").eq("org_id", orgId).gte("captured_at", sinceIso).limit(600),
+    sb.from("content_metrics").select("content_id, views, reach, shares, saves, likes, comments, dms_generated, calls_booked, closes, cash_collected_cents, leads_generated, avg_watch_pct, hook_retention_pct, three_sec_hold_pct, drop_off_rate_pct, engagement_rate_pct, follower_views, non_follower_views, followers_gained").eq("org_id", orgId).gte("captured_at", sinceIso).limit(600),
     sb.from("vsl_metric_snapshots").select("video_name, total_plays, unique_viewers, play_rate, avg_percent_watched, page_loads, captured_at").eq("org_id", orgId).gte("captured_at", sinceIso).limit(60),
     sb.from("faq_videos").select("title, question, mechanism, clicks, plays, avg_watch_pct").eq("org_id", orgId).limit(60),
     sb.from("setter_call_signals").select("setter_name, call_date, source, limiting_beliefs, objections, ai_summary").eq("org_id", orgId).gte("call_date", sinceDate).limit(120),
@@ -176,6 +344,32 @@ export async function analyzeContentSystem(sb: Sb, orgId: string, days: number) 
     }
   }
 
+  // Bucket-relative verdicts (mechanism × platform, this account's own trailing
+  // baseline) for every combination actually present this window — gives the
+  // AI a real, already-compared read instead of raw averages it would
+  // otherwise have to invent its own "underperformed because X" reasoning from.
+  const bucketsInWindow = new Map<string, Bucket>();
+  for (const p of (pieces.data ?? []) as any[]) {
+    if (!p.mechanism || !p.platform) continue;
+    bucketsInWindow.set(bucketKey({ mechanism: p.mechanism, platform: p.platform }), { mechanism: p.mechanism, platform: p.platform });
+  }
+  const bucketBaselines = await fetchBaselines(sb, orgId, Array.from(bucketsInWindow.values()), config.baselineWindowSize);
+  const bucketReads: { bucket: Bucket; strong: number; typical: number; underperforming: number; insufficientData: number; sampleSize: number }[] = [];
+  for (const [key, bucket] of bucketsInWindow) {
+    const baseline = bucketBaselines.get(key);
+    if (!baseline) continue;
+    const piecesInBucket = (pieces.data ?? []).filter((p: any) => p.mechanism === bucket.mechanism && p.platform === bucket.platform);
+    let strong = 0, typical = 0, underperforming = 0, insufficientData = 0;
+    for (const p of piecesInBucket as any[]) {
+      const verdict = classifyPerformance(toPieceMetrics(byId.get(p.id)), baseline, config.minBucketSample);
+      if (verdict.verdict === "strong") strong += 1;
+      else if (verdict.verdict === "typical") typical += 1;
+      else if (verdict.verdict === "underperforming") underperforming += 1;
+      else insufficientData += 1;
+    }
+    bucketReads.push({ bucket, strong, typical, underperforming, insufficientData, sampleSize: baseline.sampleSize });
+  }
+
   // Onboarding mechanism tags (2.9) — per-mechanism tag counts from the Onboarding page's scoring.
   const onboardingTags: Record<MechanismKey, number> = { educational: 0, credibility: 0, authoritative: 0, relatability: 0 };
   let onboardingUntagged = 0;
@@ -193,7 +387,7 @@ export async function analyzeContentSystem(sb: Sb, orgId: string, days: number) 
 
   const payload = `WINDOW: last ${days} days
 
-RECOMMENDED MIX (from demand signals): ${MECHANISM_KEYS.map(k => `${k} ${demand.mix[k]}%`).join(" · ")}
+RECOMMENDED MIX (from demand signals): ${MECHANISM_KEYS.map(k => `${k} ${demand.mix[k]}%`).join(" · ")}${demand.insufficientData ? ` — LIMITED DATA (total signal weight ${demand.totalWeight}, below the configured minimum of ${demand.minTotalWeight}). Say so plainly rather than treating this mix as settled.` : ""}
 TOP DEMAND DRIVERS:
 ${demand.drivers.slice(0, 12).map(d => `- [${d.mechanism}] ${d.source}: ${d.detail} (weight ${d.weight})`).join("\n") || "- none"}
 
@@ -202,6 +396,9 @@ ${Object.entries(perMech).map(([k, v]) => {
     const n = Math.max(1, v.withMetrics);
     return `- ${k}: ${v.pieces} pieces (${v.withMetrics} with metrics logged) · ${v.views} views · ${v.dms} DMs · ${v.calls} calls booked · $${Math.round(v.cash / 100)} cash · avg retention ${Math.round(v.retention / n)}% · avg drop-off ${Math.round(v.dropOff / n)}% · ${v.followerViews} follower / ${v.nonFollowerViews} non-follower views`;
   }).join("\n") || "- no content logged"}
+
+BUCKET-RELATIVE PERFORMANCE (compared to THIS ACCOUNT'S OWN trailing baseline, per mechanism × platform — a Reel is never compared to a Story sequence or to an absolute percentage):
+${bucketReads.map(r => `- ${r.bucket.mechanism} · ${r.bucket.platform}: ${r.strong} strong, ${r.typical} typical, ${r.underperforming} underperforming, ${r.insufficientData} not-enough-data (own baseline n=${r.sampleSize})`).join("\n") || "- no mechanism × platform combination has content this window"}
 
 FAQ VIDEO CLICKS (subconscious objections — the real data source, not mocked):
 ${((faq.data ?? []) as any[]).map(f => `- ${f.title} (${f.mechanism ?? "unmapped"}): ${f.clicks} clicks, ${f.plays} plays, ${f.avg_watch_pct}% watched`).join("\n") || "- none"}
@@ -227,13 +424,13 @@ Return markdown with these EXACT sections:
 Walk cash → posting → tracking for THIS data. Say plainly where the chain breaks and what's actually unknown.
 
 ## Recommended mix this week
-A table: Mechanism | % of posts | Reels (out of 5-7) | Why (cite the signal: FAQ clicks, intake answer, setter objection, VSL drop-off, reel performance, or onboarding mechanism tag).
+A table: Mechanism | % of posts | Reels (out of 5-7) | Why (cite the signal: FAQ clicks, intake answer, setter objection, VSL drop-off, reel performance, or onboarding mechanism tag). If the mix is flagged LIMITED DATA above, say so in this section instead of presenting it as settled.
 
 ## Double down (green)
 3-5 bullets. Formats/variations that produced DMs, calls, or cash. Name the piece and the number.
 
 ## Bottlenecks (red)
-3-5 bullets. Which mechanism underperformed, WHY it underperformed (hook, format, wrong mechanism for current demand), and the exact fix.
+3-5 bullets. Ground this in the BUCKET-RELATIVE PERFORMANCE section — a mechanism is "underperforming" only relative to ITS OWN (mechanism × platform) baseline, never an absolute number or another format's numbers. If a bucket shows mostly "not-enough-data," say that plainly instead of guessing. For each real bottleneck: which mechanism, WHY (hook, format, wrong mechanism for current demand), and the exact fix.
 
 ## Missing tracking
 What data is absent that makes this read weaker. Be specific about the field or module.

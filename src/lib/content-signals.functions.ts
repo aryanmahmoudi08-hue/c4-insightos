@@ -16,7 +16,9 @@ export const contentDemandFn = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, orgId } = await orgOf(context);
     const { computeDemand } = await import("./content-signals.server");
-    return computeDemand(supabase, orgId, data.days);
+    const { fetchWorkspaceSettings } = await import("./workspace-settings.functions");
+    const settings = await fetchWorkspaceSettings(supabase, orgId);
+    return computeDemand(supabase, orgId, data.days, settings.content_engine);
   });
 
 /** Full bottleneck read: VSL + FAQ + setting calls + intakes + reel performance. */
@@ -26,7 +28,26 @@ export const analyzeContentSystemFn = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, orgId } = await orgOf(context);
     const { analyzeContentSystem } = await import("./content-signals.server");
-    return analyzeContentSystem(supabase, orgId, data.days);
+    const { fetchWorkspaceSettings } = await import("./workspace-settings.functions");
+    const settings = await fetchWorkspaceSettings(supabase, orgId);
+    return analyzeContentSystem(supabase, orgId, data.days, settings.content_engine);
+  });
+
+/**
+ * Weekly posting check — moved server-side from a hand-rolled Supabase query
+ * in the /content-signals route component, so the "worst mechanism"
+ * diagnosis shares the exact same classifyPerformance() call computeDemand's
+ * reel-strength scoring uses, instead of an independent implementation that
+ * could (and did) disagree with it.
+ */
+export const weeklyContentCheckFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, orgId } = await orgOf(context);
+    const { computeWeeklyContentCheck } = await import("./content-signals.server");
+    const { fetchWorkspaceSettings } = await import("./workspace-settings.functions");
+    const settings = await fetchWorkspaceSettings(supabase, orgId);
+    return computeWeeklyContentCheck(supabase, orgId, settings.content_engine);
   });
 
 /** AI-screen a setting-call transcript or setter notes, then store the signal. */

@@ -136,12 +136,18 @@ export function mockDashboardStats(from: string, to: string) {
  */
 export function mockContentDemand(): {
   mix: Record<MechanismKey, number>;
+  insufficientData: boolean;
+  totalWeight: number;
+  minTotalWeight: number;
   weights: Record<MechanismKey, number>;
   drivers: { source: string; detail: string; mechanism: MechanismKey; weight: number }[];
   counts: { faq: number; setter_calls: number; intakes: number; reels: number };
 } {
   return {
     mix: { educational: 35, credibility: 30, authoritative: 15, relatability: 20 },
+    insufficientData: false,
+    totalWeight: 160,
+    minTotalWeight: 15,
     weights: { educational: 42, credibility: 36, authoritative: 18, relatability: 24 },
     drivers: [
       { source: "FAQ clicks", detail: "\"Does this actually work?\" · 38 clicks", mechanism: "credibility", weight: 76 },
@@ -149,6 +155,37 @@ export function mockContentDemand(): {
       { source: "Onboarding intake", detail: "Decision moment: \"saw the exact system breakdown\"", mechanism: "educational", weight: 9 },
     ],
     counts: { faq: 6, setter_calls: 14, intakes: 9, reels: 21 },
+  };
+}
+
+/** Mirrors WeeklyCheck from content-signals.server.ts (not imported directly,
+ * same server-only-code reason as mockContentDemand above). */
+export function mockWeeklyContentCheck(): {
+  per: Record<string, { count: number; dms: number; calls: number; cash: number; views: number; withMetrics: number }>;
+  reels: number;
+  missing: MechanismKey[];
+  untracked: number;
+  best: MechanismKey | null;
+  worst: MechanismKey | null;
+  worstDiagnosis: { label: string; detail: string; verdictsSampled: number } | null;
+  total: number;
+} {
+  const zero = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, withMetrics: 0 };
+  return {
+    per: {
+      educational: { count: 2, dms: 4, calls: 1, cash: 0, views: 3400, withMetrics: 2 },
+      credibility: { count: 3, dms: 11, calls: 3, cash: 250000, views: 5200, withMetrics: 3 },
+      authoritative: { count: 1, dms: 2, calls: 0, cash: 0, views: 1100, withMetrics: 1 },
+      relatability: { count: 0, dms: 0, calls: 0, cash: 0, views: 0, withMetrics: 0 },
+      untagged: zero,
+    },
+    reels: 5,
+    missing: ["relatability"],
+    untracked: 1,
+    best: "credibility",
+    worst: "authoritative",
+    worstDiagnosis: { label: "Not enough data", detail: "[MOCK] Not enough data to compare this mechanism's reel posts yet — 1 posted, need at least 6 with metrics logged to compare against its own baseline.", verdictsSampled: 1 },
+    total: 6,
   };
 }
 
