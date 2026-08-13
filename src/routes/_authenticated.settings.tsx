@@ -144,7 +144,7 @@ const CONTENT_ENGINE_FIELDS: NumField[] = [
 ];
 const ALERT_FIELDS: NumField[] = [
   { key: "showRateAlertPct", label: "Show-rate alert threshold (%)", hint: "Fires when show rate drops below this — set to your own baseline, not an industry number.", min: 0, max: 100 },
-  { key: "closeRateAlertPct", label: "Close-rate alert threshold (%)", hint: "Fires when close rate drops below this — a threshold above your real close rate never fires and is worse than no alert.", min: 0, max: 100 },
+  { key: "closeRateAlertPct", label: "Close-rate alert threshold (%)", hint: "Fires when close rate drops below this. Set it below your real close rate but close enough that a meaningful drop trips it — a threshold far below your actual performance never fires, and one above it fires constantly.", min: 0, max: 100 },
 ];
 const CLIENT_FIELDS: NumField[] = [
   { key: "renewalAtRiskDays", label: "Renewal at-risk window (days)", hint: "A client is flagged at-risk when their renewal falls inside this many days with no conversation started yet, or is overdue.", min: 1, max: 365 },
