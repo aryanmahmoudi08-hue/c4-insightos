@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { MECHANISMS, MECHANISM_KEYS, variationLabel, reelSplit, type MechanismKey } from "@/lib/content-mechanisms";
 import { contentDemandFn, analyzeContentSystemFn, logSetterSignalFn, weeklyContentCheckFn } from "@/lib/content-signals.functions";
+import { getWorkspaceSettingsFn, DEFAULT_WORKSPACE_SETTINGS } from "@/lib/workspace-settings.functions";
 import { mockContentDemand, mockContentSystemInsight, mockWeeklyContentCheck, withMockDelay } from "@/lib/dev-mock-data";
 import { Radar, Sparkles, Loader2, TrendingUp, TriangleAlert, PhoneCall, CalendarCheck, ArrowRight, ChevronDown, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -47,10 +48,22 @@ function ContentSignalsPage() {
   const orgId = (org as { org_id?: string } | undefined)?.org_id;
   const { devBypass } = useAuth();
   const [days, setDays] = useState(30);
-  const [reelTarget, setReelTarget] = useState(6);
+  // Seeded from the workspace's saved weeklyReelTarget (Settings → Content
+  // Engine) instead of a hardcoded 6 that reset on every visit — a scratch
+  // edit here stays session-local, it doesn't write back to settings.
+  const [reelTarget, setReelTarget] = useState(DEFAULT_WORKSPACE_SETTINGS.content_engine.weeklyReelTarget);
+  const [reelTargetSeeded, setReelTargetSeeded] = useState(false);
   const [insight, setInsight] = useState("");
   const [expandedMix, setExpandedMix] = useState<Set<MechanismKey>>(new Set());
   const toggleMix = (k: MechanismKey) => setExpandedMix(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+
+  const settingsFn = useServerFn(getWorkspaceSettingsFn);
+  const { data: workspaceSettings } = useQuery({
+    queryKey: ["workspace-settings", orgId, devBypass],
+    enabled: devBypass || !!orgId,
+    queryFn: () => (devBypass ? Promise.resolve(DEFAULT_WORKSPACE_SETTINGS) : settingsFn({ data: { orgId: orgId! } })),
+  });
+  if (workspaceSettings && !reelTargetSeeded) { setReelTarget(workspaceSettings.content_engine.weeklyReelTarget); setReelTargetSeeded(true); }
 
   const demandFn = useServerFn(contentDemandFn);
   const { data: demand, isLoading } = useQuery({
@@ -125,7 +138,14 @@ function ContentSignalsPage() {
         {/* Demand mix */}
         <Card className="p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">Recommended mix · last {days}d</div>
+            <div className="flex items-center gap-2">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Recommended mix · last {days}d</div>
+              {demand?.insufficientData && (
+                <span className="flex items-center gap-1 rounded bg-[color:var(--color-warning)]/15 px-1.5 py-0.5 text-3xs font-medium uppercase tracking-wide text-[color:var(--color-warning)]" title={`Total signal weight ${demand.totalWeight} is below the configured minimum of ${demand.minTotalWeight} — this mix is a real computed split, not a placeholder, but it's resting on thin signal. Log more FAQ clicks, setter calls, or intakes to sharpen it.`}>
+                  <TriangleAlert className="h-3 w-3" /> Limited data
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2 text-2xs text-muted-foreground">
               Weekly reel target
               <Input type="number" min={1} max={21} value={reelTarget} onChange={e => setReelTarget(Math.max(1, Number(e.target.value) || 1))} className="h-7 w-16 text-xs" />
@@ -133,10 +153,12 @@ function ContentSignalsPage() {
           </div>
           {isLoading ? (
             <div className="py-8 text-center text-xs text-muted-foreground"><Loader2 className="h-4 w-4 mx-auto animate-spin" /></div>
+          ) : !demand ? (
+            <EmptyState icon={<Radar className="h-5 w-5" />} title="No mix yet" description="Waiting on a workspace to compute a mix against." />
           ) : (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {MECHANISM_KEYS.map(k => {
-                const pct = demand?.mix?.[k] ?? 25;
+                const pct = demand.mix[k];
                 const reels = split.find(s => s.mechanism === k)?.reels ?? 0;
                 const posted = weekly.per[k]?.count ?? 0;
                 const gap = reels - posted;

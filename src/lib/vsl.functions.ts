@@ -227,7 +227,13 @@ Transcript / script (with timestamps if available):
 ${transcriptBlock}
 
 Produce the JSON.`;
-    return callGemini(sys, userMsg);
+    const result = await callGemini(sys, userMsg);
+    // A minor version of the same cold-start problem as the content engine:
+    // this can run with as few as 1 snapshot (a=0 above just reads "flat"/"+new"
+    // rather than crashing, but a single-snapshot trend isn't a trend). Surface
+    // the real sample size rather than let the AI's confident prose imply more
+    // history than exists — the UI renders this as a footnote.
+    return { ...(result as Record<string, unknown>), snapshotCount: snaps.length };
   });
 
 // ------ Transcribe from audio file (base64) ------

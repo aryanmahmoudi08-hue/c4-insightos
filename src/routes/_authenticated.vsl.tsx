@@ -267,6 +267,11 @@ function InsightsBlock({ insights }: { insights: any }) {
           </div>
         </div>
       ) : null}
+      {typeof insights.snapshotCount === "number" && (
+        <div className="text-3xs text-muted-foreground">
+          Based on {insights.snapshotCount} metric snapshot{insights.snapshotCount === 1 ? "" : "s"}{insights.snapshotCount === 1 ? " — trend claims above aren't a real trend yet with only one data point." : "."}
+        </div>
+      )}
     </div>
   );
 }

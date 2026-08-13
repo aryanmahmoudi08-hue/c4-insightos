@@ -614,6 +614,7 @@ export function mockVslInsights() {
     drop_off_moments: [
       { timestamp: "2:14", why: "Transition into mechanism explanation runs long without a pattern interrupt." },
     ],
+    snapshotCount: 4,
   };
 }
 
