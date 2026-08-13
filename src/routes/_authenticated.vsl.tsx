@@ -25,6 +25,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { mockVsls, mockVslSnapshots, mockVslInsights, mockTranscriptLines, mockFaqVideos, withMockDelay } from "@/lib/dev-mock-data";
 import { MECHANISM_KEYS, MECHANISMS, type MechanismKey } from "@/lib/content-mechanisms";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
+import { VideoEmbed } from "@/components/video-embed";
 
 export const Route = createFileRoute("/_authenticated/vsl")({ component: VslPage });
 
@@ -197,6 +198,13 @@ function VslCard({ vsl }: { vsl: any }) {
           <ImportDialog vslId={vsl.id} />
           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={onDelete}><Trash2 className="h-4 w-4" /></Button>
         </div>
+      </div>
+
+      {/* Player is the page hero — real playable video wherever the Wistia ID
+          resolves, a designed placeholder everywhere else (never a broken
+          embed). Metrics stay arranged below it, unchanged. */}
+      <div className="p-4 pb-0">
+        <VideoEmbed wistiaId={vsl.wistia_video_id} title={vsl.name} className="mx-auto max-w-2xl" />
       </div>
 
       {/* Unique viewers (reach) and play rate (a conversion, not a fixed-green
@@ -511,38 +519,31 @@ function FaqVideosSection() {
           description="Add the objection-answer videos shown after booking, then log their click/play stats to feed the mechanism mix." />
       )}
 
-      <div className="space-y-2">
+      {/* Ranked grid of real embedded players — objection, click count, and the
+          belief it maps to all sit directly under each video. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {ranked.map((f, i) => {
           const watchRate = f.clicks > 0 ? Math.round((f.plays / f.clicks) * 100) : 0;
           return (
-            <div key={f.id} className="rounded-lg border border-border bg-card p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-2.5 min-w-0">
-                  <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted text-3xs font-mono font-bold text-muted-foreground mt-0.5">{i + 1}</div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold truncate">{f.title}</div>
-                    {f.question && <div className="text-2xs text-muted-foreground mt-0.5">{f.question}</div>}
-                    <div className="flex items-center gap-2 mt-1.5">
-                      {f.mechanism && (
-                        <span className="rounded bg-accent/15 px-1.5 py-0.5 text-3xs uppercase tracking-wide text-accent">{MECHANISMS[f.mechanism as MechanismKey]?.label ?? f.mechanism}</span>
-                      )}
-                      {!f.active && <span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">Inactive</span>}
-                      {f.video_url && <a href={f.video_url} target="_blank" rel="noreferrer" className="text-3xs text-accent hover:underline">Open video</a>}
-                    </div>
-                  </div>
+            <div key={f.id} className="hover-lift rounded-lg border border-border bg-card overflow-hidden">
+              <div className="relative">
+                <VideoEmbed wistiaId={f.wistia_video_id} url={f.video_url} title={f.title} className="rounded-none border-0" />
+                <div className="absolute left-2 top-2 grid h-6 w-6 place-items-center rounded-md bg-background/80 backdrop-blur text-3xs font-mono font-bold text-foreground ring-1 ring-inset ring-white/10">{i + 1}</div>
+                {!f.active && <div className="absolute right-2 top-2 rounded bg-background/80 backdrop-blur px-1.5 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground ring-1 ring-inset ring-white/10">Inactive</div>}
+              </div>
+              <div className="p-3 space-y-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold truncate">{f.title}</div>
+                  {f.question && <div className="text-2xs text-muted-foreground mt-0.5">{f.question}</div>}
+                  {f.mechanism && (
+                    <span className="mt-1.5 inline-block rounded bg-accent/15 px-1.5 py-0.5 text-3xs uppercase tracking-wide text-accent">{MECHANISMS[f.mechanism as MechanismKey]?.label ?? f.mechanism}</span>
+                  )}
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <div className="text-right">
-                    <div className="flex items-center gap-1 font-mono text-sm font-semibold"><MousePointerClick className="h-3 w-3 text-muted-foreground" />{fmtNum(f.clicks)}</div>
-                    <div className="text-3xs text-muted-foreground">clicks</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="flex items-center gap-1 font-mono text-sm font-semibold"><Eye className="h-3 w-3 text-muted-foreground" />{fmtNum(f.plays)}</div>
-                    <div className="text-3xs text-muted-foreground">plays</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-mono text-sm font-semibold">{watchRate}%</div>
-                    <div className="text-3xs text-muted-foreground">watch rate</div>
+                <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1 font-mono text-xs font-semibold"><MousePointerClick className="h-3 w-3 text-muted-foreground" />{fmtNum(f.clicks)}</div>
+                    <div className="flex items-center gap-1 font-mono text-xs font-semibold"><Eye className="h-3 w-3 text-muted-foreground" />{fmtNum(f.plays)}</div>
+                    <div className="font-mono text-xs font-semibold">{watchRate}%<span className="text-3xs font-normal text-muted-foreground"> watch</span></div>
                   </div>
                   <div className="flex items-center gap-1">
                     <Button size="sm" variant="outline" className="h-7 text-2xs" onClick={() => setStatsFor(f)}>Stats</Button>
