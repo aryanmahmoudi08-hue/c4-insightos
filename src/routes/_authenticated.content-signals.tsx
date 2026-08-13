@@ -301,10 +301,11 @@ function ContentSignalsPage() {
  * whichever node is broken right now gets called out explicitly, not just implied.
  */
 function RootCauseChain({ untaggedCount, untrackedCount, totalPosts }: { untaggedCount: number; untrackedCount: number; totalPosts: number }) {
+  const post = (n: number) => (n === 1 ? "post" : "posts");
   const nodes: { key: string; label: string; tone: ChipTone }[] = [
     { key: "cash", label: "Cash inconsistent", tone: "destructive" },
-    { key: "mix", label: untaggedCount > 0 ? `${untaggedCount} posts untagged` : "Posting mix tracked", tone: untaggedCount > 0 ? "destructive" : "success" },
-    { key: "perf", label: untrackedCount > 0 ? `${untrackedCount} posts w/o metrics` : "Performance tracked", tone: untrackedCount > 0 ? "destructive" : "success" },
+    { key: "mix", label: untaggedCount > 0 ? `${untaggedCount} ${post(untaggedCount)} untagged` : "Posting mix tracked", tone: untaggedCount > 0 ? "destructive" : "success" },
+    { key: "perf", label: untrackedCount > 0 ? `${untrackedCount} ${post(untrackedCount)} w/o metrics` : "Performance tracked", tone: untrackedCount > 0 ? "destructive" : "success" },
     { key: "fix", label: "Fix tracking → fixes everything", tone: "info" },
   ];
   const gap = untaggedCount > 0 ? "mix" : untrackedCount > 0 ? "perf" : null;
