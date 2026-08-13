@@ -521,7 +521,7 @@ Sam R. — blocker "no time to post" repeated 4 days running. Open the call with
 
 export function mockLoomGrade() {
   return {
-    score: 7.8, stage: "interview_worthy",
+    score: 7.8, recommendedStage: "interview_worthy",
     summary: "[MOCK] Clear speech, solid energy, cites specific past results. Some rambling in the middle third — trim for a follow-up.",
     reasoning: "Clarity high | energy high | specificity of results high | minor rambling mid-video",
     stated_role: "closer" as string | null,

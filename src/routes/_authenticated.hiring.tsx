@@ -16,7 +16,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plus, Search, Users, Star, Trash2, Pencil, CheckSquare, Square, Video, Sparkles, Loader2, DollarSign, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { gradeLoomFn } from "@/lib/hiring.functions";
+import { gradeLoomFn, recommendStageFromScore } from "@/lib/hiring.functions";
 import { KanbanBoard } from "@/components/kanban-board";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
@@ -126,6 +126,7 @@ function HiringFunnelHero({ total, interviewWorthy, hired }: { total: number; in
 function Hiring() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { devBypass } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Applicant | null>(null);
@@ -133,15 +134,20 @@ function Hiring() {
   const [tab, setTab] = useState<typeof ROLES[number]>("closer");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const { data: applicants } = useQuery({
+  // devBypass has no real session, so reads succeed empty under RLS and writes
+  // 401 — same rationale as team-calendar.tsx's mockCals/mockBlocks.
+  const [mockApplicants, setMockApplicants] = useState<Applicant[]>([]);
+
+  const { data: applicantsQuery } = useQuery({
     queryKey: ["hiring", orgId],
-    enabled: !!orgId,
+    enabled: !!orgId && !devBypass,
     queryFn: async () => {
       const { data, error } = await supabase.from("hiring_applicants").select("*").eq("org_id", orgId!).order("applied_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as Applicant[];
     },
   });
+  const applicants = devBypass ? mockApplicants : applicantsQuery;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -175,38 +181,59 @@ function Hiring() {
         notes: String(f.get("notes") || "") || null,
       };
       const { score, reasoning } = scoreApplicant(draft);
-      const stage: Stage = score >= 7.5 ? "interview_worthy" : score >= 5 ? "needs_grading" : "applied";
-      const { error } = await supabase.from("hiring_applicants").insert({ org_id: orgId!, ...draft, ai_score: score, ai_reasoning: reasoning, stage });
+      // Heuristic score only ever suggests a stage (ai_recommended_stage) — the
+      // real `stage` a new applicant lands in is always the neutral "applied"
+      // until a human applies the recommendation, same rule as the video-grading path.
+      const recommendedStage = recommendStageFromScore(score);
+      if (devBypass) {
+        const row: Applicant = {
+          id: crypto.randomUUID(), ...draft, ai_score: score, ai_reasoning: reasoning,
+          ai_recommended_stage: recommendedStage, stage: "applied",
+          last_shown_at: null, applied_at: new Date().toISOString(),
+          loom_url: null, loom_transcript: null, ai_transcript_summary: null, ai_stated_role: null,
+          historical_cash_collected_cents: null, recent_monthly_cash_collected_cents: null,
+        };
+        setMockApplicants(prev => [row, ...prev]);
+        return;
+      }
+      const { error } = await supabase.from("hiring_applicants").insert({ org_id: orgId!, ...draft, ai_score: score, ai_reasoning: reasoning, ai_recommended_stage: recommendedStage, stage: "applied" });
       if (error) throw error;
     },
-    onSuccess: () => { toast.success("Applicant added · auto-scored"); qc.invalidateQueries({ queryKey: ["hiring"] }); setOpen(false); },
+    onSuccess: () => { toast.success("Applicant added · auto-scored"); if (!devBypass) qc.invalidateQueries({ queryKey: ["hiring"] }); setOpen(false); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
   const update = useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: Partial<Applicant> }) => {
+      if (devBypass) { setMockApplicants(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a)); return; }
       const { error } = await supabase.from("hiring_applicants").update(patch).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["hiring"] }); },
+    onSuccess: () => { if (!devBypass) qc.invalidateQueries({ queryKey: ["hiring"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
   const bulkMove = useMutation({
     mutationFn: async ({ ids, stage }: { ids: string[]; stage: Stage }) => {
+      if (devBypass) {
+        const idSet = new Set(ids);
+        setMockApplicants(prev => prev.map(a => idSet.has(a.id) ? { ...a, stage, last_shown_at: new Date().toISOString() } : a));
+        return;
+      }
       const { error } = await supabase.from("hiring_applicants").update({ stage, last_shown_at: new Date().toISOString() }).in("id", ids);
       if (error) throw error;
     },
-    onSuccess: () => { toast.success("Updated"); setSelectedIds(new Set()); qc.invalidateQueries({ queryKey: ["hiring"] }); },
+    onSuccess: () => { toast.success("Updated"); setSelectedIds(new Set()); if (!devBypass) qc.invalidateQueries({ queryKey: ["hiring"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to update"),
   });
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
+      if (devBypass) { setMockApplicants(prev => prev.filter(a => a.id !== id)); return; }
       const { error } = await supabase.from("hiring_applicants").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => { toast.success("Removed"); setEditing(null); qc.invalidateQueries({ queryKey: ["hiring"] }); },
+    onSuccess: () => { toast.success("Removed"); setEditing(null); if (!devBypass) qc.invalidateQueries({ queryKey: ["hiring"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to remove"),
   });
 
@@ -286,7 +313,11 @@ function Hiring() {
                   onDropItem={(id, stage) => update.mutate({ id, patch: { stage: stage as Stage, last_shown_at: new Date().toISOString() } })}
                   renderCard={(a) => {
                     const sel = selectedIds.has(a.id);
-                    const scoreTone: ChipTone = Number(a.ai_score ?? 0) >= 8 ? "success" : Number(a.ai_score ?? 0) >= 6 ? "warning" : "default";
+                    // Derived from the same recommendStageFromScore() breakpoints the
+                    // server uses for ai_recommended_stage, so the chip color and the
+                    // recommended stage can never disagree with each other again.
+                    const scoreRec = recommendStageFromScore(Number(a.ai_score ?? 0));
+                    const scoreTone: ChipTone = scoreRec === "trial_call" ? "success" : scoreRec === "interview_worthy" ? "info" : scoreRec === "needs_grading" ? "warning" : "default";
                     const roleMismatch = a.ai_stated_role && a.ai_stated_role !== a.role_applied;
                     return (
                       <div className={sel ? "-m-2 rounded-md border border-primary p-2" : ""}>
@@ -364,7 +395,11 @@ function Hiring() {
                       </span>
                       {editing.stage !== editing.ai_recommended_stage && (
                         <Button size="sm" variant="outline" className="h-6 text-3xs"
-                          onClick={() => update.mutate({ id: editing.id, patch: { stage: editing.ai_recommended_stage as string, last_shown_at: new Date().toISOString() } })}>
+                          onClick={() => {
+                            const stage = editing.ai_recommended_stage as string;
+                            update.mutate({ id: editing.id, patch: { stage, last_shown_at: new Date().toISOString() } });
+                            setEditing({ ...editing, stage, last_shown_at: new Date().toISOString() });
+                          }}>
                           Apply
                         </Button>
                       )}
@@ -372,7 +407,24 @@ function Hiring() {
                   )}
                 </div>
 
-                <LoomGrader applicant={editing} onGraded={() => { qc.invalidateQueries({ queryKey: ["hiring"] }); setEditing(null); }} />
+                <LoomGrader
+                  applicant={editing}
+                  devBypass={devBypass}
+                  onGraded={(r, loomUrl, transcript) => {
+                    // Dialog stays open (not setEditing(null)) so the recommendation +
+                    // Apply button this grade unlocks are immediately visible, not hidden
+                    // behind a re-open — the whole point of suggest-and-confirm.
+                    const patch: Partial<Applicant> = {
+                      ai_score: r.score, ai_reasoning: r.reasoning, ai_recommended_stage: r.recommendedStage,
+                      ai_transcript_summary: r.summary, ai_stated_role: r.stated_role,
+                      loom_url: loomUrl || editing.loom_url, loom_transcript: transcript || editing.loom_transcript,
+                      last_shown_at: new Date().toISOString(),
+                    };
+                    if (devBypass) setMockApplicants(prev => prev.map(a => a.id === editing.id ? { ...a, ...patch } : a));
+                    else qc.invalidateQueries({ queryKey: ["hiring"] });
+                    setEditing(prev => (prev ? { ...prev, ...patch } : prev));
+                  }}
+                />
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -393,7 +445,7 @@ function Hiring() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">Stage</Label>
-                    <Select value={editing.stage} onValueChange={(v) => update.mutate({ id: editing.id, patch: { stage: v, last_shown_at: new Date().toISOString() } })}>
+                    <Select value={editing.stage} onValueChange={(v) => { update.mutate({ id: editing.id, patch: { stage: v, last_shown_at: new Date().toISOString() } }); setEditing({ ...editing, stage: v }); }}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>{STAGES.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
                     </Select>
@@ -443,15 +495,18 @@ function ApplicantForm({ onSubmit, pending }: { onSubmit: (f: FormData) => void;
   );
 }
 
-/** AI watches the video application by reading its transcript, then routes the applicant. */
-function LoomGrader({ applicant, onGraded }: { applicant: Applicant; onGraded: () => void }) {
+type GradeResult = { score: number; recommendedStage: string; summary: string; reasoning: string; stated_role: string | null };
+
+/** AI watches the video application by reading its transcript and grades it — a
+ * RECOMMENDATION only (see hiring.server.ts). It never moves the applicant's
+ * real stage; the parent surfaces an "Apply" button for that. */
+function LoomGrader({ applicant, devBypass, onGraded }: { applicant: Applicant; devBypass: boolean; onGraded: (result: GradeResult, loomUrl: string, transcript: string) => void }) {
   const grade = useServerFn(gradeLoomFn);
-  const { devBypass } = useAuth();
   const [url, setUrl] = useState(applicant.loom_url ?? "");
   const [transcript, setTranscript] = useState(applicant.loom_transcript ?? "");
 
   const m = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<GradeResult> => {
       if (devBypass) return withMockDelay(mockLoomGrade());
       return grade({ data: {
       applicant_id: applicant.id,
@@ -459,7 +514,7 @@ function LoomGrader({ applicant, onGraded }: { applicant: Applicant; onGraded: (
       transcript: transcript.trim() || null,
     }});
     },
-    onSuccess: (r) => { toast.success(`Graded ${r.score}/10 → ${r.stage.replace("_", " ")}`); onGraded(); },
+    onSuccess: (r) => { toast.success(`Graded ${r.score}/10 — recommends ${r.recommendedStage.replace("_", " ")}. Apply it below to move the applicant.`); onGraded(r, url.trim(), transcript.trim()); },
     onError: (e: Error) => toast.error(e.message),
   });
 

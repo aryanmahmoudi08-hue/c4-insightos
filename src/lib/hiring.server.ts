@@ -1,6 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-
-const STAGES = ["applied", "needs_grading", "interview_worthy", "trial_call", "offer_sent", "hired", "rejected"] as const;
+import { recommendStageFromScore } from "./hiring.functions";
 
 /** Best-effort transcript pull from a public Loom share page (Loom embeds captions in page JSON). */
 export async function fetchLoomTranscript(loomUrl: string): Promise<string | null> {
@@ -40,9 +39,8 @@ export async function gradeApplicantFromTranscript(args: {
   if (!transcript) throw new Error("No transcript available — paste the Loom transcript to grade this applicant.");
 
   const sys = `You grade sales-rep video applications for a high-ticket coaching company by reading the Loom transcript.
-Pipeline stages, in order: applied, needs_grading, interview_worthy, trial_call, offer_sent, hired, rejected.
 
-Score TRANSCRIPT QUALITY (0-10): clarity of speech, energy and tonality, sales instinct, specificity of past results, coachability, and red flags (rambling, blaming, no numbers, low energy). This is a proxy for "strong" vs "weak" application, not a hiring decision.
+Score TRANSCRIPT QUALITY (0-10): clarity of speech, energy and tonality, sales instinct, specificity of past results, coachability, and red flags (rambling, blaming, no numbers, low energy). This is a proxy for "strong" vs "weak" application, not a hiring decision — you are not deciding the applicant's pipeline stage, only grading the video. A human reviews your grade and reasoning before anyone is moved.
 
 Also extract, best-effort from what's stated on camera (null if not mentioned):
 - stated_role: which of "closer" / "setter" / "dialer" they say they're applying for or have experience in
@@ -50,9 +48,7 @@ Also extract, best-effort from what's stated on camera (null if not mentioned):
 - recent_monthly_cash_collected: their most recent typical MONTHLY cash collected, in whole dollars
 
 Return ONLY minified JSON:
-{"score": <0-10 one decimal>, "recommended_stage": "<one stage key>", "summary": "<4-6 sentence read on the video>", "reasoning": "<one line, pipe-separated quality signals>", "stated_role": "<closer|setter|dialer|null>", "historical_cash_collected": <number|null>, "recent_monthly_cash_collected": <number|null>}
-
-Stage rules (by transcript quality): 8.5+ → trial_call. 7-8.4 → interview_worthy. 5-6.9 → needs_grading. under 5 → rejected.`;
+{"score": <0-10 one decimal>, "summary": "<4-6 sentence read on the video>", "reasoning": "<one line, pipe-separated quality signals>", "stated_role": "<closer|setter|dialer|null>", "historical_cash_collected": <number|null>, "recent_monthly_cash_collected": <number|null>}`;
 
   const user = `Applicant: ${applicant.full_name} — applied as ${applicant.role_applied}
 Experience: ${applicant.years_experience ?? "?"} years · Niche: ${applicant.niche ?? "—"}
@@ -75,30 +71,36 @@ ${transcript.slice(0, 16000)}`;
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("AI returned an unreadable grade.");
   const parsed = JSON.parse(match[0]) as {
-    score: number; recommended_stage: string; summary: string; reasoning: string;
+    score: number; summary: string; reasoning: string;
     stated_role?: string | null; historical_cash_collected?: number | null; recent_monthly_cash_collected?: number | null;
   };
-  const stage = (STAGES as readonly string[]).includes(parsed.recommended_stage) ? parsed.recommended_stage : "needs_grading";
-  const statedRole = ["closer", "setter", "dialer"].includes(parsed.stated_role ?? "") ? parsed.stated_role : null;
+  const score = Math.max(0, Math.min(10, Number(parsed.score) || 0));
+  // Computed in code, not trusted from the LLM's own prose — deterministic and
+  // guaranteed to match the same breakpoints the score chip colors by
+  // (src/lib/hiring.functions.ts). This is a RECOMMENDATION only: it writes
+  // `ai_recommended_stage`, never the applicant's real `stage`. That column
+  // only ever changes on an explicit human click (the "Apply" button on the
+  // applicant card) — see src/routes/_authenticated.hiring.tsx.
+  const recommendedStage = recommendStageFromScore(score);
+  const statedRole = ["closer", "setter", "dialer"].includes(parsed.stated_role ?? "") ? (parsed.stated_role ?? null) : null;
 
   const { error } = await supabaseAdmin
     .from("hiring_applicants")
     .update({
       loom_url: loomUrl ?? null,
       loom_transcript: transcript.slice(0, 40000),
-      ai_score: Math.max(0, Math.min(10, Number(parsed.score) || 0)),
+      ai_score: score,
       ai_reasoning: parsed.reasoning ?? null,
-      ai_recommended_stage: stage,
+      ai_recommended_stage: recommendedStage,
       ai_transcript_summary: parsed.summary ?? null,
       ai_stated_role: statedRole,
       historical_cash_collected_cents: parsed.historical_cash_collected != null ? Math.round(Number(parsed.historical_cash_collected) * 100) : null,
       recent_monthly_cash_collected_cents: parsed.recent_monthly_cash_collected != null ? Math.round(Number(parsed.recent_monthly_cash_collected) * 100) : null,
-      stage,
       last_shown_at: new Date().toISOString(),
     })
     .eq("id", args.applicantId)
     .eq("org_id", args.orgId);
   if (error) throw new Error(error.message);
 
-  return { score: Number(parsed.score), stage, summary: parsed.summary, reasoning: parsed.reasoning, stated_role: statedRole };
+  return { score, recommendedStage, summary: parsed.summary, reasoning: parsed.reasoning, stated_role: statedRole };
 }
