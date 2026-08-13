@@ -21,6 +21,8 @@ import { KanbanBoard, KanbanCardAnatomy } from "@/components/kanban-board";
 import { GlassTableShell, Pagination, usePagination } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
+import { daysUntilDate, clientAtRiskReason } from "@/lib/client-risk";
+import { getWorkspaceSettingsFn, DEFAULT_WORKSPACE_SETTINGS } from "@/lib/workspace-settings.functions";
 
 export const Route = createFileRoute("/_authenticated/clients")({ component: Clients });
 
@@ -49,37 +51,12 @@ type ClientRow = {
   installments_remaining: number | null;
   installment_amount_cents: number | null;
   status: string | null;
-  health_score: number | null;
   renewal_date: string | null;
   renewal_conv_started: boolean | null;
   renewal_stage: string | null;
   notes: string | null;
   pre_close_summary: string | null;
 };
-
-/**
- * Calendar-day difference, not a raw-instant one. `date` is a bare `YYYY-MM-DD` — parsing it
- * plain (`new Date(date)`) reads it as UTC midnight, which can shift the result by a day in
- * negative-UTC-offset timezones once diffed against a local `now`. Append `T00:00:00` so it
- * parses as local midnight, and compare against local midnight today (not the current instant)
- * so the count doesn't creep down as the day goes on.
- */
-function daysUntil(date: string | null): number | null {
-  if (!date) return null;
-  const target = new Date(`${date}T00:00:00`).getTime();
-  const todayLocalMidnight = new Date(new Date().toDateString()).getTime();
-  return Math.round((target - todayLocalMidnight) / 86400e3);
-}
-
-function atRiskReason(c: ClientRow): string | null {
-  const reasons: string[] = [];
-  const hs = Number(c.health_score ?? 100);
-  if (hs < 50) reasons.push(`health ${hs}`);
-  const dru = daysUntil(c.renewal_date);
-  if (dru !== null && dru >= 0 && dru < 30 && !c.renewal_conv_started) reasons.push(`renewal in ${dru}d, no convo`);
-  if (dru !== null && dru < 0) reasons.push(`renewal ${Math.abs(dru)}d overdue`);
-  return reasons.length ? reasons.join(" · ") : null;
-}
 
 function ClientPortfolioHero({ ltv, active, atRisk }: { ltv: number; active: number; atRisk: number }) {
   return (
@@ -118,13 +95,21 @@ function Clients() {
       if (devBypass) return mockClients() as unknown as ClientRow[];
       const { data, error } = await supabase
         .from("clients")
-        .select("id, full_name, email, phone, offer_name, start_date, contract_value_cents, invested_to_date_cents, expected_next_payment_cents, expected_next_payment_date, payment_plan, installments_remaining, installment_amount_cents, status, health_score, renewal_date, renewal_conv_started, renewal_stage, notes, pre_close_summary")
+        .select("id, full_name, email, phone, offer_name, start_date, contract_value_cents, invested_to_date_cents, expected_next_payment_cents, expected_next_payment_date, payment_plan, installments_remaining, installment_amount_cents, status, renewal_date, renewal_conv_started, renewal_stage, notes, pre_close_summary")
         .eq("org_id", orgId!)
         .order("start_date", { ascending: false });
       if (error) throw error;
       return (data ?? []) as ClientRow[];
     },
   });
+
+  const settingsFn = useServerFn(getWorkspaceSettingsFn);
+  const { data: workspaceSettings } = useQuery({
+    queryKey: ["workspace-settings", orgId, devBypass],
+    enabled: devBypass || !!orgId,
+    queryFn: () => (devBypass ? Promise.resolve(DEFAULT_WORKSPACE_SETTINGS) : settingsFn({ data: { orgId: orgId! } })),
+  });
+  const renewalAtRiskDays = workspaceSettings?.clients.renewalAtRiskDays ?? DEFAULT_WORKSPACE_SETTINGS.clients.renewalAtRiskDays;
 
   const updateStage = useMutation({
     mutationFn: async ({ id, stage }: { id: string; stage: Stage }) => {
@@ -206,8 +191,7 @@ function Clients() {
 
   const active = clients?.filter(c => c.status === "active").length ?? 0;
   const ltv = (clients?.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0) ?? 0) / 100;
-  const avgHealth = clients?.length ? Math.round(clients.reduce((s, c) => s + Number(c.health_score ?? 0), 0) / clients.length) : 0;
-  const renewalsDue = clients?.filter(c => { const d = daysUntil(c.renewal_date); return d !== null && d >= 0 && d < 30; }).length ?? 0;
+  const renewalsDue = clients?.filter(c => { const d = daysUntilDate(c.renewal_date); return d !== null && d >= 0 && d < renewalAtRiskDays; }).length ?? 0;
 
   const view = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -216,13 +200,14 @@ function Clients() {
   }, [clients, query]);
   const { page: tablePage, setPage: setTablePage, pageCount: tablePageCount, paged: pagedView, total: tableTotal, pageSize: tablePageSize } = usePagination(view, 25);
 
-  // At-risk list (auto-tagged)
+  // At-risk list (auto-tagged) — renewal-proximity only, most urgent first
+  // (overdue, then soonest). See client-risk.ts for why health_score isn't used.
   const atRisk = useMemo(() => {
     return view
-      .map(c => ({ c, reason: atRiskReason(c) }))
+      .map(c => ({ c, reason: clientAtRiskReason(c, renewalAtRiskDays) }))
       .filter(x => x.reason)
-      .sort((a, b) => (Number(a.c.health_score ?? 100) - Number(b.c.health_score ?? 100)));
-  }, [view]);
+      .sort((a, b) => (daysUntilDate(a.c.renewal_date) ?? Infinity) - (daysUntilDate(b.c.renewal_date) ?? Infinity));
+  }, [view, renewalAtRiskDays]);
 
   // LTV by offer
   const ltvByOffer = useMemo(() => {
@@ -265,11 +250,13 @@ function Clients() {
           </BentoCell>
         </BentoGrid>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* "Avg health" used to live here — removed, not just re-thresholded.
+            health_score is a dead column (never computed or edited anywhere),
+            so an average of it is always ~100 for every workspace forever;
+            displaying it implied real health tracking that doesn't exist. */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <StatCard label="Active clients" value={active} spectrum="hot" icon={<BadgeCheck className="h-4 w-4" />} />
-          {/* Threshold-driven state signals, correctly kept semantic. */}
-          <StatCard label="Avg health" value={`${avgHealth}`} accent={avgHealth > 70 ? "success" : avgHealth > 40 ? "warning" : "destructive"} icon={<HeartPulse className="h-4 w-4" />} />
-          <StatCard label="Renewals <30d" value={renewalsDue} accent={renewalsDue ? "warning" : "primary"} icon={<Repeat className="h-4 w-4" />} />
+          <StatCard label={`Renewals <${renewalAtRiskDays}d`} value={renewalsDue} accent={renewalsDue ? "warning" : "primary"} icon={<Repeat className="h-4 w-4" />} />
           <StatCard label="At-risk" value={atRisk.length} accent={atRisk.length ? "destructive" : "primary"} icon={<AlertTriangle className="h-4 w-4" />} hint="Auto-flagged" />
         </div>
 
@@ -310,7 +297,7 @@ function Clients() {
               sumBy={(c) => c.contract_value_cents ?? 0}
               loading={clientsLoading}
               renderCard={(c) => {
-                const risk = atRiskReason(c);
+                const risk = clientAtRiskReason(c, renewalAtRiskDays);
                 return (
                   <KanbanCardAnatomy
                     title={c.full_name}
@@ -332,7 +319,7 @@ function Clients() {
             <GlassTableShell
               toolbar={
                 <div className="text-2xs font-semibold uppercase tracking-wider text-destructive">
-                  Auto-flagged: health &lt; 50, or renewal &lt; 30d with no conversation started, or renewal overdue
+                  Auto-flagged: renewal &lt; {renewalAtRiskDays}d with no conversation started, or renewal overdue
                 </div>
               }
             >
@@ -341,7 +328,6 @@ function Clients() {
                   <tr>
                     <th className="text-left p-3">Client</th>
                     <th className="text-left p-3">Offer</th>
-                    <th className="text-right p-3 font-mono">Health</th>
                     <th className="text-left p-3">Renewal</th>
                     <th className="text-left p-3">Stage</th>
                     <th className="text-left p-3">Reason</th>
@@ -353,16 +339,15 @@ function Clients() {
                     <tr key={c.id} className="border-t border-border/70 hover:bg-muted/20">
                       <td className="p-3"><div className="font-medium">{c.full_name}</div><div className="text-2xs text-muted-foreground">{c.email}</div></td>
                       <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
-                      <td className="p-3 text-right font-mono text-destructive">{Number(c.health_score ?? 0)}</td>
                       <td className="p-3 text-xs">{c.renewal_date ?? "—"}</td>
                       <td className="p-3 text-xs uppercase">{(c.renewal_stage || "not_started").replace("_", " ")}</td>
                       <td className="p-3 text-xs text-destructive">{reason}</td>
                       <td className="p-3 text-right font-mono">${Math.round((c.contract_value_cents ?? 0)/100).toLocaleString()}</td>
                     </tr>
                   ))}
-                  {clientsLoading && <tr><td colSpan={7} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
+                  {clientsLoading && <tr><td colSpan={6} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
                   {!clientsLoading && atRisk.length === 0 && (
-                    <tr><td colSpan={7}><EmptyState icon={<HeartPulse className="h-4 w-4" />} title="No clients at risk" /></td></tr>
+                    <tr><td colSpan={6}><EmptyState icon={<HeartPulse className="h-4 w-4" />} title="No clients at risk" /></td></tr>
                   )}
                 </tbody>
               </table>
@@ -417,7 +402,7 @@ function Clients() {
                 <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr><th className="text-left p-3">Client</th><th className="text-left p-3">Offer</th><th className="text-left p-3">Start</th>
                     <th className="text-right p-3 font-mono">Contract</th><th className="text-center p-3">Plan</th>
-                    <th className="text-right p-3 font-mono">Health</th><th className="text-left p-3">Renewal</th><th className="text-left p-3">Stage</th></tr>
+                    <th className="text-left p-3">Renewal</th><th className="text-left p-3">Stage</th></tr>
                 </thead>
                 <tbody>
                   {pagedView.map(c => (
@@ -427,14 +412,13 @@ function Clients() {
                       <td className="p-3 text-xs text-muted-foreground">{c.start_date}</td>
                       <td className="p-3 text-right font-mono">${Math.round((c.contract_value_cents ?? 0)/100).toLocaleString()}</td>
                       <td className="p-3 text-center text-xs">{c.payment_plan ? `${c.installments_remaining} left` : "PIF"}</td>
-                      <td className="p-3 text-right font-mono">{Number(c.health_score ?? 0)}</td>
                       <td className="p-3 text-xs">{c.renewal_date ?? "—"}</td>
                       <td className="p-3"><span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase">{(c.renewal_stage || "not_started").replace("_", " ")}</span></td>
                     </tr>
                   ))}
-                  {clientsLoading && <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
+                  {clientsLoading && <tr><td colSpan={7} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
                   {!clientsLoading && tableTotal === 0 && (
-                    <tr><td colSpan={8}><EmptyState icon={<Search className="h-4 w-4" />} title={query ? "No matches" : "No clients yet"} /></td></tr>
+                    <tr><td colSpan={7}><EmptyState icon={<Search className="h-4 w-4" />} title={query ? "No matches" : "No clients yet"} /></td></tr>
                   )}
                 </tbody>
               </table>

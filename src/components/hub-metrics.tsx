@@ -52,7 +52,7 @@ export function HubMetrics() {
         supabase.from("daily_wins")
           .select("win_date, win_types, financial_amount_cents, energy_score")
           .eq("org_id", orgId!).gte("win_date", range.from).lte("win_date", range.to),
-        supabase.from("clients").select("id, status, health_score").eq("org_id", orgId!),
+        supabase.from("clients").select("id, status").eq("org_id", orgId!),
       ]);
 
       const actList = acts.data ?? [];
@@ -105,8 +105,6 @@ export function HubMetrics() {
 
       const clientList = clientsRes.data ?? [];
       const activeClients = clientList.filter(c => c.status === "active").length;
-      const healthVals = clientList.map(c => Number(c.health_score ?? 0)).filter(n => n > 0);
-      const avgHealth = healthVals.length ? healthVals.reduce((s, n) => s + n, 0) / healthVals.length : 0;
 
       // Sparklines
       const dayKeys = [...new Set(actList.map(a => a.activity_date))].sort();
@@ -128,7 +126,7 @@ export function HubMetrics() {
         apps: apps.length, leads: leadList.length, completion, quality, precallWatched,
         booked, showed, closed,
         wins: winList.length, financialWins, winCash, avgEnergy,
-        activeClients, avgHealth,
+        activeClients,
         dialSpark, visitSpark, playSpark, appSpark,
       };
     },
@@ -205,7 +203,6 @@ export function HubMetrics() {
         to="/fulfillment"
         tiles={[
           { label: "Active clients", value: fmt(d?.activeClients ?? 0) },
-          { label: "Avg client health", value: d?.avgHealth ? d.avgHealth.toFixed(0) : "—", tone: (d?.avgHealth ?? 0) >= 70 ? "success" : "warning" },
           { label: "Daily W logs", value: fmt(d?.wins ?? 0) },
           { label: "Financial wins", value: fmt(d?.financialWins ?? 0), tone: "success" },
           { label: "Student cash logged", value: "$" + fmt((d?.winCash ?? 0) / 100), tone: "success" },

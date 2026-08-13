@@ -5,7 +5,7 @@ import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
-import { Briefcase, Target, TrendingUp, Search, HeartPulse } from "lucide-react";
+import { Briefcase, Target, TrendingUp, Search } from "lucide-react";
 import { DailyWinsPanel } from "@/components/daily-wins-panel";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
 
@@ -17,7 +17,6 @@ type ClientLite = {
   email: string | null;
   offer_name: string | null;
   status: string | null;
-  health_score: number | null;
   start_date: string;
   pre_close_summary: string | null;
 };
@@ -34,7 +33,7 @@ function Fulfillment() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("clients")
-        .select("id, full_name, email, offer_name, status, health_score, start_date, pre_close_summary")
+        .select("id, full_name, email, offer_name, status, start_date, pre_close_summary")
         .eq("org_id", orgId!)
         .eq("status", "active")
         .order("start_date", { ascending: false });
@@ -60,15 +59,16 @@ function Fulfillment() {
 
   const activeClient = useMemo(() => clients?.find((c) => c.id === selected) ?? null, [clients, selected]);
   const answers = (intake?.responses ?? {}) as Record<string, string>;
-  const avgHealth = clients?.length ? Math.round(clients.reduce((s, c) => s + Number(c.health_score ?? 0), 0) / clients.length) : 0;
 
   return (
     <>
       <TopBar title="Client Results" subtitle="Track active client goals + progress from intake → outcome" />
       <div className="px-6 pt-6">
-        {/* Page hero (B1) — this list's own scope, headcount isn't a funnel metric
-            here (no conversion story on a fulfillment roster) so it stays neutral;
-            health keeps its threshold-driven semantic color from Clients. */}
+        {/* Page hero (B1) — headcount isn't a funnel metric here (no conversion
+            story on a fulfillment roster) so it stays neutral. The "avg health"
+            half of this hero was removed, not just re-thresholded: health_score
+            is a dead column (never computed or edited anywhere), so an average
+            of it is always ~100 for every workspace forever. */}
         <BentoGrid cols={2} rowHeight="7rem">
           <BentoCell span="wide">
             <div className="hover-lift relative flex h-full items-center gap-6 overflow-hidden rounded-2xl border border-border bg-card p-5">
@@ -77,14 +77,6 @@ function Fulfillment() {
                 <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Fulfillment Roster</div>
                 <div className="font-mono text-4xl font-bold tabular-nums">{clients?.length ?? 0}</div>
                 <div className="text-2xs text-muted-foreground">active client{(clients?.length ?? 0) === 1 ? "" : "s"}</div>
-              </div>
-              <div className="relative h-10 w-px bg-border" />
-              <div className="relative flex items-center gap-2">
-                <HeartPulse className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <div className={`font-mono text-2xl font-bold tabular-nums ${avgHealth > 70 ? "text-[color:var(--color-success)]" : avgHealth > 40 ? "text-[color:var(--color-warning)]" : "text-destructive"}`}>{avgHealth}</div>
-                  <div className="text-2xs text-muted-foreground">avg health</div>
-                </div>
               </div>
             </div>
           </BentoCell>
@@ -110,7 +102,7 @@ function Fulfillment() {
                 <div className="font-medium text-sm">{c.full_name}</div>
                 <div className="flex items-center justify-between text-2xs text-muted-foreground mt-0.5">
                   <span>{c.offer_name ?? "—"}</span>
-                  <span className="font-mono">health {Number(c.health_score ?? 0)}</span>
+                  <span className="font-mono">{c.start_date}</span>
                 </div>
               </button>
             ))}

@@ -108,7 +108,7 @@ function Dashboard() {
         supabase.from("setter_activity").select("cash_collected_cents").eq("org_id", orgId!).gte("activity_date", monthStart),
         supabase.from("setter_activity").select("team_member_name, role, sets, closes, cash_collected_cents").eq("org_id", orgId!).gte("activity_date", range.from).lte("activity_date", range.to),
         supabase.from("alerts").select("id, severity, title, created_at").eq("org_id", orgId!).eq("acknowledged", false).order("created_at", { ascending: false }).limit(6),
-        supabase.from("ai_insights").select("id, title, body, module, confidence, created_at").eq("org_id", orgId!).eq("dismissed", false).order("created_at", { ascending: false }).limit(4),
+        supabase.from("ai_insights").select("id, title, body, module, created_at").eq("org_id", orgId!).eq("dismissed", false).order("created_at", { ascending: false }).limit(4),
         // Content-to-cash: top pieces by attributed cash in range
         supabase.from("content_metrics")
           .select("content_id, cash_collected_cents, leads_generated, closes, views, content_pieces!inner(title, platform)")
@@ -361,10 +361,7 @@ function Dashboard() {
             <div className="divide-y divide-border">
               {(stats?.insights ?? []).map(i => (
                 <div key={i.id} className="px-4 py-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-medium truncate">{i.title}</div>
-                    <span className="text-3xs font-mono text-muted-foreground">{Math.round(Number(i.confidence) * 100)}%</span>
-                  </div>
+                  <div className="text-sm font-medium truncate">{i.title}</div>
                   <div className="text-2xs text-muted-foreground line-clamp-2">{i.body}</div>
                   <div className="text-3xs uppercase tracking-wider text-accent mt-1">{i.module}</div>
                 </div>

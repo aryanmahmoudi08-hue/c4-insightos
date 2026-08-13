@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { dispatchEvent } from "@/lib/dispatch.server";
+import { clientAtRiskReason } from "@/lib/client-risk";
+import { fetchWorkspaceSettings } from "@/lib/workspace-settings.functions";
 
 interface WeeklySummary {
   weekStart: string;
@@ -30,6 +32,7 @@ export const sendWeeklyReportFn = createServerFn({ method: "POST" })
     const { data: m } = await supabase.from("memberships").select("org_id").eq("user_id", userId).limit(1).maybeSingle();
     if (!m) throw new Error("No workspace");
     const orgId = m.org_id as string;
+    const settings = await fetchWorkspaceSettings(supabase, orgId);
 
     const now = new Date();
     const weekEnd = isoDate(now);
@@ -77,25 +80,21 @@ export const sendWeeklyReportFn = createServerFn({ method: "POST" })
     const [curr, prev, atRisk] = await Promise.all([
       fetchWindow(weekStart, weekEnd),
       fetchWindow(prevStart, prevEnd),
-      supabase.from("clients").select("id, health_score, renewal_date, renewal_conv_started, status").eq("org_id", orgId).eq("status", "active"),
+      // health_score is a dead column (never computed/edited anywhere) — at-risk
+      // is renewal-proximity only now, same shared rule clients.tsx uses.
+      supabase.from("clients").select("id, renewal_date, renewal_conv_started, status").eq("org_id", orgId).eq("status", "active"),
     ]);
 
-    const atRiskCount = (atRisk.data ?? []).filter(c => {
-      const hs = Number(c.health_score ?? 100);
-      if (hs < 50) return true;
-      if (c.renewal_date) {
-        const days = Math.floor((new Date(c.renewal_date).getTime() - Date.now()) / 86400e3);
-        if (days >= 0 && days < 30 && !c.renewal_conv_started) return true;
-        if (days < 0) return true;
-      }
-      return false;
-    }).length;
+    const atRiskCount = (atRisk.data ?? []).filter(c => clientAtRiskReason(c, settings.clients.renewalAtRiskDays, now) !== null).length;
 
     const cashDelta = prev.cash > 0 ? ((curr.cash - prev.cash) / prev.cash) * 100 : 0;
     const trends: string[] = [];
     if (cashDelta < -10) trends.push(`Cash down ${Math.abs(cashDelta).toFixed(0)}% WoW`);
     if (cashDelta > 10) trends.push(`Cash up ${cashDelta.toFixed(0)}% WoW`);
-    if (curr.callsBooked > 5 && curr.callsBooked && (curr.callsShowed / curr.callsBooked) < 0.6) trends.push(`Show rate slipped to ${((curr.callsShowed / curr.callsBooked) * 100).toFixed(0)}%`);
+    // Same showRateAlertPct setting /insights uses — previously a different,
+    // hardcoded 60% here vs. 70% there for the same underlying question.
+    const showRateThreshold = settings.alerts.showRateAlertPct / 100;
+    if (curr.callsBooked > 5 && (curr.callsShowed / curr.callsBooked) < showRateThreshold) trends.push(`Show rate slipped to ${((curr.callsShowed / curr.callsBooked) * 100).toFixed(0)}%`);
     if (atRiskCount > 0) trends.push(`${atRiskCount} active client${atRiskCount === 1 ? "" : "s"} flagged at risk`);
 
     const summary: WeeklySummary = {

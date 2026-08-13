@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { fetchWorkspaceSettings } from "./workspace-settings.functions";
 
 interface WeekBucket {
   weekStart: string; // YYYY-MM-DD
@@ -145,7 +146,6 @@ interface AiInsight {
   body: string;
   module: string;
   recommendation: string;
-  confidence: number;
 }
 
 // Expose week-level snapshot to the client (for the trend strip on Insights page)
@@ -173,6 +173,7 @@ export const generateAiInsights = createServerFn({ method: "POST" })
     const orgId = membership.org_id;
 
     const metrics = await gatherMetrics(supabase, orgId);
+    const settings = await fetchWorkspaceSettings(supabase, orgId);
 
     const apiKey = process.env.LOVABLE_API_KEY;
     if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
@@ -182,7 +183,7 @@ You receive a 28-day metrics snapshot plus 4 weekly buckets and detected trend p
 
 Your job is to produce TWO separate lists:
 
-1. "bottlenecks" — every meaningful metric that is BELOW where it should be, broken, declining, or capping revenue. Be exhaustive. If show rate < 70%, that's a bottleneck. If close rate < 25% (high-ticket), that's a bottleneck. If hook retention < 40%, content leads flat, cash flat or down, top closer carrying everything alone — call it out. Rank by revenue impact (biggest leak first).
+1. "bottlenecks" — every meaningful metric that is BELOW where it should be, broken, declining, or capping revenue. Be exhaustive. If show rate < ${settings.alerts.showRateAlertPct}%, that's a bottleneck — this is this workspace's own configured alert floor, not a generic industry number, so treat a breach as real. If close rate < ${settings.alerts.closeRateAlertPct}%, same — calibrated to this workspace's own baseline. Also call out weak hook retention, flat/declining content leads, cash flat or down, or one closer carrying a disproportionate share, using THIS workspace's own recent numbers as the bar, never an absolute percentage you invent. Rank by revenue impact (biggest leak first).
 2. "double_down" — every metric that's outperforming, climbing, or punching above weight. What's working that we should pour more fuel on. Be specific about WHY it's working.
 
 Each item must reference a concrete number, explain the why in 1-2 sentences, and end with one actionable recommendation.
@@ -190,8 +191,8 @@ Module field options: executive|content|attribution|setter|closer|offer|funnel.
 
 Respond ONLY with valid JSON:
 {
-  "bottlenecks": [{ "title": "string (max 60 chars)", "body": "string (2-3 sentences with the number)", "module": "...", "recommendation": "string (1 imperative sentence)", "confidence": 0.0-1.0 }],
-  "double_down": [{ "title": "...", "body": "...", "module": "...", "recommendation": "...", "confidence": 0.0-1.0 }]
+  "bottlenecks": [{ "title": "string (max 60 chars)", "body": "string (2-3 sentences with the number)", "module": "...", "recommendation": "string (1 imperative sentence)" }],
+  "double_down": [{ "title": "...", "body": "...", "module": "...", "recommendation": "..." }]
 }
 
 Aim for 3-6 items per list. If a list genuinely has nothing, return an empty array — don't pad.`;
@@ -246,7 +247,10 @@ Produce the bottlenecks and double_down lists now.`;
         title: String(i.title || "Insight").slice(0, 120),
         body: String(i.body || ""),
         recommendation: i.recommendation ? String(i.recommendation) : null,
-        confidence: Math.min(1, Math.max(0, Number(i.confidence) || 0.5)),
+        // No confidence field: the AI previously invented a 0.0-1.0 number
+        // with zero connection to sample size, effect size, or signal
+        // agreement — a fabricated-looking number is worse than none. The DB
+        // column defaults to 0 and is no longer read by the UI.
         source_refs: [{ snapshot: metrics as unknown as Record<string, unknown> }] as never,
         generated_by: "gemini-2.5-flash",
       }));
