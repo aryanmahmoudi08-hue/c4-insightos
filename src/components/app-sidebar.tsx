@@ -213,7 +213,11 @@ export function AppSidebar() {
         )}
       >
         <div className={cn("flex items-center gap-2 border-b border-sidebar-border py-4", collapsed ? "px-2.5 justify-center" : "px-4")}>
-          <img src={c4Logo} alt="C4 Consulting" className="h-9 w-9 shrink-0 object-contain" />
+          {/* Source PNG is white-on-transparent — invisible on light mode's
+              near-white sidebar. .theme-logo (styles.css) inverts it under
+              .light so it stays a real second theme, not just an inversion
+              elsewhere with one asset silently breaking. */}
+          <img src={c4Logo} alt="C4 Consulting" className="theme-logo h-9 w-9 shrink-0 object-contain" />
           {!collapsed && (
             <button type="button" className="group min-w-0 flex-1 text-left" title="Workspace">
               <div className="eyebrow truncate">C4 · Insight</div>

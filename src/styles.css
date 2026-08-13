@@ -421,6 +421,12 @@
   }
   .light .hover-lift:hover { border-color: oklch(0.16 0 0 / 18%); }
 
+  /* The C4 mark (assets/c4-logo.png) is a white-on-transparent PNG — invisible
+     against light mode's near-white sidebar with no adjustment. Inverting
+     under .light turns it into a real second-theme-correct dark mark instead
+     of silently disappearing; dark mode is untouched (no filter applied). */
+  .light .theme-logo { filter: invert(1); }
+
   /* Status dot — small glowing indicator for badges/leaderboards/rows.
      Set `color` to the semantic tone (text-[color:var(--color-success)] etc.);
      the dot fills with currentColor and glows a soft halo of the same hue. */
