@@ -504,7 +504,7 @@ function FaqVideosSection() {
               <div className="relative min-w-0">
                 <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Dominant Limiting Belief</div>
                 <div className="display-serif mt-0.5 text-lg leading-snug">
-                  "{topBelief.title}" — <span className="font-mono text-base text-spectrum-mid">{topBelief.clicks}</span> clicks
+                  {topBelief.title} — <span className="font-mono text-base text-spectrum-mid">{topBelief.clicks}</span> clicks
                 </div>
                 {topBelief.mechanism && <div className="mt-0.5 text-xs text-muted-foreground">feeds the {MECHANISMS[topBelief.mechanism as MechanismKey]?.label ?? topBelief.mechanism} mix</div>}
               </div>
