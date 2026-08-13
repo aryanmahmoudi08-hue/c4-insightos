@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 import { checkCalendarStatusFn } from "@/lib/team-calendar-status.functions";
 import { mockCalendarStatus, withMockDelay } from "@/lib/dev-mock-data";
 import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
+import { AvatarInitials } from "@/components/ui/avatar-initials";
+import { avatarColorFor } from "@/lib/avatar-color";
 
 export const Route = createFileRoute("/_authenticated/team-calendar")({
   component: TeamCalendarPage,
@@ -55,7 +57,6 @@ type Block = {
 };
 
 const ROLES = ["closer", "dm_setter", "dialer", "manager", "other"];
-const ALL_REPS = "__all__";
 const ROLE_GROUPS: { key: string; label: string; roles: string[] }[] = [
   { key: "closer", label: "All Closers", roles: ["closer"] },
   { key: "dm_setter", label: "All Setters", roles: ["dm_setter"] },
@@ -76,11 +77,26 @@ function TeamCalendarPage() {
   const qc = useQueryClient();
   const [view, setView] = useState<"WEEK" | "MONTH" | "AGENDA">("WEEK");
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
-  const [repFilter, setRepFilter] = useState<string>(ALL_REPS);
+  // Empty set = "all reps" (matches everything) — direct click-to-select on the
+  // Connected Reps list below, multi-select supported. Part D.
+  const [selectedReps, setSelectedReps] = useState<Set<string>>(new Set());
+  const toggleRep = (name: string) => setSelectedReps(prev => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    return next;
+  });
 
-  const { data: cals } = useQuery({
+  // Dev bypass never got a real Supabase session, so writes to team_calendars /
+  // work_blocks get rejected by RLS (401) — the same gap the backfill fixed on
+  // team.tsx/connectors.tsx/daily-wins-panel.tsx. Keep edits in local state
+  // instead, mirroring permissions.tsx's established pattern for this exact
+  // situation (reads succeed empty under devBypass RLS, only writes fail).
+  const [mockCals, setMockCals] = useState<Cal[]>([]);
+  const [mockBlocks, setMockBlocks] = useState<Block[]>([]);
+
+  const { data: calsQuery } = useQuery({
     queryKey: ["team-calendars", orgId],
-    enabled: !!orgId,
+    enabled: !!orgId && !devBypass,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("team_calendars")
@@ -91,6 +107,7 @@ function TeamCalendarPage() {
       return (data ?? []) as Cal[];
     },
   });
+  const cals = devBypass ? mockCals : calsQuery;
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -98,9 +115,9 @@ function TeamCalendarPage() {
     return d.toISOString().slice(0, 10);
   }), [weekStart]);
 
-  const { data: blocks } = useQuery({
+  const { data: blocksQuery } = useQuery({
     queryKey: ["work-blocks", orgId, days[0]],
-    enabled: !!orgId,
+    enabled: !!orgId && !devBypass,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("work_blocks")
@@ -113,17 +130,13 @@ function TeamCalendarPage() {
       return (data ?? []) as Block[];
     },
   });
+  const blocks = devBypass ? mockBlocks.filter(b => b.block_date >= days[0] && b.block_date <= days[6]) : blocksQuery;
 
-  const matchesFilter = (role: string, name: string) => {
-    if (repFilter === ALL_REPS) return true;
-    const group = ROLE_GROUPS.find(g => g.key === repFilter);
-    if (group) return group.roles.includes(role);
-    return name === repFilter;
-  };
+  const matchesFilter = (name: string) => selectedReps.size === 0 || selectedReps.has(name);
 
   const allActiveCals = (cals ?? []).filter(c => c.active);
-  const activeCals = allActiveCals.filter(c => matchesFilter(c.role, c.member_name));
-  const visibleCals = (cals ?? []).filter(c => matchesFilter(c.role, c.member_name));
+  const activeCals = allActiveCals.filter(c => matchesFilter(c.member_name));
+  const visibleCals = (cals ?? []).filter(c => matchesFilter(c.member_name));
   const combinedEmbed = useMemo(() => {
     const ids = activeCals.map(c => c.calendar_id).filter(Boolean) as string[];
     if (!ids.length) return null;
@@ -150,9 +163,10 @@ function TeamCalendarPage() {
 
   const saveCal = useMutation({
     mutationFn: async (row: Partial<Cal> & { member_name: string }) => {
-      const payload = {
-        org_id: orgId!,
-        member_name: row.member_name.trim(),
+      const memberName = row.member_name.trim();
+      const payload: Cal = {
+        id: (devBypass && mockCals.find(c => c.member_name === memberName)?.id) || crypto.randomUUID(),
+        member_name: memberName,
         role: row.role ?? "closer",
         calendar_id: row.calendar_id || null,
         ical_url: row.ical_url || null,
@@ -160,33 +174,50 @@ function TeamCalendarPage() {
         timezone: row.timezone || null,
         active: true,
       };
+      if (devBypass) {
+        setMockCals(prev => {
+          const idx = prev.findIndex(c => c.member_name === memberName);
+          if (idx >= 0) { const next = [...prev]; next[idx] = payload; return next; }
+          return [...prev, payload];
+        });
+        return;
+      }
       const { error } = await (supabase.from("team_calendars") as never as { upsert: (p: unknown, o: unknown) => Promise<{ error: { message: string } | null }> })
-        .upsert(payload, { onConflict: "org_id,member_name" });
+        .upsert({ org_id: orgId!, member_name: payload.member_name, role: payload.role, calendar_id: payload.calendar_id, ical_url: payload.ical_url, embed_url: payload.embed_url, timezone: payload.timezone, active: payload.active }, { onConflict: "org_id,member_name" });
       if (error) throw new Error(error.message);
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["team-calendars", orgId] }); toast.success("Calendar connected."); },
+    onSuccess: () => { if (!devBypass) qc.invalidateQueries({ queryKey: ["team-calendars", orgId] }); toast.success("Calendar connected."); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const delCal = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("team_calendars").delete().eq("id", id); if (error) throw error; },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["team-calendars", orgId] }),
+    mutationFn: async (id: string) => {
+      if (devBypass) { setMockCals(prev => prev.filter(c => c.id !== id)); return; }
+      const { error } = await supabase.from("team_calendars").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { if (!devBypass) qc.invalidateQueries({ queryKey: ["team-calendars", orgId] }); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const saveBlock = useMutation({
     mutationFn: async (row: Omit<Block, "id">) => {
+      if (devBypass) { setMockBlocks(prev => [...prev, { ...row, id: crypto.randomUUID() }]); return; }
       const { error } = await (supabase.from("work_blocks") as never as { insert: (p: unknown) => Promise<{ error: { message: string } | null }> })
         .insert({ ...row, org_id: orgId! });
       if (error) throw new Error(error.message);
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["work-blocks", orgId, days[0]] }); toast.success("Work block added."); },
+    onSuccess: () => { if (!devBypass) qc.invalidateQueries({ queryKey: ["work-blocks", orgId, days[0]] }); toast.success("Work block added."); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const delBlock = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("work_blocks").delete().eq("id", id); if (error) throw error; },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["work-blocks", orgId, days[0]] }),
+    mutationFn: async (id: string) => {
+      if (devBypass) { setMockBlocks(prev => prev.filter(b => b.id !== id)); return; }
+      const { error } = await supabase.from("work_blocks").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { if (!devBypass) qc.invalidateQueries({ queryKey: ["work-blocks", orgId, days[0]] }); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -201,14 +232,21 @@ function TeamCalendarPage() {
               <CalendarDays className="h-3.5 w-3.5" /> Live team calendar · {activeCals.length} connected
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <Select value={repFilter} onValueChange={setRepFilter}>
-                <SelectTrigger className="h-7 w-[160px] text-2xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_REPS}>All reps</SelectItem>
-                  {ROLE_GROUPS.map(g => <SelectItem key={g.key} value={g.key}>{g.label}</SelectItem>)}
-                  {(cals ?? []).map(c => <SelectItem key={c.id} value={c.member_name}>{c.member_name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {/* Quick-select by role group (bulk), "All reps" is the explicit
+                  back-to-all reset — direct per-rep selection happens by
+                  clicking a row in Connected Reps below (Part D). */}
+              <button onClick={() => setSelectedReps(new Set())}
+                className={cn("rounded border px-2 py-1 text-2xs", selectedReps.size === 0 ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40")}>
+                All reps
+              </button>
+              {ROLE_GROUPS.map(g => (
+                <button key={g.key}
+                  onClick={() => setSelectedReps(new Set((cals ?? []).filter(c => g.roles.includes(c.role)).map(c => c.member_name)))}
+                  className="rounded border border-border px-2 py-1 text-2xs text-muted-foreground hover:bg-muted/40">
+                  {g.label}
+                </button>
+              ))}
+              <span className="h-4 w-px bg-border" />
               {(["WEEK", "MONTH", "AGENDA"] as const).map(v => (
                 <button key={v} onClick={() => setView(v)}
                   className={cn("rounded border px-2 py-1 text-2xs", view === v ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40")}>
@@ -218,13 +256,30 @@ function TeamCalendarPage() {
               <CalendarDialog onSave={(r) => saveCal.mutate(r)} />
             </div>
           </div>
+          {selectedReps.size > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-muted/20 px-4 py-2">
+              <span className="text-3xs uppercase tracking-wider text-muted-foreground">Showing</span>
+              {[...selectedReps].map(name => (
+                <button key={name} onClick={() => toggleRep(name)}
+                  className="flex items-center gap-1.5 rounded-full border py-0.5 pl-1 pr-2 text-2xs hover:opacity-80"
+                  style={{ borderColor: avatarColorFor(name), color: avatarColorFor(name) }}>
+                  <AvatarInitials name={name} size="xs" />
+                  {name} ×
+                </button>
+              ))}
+            </div>
+          )}
           {failedCals.length > 0 && (
             <div className="flex items-start gap-2 border-b border-destructive/30 bg-destructive/5 px-4 py-2.5 text-2xs text-destructive">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-              <span>
-                {failedCals.length} calendar{failedCals.length === 1 ? "" : "s"} not reachable ({failedCals.map(c => c.member_name).join(", ")}) —
-                they won't render below even though they're marked connected. Make each calendar public (Google Calendar → Settings → that calendar → Access permissions → Make available to public) or paste its secret iCal URL instead.
-              </span>
+              <div className="space-y-0.5">
+                <div className="font-semibold">{failedCals.length} calendar{failedCals.length === 1 ? "" : "s"} not reachable — won't render below even though marked connected:</div>
+                <ul className="space-y-0.5">
+                  {failedCals.map(c => (
+                    <li key={c.id}><span className="font-semibold">{c.member_name}</span> — {statuses?.[c.id]?.error ?? "Unknown error."}</li>
+                  ))}
+                </ul>
+              </div>
             </div>
           )}
           {combinedEmbed ? (
@@ -238,14 +293,38 @@ function TeamCalendarPage() {
           )}
         </section>
 
-        {/* Connected calendars */}
+        {/* Connected calendars — Part D: click a rep to load their calendar
+            (multi-select). This list always shows every rep, unfiltered by
+            the current selection — it's the control surface for that
+            selection, so a row can't disappear the moment you deselect it. */}
         <section className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="border-b border-border bg-muted/30 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider">Connected reps</div>
+          <div className="border-b border-border bg-muted/30 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider">
+            Connected reps
+            <span className="ml-1.5 font-normal normal-case text-muted-foreground">· click to load a rep's calendar, click again to remove</span>
+          </div>
           <div className="divide-y divide-border">
-            {visibleCals.map(c => {
+            {(cals ?? []).map(c => {
               const status = statuses?.[c.id];
+              const selected = selectedReps.has(c.member_name);
+              const color = avatarColorFor(c.member_name);
               return (
-                <div key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
+                // A <div role="button">, not a real <button> — the trailing
+                // action icons are real interactive elements (a real <a>, a
+                // real delete <button>), and a <button> can't validly contain
+                // either per the HTML spec. Nesting them would parse
+                // differently than the intent, risking exactly the kind of
+                // server/client divergence this session spent a while
+                // chasing down elsewhere.
+                <div key={c.id} role="button" tabIndex={0} onClick={() => toggleRep(c.member_name)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleRep(c.member_name); } }}
+                  aria-pressed={selected}
+                  className={cn(
+                    "flex w-full flex-wrap items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors cursor-pointer",
+                    selected ? "bg-[color:var(--color-accent)]/[0.06]" : "hover:bg-muted/20",
+                  )}
+                  style={selected ? { boxShadow: `inset 2px 0 0 0 ${color}` } : undefined}
+                >
+                  <AvatarInitials name={c.member_name} size="sm" />
                   <span className="font-medium">{c.member_name}</span>
                   <span className="rounded border border-border px-1.5 py-0.5 text-3xs uppercase tracking-wider text-muted-foreground">{c.role.replace("_", " ")}</span>
                   <span className="truncate font-mono text-2xs text-muted-foreground">{c.calendar_id ?? c.ical_url ?? "—"}</span>
@@ -255,10 +334,10 @@ function TeamCalendarPage() {
                     ) : status.ok ? (
                       <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-3xs uppercase", CHIP_TONE_CLASSES.success)}><CheckCircle2 className="h-3 w-3" /> Connected</span>
                     ) : (
-                      <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-3xs uppercase", CHIP_TONE_CLASSES.destructive)} title={status.error ?? undefined}><AlertTriangle className="h-3 w-3" /> Not shared</span>
+                      <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-3xs uppercase", CHIP_TONE_CLASSES.destructive)}><AlertTriangle className="h-3 w-3" /> Not shared — {status.error ?? "unknown error"}</span>
                     )
                   )}
-                  <div className="ml-auto flex items-center gap-2">
+                  <div className="ml-auto flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     {c.calendar_id && (
                       <a className="text-muted-foreground hover:text-foreground" target="_blank" rel="noreferrer"
                         href={`https://calendar.google.com/calendar/u/0/r?cid=${encodeURIComponent(c.calendar_id)}`} aria-label="Open in Google Calendar">
@@ -272,7 +351,7 @@ function TeamCalendarPage() {
                 </div>
               );
             })}
-            {visibleCals.length === 0 && <div className="px-4 py-6 text-center text-xs text-muted-foreground">{(cals ?? []).length === 0 ? "No rep calendars yet." : "No reps match this filter."}</div>}
+            {(cals ?? []).length === 0 && <div className="px-4 py-6 text-center text-xs text-muted-foreground">No rep calendars yet.</div>}
           </div>
         </section>
 
@@ -289,7 +368,7 @@ function TeamCalendarPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-7 divide-y sm:divide-y-0 sm:divide-x divide-border">
             {days.map(d => {
-              const dayBlocks = (blocks ?? []).filter(b => b.block_date === d && (repFilter === ALL_REPS || visibleCals.some(c => c.member_name === b.member_name)));
+              const dayBlocks = (blocks ?? []).filter(b => b.block_date === d && (selectedReps.size === 0 || visibleCals.some(c => c.member_name === b.member_name)));
               const isToday = d === new Date().toISOString().slice(0, 10);
               return (
                 <div key={d} className={cn("min-h-[150px] p-2 space-y-1.5", isToday && "bg-primary/5")}>
