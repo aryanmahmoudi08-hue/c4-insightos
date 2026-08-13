@@ -66,7 +66,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    // suppressHydrationWarning is scoped to this element's own attributes only
+    // (React doesn't propagate it to children) — needed because
+    // themeBootstrapScript below runs before hydration and can flip this
+    // className to "light" per localStorage, intentionally diverging from the
+    // server's always-"dark" markup to avoid a flash of the wrong theme. That
+    // divergence is deliberate, but without this it read as a genuine
+    // hydration mismatch on every route whenever the stored theme was light
+    // (backfill sweep caught it — every one of the 25 routes tested light,
+    // zero tested dark before this).
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <HeadContent />
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
@@ -102,10 +111,23 @@ function RootComponent() {
  * can reject with `InvalidStateError: Transition was aborted because of
  * invalid state` (e.g. the tab loses visibility mid-navigation, or a second
  * transition starts before the first settles) — uncaught, that surfaces as a
- * console error on navigation. Wrapping the native API here degrades any
- * failure (sync throw or async rejection) to an instant route swap — the
- * same behavior as an unsupported browser — instead of erroring, without
- * disabling the cross-fade transition for the normal case.
+ * console error on navigation. Wrapping the native API here degrades that
+ * specific failure to an instant route swap — the same behavior as an
+ * unsupported browser — instead of erroring, without disabling the cross-fade
+ * for the normal case.
+ *
+ * Deliberately narrow: `updateCallbackDone` is NOT swallowed. That promise
+ * rejects only if the update callback itself throws — i.e. a real bug in the
+ * route-change logic (React state commits, route match handlers) — and that
+ * must stay visible, not get silently absorbed along with the browser-level
+ * transition failure. `ready`/`finished` reject either for transition-
+ * mechanics reasons (tab hidden, overlapping transitions — the actual target
+ * of this guard) or because `updateCallbackDone` rejected; in the latter case
+ * the real error already surfaces via `updateCallbackDone` above, so
+ * silencing `ready`/`finished` never hides anything, only the redundant
+ * mechanical rejection. The synchronous catch is scoped to the two
+ * browser-defined exceptions this actually happens as, not `catch {}` on
+ * anything the native call might throw.
  */
 function useViewTransitionGuard() {
   useEffect(() => {
@@ -119,16 +141,18 @@ function useViewTransitionGuard() {
       types: new Set(),
     });
     document.startViewTransition = ((cb?: ViewTransitionUpdateCallback | StartViewTransitionOptions) => {
+      const update = typeof cb === "function" ? cb : cb?.update;
       try {
         const vt = native(cb as never);
         vt.ready.catch(() => {});
-        vt.updateCallbackDone.catch(() => {});
         vt.finished.catch(() => {});
         return vt;
-      } catch {
-        const update = typeof cb === "function" ? cb : cb?.update;
-        update?.();
-        return noopTransition();
+      } catch (err) {
+        if (err instanceof DOMException && (err.name === "InvalidStateError" || err.name === "NotSupportedError")) {
+          update?.();
+          return noopTransition();
+        }
+        throw err;
       }
     }) as typeof document.startViewTransition;
     return () => { document.startViewTransition = native; };

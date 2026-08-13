@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { useRole } from "@/hooks/use-role";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
@@ -43,6 +43,7 @@ function TeamCashHero({ teamCash30d, topEarner, memberCount }: { teamCash30d: nu
 function Team() {
   const { data: org } = useCurrentOrg();
   const { isAdmin } = useRole();
+  const { devBypass } = useAuth();
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const [pendingRoles, setPendingRoles] = useState<Record<string, string>>({});
@@ -94,9 +95,19 @@ function Team() {
   });
 
   const { data: members, isLoading: membersLoading } = useQuery({
-    queryKey: ["team", orgId],
+    queryKey: ["team", orgId, devBypass],
     enabled: !!orgId,
     queryFn: async () => {
+      // Dev bypass never got a real Supabase session, so this 400s (no Bearer
+      // token) same as every other RLS-gated query in the app — hand back a
+      // small mock roster instead, matching the established pattern.
+      if (devBypass) {
+        return [
+          { user_id: "dev-owner", role: "owner", profiles: { display_name: "Dev Owner", avatar_url: null } },
+          { user_id: "dev-setter", role: "setter", profiles: { display_name: "Dev Setter", avatar_url: null } },
+          { user_id: "dev-closer", role: "closer", profiles: { display_name: "Dev Closer", avatar_url: null } },
+        ] as Member[];
+      }
       const { data, error } = await supabase
         .from("memberships")
         .select("user_id, role, profiles:user_id(display_name, avatar_url)")

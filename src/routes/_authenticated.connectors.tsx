@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { Plug, CheckCircle2, Loader2, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,8 +43,15 @@ function isConfigured(conn: ConnectionRow | undefined, connectorId: string) {
   return fields.every((field) => typeof conn.config?.[field.key] === "string" && String(conn.config[field.key]).trim().length > 0);
 }
 
+const DEV_BYPASS_REGISTRY: ConnectorRow[] = [
+  { id: "typeform", name: "Typeform", category: "intake", description: "Onboarding + application form submissions.", is_available: true },
+  { id: "discord", name: "Discord", category: "notifications", description: "Post events to a Discord channel via webhook.", is_available: true },
+  { id: "zapier", name: "Zapier", category: "automation", description: "Fan out every app event to Sheets, Gmail, and more.", is_available: true },
+];
+
 function Connectors() {
   const { data: org } = useCurrentOrg();
+  const { devBypass } = useAuth();
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const connectConnector = useServerFn(connectWorkspaceConnector);
@@ -53,8 +60,12 @@ function Connectors() {
   const [setupValues, setSetupValues] = useState<Record<string, string>>({});
 
   const { data: registry } = useQuery({
-    queryKey: ["connector-registry"],
+    queryKey: ["connector-registry", devBypass],
     queryFn: async () => {
+      // Dev bypass has no real Supabase session at all (this table requires
+      // one, unlike most others which are just org-RLS-gated) — hand back the
+      // known connector catalog instead of a 401.
+      if (devBypass) return DEV_BYPASS_REGISTRY;
       const { data, error } = await supabase.from("connector_registry").select("*").order("name");
       if (error) throw error;
       return data as ConnectorRow[];
@@ -62,9 +73,10 @@ function Connectors() {
   });
 
   const { data: connections } = useQuery({
-    queryKey: ["connector-connections", orgId],
+    queryKey: ["connector-connections", orgId, devBypass],
     enabled: !!orgId,
     queryFn: async () => {
+      if (devBypass) return [] as ConnectionRow[];
       const { data, error } = await supabase
         .from("connector_connections")
         .select("id, connector_id, state, display_name, config")

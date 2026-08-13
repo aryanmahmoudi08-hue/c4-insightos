@@ -57,9 +57,27 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
   const since = useMemo(() => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10), [days]);
 
   const { data: wins } = useQuery({
-    queryKey: ["daily-wins", orgId, days, studentName ?? "all"],
+    queryKey: ["daily-wins", orgId, days, studentName ?? "all", devBypass],
     enabled: !!orgId,
     queryFn: async () => {
+      // Dev bypass never got a real Supabase session — this 400s (no Bearer
+      // token) same as every other RLS-gated query. Hand back a small mock
+      // roll-up instead, matching the established pattern.
+      if (devBypass) {
+        const name = studentName ?? "Dev Client";
+        const today = new Date();
+        return [0, 1, 2].map((i) => {
+          const d = new Date(today.getTime() - i * 86400000).toISOString().slice(0, 10);
+          return {
+            id: `dev-win-${i}`, student_name: name, win_date: d, yesterday_status: "done",
+            win_types: i === 0 ? ["financial", "mental"] : ["physical"],
+            win_description: i === 0 ? "Closed a new client on the follow-up call." : "Stayed consistent with the morning routine.",
+            financial_amount_cents: i === 0 ? 250000 : null, financial_source: i === 0 ? "New client" : null,
+            proof_url: null, energy_score: 8 - i, blocker: null, tomorrow_needle_mover: "Follow up with warm leads.",
+            priority: "high", source: "manual",
+          };
+        }) as Win[];
+      }
       let q = supabase
         .from("daily_wins")
         .select("id, student_name, win_date, yesterday_status, win_types, win_description, financial_amount_cents, financial_source, proof_url, energy_score, blocker, tomorrow_needle_mover, priority, source")
