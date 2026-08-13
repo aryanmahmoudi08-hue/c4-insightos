@@ -49,8 +49,8 @@ const CATEGORIES: Record<string, {
   content: {
     label: "Content",
     blurb: "Short-form hooks, reels, and platform scripts built to stop the scroll in 3 seconds.",
-    accent: "border-orange-500/40",
-    bgGradient: "from-orange-500/15 via-orange-500/5 to-transparent",
+    accent: "border-[oklch(0.7_0.09_40/40%)]",
+    bgGradient: "from-[oklch(0.7_0.09_40/15%)] via-[oklch(0.7_0.09_40/5%)] to-transparent",
     icon: Video,
     types: [
       { value: "short_form_hook", label: "Hooks (3-5)", icon: Flame, desc: "Pattern-interrupt openers with curiosity + relevance baked in." },
@@ -68,8 +68,8 @@ const CATEGORIES: Record<string, {
   long: {
     label: "Long-form",
     blurb: "Sales pages, VSLs, and lead magnets engineered around one Big Domino — the single belief the reader must accept to buy.",
-    accent: "border-amber-500/40",
-    bgGradient: "from-amber-500/15 via-amber-500/5 to-transparent",
+    accent: "border-[oklch(0.7_0.09_76/40%)]",
+    bgGradient: "from-[oklch(0.7_0.09_76/15%)] via-[oklch(0.7_0.09_76/5%)] to-transparent",
     icon: BookOpen,
     types: [
       { value: "sales_page", label: "Sales page", icon: ScrollText, desc: "Full long-form sales letter — promise to CTA." },
@@ -86,8 +86,8 @@ const CATEGORIES: Record<string, {
   story: {
     label: "Story Sequences",
     blurb: "Multi-part backstory → journey → new opportunity arcs. Pull the reader through 3-5 connected pieces until the buy feels inevitable.",
-    accent: "border-violet-500/40",
-    bgGradient: "from-violet-500/15 via-violet-500/5 to-transparent",
+    accent: "border-[oklch(0.7_0.09_148/40%)]",
+    bgGradient: "from-[oklch(0.7_0.09_148/15%)] via-[oklch(0.7_0.09_148/5%)] to-transparent",
     icon: BookOpen,
     types: [
       { value: "story_sequence_full", label: "Full 5-part sequence", icon: BookOpen, desc: "Backstory · journey · enemy reveal · new opportunity · CTA." },
@@ -106,8 +106,8 @@ const CATEGORIES: Record<string, {
   email: {
     label: "Email / SMS",
     blurb: "Subject-line forward inbox copy and 160-character SMS that gets replies, not unsubs.",
-    accent: "border-sky-500/40",
-    bgGradient: "from-sky-500/15 via-sky-500/5 to-transparent",
+    accent: "border-[oklch(0.7_0.09_215/40%)]",
+    bgGradient: "from-[oklch(0.7_0.09_215/15%)] via-[oklch(0.7_0.09_215/5%)] to-transparent",
     icon: Mail,
     types: [
       { value: "email_single", label: "Single email", icon: Mail, desc: "One inbox-ready email with subject + preview text." },

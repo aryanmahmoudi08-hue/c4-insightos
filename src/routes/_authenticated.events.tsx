@@ -17,6 +17,7 @@ import { getOrCreateIngestToken, rotateIngestToken } from "@/lib/ingest.function
 import { GlassTableShell } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
 import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
 
 const EVENT_TYPES = [
   "lead.created","lead.status_changed","conversation.started","call.booked","call.showed","call.closed_won","call.closed_lost",
@@ -110,6 +111,34 @@ function EventsBus() {
     <>
       <TopBar title="Event Bus & Webhooks" subtitle="Live event stream, subscriptions, and ingestion payloads" />
       <div className="p-6 space-y-5">
+        {/* Page hero (B1) — bounded, fixed-shape content (unlike InboundIngestCard
+            below, whose tab content grows with each payload example, which would
+            fight a fixed-height bento cell). Failed-deliveries stays a threshold
+            state color (destructive when >0), not a funnel miscolor. */}
+        <BentoGrid cols={2} rowHeight="8rem">
+          <BentoCell span="wide">
+            <div className="hover-lift relative flex h-full items-center gap-6 overflow-hidden rounded-2xl border border-border bg-card p-5">
+              <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+              <div className="relative flex items-center gap-2">
+                <span className="status-dot text-spectrum-hot ticker-pulse" />
+                <div>
+                  <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Live Event Stream</div>
+                  <div className="font-mono text-4xl font-bold tabular-nums">{events?.length ?? 0}</div>
+                  <div className="text-2xs text-muted-foreground">events in range · refreshing every 5s</div>
+                </div>
+              </div>
+              <div className="relative h-10 w-px bg-border" />
+              <div className="relative flex items-center gap-2">
+                <AlertCircle className={`h-4 w-4 ${failed ? "text-destructive" : "text-[color:var(--color-success)]"}`} />
+                <div>
+                  <div className={`font-mono text-2xl font-bold tabular-nums ${failed ? "text-destructive" : "text-[color:var(--color-success)]"}`}>{failed}</div>
+                  <div className="text-2xs text-muted-foreground">failed deliveries</div>
+                </div>
+              </div>
+            </div>
+          </BentoCell>
+        </BentoGrid>
+
         <InboundIngestCard orgId={orgId} />
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

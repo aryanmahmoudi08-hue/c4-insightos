@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { connectWorkspaceConnector, disconnectWorkspaceConnector } from "@/lib/connectors.functions";
 import { WebhookChannels } from "@/components/webhook-channels";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
 
 export const Route = createFileRoute("/_authenticated/connectors")({ component: Connectors });
 
@@ -124,13 +125,29 @@ function Connectors() {
     <>
       <TopBar title="Platform Connectors" subtitle="Click a card to connect it to this workspace" />
       <div className="p-6 space-y-4">
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="text-sm font-semibold">All connectors enabled</div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Click any connector below to attach it to your workspace. Each dashboard will pick up the connection automatically.
-            You can also keep logging data manually via the <span className="text-foreground">Log day / Log call</span> buttons.
-          </p>
-        </div>
+        {/* Page hero (B1) — bounded content (connector count), safe for a fixed-
+            height bento cell. "Connected" stays success-green — a genuine
+            connection-state signal, not a funnel-position value. */}
+        <BentoGrid cols={2} rowHeight="8rem">
+          <BentoCell span="wide">
+            <div className="hover-lift relative flex h-full items-center gap-6 overflow-hidden rounded-2xl border border-border bg-card p-5">
+              <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+              <div className="relative">
+                <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Connectors</div>
+                <div className="font-mono text-4xl font-bold tabular-nums">
+                  <span className="text-[color:var(--color-success)]">{(connections ?? []).filter(c => c.state === "connected").length}</span>
+                  <span className="text-muted-foreground"> / {(registry ?? []).length}</span>
+                </div>
+                <div className="text-2xs text-muted-foreground">active connections</div>
+              </div>
+              <div className="relative flex-1 text-xs text-muted-foreground">
+                Click any connector below to attach it to your workspace. Each dashboard picks up the connection automatically —
+                or keep logging data manually via the <span className="text-foreground">Log day / Log call</span> buttons.
+              </div>
+            </div>
+          </BentoCell>
+        </BentoGrid>
+
         <WebhookChannels />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {(registry ?? []).map((c) => {

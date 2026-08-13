@@ -29,7 +29,7 @@ const TEMPLATES: Template[] = [
   {
     key: "flexible", day: 0, dayName: "Sunday", title: "Flexible / Any Sequence",
     subtitle: "Wildcard day — anything that fits the week's narrative.",
-    accent: "from-orange-500/20 to-transparent",
+    accent: "from-[oklch(0.7_0.09_20/20%)] to-transparent",
     slides: [
       { label: "Slide 1", hint: "Open with the strongest hook you've got." },
       { label: "Slide 2", hint: "Build context or tension." },
@@ -39,7 +39,7 @@ const TEMPLATES: Template[] = [
   {
     key: "story_poll_1", day: 1, dayName: "Monday", title: "Story Poll Sequence #1",
     subtitle: "Open the week with a poll that surfaces what the audience actually wants.",
-    accent: "from-amber-500/20 to-transparent",
+    accent: "from-[oklch(0.7_0.09_50/20%)] to-transparent",
     slides: [
       { label: "Poll question", hint: 'e.g. "What\'s the main reason you want to get rich?"' },
       { label: "Option 1", hint: "Location Freedom 🌴" },
@@ -52,7 +52,7 @@ const TEMPLATES: Template[] = [
   {
     key: "wins_nurture", day: 2, dayName: "Tuesday", title: "Wins Nurturing Sequence",
     subtitle: "Take one student/client win and turn it into a 7-slide case study.",
-    accent: "from-emerald-500/20 to-transparent",
+    accent: "from-[oklch(0.7_0.09_80/20%)] to-transparent",
     slides: [
       { label: "Win Intro", hint: "Introduce the student or result. e.g. \"one of the guys inside the program just hit his first $3k week\"" },
       { label: "Proof", hint: "Show the actual evidence — commission screenshot, discord message, stripe payout." },
@@ -66,7 +66,7 @@ const TEMPLATES: Template[] = [
   {
     key: "youtube_vid", day: 3, dayName: "Wednesday", title: "YouTube Vid Sequence",
     subtitle: "Promote the new YouTube drop with story-driven slides that earn the click.",
-    accent: "from-red-500/20 to-transparent",
+    accent: "from-[oklch(0.7_0.09_110/20%)] to-transparent",
     slides: [
       { label: "Video Hook", hint: "Introduce the video with a strong hook. \"just dropped a new youtube video breaking down how to land your first growth operating client\"" },
       { label: "Problem", hint: "Call out the problem the video solves. \"most people trying to sign clients online are doing outreach completely wrong\"" },
@@ -79,7 +79,7 @@ const TEMPLATES: Template[] = [
   {
     key: "story_poll_2", day: 4, dayName: "Thursday", title: "Story Poll Sequence #2",
     subtitle: "Mid-week poll — go after the friction, not the dream.",
-    accent: "from-violet-500/20 to-transparent",
+    accent: "from-[oklch(0.7_0.09_140/20%)] to-transparent",
     slides: [
       { label: "Poll question", hint: '"What\'s stopping you from getting to your goals?"' },
       { label: "Option 1", hint: "Don't Know Where To Start 📝" },
@@ -92,7 +92,7 @@ const TEMPLATES: Template[] = [
   {
     key: "ig_story_funnel", day: 5, dayName: "Friday", title: "Instagram Story Funnel",
     subtitle: "Full 9-slide DM funnel — pattern interrupt through to CTA.",
-    accent: "from-pink-500/20 to-transparent",
+    accent: "from-[oklch(0.7_0.09_170/20%)] to-transparent",
     slides: [
       { label: "Pattern Interrupt / Hook", hint: "Stops people from tapping through. \"most people in high ticket sales are doing this wrong\"" },
       { label: "Relatability / Origin", hint: "Show you weren't always winning. \"2 years ago i had zero idea how online sales worked\"" },
@@ -108,7 +108,7 @@ const TEMPLATES: Template[] = [
   {
     key: "personal_story", day: 6, dayName: "Saturday", title: "Personal Story Sequence",
     subtitle: "End the week with your own story arc — hero's journey in 8 beats.",
-    accent: "from-blue-500/20 to-transparent",
+    accent: "from-[oklch(0.7_0.09_200/20%)] to-transparent",
     slides: [
       { label: "Story Hook", hint: "Introduce the story or moment. \"random thought i had today\" or \"this reminded me of when i first started\"" },
       { label: "Situation", hint: "Explain what was happening. \"when i first started trying to make money online i was sending 100+ DMs a day\"" },

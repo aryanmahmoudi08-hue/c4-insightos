@@ -11,6 +11,7 @@ import { generateAiInsights, getWeeklyTrend } from "@/lib/insights.functions";
 import { sendWeeklyReportFn } from "@/lib/weekly-report.functions";
 import { toast } from "sonner";
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
+import { BentoGrid, BentoCell } from "@/components/bento-grid";
 
 export const Route = createFileRoute("/_authenticated/insights")({ component: Insights });
 
@@ -118,8 +119,15 @@ function Insights() {
           </div>
         </div>
 
-        {/* Weekly trend strip — multi-week patterns, not snapshots */}
-        <div className="rounded-lg border border-border bg-card p-4">
+        {/* Page hero (B1) — the weekly trend strip, promoted into a bento hero.
+            Presentation only: every trend-direction color below is a genuine
+            state signal (declining vs growing), not a funnel-position value,
+            so none of it is touched. */}
+        <BentoGrid cols={2} rowHeight="9.5rem">
+          <BentoCell span="hero">
+        <div className="hover-lift relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-4">
+          <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+          <div className="relative flex flex-1 flex-col">
           <div className="flex items-center gap-2 mb-3">
             <Activity className="h-4 w-4 text-accent" />
             <div className="text-sm font-semibold">4-week trend patterns</div>
@@ -175,7 +183,10 @@ function Insights() {
           {(!trend?.weeks || trend.weeks.length === 0) && (
             <div className="text-xs text-muted-foreground text-center py-6">Need at least one week of activity to surface trend patterns.</div>
           )}
+          </div>
         </div>
+          </BentoCell>
+        </BentoGrid>
 
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="text-sm text-muted-foreground">Grounded analysis on the last 30 days of revenue, calls, content, and rep activity.</div>
