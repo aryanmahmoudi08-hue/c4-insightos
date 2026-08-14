@@ -21,11 +21,31 @@ export async function dispatchEvent(
   eventType: string,
   payload: Record<string, unknown> & { category?: string | null },
 ) {
-  const { data: subs } = await supabaseAdmin
+  const { data: subs, error: subsError } = await supabaseAdmin
     .from("webhook_subscriptions")
     .select("id, target_url, channel, event_types, category, active")
     .eq("org_id", orgId)
     .eq("active", true);
+
+  // A failed lookup must never render as "no active subscriptions" — same
+  // "confident output from missing data" pathology the content engine had.
+  // But dispatchEvent runs as a fire-and-forget side effect of unrelated
+  // primary actions (closing a call, changing a client stage, a Typeform
+  // ingest) that have ALREADY succeeded and persisted by the time this runs —
+  // it must never throw out to those callers, or a webhook-lookup hiccup
+  // would make e.g. a closer see "failed to close call" for a call that
+  // closed fine. Instead, record it somewhere genuinely visible: the `events`
+  // table, which /events already renders live — never console-only.
+  if (subsError) {
+    await supabaseAdmin.from("events").insert({
+      org_id: orgId,
+      event_type: "dispatch.lookup_failed",
+      subject_type: "webhook_subscriptions",
+      payload: { original_event_type: eventType, error: subsError.message },
+    }).then(() => {}, () => {});
+    console.error(`dispatchEvent: webhook_subscriptions lookup failed for org ${orgId} (event ${eventType}): ${subsError.message}`);
+    return;
+  }
 
   if (!subs?.length) return;
 

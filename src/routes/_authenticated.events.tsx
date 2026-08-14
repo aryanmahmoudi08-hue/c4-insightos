@@ -18,6 +18,7 @@ import { GlassTableShell } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
 import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
+import { cn } from "@/lib/utils";
 
 const EVENT_TYPES = [
   "lead.created","lead.status_changed","conversation.started","call.booked","call.showed","call.closed_won","call.closed_lost",
@@ -154,15 +155,27 @@ function EventsBus() {
               <span>Live event stream</span><span className="font-mono">refresh 5s</span>
             </div>
             <div className="divide-y divide-border max-h-[60vh] overflow-y-auto">
-              {(events ?? []).map(e => (
-                <div key={e.id} className="p-3 hover:bg-muted/20">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs text-accent">{e.event_type}</span>
-                    <span className="text-3xs text-muted-foreground">{new Date(e.occurred_at).toLocaleTimeString()}</span>
+              {/* dispatch.lookup_failed (dispatch.server.ts) is a genuine query
+                  failure, not a business event — never let it blend into the
+                  normal accent-colored stream. */}
+              {(events ?? []).map(e => {
+                const isDispatchFailure = e.event_type === "dispatch.lookup_failed";
+                return (
+                  <div key={e.id} className={cn("p-3 hover:bg-muted/20", isDispatchFailure && "bg-destructive/5")}>
+                    <div className="flex items-center justify-between">
+                      <span className={cn("font-mono text-xs", isDispatchFailure ? "text-destructive" : "text-accent")}>{e.event_type}</span>
+                      <span className="text-3xs text-muted-foreground">{new Date(e.occurred_at).toLocaleTimeString()}</span>
+                    </div>
+                    {isDispatchFailure ? (
+                      <div className="flex items-center gap-1 text-2xs text-destructive mt-0.5">
+                        <AlertCircle className="h-3 w-3" /> Query failed, not a real dispatch — {String((e.payload as Record<string, unknown> | null)?.error ?? "unknown error")}
+                      </div>
+                    ) : (
+                      <div className="text-2xs text-muted-foreground mt-0.5">{e.subject_type ?? "—"}</div>
+                    )}
                   </div>
-                  <div className="text-2xs text-muted-foreground mt-0.5">{e.subject_type ?? "—"}</div>
-                </div>
-              ))}
+                );
+              })}
               {(!events || events.length === 0) && <div className="p-10 text-center text-xs text-muted-foreground">No events emitted yet.</div>}
             </div>
           </div>

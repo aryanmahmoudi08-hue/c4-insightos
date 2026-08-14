@@ -15,8 +15,11 @@ export const generatePreCloseFn = createServerFn({ method: "POST" })
       .eq("org_id", data.org_id)
       .maybeSingle();
     if (!m) throw new Error("Forbidden");
+    // buildPreCloseSummary now throws on every real failure (query errors, AI
+    // gateway errors) — a `null` here means only one of its two legitimate
+    // non-error states, so this message can be precise instead of guessing.
     const r = await buildPreCloseSummary(data.org_id, data.client_id);
-    if (!r) throw new Error("Could not build summary (missing AI key or no source data).");
+    if (!r) throw new Error("Could not build summary — AI isn't configured for this workspace, or this client record couldn't be found.");
     const rawJson = JSON.parse(JSON.stringify(r.raw)) as never;
     const { error } = await context.supabase
       .from("clients")

@@ -25,12 +25,18 @@ export async function gradeApplicantFromTranscript(args: {
   const apiKey = process.env['LOVABLE_API_KEY'];
   if (!apiKey) throw new Error("AI is not configured.");
 
-  const { data: applicant } = await supabaseAdmin
+  const { data: applicant, error: applicantError } = await supabaseAdmin
     .from("hiring_applicants")
     .select("id, full_name, role_applied, years_experience, niche, notes, stage, loom_url, loom_transcript")
     .eq("id", args.applicantId)
     .eq("org_id", args.orgId)
     .maybeSingle();
+  // Distinct from "not found": a query failure here must never read as "this
+  // applicant doesn't exist" — the recruiter is looking at their card right
+  // now. Silently mislabeling it risks a real applicant sitting there looking
+  // ungraded with no signal grading was ever attempted — same category of
+  // problem as the auto-advance bug from step 2.
+  if (applicantError) throw new Error(`Applicant lookup failed: ${applicantError.message}`);
   if (!applicant) throw new Error("Applicant not found");
 
   const loomUrl = args.loomUrl || applicant.loom_url;
