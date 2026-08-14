@@ -160,9 +160,18 @@ export function scoreText(text: string | null | undefined, weight = 1): Mechanis
   return out;
 }
 
+/**
+ * Defends against a partial input (missing keys, not just zero-valued ones):
+ * `a[k] + b[k]` with an absent key is `n + undefined = NaN`, which then
+ * poisons every future accumulation into that mechanism for the rest of the
+ * caller's run — found via the step-8 integration tests seeding a
+ * mechanism_signals value with only one key set, exactly the shape a
+ * "legacy row" (computeDemand's own fallback comment) could realistically
+ * have even though the current Onboarding UI always writes all 4 keys.
+ */
 export function addWeights(a: MechanismWeights, b: MechanismWeights): MechanismWeights {
   const out = emptyWeights();
-  for (const k of MECHANISM_KEYS) out[k] = a[k] + b[k];
+  for (const k of MECHANISM_KEYS) out[k] = (a[k] ?? 0) + (b[k] ?? 0);
   return out;
 }
 

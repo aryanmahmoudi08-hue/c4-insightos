@@ -16,7 +16,7 @@ import { MECHANISMS, MECHANISM_KEYS, variationLabel, reelSplit, type MechanismKe
 import { contentDemandFn, analyzeContentSystemFn, logSetterSignalFn, weeklyContentCheckFn } from "@/lib/content-signals.functions";
 import { getWorkspaceSettingsFn, DEFAULT_WORKSPACE_SETTINGS } from "@/lib/workspace-settings.functions";
 import { mockContentDemand, mockContentSystemInsight, mockWeeklyContentCheck, withMockDelay } from "@/lib/dev-mock-data";
-import { Radar, Sparkles, Loader2, TrendingUp, TriangleAlert, PhoneCall, CalendarCheck, ArrowRight, ChevronDown, Wrench } from "lucide-react";
+import { Radar, Sparkles, Loader2, TrendingUp, TriangleAlert, PhoneCall, CalendarCheck, ArrowRight, ChevronDown, Wrench, CircleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
@@ -66,9 +66,10 @@ function ContentSignalsPage() {
   if (workspaceSettings && !reelTargetSeeded) { setReelTarget(workspaceSettings.content_engine.weeklyReelTarget); setReelTargetSeeded(true); }
 
   const demandFn = useServerFn(contentDemandFn);
-  const { data: demand, isLoading } = useQuery({
+  const { data: demand, isLoading, isError: demandError, error: demandErrorObj } = useQuery({
     queryKey: ["content-demand", days, devBypass],
     queryFn: () => (devBypass ? Promise.resolve(mockContentDemand()) : demandFn({ data: { days } })),
+    retry: false,
   });
 
   const analyzeFn = useServerFn(analyzeContentSystemFn);
@@ -90,11 +91,17 @@ function ContentSignalsPage() {
   // org-wide average across every mechanism AND platform combined — it could
   // (and did) disagree with computeDemand's own read of the same data.
   const weeklyFn = useServerFn(weeklyContentCheckFn);
-  const { data: weeklyData } = useQuery({
+  const { data: weeklyData, isError: weeklyError, error: weeklyErrorObj } = useQuery({
     queryKey: ["weekly-content-check", orgId, devBypass],
     enabled: !!orgId,
     queryFn: () => (devBypass ? Promise.resolve(mockWeeklyContentCheck()) : weeklyFn()),
+    retry: false,
   });
+  // This fallback is ONLY a rendering convenience for the "haven't loaded yet"
+  // case — every read site below checks `weeklyError` FIRST and renders an
+  // explicit error state instead, so a failed query is never silently
+  // presented through these zeroed-out values as if it were a clean "nothing
+  // tracked yet" read.
   const weekly = weeklyData ?? {
     per: {} as Record<string, { count: number; dms: number; calls: number; cash: number; views: number; withMetrics: number }>,
     reels: 0, missing: [] as MechanismKey[], untracked: 0,
@@ -128,10 +135,15 @@ function ContentSignalsPage() {
         </header>
 
         {/* Page hero (B1) — presentation-only promotion into a bento hero;
-            RootCauseChain's own node logic/tones are untouched (Part F). */}
+            RootCauseChain's own node logic/tones are untouched (Part F).
+            A failed weekly-check query must NEVER render through this —
+            zeroed-out fallback fields would read as "Posting mix tracked ✓ /
+            Performance tracked ✓," the exact opposite of what actually happened. */}
         <BentoGrid cols={2} rowHeight="9.5rem">
           <BentoCell span="wide">
-            <RootCauseChain untaggedCount={weekly.per["untagged"]?.count ?? 0} untrackedCount={weekly.untracked} totalPosts={weekly.total} />
+            {weeklyError
+              ? <QueryErrorCard label="Root-cause read" error={weeklyErrorObj} />
+              : <RootCauseChain untaggedCount={weekly.per["untagged"]?.count ?? 0} untrackedCount={weekly.untracked} totalPosts={weekly.total} />}
           </BentoCell>
         </BentoGrid>
 
@@ -153,6 +165,8 @@ function ContentSignalsPage() {
           </div>
           {isLoading ? (
             <div className="py-8 text-center text-xs text-muted-foreground"><Loader2 className="h-4 w-4 mx-auto animate-spin" /></div>
+          ) : demandError ? (
+            <QueryErrorCard label="Recommended mix" error={demandErrorObj} />
           ) : !demand ? (
             <EmptyState icon={<Radar className="h-5 w-5" />} title="No mix yet" description="Waiting on a workspace to compute a mix against." />
           ) : (
@@ -212,6 +226,8 @@ function ContentSignalsPage() {
           <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
             <CalendarCheck className="h-3.5 w-3.5" /> Weekly check · last 7 days
           </div>
+          {weeklyError ? <QueryErrorCard label="Weekly check" error={weeklyErrorObj} /> : (
+          <>
           <div className="grid gap-2 sm:grid-cols-3">
             <Stat label="Reels posted" value={`${weekly.reels}`} sub={`target 5-7 · ${weekly.total} pieces total`}
               tone={weekly.reels >= 5 ? "success" : "danger"} />
@@ -252,12 +268,16 @@ function ContentSignalsPage() {
               ) : <div className="text-muted-foreground">Nothing posted with a mechanism tag this week.</div>}
             </div>
           </div>
+          </>
+          )}
         </Card>
 
         {/* Drivers */}
         <Card className="p-4 space-y-2">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">Why the mix looks like this — raw signals</div>
-          {(demand?.drivers ?? []).length === 0 ? (
+          {demandError ? (
+            <QueryErrorCard label="Demand drivers" error={demandErrorObj} />
+          ) : (demand?.drivers ?? []).length === 0 ? (
             <EmptyState icon={<Radar className="h-5 w-5" />} title="No demand signals yet" description="Log FAQ video clicks, screen a setting call, or collect a client intake — each one moves the mix." />
           ) : (
             <div className="divide-y divide-border">
@@ -411,6 +431,26 @@ function SetterSignals({ orgId, days }: { orgId?: string; days: number }) {
         {(rows ?? []).length === 0 && <div className="py-6 text-center text-xs text-muted-foreground italic">No setting-call signals in this window.</div>}
       </div>
     </Card>
+  );
+}
+
+/**
+ * A failed fetch, rendered so it can never be mistaken for "not enough data
+ * yet" — different color, different icon, different words. Cold-start states
+ * are neutral/gray because nothing is wrong; this is red because something
+ * broke and the read below it (if any) cannot be trusted until it's fixed.
+ */
+function QueryErrorCard({ label, error }: { label: string; error: unknown }) {
+  const message = error instanceof Error ? error.message : "Unknown error";
+  return (
+    <div className="rounded-md border border-destructive/45 bg-destructive/5 p-3 text-xs space-y-1">
+      <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-3xs text-destructive">
+        <CircleAlert className="h-3.5 w-3.5" /> Couldn't load {label}
+      </div>
+      <div className="text-muted-foreground">
+        This is a fetch failure, not a "not enough data" read — nothing below should be trusted until this is fixed. {message}
+      </div>
+    </div>
   );
 }
 

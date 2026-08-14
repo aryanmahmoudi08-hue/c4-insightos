@@ -10,6 +10,20 @@ type Sb = {
   from: (t: string) => any;
 };
 
+/**
+ * Throws on a failed query instead of the `data ?? []` pattern this file
+ * (and analyzeContentSystem, and the earlier version of computeDemand) used
+ * to fall back on. A swallowed query error is indistinguishable from "no
+ * data" — with the insufficientData/"not enough data" cold-start gating this
+ * project added, that's no longer a merely-confusing bug, it's a broken
+ * query rendering as a polished, honest-looking "limited data" state. A
+ * fetch failure must surface as an explicit error, never a silent zero.
+ */
+function unwrap<T>(result: { data: T | null; error: { message: string } | null }, label: string): T {
+  if (result.error) throw new Error(`${label} query failed: ${result.error.message}`);
+  return result.data as T;
+}
+
 export type Driver = { source: string; detail: string; mechanism: MechanismKey; weight: number };
 
 export type DemandResult = {
@@ -36,18 +50,22 @@ export async function computeDemand(
   const sinceIso = new Date(Date.now() - days * 86400000).toISOString();
   const sinceDate = sinceIso.slice(0, 10);
 
-  const [faq, setters, intakes, reels] = await Promise.all([
+  const [faqRes, settersRes, intakesRes, reelsRes] = await Promise.all([
     sb.from("faq_videos").select("title, question, mechanism, clicks, plays").eq("org_id", orgId).eq("active", true),
     sb.from("setter_call_signals").select("setter_name, call_date, limiting_beliefs, objections, mechanism, ai_summary, notes").eq("org_id", orgId).gte("call_date", sinceDate).limit(300),
     sb.from("onboarding_responses").select("responses, mechanism_signals, submitted_at, created_at").eq("org_id", orgId).gte("created_at", sinceIso).limit(200),
     sb.from("content_pieces").select("id, mechanism, variation, platform, posted_at, pipeline_status, content_metrics(leads_generated, cash_collected_cents, hook_retention_pct, engagement_rate_pct, drop_off_rate_pct, views)").eq("org_id", orgId).gte("created_at", sinceIso).limit(400),
   ]);
+  const faq = unwrap<any[]>(faqRes, "FAQ videos");
+  const setters = unwrap<any[]>(settersRes, "Setter call signals");
+  const intakes = unwrap<any[]>(intakesRes, "Onboarding responses");
+  const reels = unwrap<any[]>(reelsRes, "Content pieces");
 
   let weights = emptyWeights();
   const drivers: Driver[] = [];
 
   // 1) FAQ video clicks — the strongest subconscious-objection signal.
-  for (const f of (faq.data ?? []) as any[]) {
+  for (const f of (faq ?? []) as any[]) {
     const clicks = Number(f.clicks ?? 0) + Number(f.plays ?? 0);
     if (!clicks) continue;
     const mech: MechanismKey = (f.mechanism as MechanismKey) || pickTop(scoreText(`${f.title} ${f.question ?? ""}`)) || "credibility";
@@ -57,7 +75,7 @@ export async function computeDemand(
   }
 
   // 2) Setter-call limiting beliefs + objections.
-  for (const s of (setters.data ?? []) as any[]) {
+  for (const s of (setters ?? []) as any[]) {
     const text = [...(s.limiting_beliefs ?? []), ...(s.objections ?? []), s.ai_summary, s.notes].filter(Boolean).join(" · ");
     if (s.mechanism) {
       weights[s.mechanism as MechanismKey] += 3;
@@ -73,7 +91,7 @@ export async function computeDemand(
   // 3) Onboarding: first touchpoint / decision moment / join-earlier answers.
   // Prefers the mechanism_signals tagged at submit time (Onboarding page); falls
   // back to live keyword scoring only for legacy rows submitted before that existed.
-  for (const i of (intakes.data ?? []) as any[]) {
+  for (const i of (intakes ?? []) as any[]) {
     const r = (i.responses ?? {}) as Record<string, string>;
     const text = [
       r.first_touch, r.first_touchpoint, r.discovery_touchpoint,
@@ -93,7 +111,7 @@ export async function computeDemand(
   // against ITS OWN (mechanism × platform) baseline — never a fixed
   // percentage, and never compared across formats (a Reel vs. a Story
   // sequence). See content-performance.ts.
-  const reelsWithBucket = (reels.data ?? []).filter((p: any) => p.mechanism && p.platform) as any[];
+  const reelsWithBucket = (reels ?? []).filter((p: any) => p.mechanism && p.platform) as any[];
   const reelBuckets: Bucket[] = reelsWithBucket.map((p) => ({ mechanism: p.mechanism as MechanismKey, platform: p.platform as string }));
   const reelBaselines = await fetchBaselines(sb, orgId, reelBuckets, config.baselineWindowSize);
   for (const p of reelsWithBucket) {
@@ -127,10 +145,10 @@ export async function computeDemand(
     weights,
     drivers: drivers.slice(0, 24),
     counts: {
-      faq: (faq.data ?? []).length,
-      setter_calls: (setters.data ?? []).length,
-      intakes: (intakes.data ?? []).length,
-      reels: (reels.data ?? []).length,
+      faq: faq.length,
+      setter_calls: setters.length,
+      intakes: intakes.length,
+      reels: reels.length,
     },
   };
 }
@@ -192,10 +210,12 @@ export async function computeWeeklyContentCheck(
   const ids = pieces.map((p) => p.id);
   const metricsById = new Map<string, any>();
   if (ids.length) {
-    const { data: ms } = await sb
-      .from("content_metrics")
-      .select("content_id, views, dms_generated, calls_booked, cash_collected_cents, leads_generated, engagement_rate_pct, drop_off_rate_pct, hook_retention_pct")
-      .in("content_id", ids);
+    const ms = unwrap<any[]>(
+      await sb.from("content_metrics")
+        .select("content_id, views, dms_generated, calls_booked, cash_collected_cents, leads_generated, engagement_rate_pct, drop_off_rate_pct, hook_retention_pct")
+        .in("content_id", ids),
+      "Content metrics",
+    );
     for (const m of (ms ?? []) as any[]) metricsById.set(m.content_id, m);
   }
 
@@ -311,7 +331,7 @@ export async function analyzeContentSystem(
   const sinceDate = sinceIso.slice(0, 10);
   const demand = await computeDemand(sb, orgId, days, config);
 
-  const [pieces, metrics, vslSnaps, faq, setters, calls, payments, intakes] = await Promise.all([
+  const [piecesRes, metricsRes, vslSnapsRes, faqRes, settersRes, callsRes, paymentsRes, intakesRes] = await Promise.all([
     sb.from("content_pieces").select("id, title, mechanism, variation, platform, posted_at, pipeline_status").eq("org_id", orgId).gte("created_at", sinceIso).limit(300),
     sb.from("content_metrics").select("content_id, views, reach, shares, saves, likes, comments, dms_generated, calls_booked, closes, cash_collected_cents, leads_generated, avg_watch_pct, hook_retention_pct, three_sec_hold_pct, drop_off_rate_pct, engagement_rate_pct, follower_views, non_follower_views, followers_gained").eq("org_id", orgId).gte("captured_at", sinceIso).limit(600),
     sb.from("vsl_metric_snapshots").select("video_name, total_plays, unique_viewers, play_rate, avg_percent_watched, page_loads, captured_at").eq("org_id", orgId).gte("captured_at", sinceIso).limit(60),
@@ -321,11 +341,19 @@ export async function analyzeContentSystem(
     sb.from("payments").select("amount_cents, collected_at").eq("org_id", orgId).gte("collected_at", sinceIso).limit(500),
     sb.from("onboarding_responses").select("mechanism_signals").eq("org_id", orgId).gte("created_at", sinceIso).limit(200),
   ]);
+  const pieces = unwrap<any[]>(piecesRes, "Content pieces");
+  const metrics = unwrap<any[]>(metricsRes, "Content metrics");
+  const vslSnaps = unwrap<any[]>(vslSnapsRes, "VSL snapshots");
+  const faq = unwrap<any[]>(faqRes, "FAQ videos");
+  const setters = unwrap<any[]>(settersRes, "Setter call signals");
+  const calls = unwrap<any[]>(callsRes, "Calls");
+  const payments = unwrap<any[]>(paymentsRes, "Payments");
+  const intakes = unwrap<any[]>(intakesRes, "Onboarding responses");
 
   const byId = new Map<string, any>();
-  for (const m of (metrics.data ?? []) as any[]) byId.set(m.content_id, m);
+  for (const m of (metrics ?? []) as any[]) byId.set(m.content_id, m);
   const perMech: Record<string, { pieces: number; views: number; dms: number; calls: number; cash: number; eng: number; retention: number; dropOff: number; followerViews: number; nonFollowerViews: number; withMetrics: number }> = {};
-  for (const p of (pieces.data ?? []) as any[]) {
+  for (const p of (pieces ?? []) as any[]) {
     const k = p.mechanism ?? "untagged";
     perMech[k] ??= { pieces: 0, views: 0, dms: 0, calls: 0, cash: 0, eng: 0, retention: 0, dropOff: 0, followerViews: 0, nonFollowerViews: 0, withMetrics: 0 };
     perMech[k].pieces += 1;
@@ -349,7 +377,7 @@ export async function analyzeContentSystem(
   // AI a real, already-compared read instead of raw averages it would
   // otherwise have to invent its own "underperformed because X" reasoning from.
   const bucketsInWindow = new Map<string, Bucket>();
-  for (const p of (pieces.data ?? []) as any[]) {
+  for (const p of (pieces ?? []) as any[]) {
     if (!p.mechanism || !p.platform) continue;
     bucketsInWindow.set(bucketKey({ mechanism: p.mechanism, platform: p.platform }), { mechanism: p.mechanism, platform: p.platform });
   }
@@ -358,7 +386,7 @@ export async function analyzeContentSystem(
   for (const [key, bucket] of bucketsInWindow) {
     const baseline = bucketBaselines.get(key);
     if (!baseline) continue;
-    const piecesInBucket = (pieces.data ?? []).filter((p: any) => p.mechanism === bucket.mechanism && p.platform === bucket.platform);
+    const piecesInBucket = (pieces ?? []).filter((p: any) => p.mechanism === bucket.mechanism && p.platform === bucket.platform);
     let strong = 0, typical = 0, underperforming = 0, insufficientData = 0;
     for (const p of piecesInBucket as any[]) {
       const verdict = classifyPerformance(toPieceMetrics(byId.get(p.id)), baseline, config.minBucketSample);
@@ -373,17 +401,17 @@ export async function analyzeContentSystem(
   // Onboarding mechanism tags (2.9) — per-mechanism tag counts from the Onboarding page's scoring.
   const onboardingTags: Record<MechanismKey, number> = { educational: 0, credibility: 0, authoritative: 0, relatability: 0 };
   let onboardingUntagged = 0;
-  for (const i of (intakes.data ?? []) as any[]) {
+  for (const i of (intakes ?? []) as any[]) {
     const w = (i.mechanism_signals ?? {}) as Partial<MechanismWeights>;
     let top: MechanismKey | null = null, topVal = 0;
     for (const k of MECHANISM_KEYS) { const v = Number(w[k] ?? 0); if (v > topVal) { topVal = v; top = k; } }
     if (top) onboardingTags[top] += 1; else onboardingUntagged += 1;
   }
 
-  const cash = ((payments.data ?? []) as any[]).reduce((s, p) => s + Number(p.amount_cents ?? 0), 0) / 100;
-  const booked = (calls.data ?? []).length;
-  const showed = ((calls.data ?? []) as any[]).filter(c => c.showed).length;
-  const closed = ((calls.data ?? []) as any[]).filter(c => c.closed).length;
+  const cash = ((payments ?? []) as any[]).reduce((s, p) => s + Number(p.amount_cents ?? 0), 0) / 100;
+  const booked = (calls ?? []).length;
+  const showed = ((calls ?? []) as any[]).filter(c => c.showed).length;
+  const closed = ((calls ?? []) as any[]).filter(c => c.closed).length;
 
   const payload = `WINDOW: last ${days} days
 
@@ -401,13 +429,13 @@ BUCKET-RELATIVE PERFORMANCE (compared to THIS ACCOUNT'S OWN trailing baseline, p
 ${bucketReads.map(r => `- ${r.bucket.mechanism} · ${r.bucket.platform}: ${r.strong} strong, ${r.typical} typical, ${r.underperforming} underperforming, ${r.insufficientData} not-enough-data (own baseline n=${r.sampleSize})`).join("\n") || "- no mechanism × platform combination has content this window"}
 
 FAQ VIDEO CLICKS (subconscious objections — the real data source, not mocked):
-${((faq.data ?? []) as any[]).map(f => `- ${f.title} (${f.mechanism ?? "unmapped"}): ${f.clicks} clicks, ${f.plays} plays, ${f.avg_watch_pct}% watched`).join("\n") || "- none"}
+${((faq ?? []) as any[]).map(f => `- ${f.title} (${f.mechanism ?? "unmapped"}): ${f.clicks} clicks, ${f.plays} plays, ${f.avg_watch_pct}% watched`).join("\n") || "- none"}
 
 VSL SNAPSHOTS:
-${((vslSnaps.data ?? []) as any[]).slice(0, 12).map(v => `- ${v.video_name ?? "VSL"}: play rate ${v.play_rate}%, avg watched ${v.avg_percent_watched}%, plays ${v.total_plays}, page loads ${v.page_loads}`).join("\n") || "- none"}
+${((vslSnaps ?? []) as any[]).slice(0, 12).map(v => `- ${v.video_name ?? "VSL"}: play rate ${v.play_rate}%, avg watched ${v.avg_percent_watched}%, plays ${v.total_plays}, page loads ${v.page_loads}`).join("\n") || "- none"}
 
 SETTING CALL SIGNALS (includes auto-ingested from closed calls, not just manual paste):
-${((setters.data ?? []) as any[]).slice(0, 30).map(s => `- ${s.call_date} ${s.setter_name} [${s.source ?? "manual"}]: beliefs[${(s.limiting_beliefs ?? []).join("; ")}] objections[${(s.objections ?? []).join("; ")}]`).join("\n") || "- none"}
+${((setters ?? []) as any[]).slice(0, 30).map(s => `- ${s.call_date} ${s.setter_name} [${s.source ?? "manual"}]: beliefs[${(s.limiting_beliefs ?? []).join("; ")}] objections[${(s.objections ?? []).join("; ")}]`).join("\n") || "- none"}
 
 ONBOARDING MECHANISM TAGS (from client intake first-touchpoint/decision/join-sooner answers):
 ${MECHANISM_KEYS.map(k => `- ${k}: ${onboardingTags[k]} intakes tagged`).join("\n")}${onboardingUntagged ? `\n- untagged: ${onboardingUntagged} intakes with no keyword match` : ""}
