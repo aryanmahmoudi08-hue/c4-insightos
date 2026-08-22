@@ -252,6 +252,14 @@ function Dashboard() {
           </BentoCell>
         </BentoGrid>
 
+        <ExecutiveFocus
+          curr={c}
+          pace={stats?.pace}
+          alerts={stats?.alerts ?? []}
+          insights={stats?.insights ?? []}
+          isLoading={isLoading}
+        />
+
         {/* Weekly digest */}
         <WeeklyDigest pace={stats?.pace} curr={c} prev={p} />
 
@@ -420,6 +428,90 @@ function DeltaKpi({ label, value, curr, prev, hint, spectrum, spark }: { label: 
         {hint && <div className="text-3xs text-muted-foreground">{hint}</div>}
       </div>
     </div>
+  );
+}
+
+type ExecutiveFocusStats = { cash: number; totalCalls: number; showed: number; closed: number };
+type ExecutiveFocusAlert = { id: string; severity: string; title: string; created_at: string };
+type ExecutiveFocusInsight = { id: string; title: string; body: string; module: string };
+
+/** Turn the data-dense Main Hub into an operating cockpit by putting the single
+ * highest-value next decision above the broad supporting analytics. */
+function ExecutiveFocus({ curr, pace, alerts, insights, isLoading }: {
+  curr?: ExecutiveFocusStats;
+  pace?: PaceStats;
+  alerts: ExecutiveFocusAlert[];
+  insights: ExecutiveFocusInsight[];
+  isLoading: boolean;
+}) {
+  if (isLoading) return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="flex items-center gap-3">
+        <Skeleton className="h-9 w-9 rounded-md" />
+        <div className="flex-1 space-y-2"><Skeleton className="h-3 w-24" /><Skeleton className="h-4 w-2/3" /></div>
+        <Skeleton className="h-8 w-28" />
+      </div>
+    </div>
+  );
+  if (!curr) return null;
+
+  const showRate = curr.totalCalls > 0 ? curr.showed / curr.totalCalls : 0;
+  const severity: Record<string, number> = { critical: 3, warning: 2, info: 1 };
+  const alert = [...alerts].sort((a, b) => (severity[b.severity] ?? 0) - (severity[a.severity] ?? 0))[0];
+  let focus: {
+    eyebrow: string; title: string; body: string; evidence: string;
+    href: "/insights" | "/closer" | "/content"; cta: string; tone: string; Icon: typeof Activity;
+  };
+
+  if (alert) {
+    const critical = alert.severity === "critical";
+    focus = {
+      eyebrow: critical ? "Intervention needed" : "Watch closely",
+      title: alert.title,
+      body: critical ? "This is the highest-severity open signal for the selected period. Review the underlying data and assign the next action." : "This signal warrants a check before it becomes a material performance issue.",
+      evidence: `${alert.severity.toUpperCase()} · opened ${new Date(alert.created_at).toLocaleDateString()}`,
+      href: "/insights", cta: "Review signal", tone: critical ? "text-destructive border-destructive/35 bg-destructive/[0.045]" : "text-[color:var(--color-warning)] border-[color:var(--color-warning)]/35 bg-[color:var(--color-warning)]/[0.055]", Icon: AlertTriangle,
+    };
+  } else if (curr.totalCalls >= 5 && showRate < 0.7) {
+    focus = {
+      eyebrow: "Protect conversion", title: "Recover the show rate before the next call block.",
+      body: "Too many booked calls are failing to reach the sales conversation. Prioritize confirmations, reminder coverage, and fast rescheduling for pending appointments.",
+      evidence: `${fmt(curr.showed)} of ${fmt(curr.totalCalls)} booked calls showed · ${(showRate * 100).toFixed(0)}% show rate`,
+      href: "/closer", cta: "Open closer view", tone: "text-[color:var(--color-warning)] border-[color:var(--color-warning)]/35 bg-[color:var(--color-warning)]/[0.055]", Icon: Target,
+    };
+  } else if (insights[0]) {
+    focus = {
+      eyebrow: "Best next bet", title: insights[0].title, body: insights[0].body,
+      evidence: `${insights[0].module || "AI insight"} · selected for the current period`,
+      href: "/insights", cta: "Open insight", tone: "text-[color:var(--color-success)] border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/[0.045]", Icon: Sparkles,
+    };
+  } else {
+    focus = {
+      eyebrow: "Keep momentum", title: "Compound the business pattern that is already working.",
+      body: "Use content and rep performance to identify the source of your current pace, then give the strongest pattern more distribution and follow-through.",
+      evidence: pace ? `${money(pace.projection)} projected close · ${money(pace.dailyPace)}/day` : "No urgent exception in the selected period",
+      href: "/content", cta: "Review content", tone: "text-[color:var(--color-success)] border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/[0.045]", Icon: TrendingUp,
+    };
+  }
+
+  const FocusIcon = focus.Icon;
+  return (
+    <section aria-labelledby="executive-focus-title" className={`hover-lift rounded-2xl border p-4 ${focus.tone}`}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3.5">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-current/20 bg-background/40"><FocusIcon className="h-4 w-4" /></div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2"><p className="text-3xs font-semibold uppercase tracking-[0.14em]">{focus.eyebrow}</p><span className="text-3xs text-muted-foreground">Today’s operating focus</span></div>
+            <h2 id="executive-focus-title" className="mt-0.5 text-base font-semibold tracking-tight text-foreground">{focus.title}</h2>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">{focus.body}</p>
+            <p className="mt-2 font-mono text-3xs text-muted-foreground">{focus.evidence}</p>
+          </div>
+        </div>
+        <Link to={focus.href} className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm transition-transform hover:-translate-y-px hover:shadow-md focus-visible:outline-none">
+          {focus.cta}<ArrowUpRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+    </section>
   );
 }
 
