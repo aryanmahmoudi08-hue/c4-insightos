@@ -57,19 +57,19 @@ export function MetricCard({
   const sparkColor = spectrum ? SPECTRUM_VAR[spectrum] : (up ? "var(--color-success)" : down ? "var(--destructive)" : "var(--muted-foreground)");
 
   return (
-    <div className="hover-lift group relative overflow-hidden rounded-xl border border-border bg-card p-4">
+    <div className="hover-lift group relative overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className={cn(
         "pointer-events-none absolute inset-0 bg-gradient-to-br to-transparent opacity-70 transition-opacity group-hover:opacity-100",
         spectrum ? undefined : TONE_GLOW[tone],
       )} style={spectrum ? { backgroundImage: `linear-gradient(to bottom right, color-mix(in oklch, ${SPECTRUM_VAR[spectrum]} 15%, transparent), transparent)` } : undefined} />
-      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-xl" />
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
       <div className="relative flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             {icon && <span className="text-muted-foreground/80">{icon}</span>}
             <span className="truncate">{label}</span>
           </div>
-          <div className={cn("mt-1.5 font-mono text-2xl font-bold tabular-nums tracking-tight", spectrum ? SPECTRUM_TEXT_CLASS[spectrum] : TONE_TEXT[tone])}>{display}</div>
+          <div className={cn("mt-2 font-mono text-2xl font-bold tabular-nums tracking-tight md:text-[1.75rem]", spectrum ? SPECTRUM_TEXT_CLASS[spectrum] : TONE_TEXT[tone])}>{display}</div>
           {subLabel && <div className="mt-0.5 text-2xs text-muted-foreground">{subLabel}</div>}
         </div>
         {hasDelta && (
@@ -85,12 +85,12 @@ export function MetricCard({
         )}
       </div>
       {spark && spark.length > 1 && (
-        <div className="relative mt-3 h-8 opacity-80 transition-opacity group-hover:opacity-100">
+        <div className="relative mt-4 h-9 rounded-lg border border-border/50 bg-background/20 px-1 py-0.5 opacity-80 transition-opacity group-hover:opacity-100">
           <Sparkline
             data={spark}
             variant={sparkVariant}
             width={220}
-            height={32}
+            height={30}
             stroke={sparkColor}
             fill={sparkColor}
             strokeWidth={1.5}

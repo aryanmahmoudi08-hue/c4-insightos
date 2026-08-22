@@ -214,7 +214,7 @@ function Dashboard() {
   return (
     <>
       <TopBar title="Executive Command Center" subtitle="Real-time KPIs across content, attribution, and sales" showDateRange />
-      <div className="p-4 md:p-6 space-y-4">
+      <div className="mx-auto max-w-[1680px] space-y-4 p-4 md:p-7">
         <SlimHeader
           icon={<Activity className="h-4 w-4" />}
           title="Executive Command Center"
@@ -243,7 +243,7 @@ function Dashboard() {
             prior period, and month-end pace folded in. Replaces the standalone PaceCard
             (relocated here, not removed — same monthCash/projection/dailyPace/progress
             values, now paired with the number they're pacing against). */}
-        <BentoGrid rowHeight="9.5rem">
+        <BentoGrid rowHeight="10rem">
           <BentoCell span="hero">
             <CashHero curr={c?.cash} prev={p?.cash} series={stats?.series ?? []} pace={stats?.pace} />
           </BentoCell>
@@ -266,11 +266,11 @@ function Dashboard() {
         {/* Hero KPI grid with WoW deltas + sparklines. Cash Collected lives in the
             mega-hero above now (same value + delta, richer treatment) — not duplicated here. */}
         {isLoading ? (
-          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 7 }, (_, i) => <KpiSkeleton key={i} />)}
           </div>
         ) : (
-          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 animate-in fade-in-0 duration-300">
+          <div className="grid grid-cols-2 gap-3 animate-in fade-in-0 duration-300 md:grid-cols-3 xl:grid-cols-4">
             <DeltaKpi label="CONTRACT VALUE" value={money(c?.contractValue ?? 0)} curr={c?.contractValue ?? 0} prev={p?.contractValue ?? 0} spectrum="hot" spark={(stats?.series ?? []).map(s => s.contractValue)} />
             <DeltaKpi label="NEW LEADS" value={fmt(c?.newLeads ?? 0)} curr={c?.newLeads ?? 0} prev={p?.newLeads ?? 0} spectrum="cold" spark={(stats?.series ?? []).map(s => s.leads)} />
             <DeltaKpi label="TOTAL VIEWS" value={fmt(c?.views ?? 0)} curr={c?.views ?? 0} prev={p?.views ?? 0} spectrum="cold" spark={(stats?.series ?? []).map(s => s.views)} />
@@ -288,8 +288,8 @@ function Dashboard() {
 
 
         {/* Charts row */}
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="rounded-lg border border-border bg-card p-4 lg:col-span-2">
+        <div className="grid gap-3.5 xl:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm xl:col-span-2 md:p-5">
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <div className="text-sm font-semibold">Daily cash collected</div>
@@ -329,7 +329,7 @@ function Dashboard() {
         <ContentToCashStrip rows={stats?.contentAttribution ?? []} />
 
         {/* Leaderboards */}
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-3.5 xl:grid-cols-2">
           <Leaderboard title="Top closers · by cash" rows={(stats?.closers ?? []).map(c => ({
             name: c.name, primary: money(c.cash), secondary: `${c.closes}/${c.calls} closed`,
           }))} accent="success" />
@@ -339,10 +339,10 @@ function Dashboard() {
         </div>
 
         {/* Alerts + Insights */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30">
-              <div className="text-xs font-semibold uppercase tracking-wider">Open alerts</div>
+        <div className="grid gap-3.5 xl:grid-cols-2">
+          <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+            <div className="flex items-center justify-between border-b border-border bg-background/20 px-4 py-3">
+              <div className="text-3xs font-semibold uppercase tracking-[0.14em]">Open alerts</div>
               <Link to="/insights" className="text-xs text-primary hover:underline flex items-center gap-1">view all <ArrowUpRight className="h-3 w-3" /></Link>
             </div>
             <div className="divide-y divide-border">
@@ -361,9 +361,9 @@ function Dashboard() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30">
-              <div className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-accent" /> AI insights</div>
+          <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+            <div className="flex items-center justify-between border-b border-border bg-background/20 px-4 py-3">
+              <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.14em]"><Sparkles className="h-3.5 w-3.5 text-accent" /> AI insights</div>
               <Link to="/insights" className="text-xs text-primary hover:underline flex items-center gap-1">open module <ArrowUpRight className="h-3 w-3" /></Link>
             </div>
             <div className="divide-y divide-border">
@@ -496,7 +496,7 @@ function ExecutiveFocus({ curr, pace, alerts, insights, isLoading }: {
 
   const FocusIcon = focus.Icon;
   return (
-    <section aria-labelledby="executive-focus-title" className={`hover-lift rounded-2xl border p-4 ${focus.tone}`}>
+    <section aria-labelledby="executive-focus-title" className={`hover-lift rounded-2xl border p-4 shadow-sm ${focus.tone}`}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3.5">
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-current/20 bg-background/40"><FocusIcon className="h-4 w-4" /></div>
@@ -744,8 +744,8 @@ function ContentToCashStrip({ rows }: { rows: ContentAttrRow[] }) {
     .slice(0, 5);
 
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30">
+    <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+      <div className="flex items-center justify-between border-b border-border bg-background/20 px-4 py-3">
         <div className="text-xs font-semibold uppercase tracking-wider">Content → Cash attribution</div>
         <Link to="/content" className="text-xs text-primary hover:underline flex items-center gap-1">open module <ArrowUpRight className="h-3 w-3" /></Link>
       </div>
@@ -781,7 +781,7 @@ function ContentToCashStrip({ rows }: { rows: ContentAttrRow[] }) {
 function Leaderboard({ title, rows, accent }: { title: string; rows: { name: string; primary: string; secondary: string }[]; accent: "success" | "primary" }) {
   const color = accent === "success" ? "text-[color:var(--color-success)]" : "text-primary";
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
+    <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
       <div className="px-4 py-2.5 border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider">{title}</div>
       <div className="divide-y divide-border">
         {rows.map((r, i) => (

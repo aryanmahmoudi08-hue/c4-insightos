@@ -149,18 +149,18 @@ export function AppSidebar() {
         onClick={closeMobile}
         title={collapsed ? it.label : undefined}
         className={cn(
-          "group relative flex items-center gap-2.5 rounded-md py-1.5 text-sm transition-all",
+          "group relative flex min-h-9 items-center gap-2.5 rounded-lg py-1.5 text-sm transition-all",
           pl,
           active
-            ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
-            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground hover:translate-x-[1px]",
+            ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm ring-1 ring-white/[0.04]"
+            : "text-sidebar-foreground/65 hover:bg-sidebar-accent/55 hover:text-sidebar-foreground hover:translate-x-[1px]",
           nested && depth >= 2 && "py-1",
         )}
       >
         {active && (
           <motion.div
             layoutId="sidebar-active-indicator"
-            className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-sidebar-primary"
+            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-sidebar-primary shadow-[0_0_12px_rgba(255,255,255,0.32)]"
             transition={{ type: "spring", stiffness: 500, damping: 35 }}
           />
         )}
@@ -176,9 +176,9 @@ export function AppSidebar() {
       onClick={() => onClick(!open)}
       title={collapsed ? label : undefined}
       className={cn(
-        "group flex w-full items-center gap-2.5 rounded-md py-2 text-sm transition-all",
+        "group flex min-h-9 w-full items-center gap-2.5 rounded-lg py-2 text-sm transition-all",
         collapsed ? "px-2.5 justify-center" : depth === 0 ? "px-2.5" : "pl-8 pr-2.5 py-1.5",
-        isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground",
+        isActive ? "bg-sidebar-accent/30 text-sidebar-foreground" : "text-sidebar-foreground/65 hover:bg-sidebar-accent/55 hover:text-sidebar-foreground",
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />
@@ -206,13 +206,13 @@ export function AppSidebar() {
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]/95 backdrop-blur-xl shadow-lg transition-[transform,width] duration-200",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]/98 backdrop-blur-xl shadow-lg transition-[transform,width] duration-200",
           collapsed ? "w-60 md:w-14" : "w-60",
           "md:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
       >
-        <div className={cn("flex items-center gap-2 border-b border-sidebar-border py-4", collapsed ? "px-2.5 justify-center" : "px-4")}>
+        <div className={cn("flex items-center gap-2 border-b border-sidebar-border py-3.5", collapsed ? "px-2.5 justify-center" : "px-4")}>
           {/* Source PNG is white-on-transparent — invisible on light mode's
               near-white sidebar. .theme-logo (styles.css) inverts it under
               .light so it stays a real second theme, not just an inversion
@@ -237,7 +237,7 @@ export function AppSidebar() {
             <X className="h-4 w-4" />
           </button>
         </div>
-        <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+        <nav className="flex-1 overflow-y-auto p-2 space-y-1">
           {TOP_NAV.map(it => renderItem(it))}
 
           {(salesItems.length > 0 || repsItems.length > 0) && (
@@ -303,18 +303,18 @@ export function AppSidebar() {
 
           {fulfillmentItems.length > 0 && (
             <>
-              <div className={cn("mt-2 border-t border-sidebar-border/60 pt-3 pb-1 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "Fulfillment"}</div>
+              <div className={cn("mt-3 border-t border-sidebar-border/60 pt-3 pb-1.5 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/55", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "Fulfillment"}</div>
               {fulfillmentItems.map(it => renderItem(it))}
             </>
           )}
           {bottomItems.length > 0 && (
             <>
-              <div className={cn("mt-2 border-t border-sidebar-border/60 pt-3 pb-1 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "Ops"}</div>
+              <div className={cn("mt-3 border-t border-sidebar-border/60 pt-3 pb-1.5 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/55", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "Ops"}</div>
               {bottomItems.map(it => renderItem(it))}
             </>
           )}
 
-          <div className={cn("mt-2 border-t border-sidebar-border/60 pt-3 pb-1 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "General"}</div>
+          <div className={cn("mt-3 border-t border-sidebar-border/60 pt-3 pb-1.5 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/55", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "General"}</div>
           {renderItem({ to: "/settings", label: "Settings", icon: Settings })}
           {isAdmin && renderItem({ to: "/permissions", label: "Access control", icon: ShieldCheck })}
           {isAdmin && renderItem({ to: "/connectors", label: "Connectors", icon: Plug })}
@@ -324,7 +324,7 @@ export function AppSidebar() {
             type="button"
             onClick={openCommandPalette}
             title={collapsed ? "Search (⌘K)" : undefined}
-            className={cn("flex w-full items-center gap-2 rounded-md py-1.5 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent/50 transition-all", collapsed ? "justify-center px-2.5" : "px-2.5")}
+            className={cn("flex min-h-9 w-full items-center gap-2 rounded-lg py-1.5 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent/60 transition-all", collapsed ? "justify-center px-2.5" : "px-2.5")}
           >
             <Command className="h-4 w-4 shrink-0" />
             {!collapsed && <span className="flex-1 text-left">Search…</span>}
@@ -366,12 +366,12 @@ export function TopBar({ title, subtitle, showDateRange = false }: { title: stri
     nav({ to: "/clients", search: { q: term } as never });
   };
   return (
-    <div className="glass sticky top-0 z-20 border-b px-4 md:px-6 py-4">
+    <div className="glass sticky top-0 z-20 border-b px-4 py-3.5 md:px-7">
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 pl-10 md:pl-0">
           <div className="eyebrow">— {subtitle ? "Dossier" : "Overview"}</div>
-          <h1 className="display-serif text-xl md:text-2xl leading-none mt-1 truncate">{title}</h1>
-          {subtitle && <p className="mt-1.5 text-xs text-muted-foreground hidden sm:block">{subtitle}</p>}
+          <h1 className="display-serif mt-1 truncate text-2xl leading-none md:text-3xl">{title}</h1>
+          {subtitle && <p className="mt-1.5 hidden max-w-2xl text-xs leading-relaxed text-muted-foreground sm:block">{subtitle}</p>}
         </div>
         <div className="flex items-center gap-2">
           <form onSubmit={submitSearch} className="relative hidden md:block">
@@ -389,11 +389,11 @@ export function TopBar({ title, subtitle, showDateRange = false }: { title: stri
         </div>
       </div>
       {showDateRange && (
-        <div className="mt-3">
+        <div className="mt-2.5">
           <DateRangePicker value={range} onChange={setRange} />
         </div>
       )}
-      <div className="rule-gold mt-4 -mx-4 md:-mx-6" />
+      <div className="rule-gold mt-3 -mx-4 md:-mx-7" />
     </div>
   );
 }

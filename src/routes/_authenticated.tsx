@@ -36,10 +36,10 @@ function AuthedLayout() {
 function AuthedShell() {
   const { collapsed } = useSidebarCollapsed();
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background">
       <AppSidebar />
       <CommandPalette />
-      <main className={cn("min-h-screen transition-[margin] duration-200", collapsed ? "ml-0 md:ml-14" : "ml-0 md:ml-60")}>
+      <main className={cn("relative min-h-screen overflow-x-clip transition-[margin] duration-200", collapsed ? "ml-0 md:ml-14" : "ml-0 md:ml-60")}>
         <LiveTicker />
         <Outlet />
       </main>

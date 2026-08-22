@@ -33,20 +33,20 @@ export function PageHero({
   actions?: ReactNode;
 }) {
   return (
-    <div className="glass relative overflow-hidden rounded-xl border p-5 shadow-md">
+    <div className="glass relative overflow-hidden rounded-2xl border p-5 shadow-lg md:p-6">
       <div className="glass-highlight pointer-events-none absolute inset-0 rounded-xl" />
-      <div className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full bg-gradient-to-br from-foreground/[0.06] to-transparent blur-2xl" />
-      <div className="relative flex flex-wrap items-start justify-between gap-4">
+      <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-foreground/[0.07] to-transparent blur-2xl" />
+      <div className="relative flex flex-wrap items-start justify-between gap-5">
         <div className="flex min-w-0 items-start gap-3">
           {icon && (
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-border bg-background/40 text-foreground shadow-sm">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-border bg-background/45 text-foreground shadow-sm">
               {icon}
             </div>
           )}
           <div className="min-w-0">
             {eyebrow && <div className="eyebrow">{eyebrow}</div>}
-            <h1 className="display-serif text-2xl leading-tight mt-0.5 truncate">{title}</h1>
-            {subtitle && <p className="mt-1 text-sm text-muted-foreground max-w-2xl">{subtitle}</p>}
+            <h1 className="display-serif mt-0.5 truncate text-3xl leading-[0.96] md:text-4xl">{title}</h1>
+            {subtitle && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">{subtitle}</p>}
             {status && status.length > 0 && (
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                 {status.map((s, i) => (
@@ -59,19 +59,19 @@ export function PageHero({
             )}
           </div>
         </div>
-        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">{actions}</div>}
       </div>
 
       {stats && stats.length > 0 && (
-        <div className="relative mt-4 grid grid-cols-2 gap-2 border-t border-border/60 pt-4 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="relative mt-5 grid grid-cols-2 gap-2 border-t border-border/60 pt-4 sm:grid-cols-3 lg:grid-cols-4">
           {stats.map((s, i) => {
             const toneColor = s.spectrum ? SPECTRUM_VAR[s.spectrum]
               : s.tone === "success" ? "var(--color-success)" : s.tone === "destructive" ? "var(--destructive)" : s.tone === "warning" ? "var(--color-warning)" : "var(--muted-foreground)";
             return (
-              <div key={i} className="min-w-0">
-                <div className="text-3xs uppercase tracking-wider text-muted-foreground truncate">{s.label}</div>
+              <div key={i} className="min-w-0 rounded-lg border border-border/45 bg-background/20 px-3 py-2.5">
+                <div className="text-3xs uppercase tracking-[0.14em] text-muted-foreground truncate">{s.label}</div>
                 <div className="mt-0.5 flex items-center gap-2">
-                  <span className={cn("font-mono text-sm font-semibold tabular-nums", s.spectrum && SPECTRUM_TEXT_CLASS[s.spectrum])}>{s.value}</span>
+                  <span className={cn("font-mono text-base font-semibold tabular-nums", s.spectrum && SPECTRUM_TEXT_CLASS[s.spectrum])}>{s.value}</span>
                   {s.spark && s.spark.length > 1 && (
                     <span style={{ color: toneColor }}>
                       <Sparkline data={s.spark} width={48} height={16} stroke={toneColor} strokeWidth={1.25} />

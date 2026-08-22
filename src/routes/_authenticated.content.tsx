@@ -333,7 +333,7 @@ function ContentIntel() {
   return (
     <>
       <TopBar title="Content Intelligence" subtitle="Hooks, retention, cash-per-view" />
-      <div className="p-6 space-y-4">
+      <div className="mx-auto max-w-[1680px] space-y-4 p-4 md:p-7">
         <PageHero
           icon={<Video className="h-5 w-5" />}
           eyebrow="ContentOS"
@@ -365,7 +365,7 @@ function ContentIntel() {
         />
 
         {/* Enterprise metric visualizers */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger-fade">
+        <div className="grid grid-cols-2 gap-3 stagger-fade md:grid-cols-4">
           <MetricCard label="Views" value={fmtN(perf.totals.views)} icon={<Eye className="h-3 w-3" />} spectrum="cold" deltaPct={12} spark={[40, 55, 48, 62, 70, 65, 80]} />
           <MetricCard label="Leads generated" value={fmtN(perf.totals.leads)} icon={<Sparkles className="h-3 w-3" />} spectrum="mid" deltaPct={8} spark={[3, 5, 4, 6, 7, 6, 9]} sparkVariant="bar" />
           <MetricCard label="Closes attributed" value={fmtN(perf.totals.closes)} icon={<Flame className="h-3 w-3" />} spectrum="hot" deltaPct={-4} spark={[2, 3, 2, 3, 1, 2, 3]} sparkVariant="bar" />
@@ -375,7 +375,7 @@ function ContentIntel() {
         {/* Content -> Cash funnel — the page's hero moment (B1), promoted into a
             bento hero with bands now in strict spectrum order instead of a flat
             foreground-opacity ramp. Hook comparison stays alongside it. */}
-        <BentoGrid cols={2} rowHeight="9.5rem">
+        <BentoGrid cols={3} rowHeight="10rem">
           <BentoCell span="hero">
             <div className="hover-lift relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-5">
               <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
@@ -403,36 +403,42 @@ function ContentIntel() {
               </div>
             </div>
           </BentoCell>
+          <BentoCell span="tall">
+            <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-3">
+                <div>
+                  <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Creative quality</div>
+                  <div className="mt-0.5 text-sm font-semibold">Top hooks by retention</div>
+                </div>
+                <span className="badge-glass text-3xs normal-case tracking-normal">{perf.topHooks.length} patterns</span>
+              </div>
+              <div className="mt-3 space-y-2.5">
+                {perf.topHooks.map((p) => {
+                  const m = p.content_metrics?.[0];
+                  const retention = m?.hook_retention_pct ?? 0;
+                  return (
+                    <div key={p.id} className="hover-lift rounded-xl border border-border bg-background/60 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-xs font-medium leading-snug line-clamp-2">{p.title || p.hook || "(untitled)"}</div>
+                        <span className={`badge-glass shrink-0 normal-case tracking-normal ${retention >= 55 ? "text-[color:var(--color-success)]" : "text-muted-foreground"}`}>
+                          <Flame className="h-2.5 w-2.5" />{retention}%
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-3 text-3xs font-mono text-muted-foreground">
+                        <span>{fmtN(m?.views ?? 0)} views</span>
+                        <span>{m?.leads_generated ?? 0} leads</span>
+                        <span className="capitalize">{p.platform?.replace(/_/g, " ")}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {perf.topHooks.length === 0 && <div className="py-8 text-center text-xs italic text-muted-foreground">Log content with hook retention % to see the strongest patterns here.</div>}
+              </div>
+            </div>
+          </BentoCell>
         </BentoGrid>
 
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="text-sm font-semibold mb-3">Top hooks by retention</div>
-          <div className="grid sm:grid-cols-2 gap-2.5 stagger-fade">
-            {perf.topHooks.map((p) => {
-              const m = p.content_metrics?.[0];
-              const retention = m?.hook_retention_pct ?? 0;
-              return (
-                <div key={p.id} className="hover-lift rounded-lg border border-border bg-background/60 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="text-xs font-medium leading-snug line-clamp-2">{p.title || p.hook || "(untitled)"}</div>
-                    {/* Threshold-based quality signal, correctly kept semantic (not a spectrum miscolor). */}
-                    <span className={`badge-glass normal-case tracking-normal shrink-0 ${retention >= 55 ? "text-[color:var(--color-success)]" : "text-muted-foreground"}`}>
-                      <Flame className="h-2.5 w-2.5" />{retention}% retention
-                    </span>
-                  </div>
-                  <div className="mt-2 flex items-center gap-3 text-3xs font-mono text-muted-foreground">
-                    <span>{fmtN(m?.views ?? 0)} views</span>
-                    <span>{m?.leads_generated ?? 0} leads</span>
-                    <span className="capitalize">{p.platform?.replace(/_/g, " ")}</span>
-                  </div>
-                </div>
-              );
-            })}
-            {perf.topHooks.length === 0 && <div className="text-xs text-muted-foreground italic sm:col-span-2">Log content with hook retention % to see top performers here.</div>}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-semibold">Mechanism × variation heatmap</div>
             <div className="text-3xs text-muted-foreground">Avg views per piece</div>
@@ -440,7 +446,7 @@ function ContentIntel() {
           <HeatmapGrid rowLabels={perf.heatmapRows} colLabels={perf.heatmapCols} data={perf.heatmapData} valueFmt={(v) => fmtN(v) + " views"} variant="spectrum" />
         </div>
 
-        <Tabs defaultValue="pipeline">
+        <Tabs defaultValue="pipeline" className="space-y-3">
           <TabsList>
             <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
             <TabsTrigger value="table">Table</TabsTrigger>
@@ -448,12 +454,12 @@ function ContentIntel() {
           </TabsList>
 
           <TabsContent value="pipeline">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
               {PIPELINE.map((col, colIdx) => {
                 const items = (pieces ?? []).filter(p => (p.pipeline_status ?? "draft") === col.key);
                 return (
-                  <div key={col.key} className="rounded-lg border border-border bg-card flex flex-col min-h-[300px]">
-                    <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+                  <div key={col.key} className="flex min-h-[300px] flex-col rounded-2xl border border-border bg-card shadow-sm">
+                    <div className="flex items-center justify-between border-b border-border bg-background/20 px-3 py-2.5">
                       <div className="flex items-center gap-2">
                         <span className={`text-3xs font-mono uppercase px-1.5 py-0.5 rounded ${col.tone}`}>{col.label}</span>
                         <span className="text-2xs text-muted-foreground">{items.length}</span>
@@ -464,7 +470,7 @@ function ContentIntel() {
                         <div className="text-2xs text-muted-foreground italic text-center py-6">Empty</div>
                       )}
                       {items.map(p => (
-                        <div key={p.id} className="rounded-md border border-border bg-background p-2.5 space-y-1.5 hover:border-accent/40 transition-colors">
+                        <div key={p.id} className="space-y-1.5 rounded-lg border border-border bg-background/70 p-2.5 shadow-sm transition-colors hover:border-accent/40">
                           <div className="flex items-start justify-between gap-2">
                             <button onClick={() => setOverviewFor(p)} className="text-xs font-medium leading-snug text-left hover:text-accent line-clamp-2">{p.title || "(untitled)"}</button>
                             {p.funnel_stage && (
@@ -594,7 +600,7 @@ function ContentIntel() {
 
 
           <TabsContent value="calendar">
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant="outline" onClick={() => shiftMonth(-1)} className="h-8 w-8 p-0">‹</Button>

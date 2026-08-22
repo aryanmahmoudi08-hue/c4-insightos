@@ -156,7 +156,7 @@ export function HubMetrics() {
   }
 
   return (
-    <div className="space-y-4 animate-in fade-in-0 duration-300">
+    <div className="space-y-3.5 animate-in fade-in-0 duration-300">
       <Band
         icon={<Eye className="h-3.5 w-3.5" />}
         title="Traffic → VSL"
@@ -217,12 +217,12 @@ type Tile = { label: string; value: string; tone?: "default" | "success" | "warn
 
 function BandSkeleton() {
   return (
-    <section className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-2">
+    <section className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+      <div className="flex items-center justify-between border-b border-border bg-background/20 px-4 py-2.5">
         <Skeleton className="h-3 w-32" />
         <Skeleton className="h-3 w-10" />
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y sm:divide-y-0 divide-border sm:divide-x">
+      <div className="grid grid-cols-2 divide-y divide-border md:grid-cols-3 md:divide-y-0 md:divide-x xl:grid-cols-6">
         {Array.from({ length: 5 }, (_, i) => (
           <div key={i} className="p-3 space-y-1.5">
             <Skeleton className="h-2 w-16" />
@@ -236,18 +236,18 @@ function BandSkeleton() {
 
 function Band({ icon, title, to, tiles }: { icon: React.ReactNode; title: string; to: string; tiles: Tile[] }) {
   return (
-    <section className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-2">
+    <section className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+      <div className="flex items-center justify-between border-b border-border bg-background/20 px-4 py-2.5">
         <div className="flex items-center gap-2 text-2xs font-semibold uppercase tracking-wider">{icon}{title}</div>
-        <Link to={to} className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground">
-          Open <ArrowUpRight className="h-3 w-3" />
+        <Link to={to} className="inline-flex items-center gap-1 text-2xs text-muted-foreground transition-colors hover:text-foreground">
+          Open module <ArrowUpRight className="h-3 w-3" />
         </Link>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y sm:divide-y-0 divide-border sm:divide-x">
+      <div className="grid grid-cols-2 divide-y divide-border md:grid-cols-3 md:divide-y-0 md:divide-x xl:grid-cols-6">
         {tiles.map(t => (
-          <div key={t.label} className="p-3">
-            <div className="text-3xs uppercase tracking-wider text-muted-foreground">{t.label}</div>
-            <div className={cn("mt-1 font-mono text-xl font-semibold tabular-nums",
+          <div key={t.label} className="p-3.5">
+            <div className="text-3xs uppercase tracking-[0.14em] text-muted-foreground">{t.label}</div>
+            <div className={cn("mt-1.5 font-mono text-xl font-semibold tabular-nums md:text-2xl",
               t.tone === "success" && "text-[color:var(--color-success)]",
               t.tone === "warning" && "text-[color:var(--color-warning)]",
               t.tone === "danger" && "text-destructive",
@@ -269,10 +269,10 @@ export function HubQuickLinks() {
     { to: "/fulfillment", label: "Client results", icon: Trophy },
   ];
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2 border-t border-border/50 pt-3">
       {links.map(l => (
         <Link key={l.to} to={l.to}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-2xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground">
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-2xs text-muted-foreground shadow-sm transition hover:-translate-y-px hover:border-primary/40 hover:text-foreground">
           <l.icon className="h-3.5 w-3.5" /> {l.label}
         </Link>
       ))}
