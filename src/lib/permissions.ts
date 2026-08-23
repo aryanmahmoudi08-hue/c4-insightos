@@ -34,9 +34,14 @@ export const RESOURCES: ResourceDef[] = [
     edit: "Rearrange tiles and save custom dashboard widgets / metric definitions.",
   },
   {
-    key: "leads", label: "Leads CRM", group: "Sales",
-    view: "Lead table with application answers, stage, priority, pre-call video status and full activity timeline.",
-    edit: "Change lead status / stage / priority, toggle pre-call video watched, add notes, and run lead AI insights.",
+    key: "sales_crm", label: "Sales CRM", group: "Sales", sensitive: true,
+    view: "Connected sales workspace for contacts, companies, opportunities, pipelines, tasks, activities, and legacy sales history.",
+    edit: "Create and update CRM records, manage assignments and stages, and complete sales tasks within the operator's authorized scope.",
+  },
+  {
+    key: "leads", label: "Legacy Leads", group: "Sales",
+    view: "Legacy lead table with application answers, stage, priority, pre-call video status and full activity timeline.",
+    edit: "Change legacy lead status / stage / priority, toggle pre-call video watched, add notes, and run lead AI insights.",
   },
   {
     key: "outreach", label: "Messaging (Email & SMS)", group: "Sales",
@@ -172,13 +177,13 @@ export function defaultPerm(role: string, resource: string): { can_view: boolean
       };
     case "setter":
       return {
-        can_view: ["dashboard", "leads", "dm_setter", "content_calendar", "insights"].includes(resource),
-        can_edit: ["leads", "dm_setter"].includes(resource),
+        can_view: ["dashboard", "sales_crm", "leads", "dm_setter", "content_calendar", "insights"].includes(resource),
+        can_edit: ["sales_crm", "leads", "dm_setter"].includes(resource),
       };
     case "closer":
       return {
-        can_view: ["dashboard", "leads", "closer", "clients", "content_calendar", "insights"].includes(resource),
-        can_edit: ["leads", "closer"].includes(resource),
+        can_view: ["dashboard", "sales_crm", "leads", "closer", "clients", "content_calendar", "insights"].includes(resource),
+        can_edit: ["sales_crm", "leads", "closer"].includes(resource),
       };
     default: // viewer
       return { can_view: !sensitive, can_edit: false };

@@ -40,7 +40,8 @@ const REPS_NAV: NavItem[] = [
 
 // Sales Tracking dropdown — Leads + Reps + the rest
 const SALES_NAV: NavItem[] = [
-  { to: "/leads", label: "Leads", icon: Users },
+  { to: "/sales", label: "Sales CRM", icon: Briefcase },
+  { to: "/leads", label: "Legacy Leads", icon: Users },
   { to: "/outreach", label: "Messaging (Email & SMS)", icon: MessageSquare },
   { to: "/team", label: "Team Members", icon: Users },
   { to: "/team-calendar", label: "Team Calendars", icon: CalendarDays },
@@ -87,7 +88,7 @@ const BOTTOM_NAV: NavItem[] = [
 
 // Routes a non-manager (setter/closer) is allowed to see.
 const RESTRICTED_ALLOW = new Set([
-  "/dashboard", "/team", "/team-calendar", "/dm-setter", "/inbound-dialer", "/closer",
+  "/dashboard", "/sales", "/leads", "/team", "/team-calendar", "/dm-setter", "/inbound-dialer", "/closer",
   "/clients", "/onboarding", "/fulfillment", "/vsl", "/content-calendar", "/settings",
 ]);
 
@@ -245,8 +246,8 @@ export function AppSidebar() {
               {sectionBtn("Sales Tracking", Briefcase, salesOpen, salesActive, (next) => expandSection(setSalesOpen, next))}
               {salesOpen && !collapsed && (
                 <div className="space-y-0.5">
-                  {/* Leads first */}
-                  {salesItems.filter(it => it.to === "/leads").map(it => renderItem(it, true, 1))}
+                  {/* Sales CRM is the primary operating surface; Legacy Leads stays available below for a safe transition. */}
+                  {salesItems.filter(it => it.to === "/sales").map(it => renderItem(it, true, 1))}
                   {/* Reps sub-dropdown */}
                   {repsItems.length > 0 && (
                     <>
@@ -259,7 +260,7 @@ export function AppSidebar() {
                     </>
                   )}
                   {/* Everything else */}
-                  {salesItems.filter(it => it.to !== "/leads").map(it => renderItem(it, true, 1))}
+                  {salesItems.filter(it => it.to !== "/sales").map(it => renderItem(it, true, 1))}
                 </div>
               )}
             </>
