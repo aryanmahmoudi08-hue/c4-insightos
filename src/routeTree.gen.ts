@@ -41,7 +41,9 @@ import { Route as AuthenticatedCloserRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated.clients'
 import { Route as AuthenticatedAttributionRouteImport } from './routes/_authenticated.attribution'
 import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typeform'
+import { Route as AuthenticatedSalesReportsRouteImport } from './routes/_authenticated.sales.reports'
 import { Route as AuthenticatedSalesInboxRouteImport } from './routes/_authenticated.sales.inbox'
+import { Route as AuthenticatedSalesAutomationsRouteImport } from './routes/_authenticated.sales.automations'
 import { Route as ApiPublicTwilioEventRouteImport } from './routes/api/public/twilio.$event'
 import { Route as ApiPublicIngestTokenRouteImport } from './routes/api/public/ingest.$token'
 import { Route as AuthenticatedSalesContactsIdRouteImport } from './routes/_authenticated.sales.contacts.$id'
@@ -212,11 +214,23 @@ const ApiPublicTypeformRoute = ApiPublicTypeformRouteImport.update({
   path: '/api/public/typeform',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedSalesReportsRoute =
+  AuthenticatedSalesReportsRouteImport.update({
+    id: '/reports',
+    path: '/reports',
+    getParentRoute: () => AuthenticatedSalesRoute,
+  } as any)
 const AuthenticatedSalesInboxRoute = AuthenticatedSalesInboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
   getParentRoute: () => AuthenticatedSalesRoute,
 } as any)
+const AuthenticatedSalesAutomationsRoute =
+  AuthenticatedSalesAutomationsRouteImport.update({
+    id: '/automations',
+    path: '/automations',
+    getParentRoute: () => AuthenticatedSalesRoute,
+  } as any)
 const ApiPublicTwilioEventRoute = ApiPublicTwilioEventRouteImport.update({
   id: '/api/public/twilio/$event',
   path: '/api/public/twilio/$event',
@@ -265,7 +279,9 @@ export interface FileRoutesByFullPath {
   '/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/vsl': typeof AuthenticatedVslRoute
+  '/sales/automations': typeof AuthenticatedSalesAutomationsRoute
   '/sales/inbox': typeof AuthenticatedSalesInboxRoute
+  '/sales/reports': typeof AuthenticatedSalesReportsRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
@@ -302,7 +318,9 @@ export interface FileRoutesByTo {
   '/traffic': typeof AuthenticatedTrafficRoute
   '/vsl': typeof AuthenticatedVslRoute
   '/': typeof AuthenticatedIndexRoute
+  '/sales/automations': typeof AuthenticatedSalesAutomationsRoute
   '/sales/inbox': typeof AuthenticatedSalesInboxRoute
+  '/sales/reports': typeof AuthenticatedSalesReportsRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
@@ -341,7 +359,9 @@ export interface FileRoutesById {
   '/_authenticated/traffic': typeof AuthenticatedTrafficRoute
   '/_authenticated/vsl': typeof AuthenticatedVslRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/sales/automations': typeof AuthenticatedSalesAutomationsRoute
   '/_authenticated/sales/inbox': typeof AuthenticatedSalesInboxRoute
+  '/_authenticated/sales/reports': typeof AuthenticatedSalesReportsRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/_authenticated/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
@@ -380,7 +400,9 @@ export interface FileRouteTypes {
     | '/team-calendar'
     | '/traffic'
     | '/vsl'
+    | '/sales/automations'
     | '/sales/inbox'
+    | '/sales/reports'
     | '/api/public/typeform'
     | '/sales/contacts/$id'
     | '/api/public/ingest/$token'
@@ -417,7 +439,9 @@ export interface FileRouteTypes {
     | '/traffic'
     | '/vsl'
     | '/'
+    | '/sales/automations'
     | '/sales/inbox'
+    | '/sales/reports'
     | '/api/public/typeform'
     | '/sales/contacts/$id'
     | '/api/public/ingest/$token'
@@ -455,7 +479,9 @@ export interface FileRouteTypes {
     | '/_authenticated/traffic'
     | '/_authenticated/vsl'
     | '/_authenticated/'
+    | '/_authenticated/sales/automations'
     | '/_authenticated/sales/inbox'
+    | '/_authenticated/sales/reports'
     | '/api/public/typeform'
     | '/_authenticated/sales/contacts/$id'
     | '/api/public/ingest/$token'
@@ -698,11 +724,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicTypeformRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/sales/reports': {
+      id: '/_authenticated/sales/reports'
+      path: '/reports'
+      fullPath: '/sales/reports'
+      preLoaderRoute: typeof AuthenticatedSalesReportsRouteImport
+      parentRoute: typeof AuthenticatedSalesRoute
+    }
     '/_authenticated/sales/inbox': {
       id: '/_authenticated/sales/inbox'
       path: '/inbox'
       fullPath: '/sales/inbox'
       preLoaderRoute: typeof AuthenticatedSalesInboxRouteImport
+      parentRoute: typeof AuthenticatedSalesRoute
+    }
+    '/_authenticated/sales/automations': {
+      id: '/_authenticated/sales/automations'
+      path: '/automations'
+      fullPath: '/sales/automations'
+      preLoaderRoute: typeof AuthenticatedSalesAutomationsRouteImport
       parentRoute: typeof AuthenticatedSalesRoute
     }
     '/api/public/twilio/$event': {
@@ -730,12 +770,16 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedSalesRouteChildren {
+  AuthenticatedSalesAutomationsRoute: typeof AuthenticatedSalesAutomationsRoute
   AuthenticatedSalesInboxRoute: typeof AuthenticatedSalesInboxRoute
+  AuthenticatedSalesReportsRoute: typeof AuthenticatedSalesReportsRoute
   AuthenticatedSalesContactsIdRoute: typeof AuthenticatedSalesContactsIdRoute
 }
 
 const AuthenticatedSalesRouteChildren: AuthenticatedSalesRouteChildren = {
+  AuthenticatedSalesAutomationsRoute: AuthenticatedSalesAutomationsRoute,
   AuthenticatedSalesInboxRoute: AuthenticatedSalesInboxRoute,
+  AuthenticatedSalesReportsRoute: AuthenticatedSalesReportsRoute,
   AuthenticatedSalesContactsIdRoute: AuthenticatedSalesContactsIdRoute,
 }
 

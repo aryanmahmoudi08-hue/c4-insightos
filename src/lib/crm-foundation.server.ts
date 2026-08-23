@@ -434,7 +434,7 @@ export async function getCrmContactRecordForUser(userId: string, contactOrLegacy
   if (!contact) throw new Error("Contact not found in this workspace");
 
   const legacyLeadId = contact.legacy_lead_id as string | null;
-  const [nativeContact, opportunities, tasks, activities, legacyLead, legacyNotes, legacyEvents, legacyCalls, conversations] = await Promise.all([
+  const [nativeContact, opportunities, tasks, activities, legacyLead, legacyNotes, legacyEvents, legacyCalls, conversations, companies, nativeNotes, availableCompanies] = await Promise.all([
     contact.record_source === "crm_contact"
       ? db.from("crm_contacts").select("id, description, legacy_lead_id").eq("id", contact.id).eq("org_id", workspace.orgId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -468,9 +468,16 @@ export async function getCrmContactRecordForUser(userId: string, contactOrLegacy
     legacyLeadId
       ? db.from("conversations").select("id, channel, status, last_message_at, first_response_seconds, created_at, messages(id, direction, body, sent_at)").eq("lead_id", legacyLeadId).eq("org_id", workspace.orgId).order("last_message_at", { ascending: false }).limit(50)
       : Promise.resolve({ data: [], error: null }),
+    contact.record_source === "crm_contact"
+      ? db.from("crm_company_contacts").select("id, title, is_primary, crm_companies(id, name, domain, industry, website)").eq("org_id", workspace.orgId).eq("contact_id", contact.id).order("is_primary", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    db.from("crm_notes").select("id, body, created_at, author_user_id, contact_id, legacy_lead_id").eq("org_id", workspace.orgId).or(`contact_id.eq.${contact.record_source === "crm_contact" ? contact.id : "00000000-0000-0000-0000-000000000000"}${legacyLeadId ? `,legacy_lead_id.eq.${legacyLeadId}` : ""}`).order("created_at", { ascending: false }).limit(100),
+    contact.record_source === "crm_contact"
+      ? db.from("crm_companies").select("id, name, domain, industry").eq("org_id", workspace.orgId).order("name", { ascending: true }).limit(200)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  for (const result of [nativeContact, opportunities, tasks, activities, legacyLead, legacyNotes, legacyEvents, legacyCalls, conversations]) {
+  for (const result of [nativeContact, opportunities, tasks, activities, legacyLead, legacyNotes, legacyEvents, legacyCalls, conversations, companies, nativeNotes, availableCompanies]) {
     if (result.error) throw new Error(result.error.message);
   }
 
@@ -487,6 +494,9 @@ export async function getCrmContactRecordForUser(userId: string, contactOrLegacy
     native_contact: nativeContact.data,
     opportunities: opportunities.data ?? [],
     tasks: tasks.data ?? [],
+    companies: companies.data ?? [],
+    available_companies: availableCompanies.data ?? [],
+    native_notes: nativeNotes.data ?? [],
     crm_activities: (activities.data ?? []).filter((activity: { id: string }) => activityIds.has(activity.id)),
     legacy: legacyLeadId ? {
       lead: legacyLead.data,
@@ -638,4 +648,309 @@ export async function createCrmSavedViewForUser(userId: string, input: {
     .single();
   if (error) throw new Error(error.message);
   return data;
+}
+
+export async function updateCrmContactForUser(userId: string, input: ContactInput & { id: string }) {
+  const workspace = await crmWorkspaceForUser(userId);
+  requireManager(workspace);
+  const db = supabaseAdmin as any;
+  const { data: existing, error: existingError } = await db.from("crm_contacts").select("id, display_name").eq("id", input.id).eq("org_id", workspace.orgId).maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+  if (!existing) throw new Error("This is not a native CRM contact in your workspace");
+
+  const { data: contact, error } = await db
+    .from("crm_contacts")
+    .update({
+      display_name: input.display_name.trim(),
+      first_name: cleanOptional(input.first_name),
+      last_name: cleanOptional(input.last_name),
+      primary_email: cleanOptional(input.primary_email)?.toLowerCase() ?? null,
+      primary_phone: cleanOptional(input.primary_phone),
+      social_handle: cleanOptional(input.social_handle),
+      lifecycle_status: input.lifecycle_status?.trim() || "new",
+      source: cleanOptional(input.source),
+      description: cleanOptional(input.description),
+    })
+    .eq("id", input.id)
+    .eq("org_id", workspace.orgId)
+    .select("id, display_name, lifecycle_status, updated_at")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await logCrmActivity({
+    orgId: workspace.orgId,
+    actorUserId: userId,
+    type: "contact_updated",
+    title: `Contact updated: ${contact.display_name}`,
+    sourceId: contact.id,
+    targets: [{ entity_type: "contact", entity_id: contact.id }],
+  });
+  return contact;
+}
+
+export async function createCrmNoteForUser(userId: string, input: { contact_id?: string | null; legacy_lead_id?: string | null; body: string }) {
+  const workspace = await crmWorkspaceForUser(userId);
+  const db = supabaseAdmin as any;
+  let targetType: "contact" | "legacy_lead";
+  let targetId: string;
+  if (input.contact_id) {
+    const { data: contact, error } = await db.from("crm_contacts").select("id, display_name").eq("id", input.contact_id).eq("org_id", workspace.orgId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!contact) throw new Error("The CRM contact is not available in this workspace");
+    targetType = "contact";
+    targetId = contact.id;
+  } else {
+    const { data: lead, error } = await db.from("leads").select("id, full_name").eq("id", input.legacy_lead_id).eq("org_id", workspace.orgId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!lead) throw new Error("The preserved legacy lead is not available in this workspace");
+    targetType = "legacy_lead";
+    targetId = lead.id;
+  }
+
+  const { data: note, error } = await db
+    .from("crm_notes")
+    .insert({
+      org_id: workspace.orgId,
+      author_user_id: userId,
+      contact_id: targetType === "contact" ? targetId : null,
+      legacy_lead_id: targetType === "legacy_lead" ? targetId : null,
+      body: input.body.trim(),
+    })
+    .select("id, body, created_at")
+    .single();
+  if (error) throw new Error(error.message);
+  await logCrmActivity({
+    orgId: workspace.orgId,
+    actorUserId: userId,
+    type: "note_added",
+    title: "CRM note added",
+    body: note.body,
+    sourceId: note.id,
+    targets: [{ entity_type: targetType, entity_id: targetId }],
+  });
+  return note;
+}
+
+export async function linkCrmContactToCompanyForUser(userId: string, input: { contact_id: string; company_id: string; title?: string | null; is_primary?: boolean }) {
+  const workspace = await crmWorkspaceForUser(userId);
+  requireManager(workspace);
+  const db = supabaseAdmin as any;
+  const [contact, company] = await Promise.all([
+    db.from("crm_contacts").select("id, display_name").eq("id", input.contact_id).eq("org_id", workspace.orgId).maybeSingle(),
+    db.from("crm_companies").select("id, name").eq("id", input.company_id).eq("org_id", workspace.orgId).maybeSingle(),
+  ]);
+  if (contact.error) throw new Error(contact.error.message);
+  if (company.error) throw new Error(company.error.message);
+  if (!contact.data || !company.data) throw new Error("The contact or company is not available in this workspace");
+  if (input.is_primary) {
+    const { error: resetError } = await db.from("crm_company_contacts").update({ is_primary: false }).eq("org_id", workspace.orgId).eq("contact_id", input.contact_id).eq("is_primary", true);
+    if (resetError) throw new Error(resetError.message);
+  }
+  const { data: link, error } = await db
+    .from("crm_company_contacts")
+    .upsert({ org_id: workspace.orgId, contact_id: input.contact_id, company_id: input.company_id, title: cleanOptional(input.title), is_primary: input.is_primary ?? false }, { onConflict: "company_id,contact_id" })
+    .select("id, company_id, contact_id, title, is_primary")
+    .single();
+  if (error) throw new Error(error.message);
+  await logCrmActivity({
+    orgId: workspace.orgId,
+    actorUserId: userId,
+    type: "contact_linked_to_company",
+    title: `${contact.data.display_name} linked to ${company.data.name}`,
+    sourceId: link.id,
+    targets: [{ entity_type: "contact", entity_id: input.contact_id }, { entity_type: "company", entity_id: input.company_id }],
+  });
+  return link;
+}
+
+export async function updateCrmTaskStatusForUser(userId: string, input: { id: string; status: "open" | "in_progress" | "completed" | "cancelled" }) {
+  const workspace = await crmWorkspaceForUser(userId);
+  requireManager(workspace);
+  const db = supabaseAdmin as any;
+  const { data: existing, error: existingError } = await db
+    .from("crm_tasks")
+    .select("id, title, contact_id, company_id, opportunity_id, status")
+    .eq("id", input.id)
+    .eq("org_id", workspace.orgId)
+    .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+  if (!existing) throw new Error("The task is not available in this workspace");
+  if (existing.status === input.status) return existing;
+
+  const { data: task, error } = await db
+    .from("crm_tasks")
+    .update({ status: input.status, completed_at: input.status === "completed" ? new Date().toISOString() : null })
+    .eq("id", existing.id)
+    .eq("org_id", workspace.orgId)
+    .select("id, title, status, completed_at, contact_id, company_id, opportunity_id")
+    .single();
+  if (error) throw new Error(error.message);
+  const targets: Array<{ entity_type: "task" | "contact" | "company" | "opportunity"; entity_id: string }> = [{ entity_type: "task", entity_id: task.id }];
+  if (task.contact_id) targets.push({ entity_type: "contact", entity_id: task.contact_id });
+  if (task.company_id) targets.push({ entity_type: "company", entity_id: task.company_id });
+  if (task.opportunity_id) targets.push({ entity_type: "opportunity", entity_id: task.opportunity_id });
+  await logCrmActivity({
+    orgId: workspace.orgId,
+    actorUserId: userId,
+    type: `task_${input.status}`,
+    title: `Task ${input.status.replaceAll("_", " ")}: ${task.title}`,
+    sourceId: task.id,
+    targets,
+  });
+  return task;
+}
+
+export async function moveCrmOpportunityStageForUser(userId: string, input: { id: string; pipeline_stage_id: string; lost_reason?: string | null }) {
+  const workspace = await crmWorkspaceForUser(userId);
+  requireManager(workspace);
+  const db = supabaseAdmin as any;
+  const { data: opportunity, error: opportunityError } = await db
+    .from("crm_opportunities")
+    .select("id, name, pipeline_id, pipeline_stage_id, contact_id, company_id, status")
+    .eq("id", input.id)
+    .eq("org_id", workspace.orgId)
+    .maybeSingle();
+  if (opportunityError) throw new Error(opportunityError.message);
+  if (!opportunity) throw new Error("The opportunity is not available in this workspace");
+  const { data: stage, error: stageError } = await db
+    .from("crm_pipeline_stages")
+    .select("id, name, probability, is_closed_won, is_closed_lost")
+    .eq("id", input.pipeline_stage_id)
+    .eq("pipeline_id", opportunity.pipeline_id)
+    .eq("org_id", workspace.orgId)
+    .eq("is_archived", false)
+    .maybeSingle();
+  if (stageError) throw new Error(stageError.message);
+  if (!stage) throw new Error("Choose an active stage in the opportunity's pipeline");
+  const status = stage.is_closed_won ? "won" : stage.is_closed_lost ? "lost" : "open";
+  const now = new Date().toISOString();
+  const { data: updated, error } = await db
+    .from("crm_opportunities")
+    .update({
+      pipeline_stage_id: stage.id,
+      probability: stage.probability,
+      status,
+      won_at: status === "won" ? now : null,
+      lost_at: status === "lost" ? now : null,
+      lost_reason: status === "lost" ? cleanOptional(input.lost_reason) : null,
+    })
+    .eq("id", opportunity.id)
+    .eq("org_id", workspace.orgId)
+    .select("id, name, pipeline_stage_id, status, probability, contact_id, company_id")
+    .single();
+  if (error) throw new Error(error.message);
+  const targets: Array<{ entity_type: "opportunity" | "contact" | "company"; entity_id: string }> = [{ entity_type: "opportunity", entity_id: updated.id }];
+  if (updated.contact_id) targets.push({ entity_type: "contact", entity_id: updated.contact_id });
+  if (updated.company_id) targets.push({ entity_type: "company", entity_id: updated.company_id });
+  await logCrmActivity({
+    orgId: workspace.orgId,
+    actorUserId: userId,
+    type: "opportunity_stage_moved",
+    title: `Opportunity moved to ${stage.name}: ${updated.name}`,
+    sourceId: updated.id,
+    targets,
+  });
+  return { ...updated, stage_name: stage.name };
+}
+
+export async function getCrmReportForUser(userId: string) {
+  const workspace = await crmWorkspaceForUser(userId);
+  const db = supabaseAdmin as any;
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const today = new Date().toISOString();
+  const [opportunities, tasks, activities, pipelines] = await Promise.all([
+    db.from("crm_opportunities").select("id, amount_cents, status, pipeline_id, pipeline_stage_id, created_at, won_at, lost_at").eq("org_id", workspace.orgId),
+    db.from("crm_tasks").select("id, status, due_at, completed_at, priority, assignee_user_id").eq("org_id", workspace.orgId),
+    db.from("crm_activities").select("id, activity_type, occurred_at, actor_user_id").eq("org_id", workspace.orgId).gte("occurred_at", monthStart.toISOString()),
+    db.from("crm_pipelines").select("id, name, crm_pipeline_stages(id, name, position, probability, is_closed_won, is_closed_lost)").eq("org_id", workspace.orgId).eq("is_archived", false),
+  ]);
+  for (const result of [opportunities, tasks, activities, pipelines]) if (result.error) throw new Error(result.error.message);
+  const open = (opportunities.data ?? []).filter((item: { status: string }) => item.status === "open");
+  const wonThisMonth = (opportunities.data ?? []).filter((item: { status: string; won_at: string | null }) => item.status === "won" && item.won_at && new Date(item.won_at) >= monthStart);
+  const lostThisMonth = (opportunities.data ?? []).filter((item: { status: string; lost_at: string | null }) => item.status === "lost" && item.lost_at && new Date(item.lost_at) >= monthStart);
+  const overdue = (tasks.data ?? []).filter((task: { status: string; due_at: string | null }) => ["open", "in_progress"].includes(task.status) && task.due_at && task.due_at < today);
+  const stageById = new Map<string, { name: string; probability: number; pipeline: string }>();
+  for (const pipeline of pipelines.data ?? []) for (const stage of pipeline.crm_pipeline_stages ?? []) stageById.set(stage.id, { name: stage.name, probability: Number(stage.probability), pipeline: pipeline.name });
+  const stageRollup = Array.from(stageById.entries()).map(([id, stage]) => {
+    const stageOpportunities = open.filter((opportunity: { pipeline_stage_id: string }) => opportunity.pipeline_stage_id === id);
+    const value = stageOpportunities.reduce((sum: number, opportunity: { amount_cents: number }) => sum + Number(opportunity.amount_cents ?? 0), 0);
+    return { stage_id: id, stage_name: stage.name, pipeline_name: stage.pipeline, probability: stage.probability, count: stageOpportunities.length, value_cents: value, weighted_value_cents: Math.round(value * stage.probability / 100) };
+  }).filter((item) => item.count > 0);
+  const activityByType = new Map<string, number>();
+  for (const activity of activities.data ?? []) activityByType.set(activity.activity_type, (activityByType.get(activity.activity_type) ?? 0) + 1);
+  return {
+    period_start: monthStart.toISOString(),
+    metrics: {
+      open_pipeline_value_cents: open.reduce((sum: number, item: { amount_cents: number }) => sum + Number(item.amount_cents ?? 0), 0),
+      weighted_pipeline_value_cents: stageRollup.reduce((sum, item) => sum + item.weighted_value_cents, 0),
+      won_value_cents: wonThisMonth.reduce((sum: number, item: { amount_cents: number }) => sum + Number(item.amount_cents ?? 0), 0),
+      won_count: wonThisMonth.length,
+      lost_count: lostThisMonth.length,
+      open_tasks: (tasks.data ?? []).filter((task: { status: string }) => ["open", "in_progress"].includes(task.status)).length,
+      overdue_tasks: overdue.length,
+      monthly_activities: (activities.data ?? []).length,
+    },
+    stage_rollup: stageRollup,
+    activity_breakdown: Array.from(activityByType.entries()).map(([activity_type, count]) => ({ activity_type, count })).sort((a, b) => b.count - a.count),
+    tasks: { overdue: overdue.slice(0, 20), recent_completed: (tasks.data ?? []).filter((task: { status: string }) => task.status === "completed").slice(0, 20) },
+  };
+}
+
+export async function getCrmSavedViewsForUser(userId: string, entityType: "contact" | "company" | "opportunity" | "task" | "thread" | "call") {
+  const workspace = await crmWorkspaceForUser(userId);
+  const db = supabaseAdmin as any;
+  const { data, error } = await db
+    .from("crm_saved_views")
+    .select("id, name, description, visibility, filters, columns, sort, is_default, owner_user_id, created_at, updated_at")
+    .eq("org_id", workspace.orgId)
+    .eq("entity_type", entityType)
+    .or(`owner_user_id.eq.${userId},visibility.eq.shared`)
+    .order("is_default", { ascending: false })
+    .order("updated_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function searchCrmRecordsForUser(userId: string, query: string) {
+  const workspace = await crmWorkspaceForUser(userId);
+  const db = supabaseAdmin as any;
+  const escaped = query.replace(/[,%()]/g, " ").trim();
+  if (!escaped) return [];
+  const pattern = `%${escaped}%`;
+  const [contacts, companies, opportunities, tasks] = await Promise.all([
+    db.from("crm_contact_legacy_adapter_v").select("id, record_source, legacy_lead_id, display_name, primary_email, primary_phone, lifecycle_status").eq("org_id", workspace.orgId).or(`display_name.ilike.${pattern},primary_email.ilike.${pattern},primary_phone.ilike.${pattern}`).limit(15),
+    db.from("crm_companies").select("id, name, domain, industry").eq("org_id", workspace.orgId).or(`name.ilike.${pattern},domain.ilike.${pattern}`).limit(15),
+    db.from("crm_opportunities").select("id, name, amount_cents, status").eq("org_id", workspace.orgId).ilike("name", pattern).limit(15),
+    db.from("crm_tasks").select("id, title, status, due_at").eq("org_id", workspace.orgId).ilike("title", pattern).limit(15),
+  ]);
+  for (const result of [contacts, companies, opportunities, tasks]) if (result.error) throw new Error(result.error.message);
+  return [
+    ...(contacts.data ?? []).map((item: any) => ({ kind: "contact", id: item.id, title: item.display_name, subtitle: item.primary_email ?? item.primary_phone ?? item.lifecycle_status, href: `/sales/contacts/${item.id}`, record_source: item.record_source })),
+    ...(companies.data ?? []).map((item: any) => ({ kind: "company", id: item.id, title: item.name, subtitle: item.domain ?? item.industry ?? "CRM company", href: "/sales" })),
+    ...(opportunities.data ?? []).map((item: any) => ({ kind: "opportunity", id: item.id, title: item.name, subtitle: `${item.status} · ${(Number(item.amount_cents ?? 0) / 100).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}`, href: "/sales" })),
+    ...(tasks.data ?? []).map((item: any) => ({ kind: "task", id: item.id, title: item.title, subtitle: item.status, href: "/sales" })),
+  ];
+}
+
+export async function createCrmAutomationRuleForUser(userId: string, input: { name: string; description?: string | null; entity_type: "contact" | "company" | "opportunity" | "task" | "thread" | "call"; trigger_type: "record_created" | "record_updated" | "stage_changed" | "task_due" | "message_received" | "call_completed" | "time_elapsed"; conditions?: Array<Record<string, unknown>>; actions?: Array<Record<string, unknown>> }) {
+  const workspace = await crmWorkspaceForUser(userId);
+  requireManager(workspace);
+  const db = supabaseAdmin as any;
+  const { data, error } = await db.from("crm_automation_rules").insert({ org_id: workspace.orgId, name: input.name.trim(), description: cleanOptional(input.description), entity_type: input.entity_type, trigger_type: input.trigger_type, conditions: input.conditions ?? [], actions: input.actions ?? [], is_enabled: false, created_by: userId }).select("id, name, entity_type, trigger_type, is_enabled, created_at").single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function getCrmAutomationRulesForUser(userId: string) {
+  const workspace = await crmWorkspaceForUser(userId);
+  const db = supabaseAdmin as any;
+  const [rules, runs] = await Promise.all([
+    db.from("crm_automation_rules").select("id, name, description, entity_type, trigger_type, conditions, actions, is_enabled, created_at, updated_at").eq("org_id", workspace.orgId).order("updated_at", { ascending: false }),
+    db.from("crm_automation_runs").select("id, rule_id, trigger_entity_type, trigger_entity_id, status, error_message, created_at, completed_at").eq("org_id", workspace.orgId).order("created_at", { ascending: false }).limit(100),
+  ]);
+  if (rules.error) throw new Error(rules.error.message);
+  if (runs.error) throw new Error(runs.error.message);
+  return { rules: rules.data ?? [], runs: runs.data ?? [] };
 }

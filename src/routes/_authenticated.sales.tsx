@@ -5,6 +5,8 @@ import { Link } from "@tanstack/react-router";
 import { type ReactNode, useMemo, useState } from "react";
 import {
   Activity,
+  BarChart3,
+  Bot,
   Building2,
   CheckSquare,
   CircleDollarSign,
@@ -30,12 +32,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { useRole } from "@/hooks/use-role";
 import {
   bulkUpdateCrmContacts,
+  createCrmSavedView,
   createCrmCompany,
   createCrmContact,
   createCrmOpportunity,
   createCrmPipeline,
   createCrmTask,
   getCrmFoundationOverview,
+  getCrmSavedViews,
+  moveCrmOpportunityStage,
+  searchCrmRecords,
+  updateCrmTaskStatus,
 } from "@/lib/crm-foundation.functions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -81,6 +88,7 @@ function SalesCrm() {
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+  const [savedViewsOpen, setSavedViewsOpen] = useState(false);
 
   const overviewFn = useServerFn(getCrmFoundationOverview);
   const createContactFn = useServerFn(createCrmContact);
@@ -89,12 +97,17 @@ function SalesCrm() {
   const createOpportunityFn = useServerFn(createCrmOpportunity);
   const createTaskFn = useServerFn(createCrmTask);
   const bulkUpdateContactsFn = useServerFn(bulkUpdateCrmContacts);
+  const updateTaskStatusFn = useServerFn(updateCrmTaskStatus);
+  const moveOpportunityStageFn = useServerFn(moveCrmOpportunityStage);
+  const createSavedViewFn = useServerFn(createCrmSavedView);
+  const savedViewsFn = useServerFn(getCrmSavedViews);
 
   const overviewQuery = useQuery({
     queryKey: ["sales-crm-foundation"],
     queryFn: () => overviewFn(),
   });
   const overview = overviewQuery.data;
+  const savedViewsQuery = useQuery({ queryKey: ["sales-crm-saved-views", "contact"], queryFn: () => savedViewsFn({ data: { entity_type: "contact" } }) });
   const invalidate = async () => queryClient.invalidateQueries({ queryKey: ["sales-crm-foundation"] });
 
   const createContactMutation = useMutation({
@@ -125,6 +138,21 @@ function SalesCrm() {
   const bulkUpdateMutation = useMutation({
     mutationFn: (data: Parameters<typeof bulkUpdateContactsFn>[0]) => bulkUpdateContactsFn(data),
     onSuccess: async (result) => { toast.success(`${result.updated} CRM contact${result.updated === 1 ? "" : "s"} updated`); setSelectedContactIds([]); setBulkDialogOpen(false); await invalidate(); },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const taskStatusMutation = useMutation({
+    mutationFn: (data: Parameters<typeof updateTaskStatusFn>[0]) => updateTaskStatusFn(data),
+    onSuccess: async (task) => { toast.success(`Task marked ${task.status.replaceAll("_", " ")}`); await invalidate(); },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const opportunityStageMutation = useMutation({
+    mutationFn: (data: Parameters<typeof moveOpportunityStageFn>[0]) => moveOpportunityStageFn(data),
+    onSuccess: async (opportunity) => { toast.success(`Moved to ${opportunity.stage_name}`); await invalidate(); },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const savedViewMutation = useMutation({
+    mutationFn: (data: Parameters<typeof createSavedViewFn>[0]) => createSavedViewFn(data),
+    onSuccess: async () => { toast.success("CRM view saved"); setSavedViewsOpen(false); await queryClient.invalidateQueries({ queryKey: ["sales-crm-saved-views", "contact"] }); },
     onError: (error: Error) => toast.error(error.message),
   });
 
@@ -168,6 +196,7 @@ function SalesCrm() {
       <OpportunityDialog open={opportunityDialogOpen} onOpenChange={setOpportunityDialogOpen} pending={createOpportunityMutation.isPending} contacts={overview.contacts as Contact[]} stages={pipelineStages} onSubmit={(data) => createOpportunityMutation.mutate({ data })} />
       <TaskDialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen} pending={createTaskMutation.isPending} contacts={overview.contacts as Contact[]} opportunities={overview.opportunities as Opportunity[]} onSubmit={(data) => createTaskMutation.mutate({ data })} />
       <BulkLifecycleDialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen} count={selectedContactIds.length} pending={bulkUpdateMutation.isPending} onSubmit={(lifecycle_status) => bulkUpdateMutation.mutate({ data: { contact_ids: selectedContactIds, lifecycle_status } })} />
+      <SavedViewsDialog open={savedViewsOpen} onOpenChange={setSavedViewsOpen} views={savedViewsQuery.data ?? []} query={query} pending={savedViewMutation.isPending} canManage={canManage} onApply={(view) => setQuery(String((view.filters as Record<string, unknown>)?.query ?? ""))} onSave={(name, visibility) => savedViewMutation.mutate({ data: { entity_type: "contact", name, visibility, filters: { query }, columns: ["display_name", "lifecycle_status", "primary_email", "primary_phone", "record_source"], sort: [{ field: "created_at", direction: "desc" }] } })} />
     </div>
   ) : null;
 
@@ -184,7 +213,7 @@ function SalesCrm() {
             { label: `${overview.counts.legacy_leads} legacy leads preserved`, tone: "default" },
             { label: `${overview.counts.open_tasks} open tasks`, tone: overview.counts.open_tasks ? "warning" : "default" },
           ]}
-          actions={<div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" asChild><Link to="/sales/inbox">Inbox</Link></Button>{managedActions}</div>}
+          actions={<div className="flex flex-wrap gap-2"><GlobalCrmSearchButton /><Button size="sm" variant="outline" onClick={() => setSavedViewsOpen(true)}>Views</Button><Button size="sm" variant="outline" asChild><Link to="/sales/inbox">Inbox</Link></Button><Button size="sm" variant="outline" asChild><Link to="/sales/reports"><BarChart3 className="h-3.5 w-3.5" />Reports</Link></Button><Button size="sm" variant="outline" asChild><Link to="/sales/automations"><Bot className="h-3.5 w-3.5" />Automations</Link></Button>{managedActions}</div>}
         />
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -213,10 +242,10 @@ function SalesCrm() {
             <ContactTable contacts={filteredContacts as Contact[]} canManage={canManage} selectedIds={selectedContactIds} onSelectedIdsChange={setSelectedContactIds} onBulkUpdate={() => setBulkDialogOpen(true)} />
           </TabsContent>
           <TabsContent value="pipeline" className="mt-0">
-            <PipelineBoard pipelines={overview.pipelines as Pipeline[]} opportunities={overview.opportunities as Opportunity[]} />
+            <PipelineBoard pipelines={overview.pipelines as Pipeline[]} opportunities={overview.opportunities as Opportunity[]} canManage={canManage} onMove={(id, pipeline_stage_id) => opportunityStageMutation.mutate({ data: { id, pipeline_stage_id } })} />
           </TabsContent>
           <TabsContent value="tasks" className="mt-0">
-            <TaskQueue tasks={overview.tasks as Task[]} />
+            <TaskQueue tasks={overview.tasks as Task[]} canManage={canManage} pendingId={taskStatusMutation.isPending ? taskStatusMutation.variables?.data.id : undefined} onStatusChange={(id, status) => taskStatusMutation.mutate({ data: { id, status } })} />
           </TabsContent>
           <TabsContent value="activity" className="mt-0">
             <ActivityTimeline activities={overview.activities as ActivityRow[]} />
@@ -265,26 +294,26 @@ function ContactTable({ contacts, canManage, selectedIds, onSelectedIdsChange, o
   );
 }
 
-function PipelineBoard({ pipelines, opportunities }: { pipelines: Pipeline[]; opportunities: Opportunity[] }) {
+function PipelineBoard({ pipelines, opportunities, canManage, onMove }: { pipelines: Pipeline[]; opportunities: Opportunity[]; canManage: boolean; onMove: (id: string, stageId: string) => void }) {
   const stages = pipelines.flatMap((pipeline) => ((pipeline.crm_pipeline_stages ?? []) as Array<{ id: string; name: string; position: number; probability: number; is_closed_won: boolean; is_closed_lost: boolean }>).sort((a, b) => a.position - b.position).map((stage) => ({ ...stage, pipeline_id: pipeline.id, pipeline_name: pipeline.name })));
   if (!pipelines.length) return <EmptyBoard icon={<Columns3 className="h-5 w-5" />} title="Create your first pipeline" description="Pipelines and stages are data, not a hard-coded enum. Create one from the quick actions above, then add opportunities into its stages." />;
   return (
     <section className="space-y-4">
       {pipelines.map((pipeline) => {
         const pipelineStages = stages.filter((stage) => stage.pipeline_id === pipeline.id);
-        return <div key={pipeline.id} className="overflow-hidden rounded-xl border border-border/80 bg-card"><div className="flex items-center justify-between border-b border-border/70 px-4 py-3"><div><h2 className="font-semibold">{pipeline.name}</h2><p className="text-2xs text-muted-foreground">{pipeline.description ?? "Configurable sales pipeline"}</p></div>{pipeline.is_default && <span className="rounded bg-accent/15 px-2 py-1 text-3xs font-semibold uppercase tracking-wide text-accent">Default</span>}</div><div className="grid min-w-max grid-flow-col auto-cols-[minmax(230px,1fr)] gap-px overflow-x-auto bg-border/70 p-px">{pipelineStages.map((stage) => <PipelineColumn key={stage.id} stage={stage} opportunities={opportunities.filter((opportunity) => opportunity.pipeline_stage_id === stage.id)} />)}</div></div>;
+        return <div key={pipeline.id} className="overflow-hidden rounded-xl border border-border/80 bg-card"><div className="flex items-center justify-between border-b border-border/70 px-4 py-3"><div><h2 className="font-semibold">{pipeline.name}</h2><p className="text-2xs text-muted-foreground">{pipeline.description ?? "Configurable sales pipeline"}</p></div>{pipeline.is_default && <span className="rounded bg-accent/15 px-2 py-1 text-3xs font-semibold uppercase tracking-wide text-accent">Default</span>}</div><div className="grid min-w-max grid-flow-col auto-cols-[minmax(230px,1fr)] gap-px overflow-x-auto bg-border/70 p-px">{pipelineStages.map((stage) => <PipelineColumn key={stage.id} stage={stage} pipelineStages={pipelineStages} opportunities={opportunities.filter((opportunity) => opportunity.pipeline_stage_id === stage.id)} canManage={canManage} onMove={onMove} />)}</div></div>;
       })}
     </section>
   );
 }
 
-function PipelineColumn({ stage, opportunities }: { stage: { id: string; name: string; probability: number; is_closed_won: boolean; is_closed_lost: boolean }; opportunities: Opportunity[] }) {
+function PipelineColumn({ stage, pipelineStages, opportunities, canManage, onMove }: { stage: { id: string; name: string; probability: number; is_closed_won: boolean; is_closed_lost: boolean }; pipelineStages: Array<{ id: string; name: string }>; opportunities: Opportunity[]; canManage: boolean; onMove: (id: string, stageId: string) => void }) {
   const total = opportunities.reduce((sum, opportunity) => sum + (opportunity.amount_cents ?? 0), 0);
-  return <div className="min-h-[300px] bg-card p-3"><div className="mb-3 flex items-start justify-between gap-3"><div><div className="text-xs font-semibold">{stage.name}</div><div className="mt-0.5 text-2xs text-muted-foreground">{stage.probability}% probability · {opportunities.length} deals</div></div><div className="text-xs font-semibold tabular-nums">{formatMoney(total)}</div></div><div className="space-y-2">{opportunities.map((opportunity) => <div key={opportunity.id} className="rounded-lg border border-border/80 bg-muted/20 p-3 shadow-sm"><div className="text-sm font-medium">{opportunity.name}</div><div className="mt-1 text-xs tabular-nums text-muted-foreground">{formatMoney(opportunity.amount_cents, opportunity.currency)}</div><div className="mt-3 flex items-center justify-between text-2xs text-muted-foreground"><span>{opportunity.expected_close_date ? `Close ${formatDate(opportunity.expected_close_date)}` : "No close date"}</span><span className="rounded bg-background px-1.5 py-0.5 uppercase">{opportunity.status}</span></div></div>)}{!opportunities.length && <div className="rounded-lg border border-dashed border-border p-4 text-center text-2xs text-muted-foreground">No opportunities in this stage.</div>}</div></div>;
+  return <div className="min-h-[300px] bg-card p-3"><div className="mb-3 flex items-start justify-between gap-3"><div><div className="text-xs font-semibold">{stage.name}</div><div className="mt-0.5 text-2xs text-muted-foreground">{stage.probability}% probability · {opportunities.length} deals</div></div><div className="text-xs font-semibold tabular-nums">{formatMoney(total)}</div></div><div className="space-y-2">{opportunities.map((opportunity) => <div key={opportunity.id} className="rounded-lg border border-border/80 bg-muted/20 p-3 shadow-sm"><div className="text-sm font-medium">{opportunity.name}</div><div className="mt-1 text-xs tabular-nums text-muted-foreground">{formatMoney(opportunity.amount_cents, opportunity.currency)}</div><div className="mt-3 flex items-center justify-between text-2xs text-muted-foreground"><span>{opportunity.expected_close_date ? `Close ${formatDate(opportunity.expected_close_date)}` : "No close date"}</span><span className="rounded bg-background px-1.5 py-0.5 uppercase">{opportunity.status}</span></div>{canManage && <Select value={opportunity.pipeline_stage_id} onValueChange={(pipeline_stage_id) => onMove(opportunity.id, pipeline_stage_id)}><SelectTrigger className="mt-3 h-7 text-2xs"><SelectValue /></SelectTrigger><SelectContent>{pipelineStages.map((pipelineStage) => <SelectItem key={pipelineStage.id} value={pipelineStage.id}>{pipelineStage.name}</SelectItem>)}</SelectContent></Select>}</div>)}{!opportunities.length && <div className="rounded-lg border border-dashed border-border p-4 text-center text-2xs text-muted-foreground">No opportunities in this stage.</div>}</div></div>;
 }
 
-function TaskQueue({ tasks }: { tasks: Task[] }) {
-  return <section className="overflow-hidden rounded-xl border border-border/80 bg-card"><div className="border-b border-border/70 px-4 py-3"><h2 className="text-sm font-semibold">Work queue</h2><p className="text-xs text-muted-foreground">Open CRM tasks are concrete next steps linked to sales records where applicable.</p></div><div className="divide-y divide-border/60">{tasks.map((task) => <div key={task.id} className="flex items-center gap-3 px-4 py-3"><span className={cn("h-2 w-2 rounded-full", task.priority === "urgent" ? "bg-destructive" : task.priority === "high" ? "bg-[color:var(--color-warning)]" : "bg-accent")} /><div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{task.title}</div><div className="mt-0.5 text-2xs text-muted-foreground">{task.contact_id ? "Linked contact" : task.opportunity_id ? "Linked opportunity" : "General CRM task"}</div></div><div className="text-right text-2xs text-muted-foreground"><div className="flex items-center justify-end gap-1"><Clock3 className="h-3 w-3" />{formatDate(task.due_at)}</div><div className="mt-1 uppercase tracking-wide">{task.priority}</div></div></div>)}{!tasks.length && <div className="p-10 text-center text-sm text-muted-foreground">No open tasks. Create the next follow-up from the quick actions above.</div>}</div></section>;
+function TaskQueue({ tasks, canManage, pendingId, onStatusChange }: { tasks: Task[]; canManage: boolean; pendingId?: string; onStatusChange: (id: string, status: "open" | "in_progress" | "completed" | "cancelled") => void }) {
+  return <section className="overflow-hidden rounded-xl border border-border/80 bg-card"><div className="border-b border-border/70 px-4 py-3"><h2 className="text-sm font-semibold">Work queue</h2><p className="text-xs text-muted-foreground">Open CRM tasks are concrete next steps linked to sales records where applicable.</p></div><div className="divide-y divide-border/60">{tasks.map((task) => <div key={task.id} className="flex items-center gap-3 px-4 py-3"><span className={cn("h-2 w-2 rounded-full", task.priority === "urgent" ? "bg-destructive" : task.priority === "high" ? "bg-[color:var(--color-warning)]" : "bg-accent")} /><div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{task.title}</div><div className="mt-0.5 text-2xs text-muted-foreground">{task.contact_id ? "Linked contact" : task.opportunity_id ? "Linked opportunity" : "General CRM task"}</div></div><div className="text-right text-2xs text-muted-foreground"><div className="flex items-center justify-end gap-1"><Clock3 className="h-3 w-3" />{formatDate(task.due_at)}</div><div className="mt-1 uppercase tracking-wide">{task.priority}</div>{canManage && <Button size="sm" variant="ghost" className="mt-2 h-7 text-2xs" disabled={pendingId === task.id} onClick={() => onStatusChange(task.id, "completed")}>{pendingId === task.id ? "Saving…" : "Complete"}</Button>}</div></div>)}{!tasks.length && <div className="p-10 text-center text-sm text-muted-foreground">No open tasks. Create the next follow-up from the quick actions above.</div>}</div></section>;
 }
 
 function ActivityTimeline({ activities }: { activities: ActivityRow[] }) {
@@ -326,4 +355,18 @@ function FormField({ label, children }: { label: string; children: ReactNode }) 
 function BulkLifecycleDialog({ open, onOpenChange, count, pending, onSubmit }: { open: boolean; onOpenChange: (open: boolean) => void; count: number; pending: boolean; onSubmit: (lifecycleStatus: string) => void }) {
   const [status, setStatus] = useState("qualified");
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>Update {count} CRM contact{count === 1 ? "" : "s"}</DialogTitle></DialogHeader><div className="space-y-4"><p className="text-sm leading-6 text-muted-foreground">This updates only native CRM contacts. Preserved legacy lead rows are excluded and remain unchanged. The operation and selection snapshot are recorded in the CRM audit log.</p><FormField label="New lifecycle status"><Select value={status} onValueChange={setStatus}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">New</SelectItem><SelectItem value="qualified">Qualified</SelectItem><SelectItem value="nurture">Nurture</SelectItem><SelectItem value="customer">Customer</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select></FormField><Button className="w-full" disabled={pending || count === 0} onClick={() => onSubmit(status)}>{pending ? "Updating…" : `Update ${count} contact${count === 1 ? "" : "s"}`}</Button></div></DialogContent></Dialog>;
+}
+
+function GlobalCrmSearchButton() {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const searchFn = useServerFn(searchCrmRecords);
+  const searchQuery = useQuery({ queryKey: ["sales-crm-global-search", query], queryFn: () => searchFn({ data: { query } }), enabled: query.trim().length >= 2 });
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button size="sm" variant="outline"><Search className="h-3.5 w-3.5" />Search</Button></DialogTrigger><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>Search Sales CRM</DialogTitle></DialogHeader><Input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus placeholder="Search contacts, companies, opportunities, or tasks…" /><div className="max-h-96 overflow-y-auto rounded-lg border border-border/70">{query.trim().length < 2 && <div className="p-6 text-center text-sm text-muted-foreground">Enter at least two characters to search the active CRM workspace.</div>}{searchQuery.isLoading && <div className="p-6 text-center text-sm text-muted-foreground">Searching CRM records…</div>}{!searchQuery.isLoading && (searchQuery.data ?? []).map((result) => <Link key={`${result.kind}-${result.id}`} to={result.href as "/sales"} onClick={() => setOpen(false)} className="block border-b border-border/60 px-4 py-3 last:border-0 hover:bg-muted/30"><div className="flex items-center justify-between gap-3"><div className="truncate text-sm font-medium">{result.title}</div><span className="rounded bg-muted px-1.5 py-1 text-3xs uppercase tracking-wide text-muted-foreground">{result.kind}</span></div><div className="mt-1 truncate text-xs text-muted-foreground">{result.subtitle}</div></Link>)}{query.trim().length >= 2 && !searchQuery.isLoading && !(searchQuery.data ?? []).length && <div className="p-6 text-center text-sm text-muted-foreground">No CRM records match this search.</div>}</div></DialogContent></Dialog>;
+}
+
+function SavedViewsDialog({ open, onOpenChange, views, query, pending, canManage, onApply, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; views: Array<Record<string, unknown>>; query: string; pending: boolean; canManage: boolean; onApply: (view: Record<string, unknown>) => void; onSave: (name: string, visibility: "private" | "shared") => void }) {
+  const [name, setName] = useState("");
+  const [visibility, setVisibility] = useState<"private" | "shared">("private");
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>Contact views</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-lg border border-border bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">Save the current contact search and column configuration. Shared views are manager-governed; saved views never modify the underlying CRM or legacy data.</div><div className="space-y-2">{views.map((view) => <button type="button" key={String(view.id)} onClick={() => { onApply(view); onOpenChange(false); }} className="flex w-full items-center justify-between rounded-lg border border-border/70 p-3 text-left transition-colors hover:bg-muted/30"><span><span className="block text-sm font-medium">{String(view.name)}</span><span className="mt-0.5 block text-2xs text-muted-foreground">{String(view.visibility)} view</span></span><span className="text-2xs text-accent">Apply</span></button>)}{!views.length && <div className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">No saved contact views yet.</div>}</div><form className="space-y-3 border-t border-border pt-4" onSubmit={(event) => { event.preventDefault(); onSave(name, visibility); }}><Field label="Save current view"><Input value={name} onChange={(event) => setName(event.target.value)} required placeholder="My active leads" /></Field><Field label="Visibility"><Select value={visibility} onValueChange={(value) => setVisibility(value as "private" | "shared")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="private">Private</SelectItem>{canManage && <SelectItem value="shared">Shared with organization</SelectItem>}</SelectContent></Select></Field><Button className="w-full" type="submit" disabled={pending || !name.trim()}>{pending ? "Saving…" : "Save view"}</Button></form></div></DialogContent></Dialog>;
 }

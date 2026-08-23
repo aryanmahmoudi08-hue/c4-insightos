@@ -159,3 +159,117 @@ export const createCrmSavedView = createServerFn({ method: "POST" })
     const { createCrmSavedViewForUser } = await import("./crm-foundation.server");
     return createCrmSavedViewForUser((context as { userId: string }).userId, data);
   });
+
+const contactUpdateInput = contactInput.omit({ legacy_lead_id: true }).extend({ id: z.string().uuid() });
+const crmNoteInput = z.object({
+  contact_id: z.string().uuid().optional().nullable(),
+  legacy_lead_id: z.string().uuid().optional().nullable(),
+  body: z.string().trim().min(1).max(10_000),
+}).refine((data) => Boolean(data.contact_id || data.legacy_lead_id), { message: "A CRM or preserved legacy record is required" });
+const companyContactInput = z.object({
+  contact_id: z.string().uuid(),
+  company_id: z.string().uuid(),
+  title: z.string().trim().max(160).optional().nullable(),
+  is_primary: z.boolean().optional(),
+});
+
+/** Updates a native CRM contact. Preserved legacy lead rows are never updated through this endpoint. */
+export const updateCrmContact = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => contactUpdateInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { updateCrmContactForUser } = await import("./crm-foundation.server");
+    return updateCrmContactForUser((context as { userId: string }).userId, data);
+  });
+
+/** Adds a native CRM note to a contact or preserved legacy-lead context without modifying historical notes. */
+export const createCrmNote = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => crmNoteInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { createCrmNoteForUser } = await import("./crm-foundation.server");
+    return createCrmNoteForUser((context as { userId: string }).userId, data);
+  });
+
+/** Associates an existing native CRM contact with an existing native CRM company. */
+export const linkCrmContactToCompany = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => companyContactInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { linkCrmContactToCompanyForUser } = await import("./crm-foundation.server");
+    return linkCrmContactToCompanyForUser((context as { userId: string }).userId, data);
+  });
+
+const taskStatusInput = z.object({ id: z.string().uuid(), status: z.enum(["open", "in_progress", "completed", "cancelled"]) });
+const opportunityStageInput = z.object({ id: z.string().uuid(), pipeline_stage_id: z.string().uuid(), lost_reason: z.string().trim().max(500).optional().nullable() });
+
+/** Changes a CRM task state and records a task activity. */
+export const updateCrmTaskStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => taskStatusInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { updateCrmTaskStatusForUser } = await import("./crm-foundation.server");
+    return updateCrmTaskStatusForUser((context as { userId: string }).userId, data);
+  });
+
+/** Moves an opportunity through a configured stage and derives its open/won/lost state from that stage. */
+export const moveCrmOpportunityStage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => opportunityStageInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { moveCrmOpportunityStageForUser } = await import("./crm-foundation.server");
+    return moveCrmOpportunityStageForUser((context as { userId: string }).userId, data);
+  });
+
+const crmSearchInput = z.object({ query: z.string().trim().min(1).max(120) });
+const automationRuleInput = z.object({
+  name: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(2000).optional().nullable(),
+  entity_type: z.enum(["contact", "company", "opportunity", "task", "thread", "call"]),
+  trigger_type: z.enum(["record_created", "record_updated", "stage_changed", "task_due", "message_received", "call_completed", "time_elapsed"]),
+  conditions: z.array(z.record(z.string(), z.unknown())).max(20).optional(),
+  actions: z.array(z.record(z.string(), z.unknown())).max(20).optional(),
+});
+
+/** Returns data-derived CRM performance totals and pipeline-stage rollups for the reporting workspace. */
+export const getCrmReport = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { getCrmReportForUser } = await import("./crm-foundation.server");
+    return getCrmReportForUser((context as { userId: string }).userId);
+  });
+
+/** Returns private views owned by the user together with shared CRM views for the active organization. */
+export const getCrmSavedViews = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ entity_type: z.enum(["contact", "company", "opportunity", "task", "thread", "call"]) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { getCrmSavedViewsForUser } = await import("./crm-foundation.server");
+    return getCrmSavedViewsForUser((context as { userId: string }).userId, data.entity_type);
+  });
+
+/** Searches native and preserved CRM records within the resolved workspace. */
+export const searchCrmRecords = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => crmSearchInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { searchCrmRecordsForUser } = await import("./crm-foundation.server");
+    return searchCrmRecordsForUser((context as { userId: string }).userId, data.query);
+  });
+
+/** Stores an inactive, manager-governed automation rule; execution remains separately gated. */
+export const createCrmAutomationRule = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => automationRuleInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { createCrmAutomationRuleForUser } = await import("./crm-foundation.server");
+    return createCrmAutomationRuleForUser((context as { userId: string }).userId, data);
+  });
+
+/** Reads organization-scoped automation definitions and recent run outcomes for safe operations review. */
+export const getCrmAutomationRules = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { getCrmAutomationRulesForUser } = await import("./crm-foundation.server");
+    return getCrmAutomationRulesForUser((context as { userId: string }).userId);
+  });
