@@ -40,6 +40,7 @@ import { Route as AuthenticatedConnectorsRouteImport } from './routes/_authentic
 import { Route as AuthenticatedCloserRouteImport } from './routes/_authenticated.closer'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated.clients'
 import { Route as AuthenticatedAttributionRouteImport } from './routes/_authenticated.attribution'
+import { Route as AuthenticatedSalesIndexRouteImport } from './routes/_authenticated.sales.index'
 import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typeform'
 import { Route as AuthenticatedSalesReportsRouteImport } from './routes/_authenticated.sales.reports'
 import { Route as AuthenticatedSalesInboxRouteImport } from './routes/_authenticated.sales.inbox'
@@ -209,6 +210,11 @@ const AuthenticatedAttributionRoute =
     path: '/attribution',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedSalesIndexRoute = AuthenticatedSalesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedSalesRoute,
+} as any)
 const ApiPublicTypeformRoute = ApiPublicTypeformRouteImport.update({
   id: '/api/public/typeform',
   path: '/api/public/typeform',
@@ -283,6 +289,7 @@ export interface FileRoutesByFullPath {
   '/sales/inbox': typeof AuthenticatedSalesInboxRoute
   '/sales/reports': typeof AuthenticatedSalesReportsRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
+  '/sales/': typeof AuthenticatedSalesIndexRoute
   '/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
@@ -310,7 +317,6 @@ export interface FileRoutesByTo {
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/outreach': typeof AuthenticatedOutreachRoute
   '/permissions': typeof AuthenticatedPermissionsRoute
-  '/sales': typeof AuthenticatedSalesRouteWithChildren
   '/sequences': typeof AuthenticatedSequencesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/team': typeof AuthenticatedTeamRoute
@@ -322,6 +328,7 @@ export interface FileRoutesByTo {
   '/sales/inbox': typeof AuthenticatedSalesInboxRoute
   '/sales/reports': typeof AuthenticatedSalesReportsRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
+  '/sales': typeof AuthenticatedSalesIndexRoute
   '/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
@@ -363,6 +370,7 @@ export interface FileRoutesById {
   '/_authenticated/sales/inbox': typeof AuthenticatedSalesInboxRoute
   '/_authenticated/sales/reports': typeof AuthenticatedSalesReportsRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
+  '/_authenticated/sales/': typeof AuthenticatedSalesIndexRoute
   '/_authenticated/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
@@ -404,6 +412,7 @@ export interface FileRouteTypes {
     | '/sales/inbox'
     | '/sales/reports'
     | '/api/public/typeform'
+    | '/sales/'
     | '/sales/contacts/$id'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
@@ -431,7 +440,6 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/outreach'
     | '/permissions'
-    | '/sales'
     | '/sequences'
     | '/settings'
     | '/team'
@@ -443,6 +451,7 @@ export interface FileRouteTypes {
     | '/sales/inbox'
     | '/sales/reports'
     | '/api/public/typeform'
+    | '/sales'
     | '/sales/contacts/$id'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
@@ -483,6 +492,7 @@ export interface FileRouteTypes {
     | '/_authenticated/sales/inbox'
     | '/_authenticated/sales/reports'
     | '/api/public/typeform'
+    | '/_authenticated/sales/'
     | '/_authenticated/sales/contacts/$id'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
@@ -717,6 +727,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAttributionRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/sales/': {
+      id: '/_authenticated/sales/'
+      path: '/'
+      fullPath: '/sales/'
+      preLoaderRoute: typeof AuthenticatedSalesIndexRouteImport
+      parentRoute: typeof AuthenticatedSalesRoute
+    }
     '/api/public/typeform': {
       id: '/api/public/typeform'
       path: '/api/public/typeform'
@@ -773,6 +790,7 @@ interface AuthenticatedSalesRouteChildren {
   AuthenticatedSalesAutomationsRoute: typeof AuthenticatedSalesAutomationsRoute
   AuthenticatedSalesInboxRoute: typeof AuthenticatedSalesInboxRoute
   AuthenticatedSalesReportsRoute: typeof AuthenticatedSalesReportsRoute
+  AuthenticatedSalesIndexRoute: typeof AuthenticatedSalesIndexRoute
   AuthenticatedSalesContactsIdRoute: typeof AuthenticatedSalesContactsIdRoute
 }
 
@@ -780,6 +798,7 @@ const AuthenticatedSalesRouteChildren: AuthenticatedSalesRouteChildren = {
   AuthenticatedSalesAutomationsRoute: AuthenticatedSalesAutomationsRoute,
   AuthenticatedSalesInboxRoute: AuthenticatedSalesInboxRoute,
   AuthenticatedSalesReportsRoute: AuthenticatedSalesReportsRoute,
+  AuthenticatedSalesIndexRoute: AuthenticatedSalesIndexRoute,
   AuthenticatedSalesContactsIdRoute: AuthenticatedSalesContactsIdRoute,
 }
 

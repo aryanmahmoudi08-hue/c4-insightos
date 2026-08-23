@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Outlet } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
@@ -47,7 +47,11 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/_authenticated/sales")({ component: SalesCrm });
+export const Route = createFileRoute("/_authenticated/sales")({ component: SalesRoute });
+
+function SalesRoute() {
+  return <Outlet />;
+}
 
 type Overview = Awaited<ReturnType<typeof getCrmFoundationOverview>>;
 type Contact = Overview["contacts"][number];
@@ -77,7 +81,7 @@ function initials(value: string) {
   return value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?";
 }
 
-function SalesCrm() {
+export function SalesCrm() {
   const queryClient = useQueryClient();
   const { canManage } = useRole();
   const [query, setQuery] = useState("");
@@ -368,5 +372,5 @@ function GlobalCrmSearchButton() {
 function SavedViewsDialog({ open, onOpenChange, views, query, pending, canManage, onApply, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; views: Array<Record<string, unknown>>; query: string; pending: boolean; canManage: boolean; onApply: (view: Record<string, unknown>) => void; onSave: (name: string, visibility: "private" | "shared") => void }) {
   const [name, setName] = useState("");
   const [visibility, setVisibility] = useState<"private" | "shared">("private");
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>Contact views</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-lg border border-border bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">Save the current contact search and column configuration. Shared views are manager-governed; saved views never modify the underlying CRM or legacy data.</div><div className="space-y-2">{views.map((view) => <button type="button" key={String(view.id)} onClick={() => { onApply(view); onOpenChange(false); }} className="flex w-full items-center justify-between rounded-lg border border-border/70 p-3 text-left transition-colors hover:bg-muted/30"><span><span className="block text-sm font-medium">{String(view.name)}</span><span className="mt-0.5 block text-2xs text-muted-foreground">{String(view.visibility)} view</span></span><span className="text-2xs text-accent">Apply</span></button>)}{!views.length && <div className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">No saved contact views yet.</div>}</div><form className="space-y-3 border-t border-border pt-4" onSubmit={(event) => { event.preventDefault(); onSave(name, visibility); }}><Field label="Save current view"><Input value={name} onChange={(event) => setName(event.target.value)} required placeholder="My active leads" /></Field><Field label="Visibility"><Select value={visibility} onValueChange={(value) => setVisibility(value as "private" | "shared")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="private">Private</SelectItem>{canManage && <SelectItem value="shared">Shared with organization</SelectItem>}</SelectContent></Select></Field><Button className="w-full" type="submit" disabled={pending || !name.trim()}>{pending ? "Saving…" : "Save view"}</Button></form></div></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>Contact views</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-lg border border-border bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">Save the current contact search and column configuration. Shared views are manager-governed; saved views never modify the underlying CRM or legacy data.</div><div className="space-y-2">{views.map((view) => <button type="button" key={String(view.id)} onClick={() => { onApply(view); onOpenChange(false); }} className="flex w-full items-center justify-between rounded-lg border border-border/70 p-3 text-left transition-colors hover:bg-muted/30"><span><span className="block text-sm font-medium">{String(view.name)}</span><span className="mt-0.5 block text-2xs text-muted-foreground">{String(view.visibility)} view</span></span><span className="text-2xs text-accent">Apply</span></button>)}{!views.length && <div className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">No saved contact views yet.</div>}</div><form className="space-y-3 border-t border-border pt-4" onSubmit={(event) => { event.preventDefault(); onSave(name, visibility); }}><FormField label="Save current view"><Input value={name} onChange={(event) => setName(event.target.value)} required placeholder="My active leads" /></FormField><FormField label="Visibility"><Select value={visibility} onValueChange={(value) => setVisibility(value as "private" | "shared")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="private">Private</SelectItem>{canManage && <SelectItem value="shared">Shared with organization</SelectItem>}</SelectContent></Select></FormField><Button className="w-full" type="submit" disabled={pending || !name.trim()}>{pending ? "Saving…" : "Save view"}</Button></form></div></DialogContent></Dialog>;
 }
