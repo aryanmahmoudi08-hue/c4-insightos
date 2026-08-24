@@ -117,11 +117,10 @@ export async function getCrmFoundationOverviewForUser(userId: string) {
       .eq("is_archived", false)
       .order("created_at", { ascending: true }),
     db.from("crm_tasks")
-      .select("id, title, due_at, priority, status, assignee_user_id, contact_id, opportunity_id, created_at")
+      .select("id, title, description, due_at, priority, status, completed_at, assignee_user_id, contact_id, company_id, opportunity_id, created_at")
       .eq("org_id", workspace.orgId)
-      .in("status", ["open", "in_progress"])
       .order("due_at", { ascending: true, nullsFirst: false })
-      .limit(100),
+      .limit(200),
     db.from("crm_activities")
       .select("id, activity_type, source_type, source_id, title, body, occurred_at, actor_user_id, payload")
       .eq("org_id", workspace.orgId)
@@ -146,7 +145,7 @@ export async function getCrmFoundationOverviewForUser(userId: string) {
       contacts: contacts.data?.length ?? 0,
       companies: companies.data?.length ?? 0,
       opportunities: opportunities.data?.length ?? 0,
-      open_tasks: tasks.data?.length ?? 0,
+      open_tasks: (tasks.data ?? []).filter((task: { status: string }) => ["open", "in_progress"].includes(task.status)).length,
       legacy_leads: legacyLeadCount.count ?? 0,
     },
   };
@@ -853,6 +852,76 @@ export async function moveCrmOpportunityStageForUser(userId: string, input: { id
   return { ...updated, stage_name: stage.name };
 }
 
+export async function getCrmOpportunityRecordForUser(userId: string, opportunityId: string) {
+  const workspace = await crmWorkspaceForUser(userId);
+  const db = supabaseAdmin as any;
+  const { data: opportunity, error: opportunityError } = await db
+    .from("crm_opportunities")
+    .select("id, name, amount_cents, currency, probability, status, expected_close_date, source, lost_reason, won_at, lost_at, contact_id, company_id, owner_user_id, pipeline_id, pipeline_stage_id, created_at, updated_at")
+    .eq("id", opportunityId)
+    .eq("org_id", workspace.orgId)
+    .maybeSingle();
+  if (opportunityError) throw new Error(opportunityError.message);
+  if (!opportunity) throw new Error("Opportunity not found in this workspace");
+
+  const [contact, company, pipeline, tasks, activities] = await Promise.all([
+    opportunity.contact_id ? db.from("crm_contacts").select("id, display_name, primary_email, primary_phone, lifecycle_status").eq("id", opportunity.contact_id).eq("org_id", workspace.orgId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    opportunity.company_id ? db.from("crm_companies").select("id, name, domain, industry, website").eq("id", opportunity.company_id).eq("org_id", workspace.orgId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    db.from("crm_pipelines").select("id, name, crm_pipeline_stages(id, name, position, probability, color, is_closed_won, is_closed_lost, is_archived)").eq("id", opportunity.pipeline_id).eq("org_id", workspace.orgId).maybeSingle(),
+    db.from("crm_tasks").select("id, title, description, due_at, priority, status, completed_at, contact_id, company_id, opportunity_id, created_at").eq("org_id", workspace.orgId).eq("opportunity_id", opportunity.id).order("created_at", { ascending: false }).limit(100),
+    db.from("crm_activities").select("id, activity_type, title, body, occurred_at, source_type, source_id, payload").eq("org_id", workspace.orgId).order("occurred_at", { ascending: false }).limit(200),
+  ]);
+  for (const result of [contact, company, pipeline, tasks, activities]) if (result.error) throw new Error(result.error.message);
+  const { data: targets, error: targetError } = await db.from("crm_activity_targets").select("activity_id").eq("org_id", workspace.orgId).eq("entity_type", "opportunity").eq("entity_id", opportunity.id);
+  if (targetError) throw new Error(targetError.message);
+  const targetIds = new Set((targets ?? []).map((target: { activity_id: string }) => target.activity_id));
+  return { opportunity, contact: contact.data, company: company.data, pipeline: pipeline.data, tasks: tasks.data ?? [], activities: (activities.data ?? []).filter((activity: { id: string }) => targetIds.has(activity.id)) };
+}
+
+export async function getCrmCompanyRecordForUser(userId: string, companyId: string) {
+  const workspace = await crmWorkspaceForUser(userId);
+  const db = supabaseAdmin as any;
+  const { data: company, error: companyError } = await db
+    .from("crm_companies")
+    .select("id, name, domain, website, industry, description, owner_user_id, created_at, updated_at")
+    .eq("id", companyId)
+    .eq("org_id", workspace.orgId)
+    .maybeSingle();
+  if (companyError) throw new Error(companyError.message);
+  if (!company) throw new Error("Company not found in this workspace");
+  const [contacts, opportunities, tasks, activities] = await Promise.all([
+    db.from("crm_company_contacts").select("id, title, is_primary, crm_contacts(id, display_name, primary_email, primary_phone, lifecycle_status)").eq("org_id", workspace.orgId).eq("company_id", company.id).order("is_primary", { ascending: false }),
+    db.from("crm_opportunities").select("id, name, amount_cents, currency, status, probability, expected_close_date, pipeline_id, pipeline_stage_id, created_at").eq("org_id", workspace.orgId).eq("company_id", company.id).order("created_at", { ascending: false }),
+    db.from("crm_tasks").select("id, title, description, due_at, priority, status, completed_at, contact_id, opportunity_id, created_at").eq("org_id", workspace.orgId).eq("company_id", company.id).order("created_at", { ascending: false }).limit(100),
+    db.from("crm_activities").select("id, activity_type, title, body, occurred_at, source_type, source_id, payload").eq("org_id", workspace.orgId).order("occurred_at", { ascending: false }).limit(200),
+  ]);
+  for (const result of [contacts, opportunities, tasks, activities]) if (result.error) throw new Error(result.error.message);
+  const { data: targets, error: targetError } = await db.from("crm_activity_targets").select("activity_id").eq("org_id", workspace.orgId).eq("entity_type", "company").eq("entity_id", company.id);
+  if (targetError) throw new Error(targetError.message);
+  const targetIds = new Set((targets ?? []).map((target: { activity_id: string }) => target.activity_id));
+  return { company, contacts: contacts.data ?? [], opportunities: opportunities.data ?? [], tasks: tasks.data ?? [], activities: (activities.data ?? []).filter((activity: { id: string }) => targetIds.has(activity.id)) };
+}
+
+export async function updateCrmPipelineStageForUser(userId: string, input: { id: string; name: string; probability: number; color?: string | null; is_closed_won: boolean; is_closed_lost: boolean }) {
+  const workspace = await crmWorkspaceForUser(userId);
+  requireManager(workspace);
+  const db = supabaseAdmin as any;
+  const { data: existing, error: existingError } = await db.from("crm_pipeline_stages").select("id, name, pipeline_id, probability, color, is_closed_won, is_closed_lost").eq("id", input.id).eq("org_id", workspace.orgId).maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+  if (!existing) throw new Error("Pipeline stage not found in this workspace");
+  if (input.is_closed_won && input.is_closed_lost) throw new Error("A stage cannot be both won and lost");
+  const semanticChanged = existing.is_closed_won !== input.is_closed_won || existing.is_closed_lost !== input.is_closed_lost;
+  if (semanticChanged) {
+    const { count, error: usageError } = await db.from("crm_opportunities").select("id", { count: "exact", head: true }).eq("org_id", workspace.orgId).eq("pipeline_stage_id", existing.id);
+    if (usageError) throw new Error(usageError.message);
+    if ((count ?? 0) > 0) throw new Error("This stage is already used by opportunities. Create a new terminal stage or archive the old stage instead of changing its terminal semantics.");
+  }
+  const { data: stage, error } = await db.from("crm_pipeline_stages").update({ name: input.name.trim(), probability: input.probability, color: cleanOptional(input.color), is_closed_won: input.is_closed_won, is_closed_lost: input.is_closed_lost }).eq("id", existing.id).eq("org_id", workspace.orgId).select("id, name, probability, color, is_closed_won, is_closed_lost, pipeline_id").single();
+  if (error) throw new Error(error.message);
+  await logCrmActivity({ orgId: workspace.orgId, actorUserId: userId, type: "pipeline_stage_updated", title: `Pipeline stage updated: ${stage.name}`, sourceId: stage.id, targets: [] });
+  return stage;
+}
+
 export async function getCrmReportForUser(userId: string) {
   const workspace = await crmWorkspaceForUser(userId);
   const db = supabaseAdmin as any;
@@ -928,8 +997,8 @@ export async function searchCrmRecordsForUser(userId: string, query: string) {
   for (const result of [contacts, companies, opportunities, tasks]) if (result.error) throw new Error(result.error.message);
   return [
     ...(contacts.data ?? []).map((item: any) => ({ kind: "contact", id: item.id, title: item.display_name, subtitle: item.primary_email ?? item.primary_phone ?? item.lifecycle_status, href: `/sales/contacts/${item.id}`, record_source: item.record_source })),
-    ...(companies.data ?? []).map((item: any) => ({ kind: "company", id: item.id, title: item.name, subtitle: item.domain ?? item.industry ?? "CRM company", href: "/sales" })),
-    ...(opportunities.data ?? []).map((item: any) => ({ kind: "opportunity", id: item.id, title: item.name, subtitle: `${item.status} · ${(Number(item.amount_cents ?? 0) / 100).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}`, href: "/sales" })),
+    ...(companies.data ?? []).map((item: any) => ({ kind: "company", id: item.id, title: item.name, subtitle: item.domain ?? item.industry ?? "CRM company", href: `/sales/companies/${item.id}` })),
+    ...(opportunities.data ?? []).map((item: any) => ({ kind: "opportunity", id: item.id, title: item.name, subtitle: `${item.status} · ${(Number(item.amount_cents ?? 0) / 100).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}`, href: `/sales/opportunities/${item.id}` })),
     ...(tasks.data ?? []).map((item: any) => ({ kind: "task", id: item.id, title: item.title, subtitle: item.status, href: "/sales" })),
   ];
 }

@@ -47,7 +47,9 @@ import { Route as AuthenticatedSalesInboxRouteImport } from './routes/_authentic
 import { Route as AuthenticatedSalesAutomationsRouteImport } from './routes/_authenticated.sales.automations'
 import { Route as ApiPublicTwilioEventRouteImport } from './routes/api/public/twilio.$event'
 import { Route as ApiPublicIngestTokenRouteImport } from './routes/api/public/ingest.$token'
+import { Route as AuthenticatedSalesOpportunitiesIdRouteImport } from './routes/_authenticated.sales.opportunities.$id'
 import { Route as AuthenticatedSalesContactsIdRouteImport } from './routes/_authenticated.sales.contacts.$id'
+import { Route as AuthenticatedSalesCompaniesIdRouteImport } from './routes/_authenticated.sales.companies.$id'
 
 const RequestAccessRoute = RequestAccessRouteImport.update({
   id: '/request-access',
@@ -247,10 +249,22 @@ const ApiPublicIngestTokenRoute = ApiPublicIngestTokenRouteImport.update({
   path: '/api/public/ingest/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedSalesOpportunitiesIdRoute =
+  AuthenticatedSalesOpportunitiesIdRouteImport.update({
+    id: '/opportunities/$id',
+    path: '/opportunities/$id',
+    getParentRoute: () => AuthenticatedSalesRoute,
+  } as any)
 const AuthenticatedSalesContactsIdRoute =
   AuthenticatedSalesContactsIdRouteImport.update({
     id: '/contacts/$id',
     path: '/contacts/$id',
+    getParentRoute: () => AuthenticatedSalesRoute,
+  } as any)
+const AuthenticatedSalesCompaniesIdRoute =
+  AuthenticatedSalesCompaniesIdRouteImport.update({
+    id: '/companies/$id',
+    path: '/companies/$id',
     getParentRoute: () => AuthenticatedSalesRoute,
   } as any)
 
@@ -290,7 +304,9 @@ export interface FileRoutesByFullPath {
   '/sales/reports': typeof AuthenticatedSalesReportsRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/sales/': typeof AuthenticatedSalesIndexRoute
+  '/sales/companies/$id': typeof AuthenticatedSalesCompaniesIdRoute
   '/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
+  '/sales/opportunities/$id': typeof AuthenticatedSalesOpportunitiesIdRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
@@ -329,7 +345,9 @@ export interface FileRoutesByTo {
   '/sales/reports': typeof AuthenticatedSalesReportsRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/sales': typeof AuthenticatedSalesIndexRoute
+  '/sales/companies/$id': typeof AuthenticatedSalesCompaniesIdRoute
   '/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
+  '/sales/opportunities/$id': typeof AuthenticatedSalesOpportunitiesIdRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
@@ -371,7 +389,9 @@ export interface FileRoutesById {
   '/_authenticated/sales/reports': typeof AuthenticatedSalesReportsRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/_authenticated/sales/': typeof AuthenticatedSalesIndexRoute
+  '/_authenticated/sales/companies/$id': typeof AuthenticatedSalesCompaniesIdRoute
   '/_authenticated/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
+  '/_authenticated/sales/opportunities/$id': typeof AuthenticatedSalesOpportunitiesIdRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
@@ -413,7 +433,9 @@ export interface FileRouteTypes {
     | '/sales/reports'
     | '/api/public/typeform'
     | '/sales/'
+    | '/sales/companies/$id'
     | '/sales/contacts/$id'
+    | '/sales/opportunities/$id'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
   fileRoutesByTo: FileRoutesByTo
@@ -452,7 +474,9 @@ export interface FileRouteTypes {
     | '/sales/reports'
     | '/api/public/typeform'
     | '/sales'
+    | '/sales/companies/$id'
     | '/sales/contacts/$id'
+    | '/sales/opportunities/$id'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
   id:
@@ -493,7 +517,9 @@ export interface FileRouteTypes {
     | '/_authenticated/sales/reports'
     | '/api/public/typeform'
     | '/_authenticated/sales/'
+    | '/_authenticated/sales/companies/$id'
     | '/_authenticated/sales/contacts/$id'
+    | '/_authenticated/sales/opportunities/$id'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
   fileRoutesById: FileRoutesById
@@ -776,11 +802,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicIngestTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/sales/opportunities/$id': {
+      id: '/_authenticated/sales/opportunities/$id'
+      path: '/opportunities/$id'
+      fullPath: '/sales/opportunities/$id'
+      preLoaderRoute: typeof AuthenticatedSalesOpportunitiesIdRouteImport
+      parentRoute: typeof AuthenticatedSalesRoute
+    }
     '/_authenticated/sales/contacts/$id': {
       id: '/_authenticated/sales/contacts/$id'
       path: '/contacts/$id'
       fullPath: '/sales/contacts/$id'
       preLoaderRoute: typeof AuthenticatedSalesContactsIdRouteImport
+      parentRoute: typeof AuthenticatedSalesRoute
+    }
+    '/_authenticated/sales/companies/$id': {
+      id: '/_authenticated/sales/companies/$id'
+      path: '/companies/$id'
+      fullPath: '/sales/companies/$id'
+      preLoaderRoute: typeof AuthenticatedSalesCompaniesIdRouteImport
       parentRoute: typeof AuthenticatedSalesRoute
     }
   }
@@ -791,7 +831,9 @@ interface AuthenticatedSalesRouteChildren {
   AuthenticatedSalesInboxRoute: typeof AuthenticatedSalesInboxRoute
   AuthenticatedSalesReportsRoute: typeof AuthenticatedSalesReportsRoute
   AuthenticatedSalesIndexRoute: typeof AuthenticatedSalesIndexRoute
+  AuthenticatedSalesCompaniesIdRoute: typeof AuthenticatedSalesCompaniesIdRoute
   AuthenticatedSalesContactsIdRoute: typeof AuthenticatedSalesContactsIdRoute
+  AuthenticatedSalesOpportunitiesIdRoute: typeof AuthenticatedSalesOpportunitiesIdRoute
 }
 
 const AuthenticatedSalesRouteChildren: AuthenticatedSalesRouteChildren = {
@@ -799,7 +841,10 @@ const AuthenticatedSalesRouteChildren: AuthenticatedSalesRouteChildren = {
   AuthenticatedSalesInboxRoute: AuthenticatedSalesInboxRoute,
   AuthenticatedSalesReportsRoute: AuthenticatedSalesReportsRoute,
   AuthenticatedSalesIndexRoute: AuthenticatedSalesIndexRoute,
+  AuthenticatedSalesCompaniesIdRoute: AuthenticatedSalesCompaniesIdRoute,
   AuthenticatedSalesContactsIdRoute: AuthenticatedSalesContactsIdRoute,
+  AuthenticatedSalesOpportunitiesIdRoute:
+    AuthenticatedSalesOpportunitiesIdRoute,
 }
 
 const AuthenticatedSalesRouteWithChildren =

@@ -274,3 +274,41 @@ export const getCrmAutomationRules = createServerFn({ method: "GET" })
     const { getCrmAutomationRulesForUser } = await import("./crm-foundation.server");
     return getCrmAutomationRulesForUser((context as { userId: string }).userId);
   });
+
+
+const recordIdInput = z.object({ id: z.string().uuid() });
+const pipelineStageUpdateInput = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(1).max(120),
+  probability: z.number().min(0).max(100),
+  color: z.string().trim().max(32).optional().nullable(),
+  is_closed_won: z.boolean(),
+  is_closed_lost: z.boolean(),
+}).refine((data) => !(data.is_closed_won && data.is_closed_lost), { message: "A stage cannot be both won and lost" });
+
+/** Reads a native opportunity with its related contact, company, tasks, stage context, and normalized activity. */
+export const getCrmOpportunityRecord = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => recordIdInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { getCrmOpportunityRecordForUser } = await import("./crm-foundation.server");
+    return getCrmOpportunityRecordForUser((context as { userId: string }).userId, data.id);
+  });
+
+/** Reads a native company with linked contacts, opportunities, tasks, and normalized activity. */
+export const getCrmCompanyRecord = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => recordIdInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { getCrmCompanyRecordForUser } = await import("./crm-foundation.server");
+    return getCrmCompanyRecordForUser((context as { userId: string }).userId, data.id);
+  });
+
+/** Updates configured stage presentation and terminal semantics without deleting referenced pipeline data. */
+export const updateCrmPipelineStage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => pipelineStageUpdateInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { updateCrmPipelineStageForUser } = await import("./crm-foundation.server");
+    return updateCrmPipelineStageForUser((context as { userId: string }).userId, data);
+  });
