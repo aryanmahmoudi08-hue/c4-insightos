@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 // Every field here is a number this project's audit found buried as a
@@ -34,16 +36,31 @@ const ClientSettings = z.object({
   renewalAtRiskDays: z.number().int().min(1).max(365).default(30),
 });
 
+const TypeformUrl = z
+  .string()
+  .trim()
+  .refine((value) => !value || /^https:\/\//i.test(value), "Use an HTTPS Typeform URL.");
+const EodSettings = z.object({
+  /** Fallback Typeform for any user without a specific role or user assignment. */
+  defaultUrl: TypeformUrl.default(""),
+  /** Role keys intentionally remain free-form so new rep roles do not require a schema migration. */
+  roleUrls: z.record(z.string(), TypeformUrl).default({}),
+  /** Optional user-id overrides; these win over roleUrls and defaultUrl. */
+  userUrls: z.record(z.string(), TypeformUrl).default({}),
+});
+
 export const WorkspaceSettingsSchema = z.object({
   content_engine: ContentEngineSettings.default({}),
   alerts: AlertSettings.default({}),
   clients: ClientSettings.default({}),
+  eod: EodSettings.default({}),
 });
 
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>;
 export type ContentEngineSettingsT = WorkspaceSettings["content_engine"];
 export type AlertSettingsT = WorkspaceSettings["alerts"];
 export type ClientSettingsT = WorkspaceSettings["clients"];
+export type EodSettingsT = WorkspaceSettings["eod"];
 
 /** Used wherever settings haven't loaded yet, or by any server logic that
  * wants documented defaults without a round-trip (e.g. tests, cold paths). */
@@ -57,10 +74,11 @@ function parseStoredSettings(raw: Record<string, unknown>): WorkspaceSettings {
     content_engine: raw.content_engine ?? {},
     alerts: raw.alerts ?? {},
     clients: raw.clients ?? {},
+    eod: raw.eod ?? {},
   });
 }
 
-type Sb = { from: (t: string) => any };
+type Sb = SupabaseClient<Database>;
 
 /** Plain, server-side-reusable fetch — called directly by other server logic
  * (e.g. content-signals.server.ts) that needs the resolved config, not just
@@ -69,7 +87,11 @@ type Sb = { from: (t: string) => any };
  * ingest.functions.ts — RLS is the real authorization boundary for writes
  * (see "owners update org" policy, owner/admin only); reads are member-scoped. */
 export async function fetchWorkspaceSettings(sb: Sb, orgId: string): Promise<WorkspaceSettings> {
-  const { data: org, error } = await sb.from("organizations").select("settings").eq("id", orgId).single();
+  const { data: org, error } = await sb
+    .from("organizations")
+    .select("settings")
+    .eq("id", orgId)
+    .single();
   if (error) throw new Error(error.message);
   return parseStoredSettings((org.settings ?? {}) as Record<string, unknown>);
 }
@@ -84,6 +106,7 @@ const UpdateInput = z.object({
   content_engine: ContentEngineSettings.partial().optional(),
   alerts: AlertSettings.partial().optional(),
   clients: ClientSettings.partial().optional(),
+  eod: EodSettings.partial().optional(),
 });
 
 export const updateWorkspaceSettingsFn = createServerFn({ method: "POST" })
@@ -91,7 +114,11 @@ export const updateWorkspaceSettingsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    const { data: org, error } = await supabase.from("organizations").select("settings").eq("id", data.orgId).single();
+    const { data: org, error } = await supabase
+      .from("organizations")
+      .select("settings")
+      .eq("id", data.orgId)
+      .single();
     if (error) throw new Error(error.message);
     const raw = (org.settings ?? {}) as Record<string, unknown>;
     const current = parseStoredSettings(raw);
@@ -99,6 +126,12 @@ export const updateWorkspaceSettingsFn = createServerFn({ method: "POST" })
       content_engine: { ...current.content_engine, ...(data.content_engine ?? {}) },
       alerts: { ...current.alerts, ...(data.alerts ?? {}) },
       clients: { ...current.clients, ...(data.clients ?? {}) },
+      eod: {
+        ...current.eod,
+        ...(data.eod ?? {}),
+        roleUrls: { ...current.eod.roleUrls, ...(data.eod?.roleUrls ?? {}) },
+        userUrls: { ...current.eod.userUrls, ...(data.eod?.userUrls ?? {}) },
+      },
     };
     const { error: upErr } = await supabase
       .from("organizations")

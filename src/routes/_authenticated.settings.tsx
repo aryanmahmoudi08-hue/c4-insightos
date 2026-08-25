@@ -12,11 +12,29 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { Moon, Sun, ShieldCheck, Users, Plug, LogOut, Building2, Loader2, Save, Radar } from "lucide-react";
+import {
+  Moon,
+  Sun,
+  ShieldCheck,
+  Users,
+  Plug,
+  LogOut,
+  Building2,
+  Loader2,
+  Save,
+  Radar,
+  Link2,
+  Plus,
+  Trash2,
+  ExternalLink,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ROLE_LABELS, ROLE_BLURBS, type ManagedRole } from "@/lib/permissions";
 import {
-  getWorkspaceSettingsFn, updateWorkspaceSettingsFn, DEFAULT_WORKSPACE_SETTINGS, type WorkspaceSettings,
+  getWorkspaceSettingsFn,
+  updateWorkspaceSettingsFn,
+  DEFAULT_WORKSPACE_SETTINGS,
+  type WorkspaceSettings,
 } from "@/lib/workspace-settings.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -24,16 +42,32 @@ export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
     meta: [
       { title: "Settings · C4 InsightOS" },
-      { name: "description", content: "Manage appearance, workspace details and team access for your C4 InsightOS workspace." },
+      {
+        name: "description",
+        content:
+          "Manage appearance, workspace details and team access for your C4 InsightOS workspace.",
+      },
       { property: "og:title", content: "Settings · C4 InsightOS" },
-      { property: "og:description", content: "Manage appearance, workspace details and team access for your C4 InsightOS workspace." },
+      {
+        property: "og:description",
+        content:
+          "Manage appearance, workspace details and team access for your C4 InsightOS workspace.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
 });
 
-function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="rounded-lg border border-border bg-card">
       <div className="border-b border-border px-4 py-3">
@@ -56,25 +90,51 @@ function Settings() {
     <>
       <TopBar title="Settings" subtitle="Appearance, workspace and access" />
       <div className="mx-auto max-w-3xl space-y-4 p-6">
-        <Section title="Appearance" description="Dark is the default. Black, white, and a violet → pink → light-blue spectrum that encodes funnel temperature (cold → hot) in data only — never decoration or UI chrome.">
+        <Section
+          title="Appearance"
+          description="Dark is the default. Black, white, and a violet → pink → light-blue spectrum that encodes funnel temperature (cold → hot) in data only — never decoration or UI chrome."
+        >
           <div className="grid grid-cols-2 gap-3">
-            {([
-              { key: "dark" as const, label: "Dark", icon: Moon, swatch: ["#151515", "#232323", "#f7f7f7"] },
-              { key: "light" as const, label: "Light", icon: Sun, swatch: ["#fcfcfc", "#ededed", "#1a1a1a"] },
-            ]).map(opt => {
+            {[
+              {
+                key: "dark" as const,
+                label: "Dark",
+                icon: Moon,
+                swatch: ["#151515", "#232323", "#f7f7f7"],
+              },
+              {
+                key: "light" as const,
+                label: "Light",
+                icon: Sun,
+                swatch: ["#fcfcfc", "#ededed", "#1a1a1a"],
+              },
+            ].map((opt) => {
               const Icon = opt.icon;
               const active = theme === opt.key;
               return (
-                <button key={opt.key} onClick={() => setTheme(opt.key)}
-                  className={cn("rounded-md border p-3 text-left transition-colors",
-                    active ? "border-primary ring-1 ring-ring" : "border-border hover:bg-muted/40")}>
+                <button
+                  key={opt.key}
+                  onClick={() => setTheme(opt.key)}
+                  className={cn(
+                    "rounded-md border p-3 text-left transition-colors",
+                    active ? "border-primary ring-1 ring-ring" : "border-border hover:bg-muted/40",
+                  )}
+                >
                   <div className="flex items-center gap-2 text-sm font-medium">
                     <Icon className="h-4 w-4" /> {opt.label}
-                    {active && <span className="ml-auto text-3xs uppercase tracking-wider text-muted-foreground">Active</span>}
+                    {active && (
+                      <span className="ml-auto text-3xs uppercase tracking-wider text-muted-foreground">
+                        Active
+                      </span>
+                    )}
                   </div>
                   <div className="mt-2 flex gap-1">
-                    {opt.swatch.map(c => (
-                      <span key={c} className="h-4 w-8 rounded border border-border" style={{ background: c }} />
+                    {opt.swatch.map((c) => (
+                      <span
+                        key={c}
+                        className="h-4 w-8 rounded border border-border"
+                        style={{ background: c }}
+                      />
                     ))}
                   </div>
                 </button>
@@ -87,7 +147,10 @@ function Settings() {
           <dl className="grid gap-3 sm:grid-cols-2 text-xs">
             <div>
               <dt className="text-muted-foreground">Workspace</dt>
-              <dd className="mt-0.5 flex items-center gap-1.5 font-medium"><Building2 className="h-3.5 w-3.5" />{org?.organizations?.name ?? "—"}</dd>
+              <dd className="mt-0.5 flex items-center gap-1.5 font-medium">
+                <Building2 className="h-3.5 w-3.5" />
+                {org?.organizations?.name ?? "—"}
+              </dd>
             </div>
             <div>
               <dt className="text-muted-foreground">Signed in as</dt>
@@ -95,8 +158,14 @@ function Settings() {
             </div>
             <div>
               <dt className="text-muted-foreground">Your role</dt>
-              <dd className="mt-0.5 font-medium">{role ? (ROLE_LABELS[role as ManagedRole] ?? role) : "—"}</dd>
-              {role && <dd className="text-2xs text-muted-foreground">{ROLE_BLURBS[role as ManagedRole] ?? "Full owner access."}</dd>}
+              <dd className="mt-0.5 font-medium">
+                {role ? (ROLE_LABELS[role as ManagedRole] ?? role) : "—"}
+              </dd>
+              {role && (
+                <dd className="text-2xs text-muted-foreground">
+                  {ROLE_BLURBS[role as ManagedRole] ?? "Full owner access."}
+                </dd>
+              )}
             </div>
             <div>
               <dt className="text-muted-foreground">Default reporting range</dt>
@@ -106,26 +175,48 @@ function Settings() {
         </Section>
 
         <ContentEngineSection orgId={org?.org_id} isAdmin={isAdmin} />
+        <EodSettingsSection orgId={org?.org_id} isAdmin={isAdmin} />
 
-        <Section title="Access & team" description="Control what every role — and every individual rep — can view or edit.">
+        <Section
+          title="Access & team"
+          description="Control what every role — and every individual rep — can view or edit."
+        >
           <div className="grid gap-2 sm:grid-cols-3">
-            <Button asChild variant="outline" size="sm" className="justify-start gap-2" disabled={!isAdmin}>
-              <Link to="/permissions"><ShieldCheck className="h-4 w-4" /> Role access</Link>
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="justify-start gap-2"
+              disabled={!isAdmin}
+            >
+              <Link to="/permissions">
+                <ShieldCheck className="h-4 w-4" /> Role access
+              </Link>
             </Button>
             <Button asChild variant="outline" size="sm" className="justify-start gap-2">
-              <Link to="/team"><Users className="h-4 w-4" /> Team & per-person</Link>
+              <Link to="/team">
+                <Users className="h-4 w-4" /> Team & per-person
+              </Link>
             </Button>
             <Button asChild variant="outline" size="sm" className="justify-start gap-2">
-              <Link to="/connectors"><Plug className="h-4 w-4" /> Connectors</Link>
+              <Link to="/connectors">
+                <Plug className="h-4 w-4" /> Connectors
+              </Link>
             </Button>
           </div>
           <p className="mt-3 text-2xs text-muted-foreground">
-            Role access sets the baseline. Person-level overrides live on each team row under Team → Access and always win over the role default.
+            Role access sets the baseline. Person-level overrides live on each team row under Team →
+            Access and always win over the role default.
           </p>
         </Section>
 
         <Section title="Session">
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => supabase.auth.signOut()}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => supabase.auth.signOut()}
+          >
             <LogOut className="h-4 w-4" /> Sign out
           </Button>
         </Section>
@@ -137,17 +228,59 @@ function Settings() {
 type NumField = { key: string; label: string; hint: string; min: number; max: number };
 
 const CONTENT_ENGINE_FIELDS: NumField[] = [
-  { key: "minBucketSample", label: "Minimum sample per bucket", hint: "Below this many same-mechanism/platform pieces with metrics logged, a performance verdict isn't shown — \"not enough data\" instead.", min: 1, max: 200 },
-  { key: "baselineWindowSize", label: "Baseline window (pieces)", hint: "How many past pieces per bucket the comparison baseline is computed from.", min: 1, max: 500 },
-  { key: "minTotalSignalWeight", label: "Minimum total signal weight", hint: "Below this total demand-signal weight, the recommended mix is badged \"limited data.\"", min: 0, max: 10000 },
-  { key: "weeklyReelTarget", label: "Weekly reel target", hint: "Default reel target shown on Content Signals.", min: 1, max: 50 },
+  {
+    key: "minBucketSample",
+    label: "Minimum sample per bucket",
+    hint: 'Below this many same-mechanism/platform pieces with metrics logged, a performance verdict isn\'t shown — "not enough data" instead.',
+    min: 1,
+    max: 200,
+  },
+  {
+    key: "baselineWindowSize",
+    label: "Baseline window (pieces)",
+    hint: "How many past pieces per bucket the comparison baseline is computed from.",
+    min: 1,
+    max: 500,
+  },
+  {
+    key: "minTotalSignalWeight",
+    label: "Minimum total signal weight",
+    hint: 'Below this total demand-signal weight, the recommended mix is badged "limited data."',
+    min: 0,
+    max: 10000,
+  },
+  {
+    key: "weeklyReelTarget",
+    label: "Weekly reel target",
+    hint: "Default reel target shown on Content Signals.",
+    min: 1,
+    max: 50,
+  },
 ];
 const ALERT_FIELDS: NumField[] = [
-  { key: "showRateAlertPct", label: "Show-rate alert threshold (%)", hint: "Fires when show rate drops below this — set to your own baseline, not an industry number.", min: 0, max: 100 },
-  { key: "closeRateAlertPct", label: "Close-rate alert threshold (%)", hint: "Fires when close rate drops below this. Set it below your real close rate but close enough that a meaningful drop trips it — a threshold far below your actual performance never fires, and one above it fires constantly.", min: 0, max: 100 },
+  {
+    key: "showRateAlertPct",
+    label: "Show-rate alert threshold (%)",
+    hint: "Fires when show rate drops below this — set to your own baseline, not an industry number.",
+    min: 0,
+    max: 100,
+  },
+  {
+    key: "closeRateAlertPct",
+    label: "Close-rate alert threshold (%)",
+    hint: "Fires when close rate drops below this. Set it below your real close rate but close enough that a meaningful drop trips it — a threshold far below your actual performance never fires, and one above it fires constantly.",
+    min: 0,
+    max: 100,
+  },
 ];
 const CLIENT_FIELDS: NumField[] = [
-  { key: "renewalAtRiskDays", label: "Renewal at-risk window (days)", hint: "A client is flagged at-risk when their renewal falls inside this many days with no conversation started yet, or is overdue.", min: 1, max: 365 },
+  {
+    key: "renewalAtRiskDays",
+    label: "Renewal at-risk window (days)",
+    hint: "A client is flagged at-risk when their renewal falls inside this many days with no conversation started yet, or is overdue.",
+    min: 1,
+    max: 365,
+  },
 ];
 
 function ContentEngineSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boolean }) {
@@ -159,20 +292,34 @@ function ContentEngineSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boo
   const { data, isLoading } = useQuery({
     queryKey: ["workspace-settings", orgId, devBypass],
     enabled: devBypass || !!orgId,
-    queryFn: () => (devBypass ? Promise.resolve(DEFAULT_WORKSPACE_SETTINGS) : getFn({ data: { orgId: orgId! } })),
+    queryFn: () =>
+      devBypass ? Promise.resolve(DEFAULT_WORKSPACE_SETTINGS) : getFn({ data: { orgId: orgId! } }),
   });
 
   const [draft, setDraft] = useState<WorkspaceSettings>(DEFAULT_WORKSPACE_SETTINGS);
   const [seeded, setSeeded] = useState(false);
-  if (data && !seeded) { setDraft(data); setSeeded(true); }
+  if (data && !seeded) {
+    setDraft(data);
+    setSeeded(true);
+  }
 
-  const setField = <G extends keyof WorkspaceSettings>(group: G, key: keyof WorkspaceSettings[G], value: number) =>
-    setDraft((prev) => ({ ...prev, [group]: { ...prev[group], [key]: value } }));
+  const setField = <G extends keyof WorkspaceSettings>(
+    group: G,
+    key: keyof WorkspaceSettings[G],
+    value: number,
+  ) => setDraft((prev) => ({ ...prev, [group]: { ...prev[group], [key]: value } }));
 
   const save = useMutation({
     mutationFn: async () => {
       if (devBypass) return draft;
-      return updateFn({ data: { orgId: orgId!, content_engine: draft.content_engine, alerts: draft.alerts, clients: draft.clients } });
+      return updateFn({
+        data: {
+          orgId: orgId!,
+          content_engine: draft.content_engine,
+          alerts: draft.alerts,
+          clients: draft.clients,
+        },
+      });
     },
     onSuccess: (saved) => {
       toast.success("Content engine settings saved");
@@ -193,7 +340,9 @@ function ContentEngineSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boo
       description="Every threshold the Content Signals / Bottleneck Engine and alerting use — no buried literals. Changes apply the moment they're saved."
     >
       {isLoading ? (
-        <div className="py-6 text-center text-xs text-muted-foreground"><Loader2 className="h-4 w-4 mx-auto animate-spin" /></div>
+        <div className="py-6 text-center text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 mx-auto animate-spin" />
+        </div>
       ) : (
         <div className="space-y-5">
           {groups.map((g) => (
@@ -206,10 +355,18 @@ function ContentEngineSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boo
                   <div key={f.key} className="space-y-1">
                     <Label className="text-xs">{f.label}</Label>
                     <Input
-                      type="number" min={f.min} max={f.max}
+                      type="number"
+                      min={f.min}
+                      max={f.max}
                       value={(draft[g.group] as Record<string, number>)[f.key]}
                       disabled={!isAdmin}
-                      onChange={(e) => setField(g.group, f.key as never, Math.max(f.min, Math.min(f.max, Number(e.target.value) || f.min)))}
+                      onChange={(e) =>
+                        setField(
+                          g.group,
+                          f.key as never,
+                          Math.max(f.min, Math.min(f.max, Number(e.target.value) || f.min)),
+                        )
+                      }
                     />
                     <p className="text-3xs text-muted-foreground">{f.hint}</p>
                   </div>
@@ -218,14 +375,258 @@ function ContentEngineSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boo
             </div>
           ))}
           {isAdmin ? (
-            <Button size="sm" className="gap-1.5" onClick={() => save.mutate()} disabled={save.isPending}>
-              {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => save.mutate()}
+              disabled={save.isPending}
+            >
+              {save.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}{" "}
+              Save
             </Button>
           ) : (
-            <p className="text-2xs text-muted-foreground">Only workspace owners and admins can change these.</p>
+            <p className="text-2xs text-muted-foreground">
+              Only workspace owners and admins can change these.
+            </p>
           )}
         </div>
       )}
     </Section>
   );
 }
+
+function EodSettingsSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boolean }) {
+  const { devBypass } = useAuth();
+  const qc = useQueryClient();
+  const getFn = useServerFn(getWorkspaceSettingsFn);
+  const updateFn = useServerFn(updateWorkspaceSettingsFn);
+  const { data, isLoading } = useQuery({
+    queryKey: ["workspace-settings", orgId, devBypass],
+    enabled: devBypass || !!orgId,
+    queryFn: () =>
+      devBypass ? Promise.resolve(DEFAULT_WORKSPACE_SETTINGS) : getFn({ data: { orgId: orgId! } }),
+  });
+  const [draft, setDraft] = useState<WorkspaceSettings>(DEFAULT_WORKSPACE_SETTINGS);
+  const [seeded, setSeeded] = useState(false);
+  if (data && !seeded) {
+    setDraft(data);
+    setSeeded(true);
+  }
+
+  const updateEod = (patch: Partial<WorkspaceSettings["eod"]>) =>
+    setDraft((prev) => ({ ...prev, eod: { ...prev.eod, ...patch } }));
+  const updateRole = (oldKey: string, key: string, url: string) =>
+    setDraft((prev) => {
+      const next = { ...prev.eod.roleUrls };
+      if (oldKey !== key) delete next[oldKey];
+      if (key.trim()) next[key.trim()] = url;
+      return { ...prev, eod: { ...prev.eod, roleUrls: next } };
+    });
+  const updateUser = (oldKey: string, key: string, url: string) =>
+    setDraft((prev) => {
+      const next = { ...prev.eod.userUrls };
+      if (oldKey !== key) delete next[oldKey];
+      if (key.trim()) next[key.trim()] = url;
+      return { ...prev, eod: { ...prev.eod, userUrls: next } };
+    });
+  const addRole = () =>
+    setDraft((prev) => ({
+      ...prev,
+      eod: {
+        ...prev.eod,
+        roleUrls: {
+          ...prev.eod.roleUrls,
+          [`role-${Object.keys(prev.eod.roleUrls).length + 1}`]: "",
+        },
+      },
+    }));
+  const addUser = () =>
+    setDraft((prev) => ({
+      ...prev,
+      eod: {
+        ...prev.eod,
+        userUrls: {
+          ...prev.eod.userUrls,
+          [`user-${Object.keys(prev.eod.userUrls).length + 1}`]: "",
+        },
+      },
+    }));
+  const removeRole = (key: string) =>
+    setDraft((prev) => {
+      const next = { ...prev.eod.roleUrls };
+      delete next[key];
+      return { ...prev, eod: { ...prev.eod, roleUrls: next } };
+    });
+  const removeUser = (key: string) =>
+    setDraft((prev) => {
+      const next = { ...prev.eod.userUrls };
+      delete next[key];
+      return { ...prev, eod: { ...prev.eod, userUrls: next } };
+    });
+
+  const save = useMutation({
+    mutationFn: async () =>
+      devBypass ? draft : updateFn({ data: { orgId: orgId!, eod: draft.eod } }),
+    onSuccess: (saved) => {
+      toast.success("EOD form assignments saved");
+      qc.setQueryData(["workspace-settings", orgId, devBypass], saved);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Section
+      title="EOD forms"
+      description="Assign a different Typeform by role or user. User overrides win over role assignments, which win over the default. Leave the default blank to keep the existing InsightOS form as the fallback."
+    >
+      {isLoading ? (
+        <div className="py-6 text-center text-xs text-muted-foreground">
+          <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Default Typeform URL</Label>
+            <div className="flex gap-2">
+              <Link2 className="mt-2.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <Input
+                value={draft.eod.defaultUrl}
+                disabled={!isAdmin}
+                placeholder="https://form.typeform.com/to/..."
+                onChange={(e) => updateEod({ defaultUrl: e.target.value })}
+              />
+            </div>
+            <p className="text-3xs text-muted-foreground">
+              HTTPS only. This is used when no role or user-specific form matches.
+            </p>
+          </div>
+
+          <AssignmentList
+            title="Role assignments"
+            hint="Use your app role key, such as dm_setter, closer, inbound_dialer, or client."
+            rows={draft.eod.roleUrls}
+            disabled={!isAdmin}
+            onAdd={addRole}
+            onRemove={removeRole}
+            onUpdate={updateRole}
+          />
+          <AssignmentList
+            title="User overrides"
+            hint="Use the authenticated Supabase user ID as the key. These assignments take priority over role and default URLs."
+            rows={draft.eod.userUrls}
+            disabled={!isAdmin}
+            onAdd={addUser}
+            onRemove={removeUser}
+            onUpdate={updateUser}
+          />
+
+          <div className="flex items-center justify-between gap-3 border-t border-border/70 pt-4">
+            <div className="flex items-center gap-2 text-3xs text-muted-foreground">
+              <ExternalLink className="h-3.5 w-3.5" />
+              Private Typeform/API credentials stay out of the browser and repository.
+            </div>
+            {isAdmin ? (
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => save.mutate()}
+                disabled={save.isPending}
+              >
+                {save.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="h-3.5 w-3.5" />
+                )}{" "}
+                Save assignments
+              </Button>
+            ) : (
+              <span className="text-2xs text-muted-foreground">
+                Only workspace owners and admins can change these.
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function AssignmentList({
+  title,
+  hint,
+  rows,
+  disabled,
+  onAdd,
+  onRemove,
+  onUpdate,
+}: {
+  title: string;
+  hint: string;
+  rows: Record<string, string>;
+  disabled: boolean;
+  onAdd: () => void;
+  onRemove: (key: string) => void;
+  onUpdate: (oldKey: string, key: string, url: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {title}
+          </div>
+          <p className="mt-0.5 text-3xs text-muted-foreground">{hint}</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1 text-2xs"
+          disabled={disabled}
+          onClick={onAdd}
+        >
+          <Plus className="h-3 w-3" /> Add
+        </Button>
+      </div>
+      {Object.entries(rows).length === 0 && (
+        <div className="rounded-md border border-dashed border-border p-3 text-2xs italic text-muted-foreground">
+          No assignments configured.
+        </div>
+      )}
+      <div className="space-y-2">
+        {Object.entries(rows).map(([key, url]) => (
+          <div key={key} className="grid gap-2 sm:grid-cols-[0.65fr_1.35fr_auto]">
+            <Input
+              value={key}
+              disabled={disabled}
+              aria-label={`${title} key`}
+              onChange={(e) => onUpdate(key, e.target.value, url)}
+            />
+            <Input
+              value={url}
+              disabled={disabled}
+              aria-label={`${title} URL`}
+              placeholder="https://form.typeform.com/to/..."
+              onChange={(e) => onUpdate(key, key, e.target.value)}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 text-muted-foreground hover:text-destructive"
+              disabled={disabled}
+              onClick={() => onRemove(key)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Keep the route’s original Link import in the existing Settings implementation; this
+// appended section intentionally uses only the already established UI primitives.
