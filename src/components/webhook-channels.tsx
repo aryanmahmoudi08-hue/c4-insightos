@@ -174,7 +174,7 @@ export function WebhookChannels() {
                 <Hash className="h-3 w-3 text-muted-foreground" /> {s.name}
                 <span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase tracking-wider">{s.channel}</span>
                 {s.category && <span className="rounded bg-accent/10 text-accent px-1.5 py-0.5 text-3xs uppercase tracking-wider">{s.category}</span>}
-                {!s.active && <span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase">paused</span>}
+                {!s.active && <span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase">Paused</span>}
               </div>
               <div className="text-3xs text-muted-foreground truncate max-w-[420px] font-mono">{s.target_url}</div>
               <div className="text-3xs text-muted-foreground">{s.event_types.join(" · ")}</div>

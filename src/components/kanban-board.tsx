@@ -16,7 +16,15 @@ export type KanbanColumnDef = {
  * empty/loading states; callers supply per-card content via `renderCard`.
  */
 export function KanbanBoard<T extends { id: string }>({
-  columns, itemsByColumn, onDropItem, renderCard, sumBy, formatValue, loading, emptyHint = "Drop here",
+  columns,
+  itemsByColumn,
+  onDropItem,
+  renderCard,
+  sumBy,
+  formatValue,
+  loading,
+  emptyHint = "Drop here",
+  layout = "grid",
 }: {
   columns: KanbanColumnDef[];
   itemsByColumn: Map<string, T[]>;
@@ -27,10 +35,21 @@ export function KanbanBoard<T extends { id: string }>({
   formatValue?: (n: number) => string;
   loading?: boolean;
   emptyHint?: string;
+  /** "grid" (default) wraps columns onto new rows at narrower viewports — fine
+   * for boards with few columns (Clients renewal). "scroll" keeps every column
+   * in one horizontally-scrolling row at a fixed width instead — for boards
+   * with too many columns to wrap sensibly (Hiring's 7 stages). */
+  layout?: "grid" | "scroll";
 }) {
   const fmt = formatValue ?? ((n: number) => `$${Math.round(n / 100).toLocaleString()}`);
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
+    <div
+      className={cn(
+        layout === "scroll"
+          ? "flex gap-3 overflow-x-auto pb-2"
+          : "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3",
+      )}
+    >
       {columns.map((col) => {
         const rows = itemsByColumn.get(col.key) ?? [];
         const total = sumBy ? rows.reduce((s, r) => s + sumBy(r), 0) : null;
@@ -39,7 +58,10 @@ export function KanbanBoard<T extends { id: string }>({
             key={col.key}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { const id = e.dataTransfer.getData("text/plain"); if (id) onDropItem(id, col.key); }}
-            className="rounded-lg border border-border bg-card min-h-[300px]"
+            className={cn(
+              "rounded-lg border border-border bg-card min-h-[300px]",
+              layout === "scroll" && "w-72 shrink-0",
+            )}
           >
             <div className="px-3 py-2 border-b border-border flex items-center justify-between">
               <span className={cn("text-3xs uppercase tracking-wider rounded px-1.5 py-0.5", CHIP_TONE_CLASSES[col.tone ?? "default"])}>{col.label}</span>
@@ -49,7 +71,11 @@ export function KanbanBoard<T extends { id: string }>({
               {rows.map((item) => (
                 <KanbanCard key={item.id} id={item.id}>{renderCard(item)}</KanbanCard>
               ))}
-              {!loading && rows.length === 0 && <div className="text-2xs text-muted-foreground text-center py-6">{emptyHint}</div>}
+              {!loading && rows.length === 0 && (
+                <div className="rounded-md border border-dashed border-border/70 text-2xs text-muted-foreground text-center py-6">
+                  {emptyHint}
+                </div>
+              )}
               {loading && rows.length === 0 && <div className="text-2xs text-muted-foreground text-center py-6">Loading…</div>}
             </div>
           </div>

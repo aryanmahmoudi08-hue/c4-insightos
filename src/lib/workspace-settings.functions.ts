@@ -34,16 +34,27 @@ const ClientSettings = z.object({
   renewalAtRiskDays: z.number().int().min(1).max(365).default(30),
 });
 
+const FunnelInstrumentSettings = z.object({
+  /** Below this many records at the upstream stage, the funnel detail
+   * panel's "what's capping it" / "what's working" sections show an explicit
+   * insufficient-data state instead of a derived claim — same discipline as
+   * content_engine.minBucketSample, new domain, no existing baseline to
+   * calibrate against yet (starting default, not a calibrated fact). */
+  minCapSample: z.number().int().min(1).max(200).default(10),
+});
+
 export const WorkspaceSettingsSchema = z.object({
   content_engine: ContentEngineSettings.default({}),
   alerts: AlertSettings.default({}),
   clients: ClientSettings.default({}),
+  funnel_instrument: FunnelInstrumentSettings.default({}),
 });
 
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>;
 export type ContentEngineSettingsT = WorkspaceSettings["content_engine"];
 export type AlertSettingsT = WorkspaceSettings["alerts"];
 export type ClientSettingsT = WorkspaceSettings["clients"];
+export type FunnelInstrumentSettingsT = WorkspaceSettings["funnel_instrument"];
 
 /** Used wherever settings haven't loaded yet, or by any server logic that
  * wants documented defaults without a round-trip (e.g. tests, cold paths). */
@@ -57,6 +68,7 @@ function parseStoredSettings(raw: Record<string, unknown>): WorkspaceSettings {
     content_engine: raw.content_engine ?? {},
     alerts: raw.alerts ?? {},
     clients: raw.clients ?? {},
+    funnel_instrument: raw.funnel_instrument ?? {},
   });
 }
 
@@ -84,6 +96,7 @@ const UpdateInput = z.object({
   content_engine: ContentEngineSettings.partial().optional(),
   alerts: AlertSettings.partial().optional(),
   clients: ClientSettings.partial().optional(),
+  funnel_instrument: FunnelInstrumentSettings.partial().optional(),
 });
 
 export const updateWorkspaceSettingsFn = createServerFn({ method: "POST" })
@@ -99,6 +112,7 @@ export const updateWorkspaceSettingsFn = createServerFn({ method: "POST" })
       content_engine: { ...current.content_engine, ...(data.content_engine ?? {}) },
       alerts: { ...current.alerts, ...(data.alerts ?? {}) },
       clients: { ...current.clients, ...(data.clients ?? {}) },
+      funnel_instrument: { ...current.funnel_instrument, ...(data.funnel_instrument ?? {}) },
     };
     const { error: upErr } = await supabase
       .from("organizations")

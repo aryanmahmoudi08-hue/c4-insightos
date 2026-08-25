@@ -520,7 +520,9 @@ export async function getCrmInboxForUser(userId: string) {
   ]);
   for (const result of [legacyLeads, legacyMessages, crmMessages]) if (result.error) throw new Error(result.error.message);
 
-  const leadById = new Map((legacyLeads.data ?? []).map((lead: { id: string }) => [lead.id, lead]));
+  const leadById = new Map<string, { id: string; full_name: string | null; email: string | null; handle: string | null }>(
+    (legacyLeads.data ?? []).map((lead: { id: string; full_name: string | null; email: string | null; handle: string | null }) => [lead.id, lead]),
+  );
   const latestLegacyMessage = new Map<string, { id: string; direction: string; body: string | null; sent_at: string }>();
   for (const message of legacyMessages.data ?? []) {
     if (!latestLegacyMessage.has(message.conversation_id)) latestLegacyMessage.set(message.conversation_id, message);
@@ -532,7 +534,7 @@ export async function getCrmInboxForUser(userId: string) {
 
   return (threads ?? []).map((thread: any) => {
     const lead = thread.legacy_lead_id ? leadById.get(thread.legacy_lead_id) : null;
-    const latest = thread.record_source === "legacy_conversation" ? latestLegacyMessage.get(thread.id) : latestCrmMessage.get(thread.id);
+    const latest = (thread.record_source === "legacy_conversation" ? latestLegacyMessage.get(thread.id) : latestCrmMessage.get(thread.id)) as any;
     return {
       ...thread,
       display_name: lead?.full_name ?? lead?.handle ?? lead?.email ?? "Unidentified contact",

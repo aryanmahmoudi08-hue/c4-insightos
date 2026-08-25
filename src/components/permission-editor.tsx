@@ -72,7 +72,7 @@ export function PermissionEditor({ getPerm, onChange, onBulk, note, disabled }: 
                           <span className="text-sm font-medium">{r.label}</span>
                           {r.sensitive && (
                             <span className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-4xs uppercase tracking-wider text-muted-foreground">
-                              <Lock className="h-2.5 w-2.5" /> sensitive
+                              <Lock className="h-2.5 w-2.5" /> Sensitive
                             </span>
                           )}
                         </div>

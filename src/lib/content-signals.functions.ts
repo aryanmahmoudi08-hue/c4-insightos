@@ -9,28 +9,33 @@ async function orgOf(context: unknown) {
   return { supabase, orgId: data.org_id as string };
 }
 
+const rangeSchema = z.object({
+  from: z.string().default(() => new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)),
+  to: z.string().default(() => new Date().toISOString().slice(0, 10)),
+});
+
 /** Recommended posting mix across the 4 mechanisms, derived from FAQ clicks, intakes and setting calls. */
 export const contentDemandFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ days: z.number().int().min(1).max(365).default(30) }).parse(d ?? {}))
+  .inputValidator((d) => rangeSchema.parse(d ?? {}))
   .handler(async ({ data, context }) => {
     const { supabase, orgId } = await orgOf(context);
     const { computeDemand } = await import("./content-signals.server");
     const { fetchWorkspaceSettings } = await import("./workspace-settings.functions");
     const settings = await fetchWorkspaceSettings(supabase, orgId);
-    return computeDemand(supabase, orgId, data.days, settings.content_engine);
+    return computeDemand(supabase, orgId, { from: data.from, to: data.to }, settings.content_engine);
   });
 
 /** Full bottleneck read: VSL + FAQ + setting calls + intakes + reel performance. */
 export const analyzeContentSystemFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ days: z.number().int().min(1).max(365).default(30) }).parse(d ?? {}))
+  .inputValidator((d) => rangeSchema.parse(d ?? {}))
   .handler(async ({ data, context }) => {
     const { supabase, orgId } = await orgOf(context);
     const { analyzeContentSystem } = await import("./content-signals.server");
     const { fetchWorkspaceSettings } = await import("./workspace-settings.functions");
     const settings = await fetchWorkspaceSettings(supabase, orgId);
-    return analyzeContentSystem(supabase, orgId, data.days, settings.content_engine);
+    return analyzeContentSystem(supabase, orgId, { from: data.from, to: data.to }, settings.content_engine);
   });
 
 /**

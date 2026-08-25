@@ -1385,6 +1385,9 @@ export type Database = {
           notes: string | null
           org_id: string
           phone: string | null
+          portfolio_url: string | null
+          audio_url: string | null
+          resume_url: string | null
           recent_monthly_cash_collected_cents: number | null
           responses: Json
           role_applied: string
@@ -1412,6 +1415,9 @@ export type Database = {
           notes?: string | null
           org_id: string
           phone?: string | null
+          portfolio_url?: string | null
+          audio_url?: string | null
+          resume_url?: string | null
           recent_monthly_cash_collected_cents?: number | null
           responses?: Json
           role_applied?: string
@@ -1439,6 +1445,9 @@ export type Database = {
           notes?: string | null
           org_id?: string
           phone?: string | null
+          portfolio_url?: string | null
+          audio_url?: string | null
+          resume_url?: string | null
           recent_monthly_cash_collected_cents?: number | null
           responses?: Json
           role_applied?: string
@@ -1505,6 +1514,54 @@ export type Database = {
           },
           {
             foreignKeyName: "ingestion_jobs_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_call_transcripts: {
+        Row: {
+          call_type: string
+          created_at: string
+          id: string
+          lead_id: string
+          org_id: string
+          source: string | null
+          transcript: string
+          updated_at: string
+        }
+        Insert: {
+          call_type?: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          org_id: string
+          source?: string | null
+          transcript: string
+          updated_at?: string
+        }
+        Update: {
+          call_type?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          org_id?: string
+          source?: string | null
+          transcript?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_call_transcripts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_call_transcripts_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1699,6 +1756,7 @@ export type Database = {
           qualification_notes: string | null
           source_connector: string | null
           status: Database["public"]["Enums"]["lead_status"]
+          tags: string[]
           traffic_source_id: string | null
           updated_at: string
         }
@@ -1728,6 +1786,7 @@ export type Database = {
           qualification_notes?: string | null
           source_connector?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
+          tags?: string[]
           traffic_source_id?: string | null
           updated_at?: string
         }
@@ -1757,6 +1816,7 @@ export type Database = {
           qualification_notes?: string | null
           source_connector?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
+          tags?: string[]
           traffic_source_id?: string | null
           updated_at?: string
         }
@@ -2932,28 +2992,40 @@ export type Database = {
       }
       traffic_sources: {
         Row: {
+          base_url: string | null
           category: string
           created_at: string
           id: string
           is_active: boolean
           name: string
           org_id: string
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
         }
         Insert: {
+          base_url?: string | null
           category?: string
           created_at?: string
           id?: string
           is_active?: boolean
           name: string
           org_id: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
         }
         Update: {
+          base_url?: string | null
           category?: string
           created_at?: string
           id?: string
           is_active?: boolean
           name?: string
           org_id?: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
         }
         Relationships: [
           {

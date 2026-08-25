@@ -16,7 +16,7 @@ const PILL_TONE: Record<NonNullable<StatusPill["tone"]>, string> = {
 };
 
 /**
- * Executive "dossier" banner — the hero header for a module's primary route.
+ * Executive hero banner — the hero header for a module's primary route.
  * Icon + title + status pills (what's true right now) + a strip of summary
  * sparkline stats (the shape of the last N days) + a toolbar slot for
  * time-range / role-toggle / export controls.

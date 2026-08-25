@@ -149,7 +149,6 @@ const ALERT_FIELDS: NumField[] = [
 const CLIENT_FIELDS: NumField[] = [
   { key: "renewalAtRiskDays", label: "Renewal at-risk window (days)", hint: "A client is flagged at-risk when their renewal falls inside this many days with no conversation started yet, or is overdue.", min: 1, max: 365 },
 ];
-
 function ContentEngineSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boolean }) {
   const { devBypass } = useAuth();
   const qc = useQueryClient();

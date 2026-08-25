@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
+import { useDateRange } from "@/hooks/use-date-range";
 import { TopBar } from "@/components/app-sidebar";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -69,10 +70,16 @@ function MessagePipelineHero({ counts, lists }: { counts: { draft: number; sched
 function Outreach() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { range } = useDateRange();
+  const fromISO = `${range.from}T00:00:00`;
+  const toISO = `${range.to}T23:59:59`;
   const qc = useQueryClient();
   const [composeOpen, setComposeOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
 
+  // Lists are audience segments, not a time-scoped log — filtering by
+  // created_at would hide an older list you'd still want to send to, same
+  // reasoning as the clients/hiring/leads roster pages.
   const { data: lists } = useQuery({
     queryKey: ["outreach-lists", orgId],
     enabled: !!orgId,
@@ -88,13 +95,15 @@ function Outreach() {
   });
 
   const { data: messages } = useQuery({
-    queryKey: ["outreach-messages", orgId],
+    queryKey: ["outreach-messages", orgId, range.from, range.to],
     enabled: !!orgId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("outreach_messages")
         .select("id, kind, subject, body, scheduled_for, sent_at, status, list_id, created_at, outreach_lists(name)")
         .eq("org_id", orgId!)
+        .gte("created_at", fromISO)
+        .lte("created_at", toISO)
         .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
@@ -147,7 +156,7 @@ function Outreach() {
 
   return (
     <>
-      <TopBar title="Outreach" subtitle="Schedule SMS + email blasts to your lists" />
+      <TopBar title="Outreach" subtitle="Schedule SMS + email blasts to your lists" showDateRange />
       <div className="p-6 space-y-5">
         <BentoGrid cols={2} rowHeight="8rem">
           <BentoCell span="hero">

@@ -26,7 +26,7 @@ export function percentiles(values: number[]): PercentileSet {
  * piece would trivially satisfy both ">= p75" and "<= p25" at once. Metrics
  * with no variance are excluded from strong/underperforming checks rather
  * than arbitrarily favoring one verdict. */
-function hasVariance(p: PercentileSet): boolean {
+export function hasVariance(p: PercentileSet): boolean {
   return p.p75 > p.p25;
 }
 

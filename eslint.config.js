@@ -36,5 +36,15 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  {
+    // Playwright test/fixture files, not React code — `test.extend()`'s
+    // fixture functions take a `use` callback param by Playwright's own
+    // convention, which react-hooks' rules-of-hooks otherwise misreads as
+    // the React 19 `use()` hook called outside a component.
+    files: ["tests/**/*.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+    },
+  },
   eslintPluginPrettier,
 );

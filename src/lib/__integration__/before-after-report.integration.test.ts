@@ -401,7 +401,7 @@ describe("Step 9 — before/after report on a synthetic dataset shaped like the 
     });
 
     /* ================= NEW: run the real, current code ================= */
-    const newDemand = await computeDemand(ws.userClient, ws.orgId, 30, config);
+    const newDemand = await computeDemand(ws.userClient, ws.orgId, { from: daysAgo(30).slice(0, 10), to: new Date().toISOString().slice(0, 10) }, config);
     const newWeekly = await computeWeeklyContentCheck(ws.userClient, ws.orgId, config);
 
     // newDemand.drivers is sorted-by-weight and sliced to the top 24 for

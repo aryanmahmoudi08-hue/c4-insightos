@@ -40,21 +40,28 @@ export type DemandResult = {
   counts: { faq: number; setter_calls: number; intakes: number; reels: number };
 };
 
+export type DateRangeBounds = { from: string; to: string };
+
+const defaultRange = (): DateRangeBounds => ({
+  from: new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10),
+  to: new Date().toISOString().slice(0, 10),
+});
+
 /** FAQ question / onboarding answer / objection text → mechanism, with the raw drivers kept for the UI. */
 export async function computeDemand(
   sb: Sb,
   orgId: string,
-  days = 30,
+  range: DateRangeBounds = defaultRange(),
   config: ContentEngineSettingsT = DEFAULT_WORKSPACE_SETTINGS.content_engine,
 ): Promise<DemandResult> {
-  const sinceIso = new Date(Date.now() - days * 86400000).toISOString();
-  const sinceDate = sinceIso.slice(0, 10);
+  const fromIso = `${range.from}T00:00:00.000Z`;
+  const toIso = `${range.to}T23:59:59.999Z`;
 
   const [faqRes, settersRes, intakesRes, reelsRes] = await Promise.all([
     sb.from("faq_videos").select("title, question, mechanism, clicks, plays").eq("org_id", orgId).eq("active", true),
-    sb.from("setter_call_signals").select("setter_name, call_date, limiting_beliefs, objections, mechanism, ai_summary, notes").eq("org_id", orgId).gte("call_date", sinceDate).limit(300),
-    sb.from("onboarding_responses").select("responses, mechanism_signals, submitted_at, created_at").eq("org_id", orgId).gte("created_at", sinceIso).limit(200),
-    sb.from("content_pieces").select("id, mechanism, variation, platform, posted_at, pipeline_status, content_metrics(leads_generated, cash_collected_cents, hook_retention_pct, engagement_rate_pct, drop_off_rate_pct, views)").eq("org_id", orgId).gte("created_at", sinceIso).limit(400),
+    sb.from("setter_call_signals").select("setter_name, call_date, limiting_beliefs, objections, mechanism, ai_summary, notes").eq("org_id", orgId).gte("call_date", range.from).lte("call_date", range.to).limit(300),
+    sb.from("onboarding_responses").select("responses, mechanism_signals, submitted_at, created_at").eq("org_id", orgId).gte("created_at", fromIso).lte("created_at", toIso).limit(200),
+    sb.from("content_pieces").select("id, mechanism, variation, platform, posted_at, pipeline_status, content_metrics(leads_generated, cash_collected_cents, hook_retention_pct, engagement_rate_pct, drop_off_rate_pct, views)").eq("org_id", orgId).gte("created_at", fromIso).lte("created_at", toIso).limit(400),
   ]);
   const faq = unwrap<any[]>(faqRes, "FAQ videos");
   const setters = unwrap<any[]>(settersRes, "Setter call signals");
@@ -324,22 +331,22 @@ async function gateway(system: string, user: string) {
 export async function analyzeContentSystem(
   sb: Sb,
   orgId: string,
-  days: number,
+  range: DateRangeBounds = defaultRange(),
   config: ContentEngineSettingsT = DEFAULT_WORKSPACE_SETTINGS.content_engine,
 ) {
-  const sinceIso = new Date(Date.now() - days * 86400000).toISOString();
-  const sinceDate = sinceIso.slice(0, 10);
-  const demand = await computeDemand(sb, orgId, days, config);
+  const fromIso = `${range.from}T00:00:00.000Z`;
+  const toIso = `${range.to}T23:59:59.999Z`;
+  const demand = await computeDemand(sb, orgId, range, config);
 
   const [piecesRes, metricsRes, vslSnapsRes, faqRes, settersRes, callsRes, paymentsRes, intakesRes] = await Promise.all([
-    sb.from("content_pieces").select("id, title, mechanism, variation, platform, posted_at, pipeline_status").eq("org_id", orgId).gte("created_at", sinceIso).limit(300),
-    sb.from("content_metrics").select("content_id, views, reach, shares, saves, likes, comments, dms_generated, calls_booked, closes, cash_collected_cents, leads_generated, avg_watch_pct, hook_retention_pct, three_sec_hold_pct, drop_off_rate_pct, engagement_rate_pct, follower_views, non_follower_views, followers_gained").eq("org_id", orgId).gte("captured_at", sinceIso).limit(600),
-    sb.from("vsl_metric_snapshots").select("video_name, total_plays, unique_viewers, play_rate, avg_percent_watched, page_loads, captured_at").eq("org_id", orgId).gte("captured_at", sinceIso).limit(60),
+    sb.from("content_pieces").select("id, title, mechanism, variation, platform, posted_at, pipeline_status").eq("org_id", orgId).gte("created_at", fromIso).lte("created_at", toIso).limit(300),
+    sb.from("content_metrics").select("content_id, views, reach, shares, saves, likes, comments, dms_generated, calls_booked, closes, cash_collected_cents, leads_generated, avg_watch_pct, hook_retention_pct, three_sec_hold_pct, drop_off_rate_pct, engagement_rate_pct, follower_views, non_follower_views, followers_gained").eq("org_id", orgId).gte("captured_at", fromIso).lte("captured_at", toIso).limit(600),
+    sb.from("vsl_metric_snapshots").select("video_name, total_plays, unique_viewers, play_rate, avg_percent_watched, page_loads, captured_at").eq("org_id", orgId).gte("captured_at", fromIso).lte("captured_at", toIso).limit(60),
     sb.from("faq_videos").select("title, question, mechanism, clicks, plays, avg_watch_pct").eq("org_id", orgId).limit(60),
-    sb.from("setter_call_signals").select("setter_name, call_date, source, limiting_beliefs, objections, ai_summary").eq("org_id", orgId).gte("call_date", sinceDate).limit(120),
-    sb.from("calls").select("status, showed, closed, cash_collected_cents, scheduled_for").eq("org_id", orgId).gte("created_at", sinceIso).limit(500),
-    sb.from("payments").select("amount_cents, collected_at").eq("org_id", orgId).gte("collected_at", sinceIso).limit(500),
-    sb.from("onboarding_responses").select("mechanism_signals").eq("org_id", orgId).gte("created_at", sinceIso).limit(200),
+    sb.from("setter_call_signals").select("setter_name, call_date, source, limiting_beliefs, objections, ai_summary").eq("org_id", orgId).gte("call_date", range.from).lte("call_date", range.to).limit(120),
+    sb.from("calls").select("status, showed, closed, cash_collected_cents, scheduled_for").eq("org_id", orgId).gte("created_at", fromIso).lte("created_at", toIso).limit(500),
+    sb.from("payments").select("amount_cents, collected_at").eq("org_id", orgId).gte("collected_at", fromIso).lte("collected_at", toIso).limit(500),
+    sb.from("onboarding_responses").select("mechanism_signals").eq("org_id", orgId).gte("created_at", fromIso).lte("created_at", toIso).limit(200),
   ]);
   const pieces = unwrap<any[]>(piecesRes, "Content pieces");
   const metrics = unwrap<any[]>(metricsRes, "Content metrics");
@@ -413,7 +420,7 @@ export async function analyzeContentSystem(
   const showed = ((calls ?? []) as any[]).filter(c => c.showed).length;
   const closed = ((calls ?? []) as any[]).filter(c => c.closed).length;
 
-  const payload = `WINDOW: last ${days} days
+  const payload = `WINDOW: ${range.from} to ${range.to}
 
 RECOMMENDED MIX (from demand signals): ${MECHANISM_KEYS.map(k => `${k} ${demand.mix[k]}%`).join(" · ")}${demand.insufficientData ? ` — LIMITED DATA (total signal weight ${demand.totalWeight}, below the configured minimum of ${demand.minTotalWeight}). Say so plainly rather than treating this mix as settled.` : ""}
 TOP DEMAND DRIVERS:

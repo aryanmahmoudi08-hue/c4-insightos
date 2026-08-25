@@ -160,6 +160,13 @@ export function scoreText(text: string | null | undefined, weight = 1): Mechanis
   return out;
 }
 
+/** The single highest-scoring mechanism, or null when nothing matched — never guesses a mechanism from zero signal. */
+export function pickTop(w: MechanismWeights): MechanismKey | null {
+  let best: MechanismKey | null = null;
+  for (const k of MECHANISM_KEYS) if (w[k] > 0 && (!best || w[k] > w[best])) best = k;
+  return best;
+}
+
 /**
  * Defends against a partial input (missing keys, not just zero-valued ones):
  * `a[k] + b[k]` with an absent key is `n + undefined = NaN`, which then

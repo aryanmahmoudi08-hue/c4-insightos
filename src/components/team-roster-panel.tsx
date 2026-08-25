@@ -53,6 +53,21 @@ export function TeamRosterPanel() {
       if (!clean) throw new Error("Name required");
       const { error } = await supabase.from("team_members" as never).insert({ org_id: orgId!, name: clean, role } as never);
       if (error) throw error;
+      // Real Team Activity feed event (Sales Tracking Part 3) — same direct
+      // client-side `events` insert pattern onboarding.tsx already uses, not
+      // routed through dispatchEvent() (that's for outbound webhooks only).
+      await supabase
+        .from("events")
+        .insert({
+          org_id: orgId!,
+          event_type: "team_member.added",
+          subject_type: "team_members",
+          payload: { name: clean, role },
+        })
+        .then(
+          () => {},
+          () => {},
+        );
     },
     onSuccess: () => { toast.success("Added"); setName(""); invalidate(); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
@@ -80,6 +95,22 @@ export function TeamRosterPanel() {
     mutationFn: async (vars: { id: string; patch: { name?: string; role?: RoleKey } }) => {
       const { error } = await supabase.from("team_members" as never).update(vars.patch as never).eq("id", vars.id);
       if (error) throw error;
+      if (vars.patch.role) {
+        const m = (members ?? []).find((x) => x.id === vars.id);
+        await supabase
+          .from("events")
+          .insert({
+            org_id: orgId!,
+            event_type: "team_member.role_changed",
+            subject_type: "team_members",
+            subject_id: vars.id,
+            payload: { name: m?.name ?? vars.id, from: m?.role, to: vars.patch.role },
+          })
+          .then(
+            () => {},
+            () => {},
+          );
+      }
     },
     onSuccess: () => { invalidate(); setEditingId(null); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),

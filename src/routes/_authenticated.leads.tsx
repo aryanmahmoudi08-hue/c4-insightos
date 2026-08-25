@@ -9,12 +9,33 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useMemo, useState } from "react";
-import { Users, MessageSquare, PhoneCall, Film, StickyNote, Gem, Sparkles, AlertTriangle, TrendingUp, Loader2 } from "lucide-react";
+import {
+  Users,
+  MessageSquare,
+  PhoneCall,
+  Film,
+  StickyNote,
+  Gem,
+  Sparkles,
+  AlertTriangle,
+  TrendingUp,
+  Loader2,
+  Copy,
+  FileText,
+} from "lucide-react";
+import { generatePreCallVideoLinkFn } from "@/lib/pre-call-video.functions";
 import { toast } from "sonner";
 import { analyzeLeads } from "@/lib/lead-insights.functions";
 import { PageHero } from "@/components/page-hero";
 import { MetricCard } from "@/components/metric-card";
-import { GlassTableShell, TableSearch, FilterPills, Pagination, usePagination, ColumnGroupToggle } from "@/components/glass-table";
+import {
+  GlassTableShell,
+  TableSearch,
+  FilterPills,
+  Pagination,
+  usePagination,
+  ColumnGroupToggle,
+} from "@/components/glass-table";
 import { mockLeads, mockLeadInsights, withMockDelay } from "@/lib/dev-mock-data";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
@@ -42,6 +63,7 @@ type LeadRow = {
   application_data: Record<string, string> | null;
   notes: string | null;
   created_at: string;
+  tags: string[] | null;
 };
 
 // Row tint (subtle, 5%) for the same tone family used by chips (15%) — one 4-accent
@@ -61,7 +83,8 @@ const PIPELINE_STAGES = [
   { v: "hot", label: "Hot", tone: "success" as ChipTone },
   { v: "diamond", label: "💎 Diamond", tone: "info" as ChipTone },
 ];
-const stageChip = (v: string | null) => CHIP_TONE_CLASSES[PIPELINE_STAGES.find(s => s.v === (v ?? ""))?.tone ?? "default"];
+const stageChip = (v: string | null) =>
+  CHIP_TONE_CLASSES[PIPELINE_STAGES.find((s) => s.v === (v ?? ""))?.tone ?? "default"];
 
 const PRIORITY_OPTIONS = [
   { v: "low", label: "Low" },
@@ -115,13 +138,24 @@ const STATUS_TONE: Record<string, { row: string; chip: string }> = Object.fromEn
     status,
     {
       row: status === "ignore" ? "opacity-50" : ROW_TINT[t],
-      chip: (status === "closed" || status === "lt_closed") ? `${CHIP_TONE_CLASSES[t]} font-semibold` : CHIP_TONE_CLASSES[t],
+      chip:
+        status === "closed" || status === "lt_closed"
+          ? `${CHIP_TONE_CLASSES[t]} font-semibold`
+          : CHIP_TONE_CLASSES[t],
     },
   ]),
 );
 const tone = (s: string) => STATUS_TONE[s] ?? STATUS_TONE.opt_in;
 
-const REACHED_CALL_STATUSES = ["call_booked", "rescheduling", "no_show", "deposit", "closed", "lt_closed", "no_close"];
+const REACHED_CALL_STATUSES = [
+  "call_booked",
+  "rescheduling",
+  "no_show",
+  "deposit",
+  "closed",
+  "lt_closed",
+  "no_close",
+];
 
 // Application data keys (match typeform mapping)
 const APP_COLS: { key: string; label: string; width?: string }[] = [
@@ -142,8 +176,111 @@ const BUCKET_STATUSES: Record<string, string[]> = {
   active: ["opt_in", "rescheduling", "follow_up_short", "follow_up_long", "deposit"],
   booked: ["call_booked"],
   closed: ["closed", "lt_closed"],
-  lost: ["no_show", "no_close", "bad_fit", "disqualified", "cancelled", "ignore", "applied_qualified_no_book", "applied_unqualified_no_book"],
+  lost: [
+    "no_show",
+    "no_close",
+    "bad_fit",
+    "disqualified",
+    "cancelled",
+    "ignore",
+    "applied_qualified_no_book",
+    "applied_unqualified_no_book",
+  ],
 };
+
+/** Saved smart views (Sales Tracking Part 1) — a named combination of the
+ * search/status-filter bar's existing filters. Local-only (browser
+ * localStorage): this is a personal working-set shortcut for whoever's
+ * looking at the table right now, not shared team data, so it doesn't need
+ * a migration/table of its own. */
+type SavedView = { id: string; name: string; query: string; statusFilter: string; bucket: string };
+const SAVED_VIEWS_KEY = "c4-leads-saved-views";
+
+function loadSavedViews(): SavedView[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = JSON.parse(localStorage.getItem(SAVED_VIEWS_KEY) ?? "[]");
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+function SmartViewsBar({
+  current,
+  onApply,
+}: {
+  current: { query: string; statusFilter: string; bucket: string };
+  onApply: (v: SavedView) => void;
+}) {
+  const [views, setViews] = useState<SavedView[]>(loadSavedViews);
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState("");
+
+  const persist = (next: SavedView[]) => {
+    setViews(next);
+    localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(next));
+  };
+  const save = () => {
+    const n = name.trim();
+    if (!n) return;
+    persist([...views, { id: crypto.randomUUID(), name: n, ...current }]);
+    setName("");
+    setNaming(false);
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {views.map((v) => (
+        <span
+          key={v.id}
+          className="group flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-2xs text-muted-foreground hover:border-ring/40"
+        >
+          <button type="button" onClick={() => onApply(v)} className="hover:text-foreground">
+            {v.name}
+          </button>
+          <button
+            type="button"
+            onClick={() => persist(views.filter((x) => x.id !== v.id))}
+            className="opacity-0 group-hover:opacity-100 hover:text-destructive"
+            title="Delete view"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      {naming ? (
+        <span className="flex items-center gap-1">
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") save();
+              if (e.key === "Escape") {
+                setNaming(false);
+                setName("");
+              }
+            }}
+            placeholder="View name…"
+            className="h-7 w-32 rounded border border-input bg-background px-2 text-2xs"
+          />
+          <button type="button" onClick={save} className="text-2xs font-medium text-primary">
+            Save
+          </button>
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setNaming(true)}
+          className="rounded-full border border-dashed border-border px-2.5 py-1 text-2xs text-muted-foreground hover:border-ring/40 hover:text-foreground"
+        >
+          + Save view
+        </button>
+      )}
+    </div>
+  );
+}
 
 function Leads() {
   const { data: org } = useCurrentOrg();
@@ -163,7 +300,9 @@ function Leads() {
       if (devBypass) return mockLeads() as unknown as LeadRow[];
       const { data, error } = await supabase
         .from("leads")
-        .select("id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, first_touch_content_id, qualification_notes, application_data, notes, created_at")
+        .select(
+          "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, first_touch_content_id, qualification_notes, application_data, notes, created_at, tags",
+        )
         .eq("org_id", orgId!)
         .order("created_at", { ascending: false })
         .limit(500);
@@ -177,17 +316,45 @@ function Leads() {
       const { error } = await (supabase as any).from("leads").update(patch).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["leads", orgId] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["leads", orgId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const generateLinkFn = useServerFn(generatePreCallVideoLinkFn);
+  const copyPreCallLink = useMutation({
+    mutationFn: async (leadId: string) => {
+      // Real link only under a real session — dev-bypass has no lead this
+      // token could resolve against, so it copies a clearly-fake preview
+      // link rather than silently failing on the requireSupabaseAuth call.
+      if (devBypass) return `${window.location.origin}/pcv/dev-preview-token`;
+      const { token } = await generateLinkFn({ data: { leadId } });
+      return `${window.location.origin}/pcv/${token}`;
+    },
+    onSuccess: async (url) => {
+      await navigator.clipboard.writeText(url);
+      toast.success("Pre-call video link copied");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const view = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (leads ?? []).filter(l => {
+    return (leads ?? []).filter((l) => {
       if (bucket !== "all" && !BUCKET_STATUSES[bucket].includes(l.status)) return false;
       if (statusFilter !== "all" && l.status !== statusFilter) return false;
       if (!q) return true;
-      const hay = [l.full_name, l.email, l.handle, l.phone, l.notes, JSON.stringify(l.application_data ?? {})].join(" ").toLowerCase();
+      const hay = [
+        l.full_name,
+        l.email,
+        l.handle,
+        l.phone,
+        l.notes,
+        JSON.stringify(l.application_data ?? {}),
+      ]
+        .join(" ")
+        .toLowerCase();
       return hay.includes(q);
     });
   }, [leads, query, statusFilter, bucket]);
@@ -198,9 +365,9 @@ function Leads() {
     const all = leads ?? [];
     return {
       total: all.length,
-      booked: all.filter(l => l.status === "call_booked" || l.status === "rescheduling").length,
-      closed: all.filter(l => l.status === "closed" || l.status === "lt_closed").length,
-      diamond: all.filter(l => l.priority === "diamond" || l.pipeline_stage === "diamond").length,
+      booked: all.filter((l) => l.status === "call_booked" || l.status === "rescheduling").length,
+      closed: all.filter((l) => l.status === "closed" || l.status === "lt_closed").length,
+      diamond: all.filter((l) => l.priority === "diamond" || l.pipeline_stage === "diamond").length,
     };
   }, [leads]);
 
@@ -212,8 +379,8 @@ function Leads() {
   const funnelStats = useMemo(() => {
     const all = leads ?? [];
     const total = all.length;
-    const reachedCall = all.filter(l => REACHED_CALL_STATUSES.includes(l.status)).length;
-    const closed = all.filter(l => l.status === "closed" || l.status === "lt_closed").length;
+    const reachedCall = all.filter((l) => REACHED_CALL_STATUSES.includes(l.status)).length;
+    const closed = all.filter((l) => l.status === "closed" || l.status === "lt_closed").length;
     return [
       { stage: "Total Leads", value: total, spectrum: SPECTRUM_SEQUENCE[0] },
       { stage: "Reached a Call", value: reachedCall, spectrum: SPECTRUM_SEQUENCE[1] },
@@ -223,7 +390,10 @@ function Leads() {
 
   return (
     <>
-      <TopBar title="Leads CRM" subtitle="Pipeline stage · priority · pre-call vid tracking · notes" />
+      <TopBar
+        title="Leads CRM"
+        subtitle="Pipeline stage · priority · pre-call vid tracking · notes"
+      />
       <div className="p-6 space-y-5">
         <PageHero
           icon={<Users className="h-5 w-5" />}
@@ -233,7 +403,9 @@ function Leads() {
           status={[
             { label: `${stats.total} total leads`, tone: "default" },
             { label: `${stats.diamond} diamond`, tone: "accent" },
-            ...(stats.booked > 0 ? [{ label: `${stats.booked} awaiting show`, tone: "warning" as const }] : []),
+            ...(stats.booked > 0
+              ? [{ label: `${stats.booked} awaiting show`, tone: "warning" as const }]
+              : []),
           ]}
         />
 
@@ -255,18 +427,61 @@ function Leads() {
               tone. The delta badge's up/down green/red is untouched by this (trend
               direction is a different signal than funnel temperature — MetricCard keeps
               those separate by design). */}
-          <MetricCard label="Total leads" value={stats.total} icon={<Users className="h-3 w-3" />} spectrum="cold" deltaPct={9} spark={[12, 15, 14, 18, 20, 19, 24]} />
-          <MetricCard label="Call booked" value={stats.booked} icon={<PhoneCall className="h-3 w-3" />} spectrum="mid" deltaPct={4} spark={[2, 3, 2, 4, 3, 4, 5]} sparkVariant="bar" />
-          <MetricCard label="Closed" value={stats.closed} icon={<Sparkles className="h-3 w-3" />} spectrum="hot" deltaPct={17} spark={[1, 1, 2, 1, 2, 3, 3]} sparkVariant="bar" />
-          <MetricCard label="💎 Diamond leads" value={stats.diamond} icon={<Gem className="h-3 w-3" />} spectrum="hot" deltaPct={-2} spark={[3, 4, 3, 4, 4, 3, 4]} />
+          <MetricCard
+            label="Total leads"
+            value={stats.total}
+            icon={<Users className="h-3 w-3" />}
+            spectrum="cold"
+            deltaPct={9}
+            spark={[12, 15, 14, 18, 20, 19, 24]}
+          />
+          <MetricCard
+            label="Call booked"
+            value={stats.booked}
+            icon={<PhoneCall className="h-3 w-3" />}
+            spectrum="mid"
+            deltaPct={4}
+            spark={[2, 3, 2, 4, 3, 4, 5]}
+            sparkVariant="bar"
+          />
+          <MetricCard
+            label="Closed"
+            value={stats.closed}
+            icon={<Sparkles className="h-3 w-3" />}
+            spectrum="hot"
+            deltaPct={17}
+            spark={[1, 1, 2, 1, 2, 3, 3]}
+            sparkVariant="bar"
+          />
+          <MetricCard
+            label="💎 Diamond leads"
+            value={stats.diamond}
+            icon={<Gem className="h-3 w-3" />}
+            spectrum="hot"
+            deltaPct={-2}
+            spark={[3, 4, 3, 4, 4, 3, 4]}
+          />
         </div>
 
         <LeadInsightsPanel orgId={orgId} />
 
+        <SmartViewsBar
+          current={{ query, statusFilter, bucket }}
+          onApply={(v) => {
+            setQuery(v.query);
+            setStatusFilter(v.statusFilter);
+            setBucket(v.bucket as typeof bucket);
+          }}
+        />
+
         <GlassTableShell
           toolbar={
             <>
-              <TableSearch value={query} onChange={setQuery} placeholder="Search name, handle, application…" />
+              <TableSearch
+                value={query}
+                onChange={setQuery}
+                placeholder="Search name, handle, application…"
+              />
               <FilterPills
                 options={[
                   { key: "all", label: "All", count: leads?.length ?? 0 },
@@ -278,16 +493,33 @@ function Leads() {
                 value={bucket}
                 onChange={setBucket}
               />
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-2xs">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="h-8 rounded-md border border-input bg-background px-2 text-2xs"
+              >
                 <option value="all">All statuses</option>
-                {STATUS_OPTIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s.v} value={s.v}>
+                    {s.label}
+                  </option>
+                ))}
               </select>
-              <div className="ml-auto text-2xs text-muted-foreground">{view.length} / {leads?.length ?? 0}</div>
+              <div className="ml-auto text-2xs text-muted-foreground">
+                {view.length} / {leads?.length ?? 0}
+              </div>
             </>
           }
-          footer={<Pagination page={page} pageCount={pageCount} onPage={setPage} total={total} pageSize={pageSize} />}
+          footer={
+            <Pagination
+              page={page}
+              pageCount={pageCount}
+              onPage={setPage}
+              total={total}
+              pageSize={pageSize}
+            />
+          }
         >
-
           <table className="w-full text-sm">
             <thead className="sticky-thead bg-muted/40 text-3xs uppercase tracking-wider text-muted-foreground">
               <tr>
@@ -300,37 +532,69 @@ function Leads() {
                 {qualExpanded ? (
                   APP_COLS.map((c, i) => (
                     <th key={c.key} className={`text-left p-2.5 normal-case ${c.width ?? ""}`}>
-                      {i === 0 ? <ColumnGroupToggle label={c.label} expanded onToggle={() => setQualExpanded(false)} /> : c.label}
+                      {i === 0 ? (
+                        <ColumnGroupToggle
+                          label={c.label}
+                          expanded
+                          onToggle={() => setQualExpanded(false)}
+                        />
+                      ) : (
+                        c.label
+                      )}
                     </th>
                   ))
                 ) : (
                   <th className="text-left p-2.5 min-w-[140px] normal-case">
-                    <ColumnGroupToggle label="Qualification" expanded={false} onToggle={() => setQualExpanded(true)} />
+                    <ColumnGroupToggle
+                      label="Qualification"
+                      expanded={false}
+                      onToggle={() => setQualExpanded(true)}
+                    />
                   </th>
                 )}
-                <th className="text-left p-2.5 min-w-[140px]">Contact</th>
+                <th className="text-left p-2.5 min-w-[140px]">Email</th>
+                {/* Confirmed real gap (Sales Tracking Part 1): phone was a real, already-
+                    fetched column, but only ever shown as a Contact-column fallback
+                    (email ?? phone) — never its own visible column. */}
+                <th className="text-left p-2.5 min-w-[120px]">Phone</th>
                 <th className="text-left p-2.5 min-w-[130px]">Handle</th>
               </tr>
             </thead>
             <tbody>
-              {paged.map(l => {
+              {paged.map((l) => {
                 const t = tone(l.status);
                 const app = l.application_data ?? {};
                 const isDiamond = l.priority === "diamond" || l.pipeline_stage === "diamond";
                 return (
-                  <tr key={l.id} className={`border-t border-border cursor-pointer transition-colors ${isDiamond ? "bg-accent/5 hover:bg-accent/10" : (t.row || "hover:bg-muted/30")}`} onClick={() => setSelected(l)}>
+                  <tr
+                    key={l.id}
+                    className={`border-t border-border cursor-pointer transition-colors ${isDiamond ? "bg-accent/5 hover:bg-accent/10" : t.row || "hover:bg-muted/30"}`}
+                    onClick={() => setSelected(l)}
+                  >
                     <td className="p-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                      {new Date(l.created_at).toLocaleDateString()}<br />
-                      <span className="text-3xs">{new Date(l.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      {new Date(l.created_at).toLocaleDateString()}
+                      <br />
+                      <span className="text-3xs">
+                        {new Date(l.created_at).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
                     </td>
                     <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
                       <select
                         value={l.priority ?? "normal"}
-                        onChange={(e) => updateLead.mutate({ id: l.id, patch: { priority: e.target.value } })}
+                        onChange={(e) =>
+                          updateLead.mutate({ id: l.id, patch: { priority: e.target.value } })
+                        }
                         className="h-7 rounded px-1 text-2xs bg-transparent border border-border cursor-pointer"
                         title="Priority"
                       >
-                        {PRIORITY_OPTIONS.map(p => <option key={p.v} value={p.v}>{p.label}</option>)}
+                        {PRIORITY_OPTIONS.map((p) => (
+                          <option key={p.v} value={p.v}>
+                            {p.label}
+                          </option>
+                        ))}
                       </select>
                     </td>
                     <td className="p-2.5">
@@ -338,61 +602,139 @@ function Leads() {
                         {isDiamond && <Gem className="h-3.5 w-3.5 text-accent shrink-0" />}
                         {l.full_name || l.handle || l.email || "(no name)"}
                       </div>
+                      {l.tags && l.tags.length > 0 && (
+                        <div className="mt-0.5 flex flex-wrap gap-1">
+                          {l.tags.map((t) => (
+                            <span
+                              key={t}
+                              className="rounded bg-muted px-1 py-0.5 text-4xs text-muted-foreground"
+                            >
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
                       <select
                         value={l.pipeline_stage ?? ""}
-                        onChange={(e) => updateLead.mutate({ id: l.id, patch: { pipeline_stage: e.target.value || null } })}
+                        onChange={(e) =>
+                          updateLead.mutate({
+                            id: l.id,
+                            patch: { pipeline_stage: e.target.value || null },
+                          })
+                        }
                         className={`h-7 rounded px-2 text-2xs font-medium border-0 cursor-pointer ${stageChip(l.pipeline_stage)}`}
                       >
-                        {PIPELINE_STAGES.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
+                        {PIPELINE_STAGES.map((s) => (
+                          <option key={s.v} value={s.v}>
+                            {s.label}
+                          </option>
+                        ))}
                       </select>
                     </td>
                     <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
                       <select
                         value={l.status}
-                        onChange={(e) => updateLead.mutate({ id: l.id, patch: { status: e.target.value } })}
+                        onChange={(e) =>
+                          updateLead.mutate({ id: l.id, patch: { status: e.target.value } })
+                        }
                         className={`h-7 rounded px-2 text-2xs font-medium border-0 cursor-pointer ${t.chip}`}
                       >
-                        {STATUS_OPTIONS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
+                        {STATUS_OPTIONS.map((s) => (
+                          <option key={s.v} value={s.v}>
+                            {s.label}
+                          </option>
+                        ))}
                       </select>
                     </td>
-                    <td className="p-2.5 text-center" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => updateLead.mutate({ id: l.id, patch: { precall_video_watched: !l.precall_video_watched } })}
-                        className={`h-7 w-12 rounded text-3xs font-semibold uppercase tracking-wider transition-colors ${l.precall_video_watched ? CHIP_TONE_CLASSES.success : "bg-muted text-muted-foreground hover:bg-muted/70"}`}
-                        title={l.precall_video_watched ? "Watched" : "Mark as watched"}
-                      >
-                        {l.precall_video_watched ? "✓ Yes" : "No"}
-                      </button>
+                    <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() =>
+                            updateLead.mutate({
+                              id: l.id,
+                              patch: { precall_video_watched: !l.precall_video_watched },
+                            })
+                          }
+                          className={`h-7 w-12 rounded text-3xs font-semibold uppercase tracking-wider transition-colors ${l.precall_video_watched ? CHIP_TONE_CLASSES.success : "bg-muted text-muted-foreground hover:bg-muted/70"}`}
+                          title={l.precall_video_watched ? "Watched" : "Mark as watched"}
+                        >
+                          {l.precall_video_watched ? "✓ Yes" : "No"}
+                        </button>
+                        <button
+                          onClick={() => copyPreCallLink.mutate(l.id)}
+                          disabled={copyPreCallLink.isPending}
+                          className="grid h-7 w-7 place-items-center rounded text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground disabled:opacity-50"
+                          title="Copy pre-call video link to send this lead"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                     {qualExpanded ? (
-                      APP_COLS.map(c => (
+                      APP_COLS.map((c) => (
                         <td key={c.key} className="p-2.5 text-xs">
-                          <div className="truncate max-w-[200px]" title={app[c.key] ?? ""}>{app[c.key] ?? <span className="text-muted-foreground/50">—</span>}</div>
+                          <div className="truncate max-w-[200px]" title={app[c.key] ?? ""}>
+                            {app[c.key] ?? <span className="text-muted-foreground/50">—</span>}
+                          </div>
                         </td>
                       ))
                     ) : (
                       <td className="p-2.5 text-xs text-muted-foreground font-mono">
-                        {APP_COLS.filter(c => app[c.key]).length}/{APP_COLS.length} filled
+                        {APP_COLS.filter((c) => app[c.key]).length}/{APP_COLS.length} filled
                       </td>
                     )}
-                    <td className="p-2.5 text-xs text-muted-foreground">
-                      {l.email ?? l.phone ?? "—"}
+                    <td className="p-2.5 text-xs text-muted-foreground">{l.email ?? "—"}</td>
+                    <td className="p-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                      {l.phone ?? "—"}
                     </td>
-                    <td className="p-2.5 text-xs">{l.handle ? <span className="text-accent">@{l.handle.replace(/^@/, "")}</span> : <span className="text-muted-foreground/50">—</span>}</td>
+                    <td className="p-2.5 text-xs">
+                      {l.handle ? (
+                        <span className="text-accent">@{l.handle.replace(/^@/, "")}</span>
+                      ) : (
+                        <span className="text-muted-foreground/50">—</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
-              {leadsLoading && <tr><td colSpan={6 + (qualExpanded ? APP_COLS.length : 1) + 2} className="p-10 text-center text-sm text-muted-foreground">Loading…</td></tr>}
-              {!leadsLoading && view.length === 0 && <tr><td colSpan={6 + (qualExpanded ? APP_COLS.length : 1) + 2} className="p-10 text-center text-sm text-muted-foreground">No leads match.</td></tr>}
+              {leadsLoading && (
+                <tr>
+                  <td
+                    colSpan={6 + (qualExpanded ? APP_COLS.length : 1) + 3}
+                    className="p-10 text-center text-sm text-muted-foreground"
+                  >
+                    Loading…
+                  </td>
+                </tr>
+              )}
+              {!leadsLoading && view.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6 + (qualExpanded ? APP_COLS.length : 1) + 3}
+                    className="p-10 text-center text-sm text-muted-foreground"
+                  >
+                    No leads match.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </GlassTableShell>
 
-        <Dialog open={!!selected} onOpenChange={(o) => { if (!o) setSelected(null); }}>
+        <Dialog
+          open={!!selected}
+          onOpenChange={(o) => {
+            if (!o) setSelected(null);
+          }}
+        >
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>{selected?.full_name || selected?.handle || selected?.email || "Lead"}</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>
+                {selected?.full_name || selected?.handle || selected?.email || "Lead"}
+              </DialogTitle>
+            </DialogHeader>
             {selected && <LeadDetail lead={selected} />}
           </DialogContent>
         </Dialog>
@@ -401,27 +743,36 @@ function Leads() {
   );
 }
 
-function LeadsFunnelHero({ funnel }: { funnel: readonly { stage: string; value: number; spectrum: "cold" | "mid" | "hot" }[] }) {
+function LeadsFunnelHero({
+  funnel,
+}: {
+  funnel: readonly { stage: string; value: number; spectrum: "cold" | "mid" | "hot" }[];
+}) {
   const max = funnel[0]?.value || 1;
   return (
     <div className="hover-lift relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
       <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
       <div className="relative">
-        <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Pipeline Funnel</div>
+        <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Pipeline Funnel
+        </div>
         <div className="display-serif mt-0.5 text-2xl">Where leads convert</div>
       </div>
       <div className="relative flex flex-1 flex-col justify-center gap-3 py-3">
         {funnel.map((f, i) => {
           const width = Math.max(6, Math.round((f.value / max) * 100));
           const prev = funnel[i - 1];
-          const conv = prev && prev.value > 0 ? `${((f.value / prev.value) * 100).toFixed(0)}%` : null;
+          const conv =
+            prev && prev.value > 0 ? `${((f.value / prev.value) * 100).toFixed(0)}%` : null;
           return (
             <div key={f.stage} className="space-y-1">
               <div className="flex items-center justify-between text-2xs">
                 <span className="font-medium">{f.stage}</span>
                 <span className="font-mono text-muted-foreground">
                   {f.value.toLocaleString()}
-                  {conv && <span className={cn("ml-1.5", SPECTRUM_TEXT_CLASS[f.spectrum])}>· {conv}</span>}
+                  {conv && (
+                    <span className={cn("ml-1.5", SPECTRUM_TEXT_CLASS[f.spectrum])}>· {conv}</span>
+                  )}
                 </span>
               </div>
               {/* `width` is a plain inline style — correct on first paint with zero JS/
@@ -432,14 +783,20 @@ function LeadsFunnelHero({ funnel }: { funnel: readonly { stage: string; value: 
               <div className="h-7 rounded-md bg-muted/30 overflow-hidden">
                 <div
                   className="bar-draw-in h-full rounded-md"
-                  style={{ width: `${width}%`, background: SPECTRUM_VAR[f.spectrum], animationDelay: `${i * 0.15}s` }}
+                  style={{
+                    width: `${width}%`,
+                    background: SPECTRUM_VAR[f.spectrum],
+                    animationDelay: `${i * 0.15}s`,
+                  }}
                 />
               </div>
             </div>
           );
         })}
-        {funnel.every(f => f.value === 0) && (
-          <div className="py-4 text-center text-xs text-muted-foreground">No leads yet — the funnel fills in as leads come through.</div>
+        {funnel.every((f) => f.value === 0) && (
+          <div className="py-4 text-center text-xs text-muted-foreground">
+            No leads yet — the funnel fills in as leads come through.
+          </div>
         )}
       </div>
     </div>
@@ -452,15 +809,37 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
   const orgId = org?.org_id;
   const qc = useQueryClient();
   const [noteDraft, setNoteDraft] = useState("");
+  const [tags, setTags] = useState<string[]>(lead.tags ?? []);
+  const [tagDraft, setTagDraft] = useState("");
+  const [transcriptType, setTranscriptType] = useState<"setting" | "closing">("setting");
+  const [transcriptSource, setTranscriptSource] = useState("");
+  const [transcriptDraft, setTranscriptDraft] = useState("");
 
   const { data: timeline } = useQuery({
     queryKey: ["lead-timeline", lead.id],
     enabled: !!orgId,
     queryFn: async () => {
       const [touches, calls, convs] = await Promise.all([
-        supabase.from("lead_content_touches").select("id, touch_type, touched_at, content_id, content_pieces!inner(title, platform)").eq("lead_id", lead.id).eq("org_id", orgId!).order("touched_at", { ascending: false }).limit(50),
-        supabase.from("calls").select("id, status, scheduled_for, showed, closed, cash_collected_cents, call_summary").eq("lead_id", lead.id).eq("org_id", orgId!).order("scheduled_for", { ascending: false }).limit(20),
-        supabase.from("conversations").select("id, channel, status, last_message_at, first_response_seconds").eq("lead_id", lead.id).eq("org_id", orgId!).limit(10),
+        supabase
+          .from("lead_content_touches")
+          .select("id, touch_type, touched_at, content_id, content_pieces!inner(title, platform)")
+          .eq("lead_id", lead.id)
+          .eq("org_id", orgId!)
+          .order("touched_at", { ascending: false })
+          .limit(50),
+        supabase
+          .from("calls")
+          .select("id, status, scheduled_for, showed, closed, cash_collected_cents, call_summary")
+          .eq("lead_id", lead.id)
+          .eq("org_id", orgId!)
+          .order("scheduled_for", { ascending: false })
+          .limit(20),
+        supabase
+          .from("conversations")
+          .select("id, channel, status, last_message_at, first_response_seconds")
+          .eq("lead_id", lead.id)
+          .eq("org_id", orgId!)
+          .limit(10),
       ]);
       if (touches.error) throw touches.error;
       if (calls.error) throw calls.error;
@@ -473,7 +852,12 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
     queryKey: ["lead-notes", lead.id],
     enabled: !!orgId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any).from("lead_notes").select("id, body, kind, created_at, author_id").eq("lead_id", lead.id).order("created_at", { ascending: false }).limit(50);
+      const { data, error } = await (supabase as any)
+        .from("lead_notes")
+        .select("id, body, kind, created_at, author_id")
+        .eq("lead_id", lead.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
       if (error) throw error;
       return data ?? [];
     },
@@ -481,10 +865,82 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
 
   const addNote = useMutation({
     mutationFn: async (body: string) => {
-      const { error } = await (supabase as any).from("lead_notes").insert({ org_id: orgId!, lead_id: lead.id, body, author_id: user?.id ?? null });
+      const { error } = await (supabase as any)
+        .from("lead_notes")
+        .insert({ org_id: orgId!, lead_id: lead.id, body, author_id: user?.id ?? null });
       if (error) throw error;
     },
-    onSuccess: () => { setNoteDraft(""); qc.invalidateQueries({ queryKey: ["lead-notes", lead.id] }); toast.success("Note added"); },
+    onSuccess: () => {
+      setNoteDraft("");
+      qc.invalidateQueries({ queryKey: ["lead-notes", lead.id] });
+      toast.success("Note added");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const updateTags = useMutation({
+    mutationFn: async (next: string[]) => {
+      const { error } = await supabase.from("leads").update({ tags: next }).eq("id", lead.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["leads", orgId] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const addTag = () => {
+    const t = tagDraft.trim();
+    if (!t || tags.includes(t)) {
+      setTagDraft("");
+      return;
+    }
+    const next = [...tags, t];
+    setTags(next);
+    updateTags.mutate(next);
+    setTagDraft("");
+  };
+  const removeTag = (t: string) => {
+    const next = tags.filter((x) => x !== t);
+    setTags(next);
+    updateTags.mutate(next);
+  };
+
+  // Per-lead call transcripts (Sales Tracking Part 1) — genuinely new: `calls`
+  // has no transcript column, and the schema's only existing `transcript`
+  // column is `setter_call_signals.transcript` (Content Signals' own
+  // pipeline, unrelated scope). This unblocks the ContentOS/CopyOS project's
+  // own automated-ingestion work, which was waiting on this schema existing —
+  // that automation is a separate, later project, not built here: this ships
+  // the table + a manual add/view surface only.
+  const { data: transcripts } = useQuery({
+    queryKey: ["lead-transcripts", lead.id],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("lead_call_transcripts")
+        .select("id, call_type, transcript, source, created_at")
+        .eq("lead_id", lead.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const addTranscript = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("lead_call_transcripts").insert({
+        org_id: orgId!,
+        lead_id: lead.id,
+        call_type: transcriptType,
+        transcript: transcriptDraft.trim(),
+        source: transcriptSource.trim() || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setTranscriptDraft("");
+      setTranscriptSource("");
+      qc.invalidateQueries({ queryKey: ["lead-transcripts", lead.id] });
+      toast.success("Transcript added");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -497,20 +953,66 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
         <TabsTrigger value="application">Application</TabsTrigger>
         <TabsTrigger value="notes">Notes / Activity</TabsTrigger>
         <TabsTrigger value="timeline">Timeline</TabsTrigger>
+        <TabsTrigger value="transcripts">Transcripts</TabsTrigger>
       </TabsList>
 
       <TabsContent value="application" className="space-y-3">
         <div className="grid grid-cols-2 gap-3 rounded-md bg-muted/30 p-3 text-xs">
-          <div><span className="text-muted-foreground">Email:</span> {lead.email ?? "—"}</div>
-          <div><span className="text-muted-foreground">Phone:</span> {lead.phone ?? "—"}</div>
-          <div><span className="text-muted-foreground">Handle:</span> {lead.handle ?? "—"}</div>
-          <div><span className="text-muted-foreground">Source:</span> {lead.source_connector ?? "—"}</div>
+          <div>
+            <span className="text-muted-foreground">Email:</span> {lead.email ?? "—"}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Phone:</span> {lead.phone ?? "—"}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Handle:</span> {lead.handle ?? "—"}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Source:</span> {lead.source_connector ?? "—"}
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground">Tags</div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {tags.map((t) => (
+              <span
+                key={t}
+                className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
+              >
+                {t}
+                <button
+                  type="button"
+                  onClick={() => removeTag(t)}
+                  className="hover:text-destructive"
+                  title="Remove tag"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <input
+              value={tagDraft}
+              onChange={(e) => setTagDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addTag();
+                }
+              }}
+              placeholder="Add tag…"
+              className="h-6 w-24 rounded border border-input bg-background px-1.5 text-2xs"
+            />
+          </div>
         </div>
         <div className="rounded border border-border divide-y divide-border text-xs">
-          {APP_COLS.map(c => (
+          {APP_COLS.map((c) => (
             <div key={c.key} className="p-2.5 grid grid-cols-3 gap-2">
-              <div className="text-muted-foreground uppercase text-3xs tracking-wider">{c.label}</div>
-              <div className="col-span-2">{app[c.key] || <span className="text-muted-foreground/50">—</span>}</div>
+              <div className="text-muted-foreground uppercase text-3xs tracking-wider">
+                {c.label}
+              </div>
+              <div className="col-span-2">
+                {app[c.key] || <span className="text-muted-foreground/50">—</span>}
+              </div>
             </div>
           ))}
         </div>
@@ -524,7 +1026,11 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
             onChange={(e) => setNoteDraft(e.target.value)}
             className="min-h-[80px]"
           />
-          <Button size="sm" onClick={() => noteDraft.trim() && addNote.mutate(noteDraft.trim())} disabled={!noteDraft.trim() || addNote.isPending}>
+          <Button
+            size="sm"
+            onClick={() => noteDraft.trim() && addNote.mutate(noteDraft.trim())}
+            disabled={!noteDraft.trim() || addNote.isPending}
+          >
             <StickyNote className="h-3.5 w-3.5 mr-1.5" /> Add note
           </Button>
         </div>
@@ -532,55 +1038,165 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
           {(notes ?? []).map((n: any) => (
             <div key={n.id} className="rounded border border-border bg-card p-3 text-xs">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-3xs uppercase tracking-wider text-muted-foreground">{n.kind ?? "note"}</span>
-                <span className="text-3xs text-muted-foreground">{new Date(n.created_at).toLocaleString()}</span>
+                <span className="text-3xs uppercase tracking-wider text-muted-foreground">
+                  {n.kind ?? "note"}
+                </span>
+                <span className="text-3xs text-muted-foreground">
+                  {new Date(n.created_at).toLocaleString()}
+                </span>
               </div>
               <div className="whitespace-pre-wrap">{n.body}</div>
             </div>
           ))}
-          {(!notes || notes.length === 0) && <div className="text-xs text-muted-foreground italic">No notes yet — be the first to log context.</div>}
+          {(!notes || notes.length === 0) && (
+            <div className="text-xs text-muted-foreground italic">
+              No notes yet — be the first to log context.
+            </div>
+          )}
         </div>
       </TabsContent>
 
       <TabsContent value="timeline" className="space-y-3">
         <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="rounded border border-border p-2 text-center"><Film className="h-3 w-3 mx-auto text-accent mb-1" /><div className="font-mono font-bold">{timeline?.touches.length ?? 0}</div><div className="text-3xs text-muted-foreground">content touches</div></div>
-          <div className="rounded border border-border p-2 text-center"><MessageSquare className="h-3 w-3 mx-auto text-primary mb-1" /><div className="font-mono font-bold">{timeline?.convs.length ?? 0}</div><div className="text-3xs text-muted-foreground">conversations</div></div>
-          <div className="rounded border border-border p-2 text-center"><PhoneCall className="h-3 w-3 mx-auto text-emerald-500 mb-1" /><div className="font-mono font-bold">{timeline?.calls.length ?? 0}</div><div className="text-3xs text-muted-foreground">calls · ${Math.round(totalCash / 100).toLocaleString()}</div></div>
+          <div className="rounded border border-border p-2 text-center">
+            <Film className="h-3 w-3 mx-auto text-accent mb-1" />
+            <div className="font-mono font-bold">{timeline?.touches.length ?? 0}</div>
+            <div className="text-3xs text-muted-foreground">Content touches</div>
+          </div>
+          <div className="rounded border border-border p-2 text-center">
+            <MessageSquare className="h-3 w-3 mx-auto text-primary mb-1" />
+            <div className="font-mono font-bold">{timeline?.convs.length ?? 0}</div>
+            <div className="text-3xs text-muted-foreground">Conversations</div>
+          </div>
+          <div className="rounded border border-border p-2 text-center">
+            <PhoneCall className="h-3 w-3 mx-auto text-emerald-500 mb-1" />
+            <div className="font-mono font-bold">{timeline?.calls.length ?? 0}</div>
+            <div className="text-3xs text-muted-foreground">
+              calls · ${Math.round(totalCash / 100).toLocaleString()}
+            </div>
+          </div>
         </div>
 
         <div>
-          <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5"><Film className="h-3 w-3" /> Content path (first → last)</div>
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+            <Film className="h-3 w-3" /> Content path (first → last)
+          </div>
           <div className="space-y-1.5">
             {(timeline?.touches ?? []).map((t: any) => {
               const cp = Array.isArray(t.content_pieces) ? t.content_pieces[0] : t.content_pieces;
               return (
                 <div key={t.id} className="flex items-center gap-2 text-xs">
                   <div className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" />
-                  <div className="flex-1 truncate">{cp?.title || "(untitled)"} <span className="text-muted-foreground">· {cp?.platform}</span></div>
-                  <div className="text-3xs text-muted-foreground">{t.touch_type} · {new Date(t.touched_at).toLocaleDateString()}</div>
+                  <div className="flex-1 truncate">
+                    {cp?.title || "(untitled)"}{" "}
+                    <span className="text-muted-foreground">· {cp?.platform}</span>
+                  </div>
+                  <div className="text-3xs text-muted-foreground">
+                    {t.touch_type} · {new Date(t.touched_at).toLocaleDateString()}
+                  </div>
                 </div>
               );
             })}
-            {(timeline?.touches ?? []).length === 0 && <div className="text-xs text-muted-foreground italic">No content touches tracked.</div>}
+            {(timeline?.touches ?? []).length === 0 && (
+              <div className="text-xs text-muted-foreground italic">
+                No content touches tracked.
+              </div>
+            )}
           </div>
         </div>
 
         <div>
-          <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5"><PhoneCall className="h-3 w-3" /> Calls</div>
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+            <PhoneCall className="h-3 w-3" /> Calls
+          </div>
           <div className="space-y-1.5">
             {(timeline?.calls ?? []).map((c: any) => (
               <div key={c.id} className="rounded border border-border p-2 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="font-medium uppercase text-3xs">{c.status}</span>
-                  <span className="font-mono text-emerald-500">${Math.round((c.cash_collected_cents ?? 0) / 100).toLocaleString()}</span>
+                  <span className="font-mono text-emerald-500">
+                    ${Math.round((c.cash_collected_cents ?? 0) / 100).toLocaleString()}
+                  </span>
                 </div>
-                {c.call_summary && <div className="mt-1 text-muted-foreground line-clamp-2">{c.call_summary}</div>}
-                <div className="text-3xs text-muted-foreground mt-1">{c.scheduled_for ? new Date(c.scheduled_for).toLocaleString() : "no date"}</div>
+                {c.call_summary && (
+                  <div className="mt-1 text-muted-foreground line-clamp-2">{c.call_summary}</div>
+                )}
+                <div className="text-3xs text-muted-foreground mt-1">
+                  {c.scheduled_for ? new Date(c.scheduled_for).toLocaleString() : "no date"}
+                </div>
               </div>
             ))}
-            {(timeline?.calls ?? []).length === 0 && <div className="text-xs text-muted-foreground italic">No calls yet.</div>}
+            {(timeline?.calls ?? []).length === 0 && (
+              <div className="text-xs text-muted-foreground italic">No calls yet.</div>
+            )}
           </div>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="transcripts" className="space-y-3">
+        <div className="space-y-2 rounded border border-border p-3">
+          <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground">
+            <FileText className="h-3.5 w-3.5" /> Add transcript
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={transcriptType}
+              onChange={(e) => setTranscriptType(e.target.value as "setting" | "closing")}
+              className="h-8 rounded border border-input bg-background px-2 text-xs"
+            >
+              <option value="setting">Setting call</option>
+              <option value="closing">Closing call</option>
+            </select>
+            <input
+              value={transcriptSource}
+              onChange={(e) => setTranscriptSource(e.target.value)}
+              placeholder="Source (Loom link, call recorder…)"
+              className="h-8 flex-1 rounded border border-input bg-background px-2 text-xs"
+            />
+          </div>
+          <Textarea
+            placeholder="Paste the call transcript…"
+            value={transcriptDraft}
+            onChange={(e) => setTranscriptDraft(e.target.value)}
+            className="min-h-[80px]"
+          />
+          <Button
+            size="sm"
+            onClick={() => transcriptDraft.trim() && addTranscript.mutate()}
+            disabled={!transcriptDraft.trim() || addTranscript.isPending}
+          >
+            <FileText className="h-3.5 w-3.5 mr-1.5" /> Add transcript
+          </Button>
+        </div>
+        <div className="space-y-2">
+          {(transcripts ?? []).map((t) => (
+            <div key={t.id} className="rounded border border-border bg-card p-3 text-xs">
+              <div className="flex items-center justify-between mb-1">
+                <span
+                  className={cn(
+                    "rounded px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wider",
+                    t.call_type === "closing" ? CHIP_TONE_CLASSES.success : CHIP_TONE_CLASSES.info,
+                  )}
+                >
+                  {t.call_type === "closing" ? "Closing call" : "Setting call"}
+                </span>
+                <span className="text-3xs text-muted-foreground">
+                  {new Date(t.created_at).toLocaleString()}
+                </span>
+              </div>
+              {t.source && (
+                <div className="mb-1 text-3xs text-muted-foreground">Source: {t.source}</div>
+              )}
+              <div className="whitespace-pre-wrap text-muted-foreground line-clamp-6">
+                {t.transcript}
+              </div>
+            </div>
+          ))}
+          {(!transcripts || transcripts.length === 0) && (
+            <div className="text-xs text-muted-foreground italic">
+              No transcripts logged for this lead yet.
+            </div>
+          )}
         </div>
       </TabsContent>
     </Tabs>
@@ -590,7 +1206,12 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
 function LeadInsightsPanel({ orgId }: { orgId?: string }) {
   const run = useServerFn(analyzeLeads);
   const { devBypass } = useAuth();
-  const [data, setData] = useState<{ bottlenecks: any[]; double_down: any[]; priority_leads: any[]; sampleSize: number } | null>(null);
+  const [data, setData] = useState<{
+    bottlenecks: any[];
+    double_down: any[];
+    priority_leads: any[];
+    sampleSize: number;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [range, setRange] = useState<"1d" | "3d" | "7d" | "30d" | "all">("30d");
 
@@ -598,9 +1219,18 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
     if (!orgId) return;
     setLoading(true);
     try {
-      if (devBypass) { setData(await withMockDelay(mockLeadInsights())); return; }
+      if (devBypass) {
+        setData(await withMockDelay(mockLeadInsights()));
+        return;
+      }
       const now = new Date();
-      const days: Record<string, number | null> = { "1d": 1, "3d": 3, "7d": 7, "30d": 30, "all": null };
+      const days: Record<string, number | null> = {
+        "1d": 1,
+        "3d": 3,
+        "7d": 7,
+        "30d": 30,
+        all: null,
+      };
       const d = days[range];
       const from = d ? new Date(now.getTime() - d * 86400000).toISOString() : undefined;
       const out = await run({ data: { orgId, from, to: now.toISOString() } });
@@ -619,11 +1249,20 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
           <Sparkles className="h-4 w-4 text-accent" />
           <div>
             <div className="text-sm font-semibold">Lead AI Insights</div>
-            <div className="text-2xs text-muted-foreground">Bottlenecks, double-downs, and today's diamond leads</div>
+            <div className="text-2xs text-muted-foreground">
+              Bottlenecks, double-downs, and today's diamond leads
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <select value={range} onChange={(e) => { setRange(e.target.value as any); setData(null); }} className="h-8 rounded border border-input bg-background px-2 text-xs">
+          <select
+            value={range}
+            onChange={(e) => {
+              setRange(e.target.value as any);
+              setData(null);
+            }}
+            className="h-8 rounded border border-input bg-background px-2 text-xs"
+          >
             <option value="1d">Last 24h</option>
             <option value="3d">Last 3 days</option>
             <option value="7d">Last 7 days</option>
@@ -631,17 +1270,30 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
             <option value="all">All time</option>
           </select>
           <Button size="sm" onClick={generate} disabled={loading || !orgId}>
-            {loading ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Analyzing…</> : <><Sparkles className="h-3.5 w-3.5 mr-1.5" /> Generate</>}
+            {loading ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Analyzing…
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Generate
+              </>
+            )}
           </Button>
         </div>
       </div>
       {!data && !loading && (
-        <div className="text-xs text-muted-foreground italic">Pick a window and hit Generate to surface bottlenecks, double-downs, and today's priority leads.</div>
+        <div className="text-xs text-muted-foreground italic">
+          Pick a window and hit Generate to surface bottlenecks, double-downs, and today's priority
+          leads.
+        </div>
       )}
       {data && (
         <div className="grid md:grid-cols-3 gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-300">
           <div className="rounded border border-destructive/30 bg-destructive/5 p-3 space-y-2">
-            <div className="text-3xs uppercase tracking-wider text-destructive font-semibold flex items-center gap-1.5"><AlertTriangle className="h-3 w-3" /> Bottlenecks</div>
+            <div className="text-3xs uppercase tracking-wider text-destructive font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="h-3 w-3" /> Bottlenecks
+            </div>
             {data.bottlenecks.map((b, i) => (
               <div key={i} className="text-xs space-y-0.5">
                 <div className="font-medium">{b.title}</div>
@@ -651,7 +1303,9 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
             ))}
           </div>
           <div className="rounded border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-2">
-            <div className="text-3xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5"><TrendingUp className="h-3 w-3" /> Double down</div>
+            <div className="text-3xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5">
+              <TrendingUp className="h-3 w-3" /> Double down
+            </div>
             {data.double_down.map((b, i) => (
               <div key={i} className="text-xs space-y-0.5">
                 <div className="font-medium">{b.title}</div>
@@ -661,18 +1315,26 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
             ))}
           </div>
           <div className="rounded border border-accent/30 bg-accent/5 p-3 space-y-2">
-            <div className="text-3xs uppercase tracking-wider text-accent font-semibold flex items-center gap-1.5"><Gem className="h-3 w-3" /> Priority leads</div>
+            <div className="text-3xs uppercase tracking-wider text-accent font-semibold flex items-center gap-1.5">
+              <Gem className="h-3 w-3" /> Priority leads
+            </div>
             {data.priority_leads.map((p, i) => (
               <div key={i} className="text-xs space-y-0.5">
                 <div className="font-medium">💎 {p.name}</div>
                 <div className="text-muted-foreground">{p.reason}</div>
               </div>
             ))}
-            {data.priority_leads.length === 0 && <div className="text-xs text-muted-foreground italic">No standout leads yet.</div>}
+            {data.priority_leads.length === 0 && (
+              <div className="text-xs text-muted-foreground italic">No standout leads yet.</div>
+            )}
           </div>
         </div>
       )}
-      {data && <div className="text-3xs text-muted-foreground">Based on {data.sampleSize} lead{data.sampleSize === 1 ? "" : "s"}.</div>}
+      {data && (
+        <div className="text-3xs text-muted-foreground">
+          Based on {data.sampleSize} lead{data.sampleSize === 1 ? "" : "s"}.
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/app-sidebar";
 import { Card } from "@/components/ui/card";
@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { useDateRange } from "@/hooks/use-date-range";
+import type { DateRange } from "@/components/date-range-picker";
 import { MECHANISMS, MECHANISM_KEYS, variationLabel, reelSplit, type MechanismKey } from "@/lib/content-mechanisms";
 import { contentDemandFn, analyzeContentSystemFn, logSetterSignalFn, weeklyContentCheckFn } from "@/lib/content-signals.functions";
 import { getWorkspaceSettingsFn, DEFAULT_WORKSPACE_SETTINGS } from "@/lib/workspace-settings.functions";
@@ -35,27 +37,31 @@ export const Route = createFileRoute("/_authenticated/content-signals")({
   }),
 });
 
-const RANGES = [
-  { label: "Today", days: 1 },
-  { label: "3d", days: 3 },
-  { label: "7d", days: 7 },
-  { label: "30d", days: 30 },
-  { label: "90d", days: 90 },
-];
-
 function ContentSignalsPage() {
   const { data: org } = useCurrentOrg();
   const orgId = (org as { org_id?: string } | undefined)?.org_id;
   const { devBypass } = useAuth();
-  const [days, setDays] = useState(30);
+  const { range } = useDateRange();
   // Seeded from the workspace's saved weeklyReelTarget (Settings → Content
   // Engine) instead of a hardcoded 6 that reset on every visit — a scratch
   // edit here stays session-local, it doesn't write back to settings.
   const [reelTarget, setReelTarget] = useState(DEFAULT_WORKSPACE_SETTINGS.content_engine.weeklyReelTarget);
   const [reelTargetSeeded, setReelTargetSeeded] = useState(false);
   const [insight, setInsight] = useState("");
+  useEffect(() => { setInsight(""); }, [range.from, range.to]);
   const [expandedMix, setExpandedMix] = useState<Set<MechanismKey>>(new Set());
   const toggleMix = (k: MechanismKey) => setExpandedMix(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+
+  // Deep-link from the objection instrument ("View in Content Signals") —
+  // expand and scroll to the matching mechanism card on arrival.
+  const deepLink = useSearch({ strict: false }) as { mechanism?: string };
+  useEffect(() => {
+    const m = deepLink.mechanism;
+    if (!m || !MECHANISM_KEYS.includes(m as MechanismKey)) return;
+    setExpandedMix((prev) => new Set(prev).add(m as MechanismKey));
+    const el = document.getElementById(`mechanism-${m}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [deepLink.mechanism]);
 
   const settingsFn = useServerFn(getWorkspaceSettingsFn);
   const { data: workspaceSettings } = useQuery({
@@ -67,8 +73,8 @@ function ContentSignalsPage() {
 
   const demandFn = useServerFn(contentDemandFn);
   const { data: demand, isLoading, isError: demandError, error: demandErrorObj } = useQuery({
-    queryKey: ["content-demand", days, devBypass],
-    queryFn: () => (devBypass ? Promise.resolve(mockContentDemand()) : demandFn({ data: { days } })),
+    queryKey: ["content-demand", range.from, range.to, devBypass],
+    queryFn: () => (devBypass ? Promise.resolve(mockContentDemand()) : demandFn({ data: { from: range.from, to: range.to } })),
     retry: false,
   });
 
@@ -76,7 +82,7 @@ function ContentSignalsPage() {
   const analyze = useMutation({
     mutationFn: async () => {
       if (devBypass) return withMockDelay(mockContentSystemInsight(demand ?? mockContentDemand()));
-      return analyzeFn({ data: { days } });
+      return analyzeFn({ data: { from: range.from, to: range.to } });
     },
     onSuccess: (r) => setInsight(r.insight),
     onError: (e: Error) => toast.error(e.message),
@@ -114,24 +120,14 @@ function ContentSignalsPage() {
 
   return (
     <>
-      <TopBar title="Content Signals" />
+      <TopBar title="Content Signals" showDateRange />
       <main className="p-4 md:p-6 space-y-5 max-w-[1400px]">
-        <header className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="display-serif text-2xl flex items-center gap-2"><Radar className="h-5 w-5" /> What to post next</h1>
-            <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-              One brain. FAQ video clicks, setting-call objections, client intake answers, VSL drop-off and reel performance all collapse into a single posting mix.
-              Cash inconsistency → unknown posting → untracked performance. Fix tracking, fix everything.
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {RANGES.map(r => (
-              <button key={r.days} onClick={() => { setDays(r.days); setInsight(""); }}
-                className={cn("rounded border px-2 py-1 text-2xs", days === r.days ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40")}>
-                {r.label}
-              </button>
-            ))}
-          </div>
+        <header>
+          <h1 className="display-serif text-2xl flex items-center gap-2"><Radar className="h-5 w-5" /> What to post next</h1>
+          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+            One brain. FAQ video clicks, setting-call objections, client intake answers, VSL drop-off and reel performance all collapse into a single posting mix.
+            Cash inconsistency → unknown posting → untracked performance. Fix tracking, fix everything.
+          </p>
         </header>
 
         {/* Page hero (B1) — presentation-only promotion into a bento hero;
@@ -151,7 +147,7 @@ function ContentSignalsPage() {
         <Card className="p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <div className="text-xs uppercase tracking-wider text-muted-foreground">Recommended mix · last {days}d</div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Recommended mix · {range.from} → {range.to}</div>
               {demand?.insufficientData && (
                 <span className="flex items-center gap-1 rounded bg-[color:var(--color-warning)]/15 px-1.5 py-0.5 text-3xs font-medium uppercase tracking-wide text-[color:var(--color-warning)]" title={`Total signal weight ${demand.totalWeight} is below the configured minimum of ${demand.minTotalWeight} — this mix is a real computed split, not a placeholder, but it's resting on thin signal. Log more FAQ clicks, setter calls, or intakes to sharpen it.`}>
                   <TriangleAlert className="h-3 w-3" /> Limited data
@@ -180,7 +176,7 @@ function ContentSignalsPage() {
                 const kWeight = kDrivers.reduce((s, d) => s + d.weight, 0);
                 const expanded = expandedMix.has(k);
                 return (
-                  <div key={k} className="rounded-md border border-border p-3 space-y-1.5">
+                  <div key={k} id={`mechanism-${k}`} className="rounded-md border border-border p-3 space-y-1.5 scroll-mt-20">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">{MECHANISMS[k].label}</span>
                       <span className="font-mono text-sm">{pct}%</span>
@@ -297,7 +293,7 @@ function ContentSignalsPage() {
         <Card className="p-4 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted-foreground">
-              <Sparkles className="h-3.5 w-3.5" /> AI bottleneck read · last {days}d
+              <Sparkles className="h-3.5 w-3.5" /> AI bottleneck read · {range.from} → {range.to}
             </div>
             <Button size="sm" variant="outline" disabled={analyze.isPending} onClick={() => analyze.mutate()}>
               {analyze.isPending ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Reading…</> : "Analyze the system"}
@@ -308,7 +304,7 @@ function ContentSignalsPage() {
             : <p className="text-xs text-muted-foreground">Merges VSL play/drop-off, FAQ clicks, setting-call objections, intake answers and reel performance into a root-cause chain plus this week's 5-7 reels.</p>}
         </Card>
 
-        <SetterSignals orgId={orgId} days={days} />
+        <SetterSignals orgId={orgId} range={range} />
       </main>
     </>
   );
@@ -361,7 +357,7 @@ function RootCauseChain({ untaggedCount, untrackedCount, totalPosts }: { untagge
   );
 }
 
-function SetterSignals({ orgId, days }: { orgId?: string; days: number }) {
+function SetterSignals({ orgId, range }: { orgId?: string; range: DateRange }) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -369,15 +365,15 @@ function SetterSignals({ orgId, days }: { orgId?: string; days: number }) {
   const [notes, setNotes] = useState("");
 
   const { data: rows } = useQuery({
-    queryKey: ["setter-signals", orgId, days],
+    queryKey: ["setter-signals", orgId, range.from, range.to],
     enabled: !!orgId,
     queryFn: async () => {
-      const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
       const { data, error } = await supabase
         .from("setter_call_signals")
         .select("id, setter_name, call_date, limiting_beliefs, objections, mechanism, ai_summary")
         .eq("org_id", orgId!)
-        .gte("call_date", since)
+        .gte("call_date", range.from)
+        .lte("call_date", range.to)
         .order("call_date", { ascending: false })
         .limit(60);
       if (error) throw error;

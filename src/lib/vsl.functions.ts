@@ -53,10 +53,13 @@ export const deleteVsl = createServerFn({ method: "POST" })
 
 export const listSnapshots = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { vsl_id: string; limit?: number }) => input)
+  .inputValidator((input: { vsl_id: string; limit?: number; from?: string; to?: string }) => input)
   .handler(async ({ data, context }) => {
-    const { data: rows, error } = await (context.supabase as any).from("vsl_metric_snapshots")
+    let q = (context.supabase as any).from("vsl_metric_snapshots")
       .select("*").eq("vsl_id", data.vsl_id).order("captured_at", { ascending: false }).limit(data.limit ?? 60);
+    if (data.from) q = q.gte("captured_at", data.from);
+    if (data.to) q = q.lte("captured_at", data.to);
+    const { data: rows, error } = await q;
     if (error) throw error;
     return rows ?? [];
   });

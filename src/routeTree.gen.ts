@@ -14,6 +14,8 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as DailyWinRouteImport } from './routes/daily-win'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.index'
+import { Route as PcvTokenRouteImport } from './routes/pcv.$token'
+import { Route as AuthenticatedWeeklyReportRouteImport } from './routes/_authenticated.weekly-report'
 import { Route as AuthenticatedVslRouteImport } from './routes/_authenticated.vsl'
 import { Route as AuthenticatedTrafficRouteImport } from './routes/_authenticated.traffic'
 import { Route as AuthenticatedTeamCalendarRouteImport } from './routes/_authenticated.team-calendar'
@@ -30,6 +32,7 @@ import { Route as AuthenticatedInboundDialerRouteImport } from './routes/_authen
 import { Route as AuthenticatedHiringRouteImport } from './routes/_authenticated.hiring'
 import { Route as AuthenticatedFulfillmentRouteImport } from './routes/_authenticated.fulfillment'
 import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated.events'
+import { Route as AuthenticatedEodReportsRouteImport } from './routes/_authenticated.eod-reports'
 import { Route as AuthenticatedDmSetterRouteImport } from './routes/_authenticated.dm-setter'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedCopyRouteImport } from './routes/_authenticated.copy'
@@ -70,6 +73,17 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const PcvTokenRoute = PcvTokenRouteImport.update({
+  id: '/pcv/$token',
+  path: '/pcv/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedWeeklyReportRoute =
+  AuthenticatedWeeklyReportRouteImport.update({
+    id: '/weekly-report',
+    path: '/weekly-report',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedVslRoute = AuthenticatedVslRouteImport.update({
   id: '/vsl',
   path: '/vsl',
@@ -152,6 +166,11 @@ const AuthenticatedFulfillmentRoute =
 const AuthenticatedEventsRoute = AuthenticatedEventsRouteImport.update({
   id: '/events',
   path: '/events',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedEodReportsRoute = AuthenticatedEodReportsRouteImport.update({
+  id: '/eod-reports',
+  path: '/eod-reports',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedDmSetterRoute = AuthenticatedDmSetterRouteImport.update({
@@ -249,6 +268,7 @@ export interface FileRoutesByFullPath {
   '/copy': typeof AuthenticatedCopyRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
+  '/eod-reports': typeof AuthenticatedEodReportsRoute
   '/events': typeof AuthenticatedEventsRoute
   '/fulfillment': typeof AuthenticatedFulfillmentRoute
   '/hiring': typeof AuthenticatedHiringRoute
@@ -265,6 +285,8 @@ export interface FileRoutesByFullPath {
   '/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/vsl': typeof AuthenticatedVslRoute
+  '/weekly-report': typeof AuthenticatedWeeklyReportRoute
+  '/pcv/$token': typeof PcvTokenRoute
   '/sales/inbox': typeof AuthenticatedSalesInboxRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
@@ -285,6 +307,7 @@ export interface FileRoutesByTo {
   '/copy': typeof AuthenticatedCopyRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
+  '/eod-reports': typeof AuthenticatedEodReportsRoute
   '/events': typeof AuthenticatedEventsRoute
   '/fulfillment': typeof AuthenticatedFulfillmentRoute
   '/hiring': typeof AuthenticatedHiringRoute
@@ -301,6 +324,8 @@ export interface FileRoutesByTo {
   '/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/vsl': typeof AuthenticatedVslRoute
+  '/weekly-report': typeof AuthenticatedWeeklyReportRoute
+  '/pcv/$token': typeof PcvTokenRoute
   '/': typeof AuthenticatedIndexRoute
   '/sales/inbox': typeof AuthenticatedSalesInboxRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
@@ -324,6 +349,7 @@ export interface FileRoutesById {
   '/_authenticated/copy': typeof AuthenticatedCopyRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/dm-setter': typeof AuthenticatedDmSetterRoute
+  '/_authenticated/eod-reports': typeof AuthenticatedEodReportsRoute
   '/_authenticated/events': typeof AuthenticatedEventsRoute
   '/_authenticated/fulfillment': typeof AuthenticatedFulfillmentRoute
   '/_authenticated/hiring': typeof AuthenticatedHiringRoute
@@ -340,6 +366,8 @@ export interface FileRoutesById {
   '/_authenticated/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/_authenticated/traffic': typeof AuthenticatedTrafficRoute
   '/_authenticated/vsl': typeof AuthenticatedVslRoute
+  '/_authenticated/weekly-report': typeof AuthenticatedWeeklyReportRoute
+  '/pcv/$token': typeof PcvTokenRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/sales/inbox': typeof AuthenticatedSalesInboxRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
@@ -364,6 +392,7 @@ export interface FileRouteTypes {
     | '/copy'
     | '/dashboard'
     | '/dm-setter'
+    | '/eod-reports'
     | '/events'
     | '/fulfillment'
     | '/hiring'
@@ -380,6 +409,8 @@ export interface FileRouteTypes {
     | '/team-calendar'
     | '/traffic'
     | '/vsl'
+    | '/weekly-report'
+    | '/pcv/$token'
     | '/sales/inbox'
     | '/api/public/typeform'
     | '/sales/contacts/$id'
@@ -400,6 +431,7 @@ export interface FileRouteTypes {
     | '/copy'
     | '/dashboard'
     | '/dm-setter'
+    | '/eod-reports'
     | '/events'
     | '/fulfillment'
     | '/hiring'
@@ -416,6 +448,8 @@ export interface FileRouteTypes {
     | '/team-calendar'
     | '/traffic'
     | '/vsl'
+    | '/weekly-report'
+    | '/pcv/$token'
     | '/'
     | '/sales/inbox'
     | '/api/public/typeform'
@@ -438,6 +472,7 @@ export interface FileRouteTypes {
     | '/_authenticated/copy'
     | '/_authenticated/dashboard'
     | '/_authenticated/dm-setter'
+    | '/_authenticated/eod-reports'
     | '/_authenticated/events'
     | '/_authenticated/fulfillment'
     | '/_authenticated/hiring'
@@ -454,6 +489,8 @@ export interface FileRouteTypes {
     | '/_authenticated/team-calendar'
     | '/_authenticated/traffic'
     | '/_authenticated/vsl'
+    | '/_authenticated/weekly-report'
+    | '/pcv/$token'
     | '/_authenticated/'
     | '/_authenticated/sales/inbox'
     | '/api/public/typeform'
@@ -467,6 +504,7 @@ export interface RootRouteChildren {
   DailyWinRoute: typeof DailyWinRoute
   LoginRoute: typeof LoginRoute
   RequestAccessRoute: typeof RequestAccessRoute
+  PcvTokenRoute: typeof PcvTokenRoute
   ApiPublicTypeformRoute: typeof ApiPublicTypeformRoute
   ApiPublicIngestTokenRoute: typeof ApiPublicIngestTokenRoute
   ApiPublicTwilioEventRoute: typeof ApiPublicTwilioEventRoute
@@ -507,6 +545,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/pcv/$token': {
+      id: '/pcv/$token'
+      path: '/pcv/$token'
+      fullPath: '/pcv/$token'
+      preLoaderRoute: typeof PcvTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/weekly-report': {
+      id: '/_authenticated/weekly-report'
+      path: '/weekly-report'
+      fullPath: '/weekly-report'
+      preLoaderRoute: typeof AuthenticatedWeeklyReportRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/vsl': {
@@ -619,6 +671,13 @@ declare module '@tanstack/react-router' {
       path: '/events'
       fullPath: '/events'
       preLoaderRoute: typeof AuthenticatedEventsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/eod-reports': {
+      id: '/_authenticated/eod-reports'
+      path: '/eod-reports'
+      fullPath: '/eod-reports'
+      preLoaderRoute: typeof AuthenticatedEodReportsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/dm-setter': {
@@ -753,6 +812,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCopyRoute: typeof AuthenticatedCopyRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDmSetterRoute: typeof AuthenticatedDmSetterRoute
+  AuthenticatedEodReportsRoute: typeof AuthenticatedEodReportsRoute
   AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
   AuthenticatedFulfillmentRoute: typeof AuthenticatedFulfillmentRoute
   AuthenticatedHiringRoute: typeof AuthenticatedHiringRoute
@@ -769,6 +829,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedTeamCalendarRoute: typeof AuthenticatedTeamCalendarRoute
   AuthenticatedTrafficRoute: typeof AuthenticatedTrafficRoute
   AuthenticatedVslRoute: typeof AuthenticatedVslRoute
+  AuthenticatedWeeklyReportRoute: typeof AuthenticatedWeeklyReportRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
@@ -783,6 +844,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCopyRoute: AuthenticatedCopyRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDmSetterRoute: AuthenticatedDmSetterRoute,
+  AuthenticatedEodReportsRoute: AuthenticatedEodReportsRoute,
   AuthenticatedEventsRoute: AuthenticatedEventsRoute,
   AuthenticatedFulfillmentRoute: AuthenticatedFulfillmentRoute,
   AuthenticatedHiringRoute: AuthenticatedHiringRoute,
@@ -799,6 +861,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedTeamCalendarRoute: AuthenticatedTeamCalendarRoute,
   AuthenticatedTrafficRoute: AuthenticatedTrafficRoute,
   AuthenticatedVslRoute: AuthenticatedVslRoute,
+  AuthenticatedWeeklyReportRoute: AuthenticatedWeeklyReportRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 
@@ -811,6 +874,7 @@ const rootRouteChildren: RootRouteChildren = {
   DailyWinRoute: DailyWinRoute,
   LoginRoute: LoginRoute,
   RequestAccessRoute: RequestAccessRoute,
+  PcvTokenRoute: PcvTokenRoute,
   ApiPublicTypeformRoute: ApiPublicTypeformRoute,
   ApiPublicIngestTokenRoute: ApiPublicIngestTokenRoute,
   ApiPublicTwilioEventRoute: ApiPublicTwilioEventRoute,

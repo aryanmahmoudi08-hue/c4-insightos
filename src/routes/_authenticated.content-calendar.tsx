@@ -194,7 +194,7 @@ function ContentCalendar() {
                 <div className="font-mono text-4xl font-bold tabular-nums">
                   {monthPieces.filter(p => p.post_format === "long_form" || p.post_format === "long_to_short").length}
                 </div>
-                <div className="mt-1 text-2xs text-muted-foreground">pieces queued this month</div>
+                <div className="mt-1 text-2xs text-muted-foreground">Pieces queued this month</div>
               </div>
             </div>
           </BentoCell>

@@ -131,7 +131,7 @@ function SalesCrm() {
   const filteredContacts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return overview?.contacts ?? [];
-    return (overview?.contacts ?? []).filter((contact) =>
+    return (overview?.contacts ?? []).filter((contact: Contact) =>
       [contact.display_name, contact.primary_email, contact.primary_phone, contact.social_handle, contact.lifecycle_status]
         .filter(Boolean)
         .join(" ")
@@ -141,7 +141,7 @@ function SalesCrm() {
   }, [overview?.contacts, query]);
 
   const pipelineStages = useMemo(() => {
-    return (overview?.pipelines ?? []).flatMap((pipeline) =>
+    return (overview?.pipelines ?? []).flatMap((pipeline: Pipeline) =>
       ((pipeline.crm_pipeline_stages ?? []) as Array<{ id: string; name: string; position: number; probability: number; is_closed_won: boolean; is_closed_lost: boolean }>)
         .sort((a, b) => a.position - b.position)
         .map((stage) => ({ ...stage, pipeline_id: pipeline.id, pipeline_name: pipeline.name })),

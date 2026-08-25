@@ -161,9 +161,9 @@ function CopyOSPage() {
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="generate"><Wand2 className="h-3.5 w-3.5 mr-1.5" />Generate</TabsTrigger>
             <TabsTrigger value="clients"><FileText className="h-3.5 w-3.5 mr-1.5" />Client DNA</TabsTrigger>
-            <TabsTrigger value="swipes"><Search className="h-3.5 w-3.5 mr-1.5" />Swipe library</TabsTrigger>
+            <TabsTrigger value="swipes"><Search className="h-3.5 w-3.5 mr-1.5" />Swipe Library</TabsTrigger>
             <TabsTrigger value="review">Review</TabsTrigger>
-            <TabsTrigger value="angles"><Sparkles className="h-3.5 w-3.5 mr-1.5" />Angle bank</TabsTrigger>
+            <TabsTrigger value="angles"><Sparkles className="h-3.5 w-3.5 mr-1.5" />Angle Bank</TabsTrigger>
           </TabsList>
           <TabsContent value="generate" className="mt-4"><GenerateTab /></TabsContent>
           <TabsContent value="clients" className="mt-4"><ClientsTab /></TabsContent>
@@ -224,7 +224,10 @@ function GenerateTab() {
     enabled: isContent,
     staleTime: 5 * 60_000,
     // requireSupabaseAuth-gated — dev bypass has no real session, so 401s. Use mock demand instead.
-    queryFn: () => (devBypass ? Promise.resolve(mockContentDemand()) : demandFn({ data: { days: 30 } })),
+    // Fixed last-30d window — this page has no date-range control (Part 4 skip
+    // list: content generation isn't itself time-scoped), so it just needs a
+    // reasonably recent demand signal, not the page-selected range.
+    queryFn: () => (devBypass ? Promise.resolve(mockContentDemand()) : demandFn({ data: { from: new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) } })),
   });
 
   // Reset per-category fields when category changes.

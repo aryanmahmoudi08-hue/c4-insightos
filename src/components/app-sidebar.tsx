@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Video, GitBranch, MessageSquare, PhoneCall, Users, BadgeCheck,
   TrendingUp, Sparkles, Settings, LogOut, Bell, Search, Brain, Activity, PhoneIncoming,
   ChevronDown, ChevronsLeft, ChevronsRight, Briefcase, UserPlus, Menu, X, Wand2, BookOpen, Layers, CalendarDays,
-  ShieldCheck, Plug, Sun, Moon, Radar, Command,
+  ShieldCheck, Plug, Sun, Moon, Radar, Command, FileText, ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,30 +27,36 @@ type NavItem = {
   search?: Record<string, string>;
 };
 
-const TOP_NAV: NavItem[] = [
+// MAIN — bare top items, no section header (unchanged shape from before the
+// 7-section reorg; Sentinel/AI Insights joins Main Hub here since both are
+// workspace-wide entry points, not tied to a single function).
+const MAIN_NAV: NavItem[] = [
   { to: "/dashboard", label: "Main Hub", icon: LayoutDashboard },
+  { to: "/insights", label: "C4 Sentinel", icon: Sparkles },
 ];
 
-// Reps sub-group inside Sales Tracking
+// Reps sub-group inside Sales
 const REPS_NAV: NavItem[] = [
   { to: "/dm-setter", label: "DM Setter", icon: MessageSquare },
   { to: "/inbound-dialer", label: "Inbound Dialer", icon: PhoneIncoming },
   { to: "/closer", label: "Closer", icon: PhoneCall },
 ];
 
-// Sales Tracking dropdown — Leads + Reps + the rest
+// SALES — collapsible dropdown: Leads + EOD Reports + Reps sub-dropdown.
 const SALES_NAV: NavItem[] = [
   { to: "/sales", label: "Sales CRM", icon: Briefcase },
   { to: "/leads", label: "Legacy Leads", icon: Users },
-  { to: "/outreach", label: "Messaging (Email & SMS)", icon: MessageSquare },
+  { to: "/eod-reports", label: "EOD Reports", icon: ClipboardCheck },
+];
+
+// TEAM — flat section: roster/people/hiring, not revenue-pipeline tools.
+const TEAM_NAV: NavItem[] = [
   { to: "/team", label: "Team Members", icon: Users },
   { to: "/team-calendar", label: "Team Calendars", icon: CalendarDays },
   { to: "/hiring", label: "Hiring", icon: UserPlus },
-  { to: "/attribution", label: "Attribution", icon: GitBranch },
-  { to: "/traffic", label: "Traffic", icon: TrendingUp },
 ];
 
-// Generate sub-dropdown inside CopyOS
+// Generate sub-dropdown inside CopyOS (nested inside Marketing)
 const COPY_GENERATE_NAV: NavItem[] = [
   { to: "/copy", label: "Content", icon: Video, search: { tab: "generate", cat: "content" } },
   { to: "/copy", label: "Long-form", icon: BookOpen, search: { tab: "generate", cat: "long" } },
@@ -58,38 +64,51 @@ const COPY_GENERATE_NAV: NavItem[] = [
   { to: "/sequences", label: "Story Sequences", icon: Layers },
 ];
 
-// ContentOS — the client-facing posting engine (separate from CopyOS generation)
-const CONTENT_OS_NAV: NavItem[] = [
+// CopyOS sub-dropdown inside Marketing (excluding the nested Generate)
+const COPY_OS_NAV: NavItem[] = [
+  { to: "/copy", label: "Review", icon: BadgeCheck, search: { tab: "review" } },
+  { to: "/copy", label: "Angle Bank", icon: Sparkles, search: { tab: "angles" } },
+  { to: "/copy", label: "Swipe Library", icon: Activity, search: { tab: "swipes" } },
+  { to: "/copy", label: "Client DNA", icon: Users, search: { tab: "clients" } },
+];
+
+// MARKETING — collapsible dropdown: the client-facing content engine, the
+// CopyOS generation suite, and every channel/attribution tool. ReachOS lands
+// here later per its own project's explicit instruction.
+const MARKETING_CONTENT_NAV: NavItem[] = [
   { to: "/content-calendar", label: "Content Calendar", icon: CalendarDays },
   { to: "/content", label: "Content Intelligence", icon: Video },
   { to: "/content-signals", label: "Content Signals", icon: Radar },
 ];
-
-// CopyOS top-level items (excluding the nested Generate)
-const COPY_OS_NAV: NavItem[] = [
-  { to: "/copy", label: "Review", icon: BadgeCheck, search: { tab: "review" } },
-  { to: "/copy", label: "Angle bank", icon: Sparkles, search: { tab: "angles" } },
-  { to: "/copy", label: "Swipe library", icon: Activity, search: { tab: "swipes" } },
-  { to: "/copy", label: "Client DNA", icon: Users, search: { tab: "clients" } },
+const MARKETING_CHANNELS_NAV: NavItem[] = [
+  { to: "/vsl", label: "VSL Analytics", icon: Video },
+  { to: "/attribution", label: "Attribution", icon: GitBranch },
+  { to: "/traffic", label: "Traffic", icon: TrendingUp },
+  { to: "/outreach", label: "Messaging (Email & SMS)", icon: MessageSquare },
 ];
 
-
-const FULFILLMENT_NAV: NavItem[] = [
+// CLIENTS — flat section: fulfillment/retention, not sales pipeline.
+const CLIENTS_NAV: NavItem[] = [
   { to: "/clients", label: "Clients", icon: BadgeCheck },
   { to: "/onboarding", label: "Onboarding", icon: Brain },
   { to: "/fulfillment", label: "Client Results", icon: BadgeCheck },
-  { to: "/vsl", label: "VSL Analytics", icon: Video },
 ];
 
-const BOTTOM_NAV: NavItem[] = [
-  { to: "/insights", label: "AI Insights", icon: Sparkles },
+// REPORTING — flat section: cross-cutting digests, not an operational tool.
+const REPORTING_NAV: NavItem[] = [
+  { to: "/weekly-report", label: "Weekly Report", icon: FileText },
+];
+
+// SYSTEM — flat section: webhook/event plumbing + admin-only integrations,
+// alongside the existing always-visible Settings/Access control.
+const SYSTEM_NAV: NavItem[] = [
   { to: "/events", label: "Event Bus", icon: Activity },
 ];
 
 // Routes a non-manager (setter/closer) is allowed to see.
 const RESTRICTED_ALLOW = new Set([
   "/dashboard", "/sales", "/leads", "/team", "/team-calendar", "/dm-setter", "/inbound-dialer", "/closer",
-  "/clients", "/onboarding", "/fulfillment", "/vsl", "/content-calendar", "/settings",
+  "/eod-reports", "/clients", "/onboarding", "/fulfillment", "/vsl", "/content-calendar", "/settings",
 ]);
 
 export function AppSidebar() {
@@ -102,23 +121,25 @@ export function AppSidebar() {
   const filterByRole = (items: NavItem[]) =>
     canManage ? items : items.filter(it => RESTRICTED_ALLOW.has(it.to));
 
+  const mainItems = filterByRole(MAIN_NAV);
   const repsItems = filterByRole(REPS_NAV);
   const salesItems = filterByRole(SALES_NAV);
-  const fulfillmentItems = filterByRole(FULFILLMENT_NAV);
-  const bottomItems = filterByRole(BOTTOM_NAV);
+  const teamItems = filterByRole(TEAM_NAV);
+  const marketingContentItems = filterByRole(MARKETING_CONTENT_NAV);
+  const marketingChannelsItems = filterByRole(MARKETING_CHANNELS_NAV);
   const copyItems = filterByRole(COPY_OS_NAV);
   const copyGenItems = filterByRole(COPY_GENERATE_NAV);
-  const contentItems = filterByRole(CONTENT_OS_NAV);
+  const clientsItems = filterByRole(CLIENTS_NAV);
+  const reportingItems = filterByRole(REPORTING_NAV);
+  const systemItems = filterByRole(SYSTEM_NAV);
 
   const repsActive = repsItems.some(it => loc.pathname.startsWith(it.to));
   const salesActive = repsActive || salesItems.some(it => loc.pathname.startsWith(it.to));
-  const contentActive = contentItems.some(it => loc.pathname.startsWith(it.to));
   const copyActive = loc.pathname.startsWith("/copy");
   const generateActive = loc.pathname.startsWith("/copy");
 
   const [salesOpen, setSalesOpen] = useState(salesActive);
   const [repsOpen, setRepsOpen] = useState(repsActive);
-  const [contentOpen, setContentOpen] = useState(contentActive);
   const [copyOpen, setCopyOpen] = useState(copyActive);
   const [genOpen, setGenOpen] = useState(generateActive);
 
@@ -238,12 +259,14 @@ export function AppSidebar() {
             <X className="h-4 w-4" />
           </button>
         </div>
-        <nav className="flex-1 overflow-y-auto p-2 space-y-1">
-          {TOP_NAV.map(it => renderItem(it))}
+        <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+          {/* MAIN — bare, no section header (Main Hub + AI Insights/Sentinel) */}
+          {mainItems.map(it => renderItem(it))}
 
+          {/* SALES — Leads + EOD Reports + Reps sub-dropdown */}
           {(salesItems.length > 0 || repsItems.length > 0) && (
             <>
-              {sectionBtn("Sales Tracking", Briefcase, salesOpen, salesActive, (next) => expandSection(setSalesOpen, next))}
+              {sectionBtn("Sales", Briefcase, salesOpen, salesActive, (next) => expandSection(setSalesOpen, next))}
               {salesOpen && !collapsed && (
                 <div className="space-y-0.5">
                   {/* Sales CRM is the primary operating surface; Legacy Leads stays available below for a safe transition. */}
@@ -266,58 +289,72 @@ export function AppSidebar() {
             </>
           )}
 
-          {contentItems.length > 0 && (
+          {/* TEAM — roster/calendar/hiring */}
+          {teamItems.length > 0 && (
             <>
-              {sectionBtn("ContentOS", CalendarDays, contentOpen, contentActive, (next) => expandSection(setContentOpen, next))}
-              {contentOpen && !collapsed && (
-                <div className="space-y-0.5">
-                  {contentItems.map(it => renderItem(it, true, 1))}
-                </div>
-              )}
+              <div className={cn("mt-2 border-t border-sidebar-border/60 pt-3 pb-1 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "Team"}</div>
+              {teamItems.map(it => renderItem(it))}
             </>
           )}
 
-
-          {copyItems.length > 0 && (
+          {/* MARKETING — flat header, same pattern as Team/Clients/Reporting/
+              System (a bordered, non-interactive label, not a collapsible
+              button) so it reads as a co-equal top-level section instead of
+              looking like it belongs to whichever section happens to sit
+              above it. CopyOS stays its own nested sub-dropdown *within*
+              this flat section — same relationship Reps has to Sales. */}
+          {(marketingContentItems.length > 0 || copyItems.length > 0 || marketingChannelsItems.length > 0) && (
             <>
-              {sectionBtn("CopyOS", Sparkles, copyOpen, copyActive, (next) => expandSection(setCopyOpen, next))}
-              {copyOpen && !collapsed && (
-                <div className="space-y-0.5">
-                  {copyGenItems.length > 0 && (
-                    <>
-                      {sectionBtn("Generate", Wand2, genOpen, generateActive && !copyItems.some(it => {
-                        const sObj = (loc.search ?? {}) as Record<string, unknown>;
-                        return it.search ? Object.entries(it.search).every(([k, v]) => String(sObj[k] ?? "") === v) : false;
-                      }), (next) => expandSection(setGenOpen, next), 1)}
-                      {genOpen && (
-                        <div className="space-y-0.5">
-                          {copyGenItems.map(it => renderItem(it, true, 2))}
-                        </div>
+              <div className={cn("mt-2 border-t border-sidebar-border/60 pt-3 pb-1 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "Marketing"}</div>
+              {marketingContentItems.map(it => renderItem(it))}
+              {copyItems.length > 0 && (
+                <>
+                  {sectionBtn("CopyOS", Sparkles, copyOpen, copyActive, (next) => expandSection(setCopyOpen, next))}
+                  {copyOpen && !collapsed && (
+                    <div className="space-y-0.5">
+                      {copyGenItems.length > 0 && (
+                        <>
+                          {sectionBtn("Generate", Wand2, genOpen, generateActive && !copyItems.some(it => {
+                            const sObj = (loc.search ?? {}) as Record<string, unknown>;
+                            return it.search ? Object.entries(it.search).every(([k, v]) => String(sObj[k] ?? "") === v) : false;
+                          }), (next) => expandSection(setGenOpen, next), 1)}
+                          {genOpen && (
+                            <div className="space-y-0.5">
+                              {copyGenItems.map(it => renderItem(it, true, 2))}
+                            </div>
+                          )}
+                        </>
                       )}
-                    </>
+                      {copyItems.map(it => renderItem(it, true, 1))}
+                    </div>
                   )}
-                  {copyItems.map(it => renderItem(it, true, 1))}
-                </div>
+                </>
               )}
+              {marketingChannelsItems.map(it => renderItem(it))}
             </>
           )}
 
-          {fulfillmentItems.length > 0 && (
+          {/* CLIENTS — fulfillment/retention */}
+          {clientsItems.length > 0 && (
             <>
-              <div className={cn("mt-3 border-t border-sidebar-border/60 pt-3 pb-1.5 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/55", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "Fulfillment"}</div>
-              {fulfillmentItems.map(it => renderItem(it))}
-            </>
-          )}
-          {bottomItems.length > 0 && (
-            <>
-              <div className={cn("mt-3 border-t border-sidebar-border/60 pt-3 pb-1.5 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/55", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "Ops"}</div>
-              {bottomItems.map(it => renderItem(it))}
+              <div className={cn("mt-2 border-t border-sidebar-border/60 pt-3 pb-1 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "Clients"}</div>
+              {clientsItems.map(it => renderItem(it))}
             </>
           )}
 
-          <div className={cn("mt-3 border-t border-sidebar-border/60 pt-3 pb-1.5 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/55", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "General"}</div>
+          {/* REPORTING — cross-cutting digests */}
+          {reportingItems.length > 0 && (
+            <>
+              <div className={cn("mt-2 border-t border-sidebar-border/60 pt-3 pb-1 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "Reporting"}</div>
+              {reportingItems.map(it => renderItem(it))}
+            </>
+          )}
+
+          {/* SYSTEM — event/webhook plumbing + admin-only integrations + always-visible settings */}
+          <div className={cn("mt-2 border-t border-sidebar-border/60 pt-3 pb-1 text-3xs font-bold uppercase tracking-[0.14em] text-muted-foreground/50", collapsed ? "px-0 text-center" : "px-2.5")}>{collapsed ? "—" : "System"}</div>
+          {systemItems.map(it => renderItem(it))}
           {renderItem({ to: "/settings", label: "Settings", icon: Settings })}
-          {isAdmin && renderItem({ to: "/permissions", label: "Access control", icon: ShieldCheck })}
+          {isAdmin && renderItem({ to: "/permissions", label: "Access Control", icon: ShieldCheck })}
           {isAdmin && renderItem({ to: "/connectors", label: "Connectors", icon: Plug })}
         </nav>
         <div className="border-t border-sidebar-border p-2 space-y-1">
@@ -367,12 +404,12 @@ export function TopBar({ title, subtitle, showDateRange = false }: { title: stri
     nav({ to: "/clients", search: { q: term } as never });
   };
   return (
-    <div className="glass sticky top-0 z-20 border-b px-4 py-3.5 md:px-7">
+    <div className="glass-header sticky top-8 z-20 border-b px-4 md:px-6 py-4">
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 pl-10 md:pl-0">
-          <div className="eyebrow">— {subtitle ? "Dossier" : "Overview"}</div>
-          <h1 className="display-serif mt-1 truncate text-2xl leading-none md:text-3xl">{title}</h1>
-          {subtitle && <p className="mt-1.5 hidden max-w-2xl text-xs leading-relaxed text-muted-foreground sm:block">{subtitle}</p>}
+          <div className="eyebrow">— Overview</div>
+          <h1 className="display-serif text-xl md:text-2xl leading-none mt-1 truncate">{title}</h1>
+          {subtitle && <p className="mt-1.5 text-xs text-muted-foreground hidden sm:block">{subtitle}</p>}
         </div>
         <div className="flex items-center gap-2">
           <form onSubmit={submitSearch} className="relative hidden md:block">

@@ -7,6 +7,7 @@
  */
 
 import type { MechanismKey } from "@/lib/content-mechanisms";
+import type { WeeklyReport } from "@/lib/weekly-report.server";
 
 export const DEV_BYPASS_ORG_ID = "aaaaaaaa-0000-4000-8000-000000000001";
 
@@ -19,29 +20,68 @@ export const DEV_BYPASS_ORG = {
 const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : null);
 
 type Period = {
-  cash: number; paymentsCash: number; callsCash: number; setterCash: number;
-  newLeads: number; totalCalls: number; showed: number; offers: number; closed: number;
-  contractValue: number; views: number; contentLeads: number;
+  cash: number;
+  paymentsCash: number;
+  callsCash: number;
+  setterCash: number;
+  newLeads: number;
+  totalCalls: number;
+  showed: number;
+  offers: number;
+  closed: number;
+  contractValue: number;
+  views: number;
+  contentLeads: number;
 };
 
 const MOCK_CURR: Period = {
-  cash: 4_250_000, paymentsCash: 3_000_000, callsCash: 1_250_000, setterCash: 0,
-  newLeads: 46, totalCalls: 24, showed: 18, offers: 14, closed: 8,
-  contractValue: 9_600_000, views: 184_000, contentLeads: 22,
+  cash: 4_250_000,
+  paymentsCash: 3_000_000,
+  callsCash: 1_250_000,
+  setterCash: 0,
+  newLeads: 46,
+  totalCalls: 24,
+  showed: 18,
+  offers: 14,
+  closed: 8,
+  contractValue: 9_600_000,
+  views: 184_000,
+  contentLeads: 22,
 };
 
 const MOCK_PREV: Period = {
-  cash: 3_650_000, paymentsCash: 2_600_000, callsCash: 1_050_000, setterCash: 0,
-  newLeads: 39, totalCalls: 20, showed: 15, offers: 11, closed: 6,
-  contractValue: 7_800_000, views: 151_000, contentLeads: 18,
+  cash: 3_650_000,
+  paymentsCash: 2_600_000,
+  callsCash: 1_050_000,
+  setterCash: 0,
+  newLeads: 39,
+  totalCalls: 20,
+  showed: 15,
+  offers: 11,
+  closed: 6,
+  contractValue: 7_800_000,
+  views: 151_000,
+  contentLeads: 18,
 };
 
 /** Smooth upward-trending series with light noise, seeded so it doesn't jitter between renders. */
-function mockSeries(from: string, to: string, targetCash: number, targetLeads: number, targetViews: number) {
-  const days = Math.max(1, Math.min(60, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400e3) + 1));
+function mockSeries(
+  from: string,
+  to: string,
+  targetCash: number,
+  targetLeads: number,
+  targetViews: number,
+) {
+  const days = Math.max(
+    1,
+    Math.min(60, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400e3) + 1),
+  );
   const fromTime = new Date(from).getTime();
   let seed = 42;
-  const rand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  const rand = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
   return Array.from({ length: days }, (_, i) => {
     const d = new Date(fromTime + i * 86400e3).toISOString().slice(5, 10);
     const trend = (i + 1) / days;
@@ -55,7 +95,10 @@ function mockSeries(from: string, to: string, targetCash: number, targetLeads: n
       cash: Math.round((targetCash / days) * trend * wobble),
       leads: Math.round((targetLeads / days) * wobble),
       views: Math.round((targetViews / days) * wobble),
-      calls, showed, offers, closed,
+      calls,
+      showed,
+      offers,
+      closed,
       contractValue: Math.round(closed * 1_200_000 * wobble),
     };
   });
@@ -64,46 +107,87 @@ function mockSeries(from: string, to: string, targetCash: number, targetLeads: n
 const MOCK_FUNNEL = [
   { stage: "Views", value: MOCK_CURR.views, conv: null as string | null },
   { stage: "Leads", value: MOCK_CURR.newLeads, conv: pct(MOCK_CURR.newLeads, MOCK_CURR.views) },
-  { stage: "Booked", value: MOCK_CURR.totalCalls, conv: pct(MOCK_CURR.totalCalls, MOCK_CURR.newLeads) },
+  {
+    stage: "Booked",
+    value: MOCK_CURR.totalCalls,
+    conv: pct(MOCK_CURR.totalCalls, MOCK_CURR.newLeads),
+  },
   { stage: "Showed", value: MOCK_CURR.showed, conv: pct(MOCK_CURR.showed, MOCK_CURR.totalCalls) },
   { stage: "Offers", value: MOCK_CURR.offers, conv: pct(MOCK_CURR.offers, MOCK_CURR.showed) },
   { stage: "Closed", value: MOCK_CURR.closed, conv: pct(MOCK_CURR.closed, MOCK_CURR.offers) },
 ];
 
 const MOCK_CLOSERS = [
-  { name: "Jordan Blake", calls: 9, closes: 4, cash: 2_100_000 },
-  { name: "Sam Rivera", calls: 7, closes: 3, cash: 1_450_000 },
-  { name: "Casey Nguyen", calls: 5, closes: 1, cash: 520_000 },
+  { name: "Jordan Blake", calls: 9, closes: 4, cash: 2_100_000, revenue: 4_800_000 },
+  { name: "Sam Rivera", calls: 7, closes: 3, cash: 1_450_000, revenue: 3_300_000 },
+  { name: "Casey Nguyen", calls: 5, closes: 1, cash: 520_000, revenue: 1_200_000 },
 ];
 
 const MOCK_SETTERS = [
-  { name: "Taylor Brooks", sets: 14, closes: 5, cash: 1_850_000 },
-  { name: "Morgan Lee", sets: 11, closes: 3, cash: 980_000 },
-  { name: "Alex Kim", sets: 8, closes: 2, cash: 610_000 },
+  { name: "Taylor Brooks", sets: 14, closes: 5, cash: 1_850_000, revenue: 4_200_000 },
+  { name: "Morgan Lee", sets: 11, closes: 3, cash: 980_000, revenue: 2_250_000 },
+  { name: "Alex Kim", sets: 8, closes: 2, cash: 610_000, revenue: 1_400_000 },
 ];
 
 const MOCK_ALERTS = [
-  { id: "mock-alert-1", severity: "warning", title: "Show rate dipped below 70% this week", created_at: new Date().toISOString() },
-  { id: "mock-alert-2", severity: "info", title: "3 leads have gone 5+ days without a follow-up", created_at: new Date(Date.now() - 86400e3).toISOString() },
+  {
+    id: "mock-alert-1",
+    severity: "warning",
+    title: "Show rate dipped below 70% this week",
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: "mock-alert-2",
+    severity: "info",
+    title: "3 leads have gone 5+ days without a follow-up",
+    created_at: new Date(Date.now() - 86400e3).toISOString(),
+  },
 ];
 
 const MOCK_INSIGHTS = [
   {
-    id: "mock-insight-1", module: "content", confidence: 0.82, created_at: new Date().toISOString(),
+    id: "mock-insight-1",
+    module: "content",
+    confidence: 0.82,
+    created_at: new Date().toISOString(),
     title: "Authority-hook reels are outperforming lifestyle content 2:1",
     body: "Reels tagged with an authority hook + social-proof CTA are converting to qualified calls at roughly 2x the rate of lifestyle-angle posts over this range.",
   },
   {
-    id: "mock-insight-2", module: "sales", confidence: 0.71, created_at: new Date(Date.now() - 3600e3).toISOString(),
+    id: "mock-insight-2",
+    module: "sales",
+    confidence: 0.71,
+    created_at: new Date(Date.now() - 3600e3).toISOString(),
     title: "Price objection is the top reason for no-close on shown calls",
     body: "Price is logged as the primary objection on the largest share of shown-but-not-closed calls this period — consider a pre-call ROI asset.",
   },
 ];
 
 const MOCK_CONTENT_ATTRIBUTION = [
-  { content_id: "mock-content-1", cash_collected_cents: 850_000, leads_generated: 12, closes: 3, views: 42_000, content_pieces: { title: "The $50K Month Breakdown", platform: "Reel" } },
-  { content_id: "mock-content-2", cash_collected_cents: 610_000, leads_generated: 9, closes: 2, views: 31_500, content_pieces: { title: "Why Most Coaches Undercharge", platform: "YouTube Short" } },
-  { content_id: "mock-content-3", cash_collected_cents: 340_000, leads_generated: 7, closes: 1, views: 18_200, content_pieces: { title: "Client Win: 0 to $20K in 90 Days", platform: "Story Sequence" } },
+  {
+    content_id: "mock-content-1",
+    cash_collected_cents: 850_000,
+    leads_generated: 12,
+    closes: 3,
+    views: 42_000,
+    content_pieces: { title: "The $50K Month Breakdown", platform: "Reel" },
+  },
+  {
+    content_id: "mock-content-2",
+    cash_collected_cents: 610_000,
+    leads_generated: 9,
+    closes: 2,
+    views: 31_500,
+    content_pieces: { title: "Why Most Coaches Undercharge", platform: "YouTube Short" },
+  },
+  {
+    content_id: "mock-content-3",
+    cash_collected_cents: 340_000,
+    leads_generated: 7,
+    closes: 1,
+    views: 18_200,
+    content_pieces: { title: "Client Win: 0 to $20K in 90 Days", platform: "Story Sequence" },
+  },
 ];
 
 export function mockDashboardStats(from: string, to: string) {
@@ -150,9 +234,24 @@ export function mockContentDemand(): {
     minTotalWeight: 15,
     weights: { educational: 42, credibility: 36, authoritative: 18, relatability: 24 },
     drivers: [
-      { source: "FAQ clicks", detail: "\"Does this actually work?\" · 38 clicks", mechanism: "credibility", weight: 76 },
-      { source: "Setting call", detail: "Jordan Blake · 2026-08-04 · \"I've tried this before\"", mechanism: "educational", weight: 12 },
-      { source: "Onboarding intake", detail: "Decision moment: \"saw the exact system breakdown\"", mechanism: "educational", weight: 9 },
+      {
+        source: "FAQ clicks",
+        detail: '"Does this actually work?" · 38 clicks',
+        mechanism: "credibility",
+        weight: 76,
+      },
+      {
+        source: "Setting call",
+        detail: 'Jordan Blake · 2026-08-04 · "I\'ve tried this before"',
+        mechanism: "educational",
+        weight: 12,
+      },
+      {
+        source: "Onboarding intake",
+        detail: 'Decision moment: "saw the exact system breakdown"',
+        mechanism: "educational",
+        weight: 9,
+      },
     ],
     counts: { faq: 6, setter_calls: 14, intakes: 9, reels: 21 },
   };
@@ -161,7 +260,10 @@ export function mockContentDemand(): {
 /** Mirrors WeeklyCheck from content-signals.server.ts (not imported directly,
  * same server-only-code reason as mockContentDemand above). */
 export function mockWeeklyContentCheck(): {
-  per: Record<string, { count: number; dms: number; calls: number; cash: number; views: number; withMetrics: number }>;
+  per: Record<
+    string,
+    { count: number; dms: number; calls: number; cash: number; views: number; withMetrics: number }
+  >;
   reels: number;
   missing: MechanismKey[];
   untracked: number;
@@ -184,24 +286,108 @@ export function mockWeeklyContentCheck(): {
     untracked: 1,
     best: "credibility",
     worst: "authoritative",
-    worstDiagnosis: { label: "Not enough data", detail: "[MOCK] Not enough data to compare this mechanism's reel posts yet — 1 posted, need at least 6 with metrics logged to compare against its own baseline.", verdictsSampled: 1 },
+    worstDiagnosis: {
+      label: "Not enough data",
+      detail:
+        "[MOCK] Not enough data to compare this mechanism's reel posts yet — 1 posted, need at least 6 with metrics logged to compare against its own baseline.",
+      verdictsSampled: 1,
+    },
     total: 6,
   };
 }
 
 export function mockHubMetrics() {
   return {
-    dials: 640, connections: 148, contacted: 210, qualified: 76, linksSent: 54,
-    visits: 3_200, plays: 2_100, viewers: 1_780, engagement: 61.4,
-    apps: 46, leads: 46, completion: 0.78, quality: 3.9, precallWatched: 28,
-    booked: 24, showed: 18, closed: 8,
-    wins: 32, financialWins: 9, winCash: 1_450_000, avgEnergy: 7.2,
-    activeClients: 14, avgHealth: 78,
+    dials: 640,
+    connections: 148,
+    contacted: 210,
+    qualified: 76,
+    linksSent: 54,
+    visits: 3_200,
+    plays: 2_100,
+    viewers: 1_780,
+    engagement: 61.4,
+    apps: 46,
+    leads: 46,
+    completion: 0.78,
+    quality: 3.9,
+    precallWatched: 28,
+    booked: 24,
+    showed: 18,
+    closed: 8,
+    wins: 32,
+    financialWins: 9,
+    winCash: 1_450_000,
+    avgEnergy: 7.2,
+    activeClients: 14,
+    avgHealth: 78,
     dialSpark: [64, 71, 58, 82, 90, 77, 95],
     visitSpark: [280, 310, 295, 340, 402, 388, 420],
     playSpark: [180, 205, 190, 230, 268, 250, 290],
     appSpark: [4, 6, 5, 7, 9, 6, 9],
   };
+}
+
+/** Raw application-submission rows for the Main Hub's "App → Booked" rate —
+ * confirmed real bug: reusing `mockLeads()` (a fixed 12-row roster built for
+ * the Leads CRM page's own preview) as the denominator against `mockCalls()`'s
+ * 65 booked rows produced a nonsense 541.7% rate — two unrelated mocks at
+ * unrelated scales divided against each other. Sized here (90 rows) to be
+ * genuinely comparable to `mockCalls()`'s booked total so the ratio reads as
+ * a believable rate, not coupled to the Leads CRM roster's count. */
+export function mockApplicationRows() {
+  const now = Date.now();
+  return Array.from({ length: 90 }, (_, i) => ({
+    created_at: new Date(now - (i % 12) * 86400e3 - (i % 6) * 3600e3).toISOString(),
+    application_data: {},
+    intent_score: 0,
+    priority: null as string | null,
+    precall_video_watched: i % 3 === 0,
+  }));
+}
+
+/** Raw org-wide `setter_activity`-shaped rows (dials/connections/contacted/
+ * qualified/links sent) for the Main Hub's Rep Efficiency band — real
+ * day-bucketed rows (not a pre-aggregated total) so `dailySeries`/
+ * `seriesRatePoints` can build genuine per-day rate trend lines under Dev
+ * Bypass, same as `mockCalls()` already does for the rep dashboards. */
+export function mockRepEfficiencyRows() {
+  const now = Date.now();
+  return Array.from({ length: 7 }, (_, i) => {
+    const dials = 70 + i * 6 + (i % 3) * 4;
+    const connections = Math.round(dials * (0.19 + (i % 4) * 0.015));
+    const leads_contacted = Math.round(connections * 1.3);
+    const qualified_convos = Math.round(leads_contacted * (0.32 + (i % 3) * 0.03));
+    const links_sent = Math.round(qualified_convos * 1.6);
+    return {
+      activity_date: new Date(now - (6 - i) * 86400e3).toISOString().slice(0, 10),
+      dials,
+      connections,
+      leads_contacted,
+      qualified_convos,
+      links_sent,
+    };
+  });
+}
+
+/** Raw `daily_wins`-shaped rows for the Main Hub's Client Momentum band. */
+export function mockDailyWinsRows() {
+  const now = Date.now();
+  const types = [
+    ["mindset"],
+    ["financial"],
+    ["mindset", "financial"],
+    ["habit"],
+    ["financial"],
+    ["mindset"],
+    ["habit", "financial"],
+  ];
+  return Array.from({ length: 7 }, (_, i) => ({
+    win_date: new Date(now - (6 - i) * 86400e3).toISOString().slice(0, 10),
+    win_types: types[i % types.length],
+    financial_amount_cents: types[i % types.length].includes("financial") ? 40_000 + i * 15_000 : 0,
+    energy_score: 6 + (i % 4),
+  }));
 }
 
 /* ------------------------------------------------------------------ *
@@ -210,12 +396,66 @@ export function mockHubMetrics() {
  * ------------------------------------------------------------------ */
 
 const MOCK_HOOKS = [
-  { title: "The $50K Month Breakdown", platform: "reel", mechanism: "educational" as MechanismKey, variation: "value", views: 84_200, retention: 61, leads: 22, cash: 1_240_000 },
-  { title: "Why Most Coaches Undercharge", platform: "youtube_short" as const, mechanism: "authoritative" as MechanismKey, variation: "industry_leader", views: 52_800, retention: 48, leads: 14, cash: 610_000 },
-  { title: "Client Win: 0 to $20K in 90 Days", platform: "story_sequence" as const, mechanism: "credibility" as MechanismKey, variation: "case_study", views: 31_500, retention: 71, leads: 18, cash: 980_000 },
-  { title: "POV: Meeting Your Mentor After a Year", platform: "reel" as const, mechanism: "authoritative" as MechanismKey, variation: "attention_lifestyle", views: 44_100, retention: 39, leads: 6, cash: 0 },
-  { title: "How I Went From Broke to $40K/mo", platform: "reel" as const, mechanism: "relatability" as MechanismKey, variation: "storytelling", views: 67_900, retention: 58, leads: 19, cash: 720_000 },
-  { title: "The Exact DM Script That Books Calls", platform: "carousel" as const, mechanism: "educational" as MechanismKey, variation: "problem_solution", views: 28_300, retention: 55, leads: 11, cash: 340_000 },
+  {
+    title: "The $50K Month Breakdown",
+    platform: "reel",
+    mechanism: "educational" as MechanismKey,
+    variation: "value",
+    views: 84_200,
+    retention: 61,
+    leads: 22,
+    cash: 1_240_000,
+  },
+  {
+    title: "Why Most Coaches Undercharge",
+    platform: "youtube_short" as const,
+    mechanism: "authoritative" as MechanismKey,
+    variation: "industry_leader",
+    views: 52_800,
+    retention: 48,
+    leads: 14,
+    cash: 610_000,
+  },
+  {
+    title: "Client Win: 0 to $20K in 90 Days",
+    platform: "story_sequence" as const,
+    mechanism: "credibility" as MechanismKey,
+    variation: "case_study",
+    views: 31_500,
+    retention: 71,
+    leads: 18,
+    cash: 980_000,
+  },
+  {
+    title: "POV: Meeting Your Mentor After a Year",
+    platform: "reel" as const,
+    mechanism: "authoritative" as MechanismKey,
+    variation: "attention_lifestyle",
+    views: 44_100,
+    retention: 39,
+    leads: 6,
+    cash: 0,
+  },
+  {
+    title: "How I Went From Broke to $40K/mo",
+    platform: "reel" as const,
+    mechanism: "relatability" as MechanismKey,
+    variation: "storytelling",
+    views: 67_900,
+    retention: 58,
+    leads: 19,
+    cash: 720_000,
+  },
+  {
+    title: "The Exact DM Script That Books Calls",
+    platform: "carousel" as const,
+    mechanism: "educational" as MechanismKey,
+    variation: "problem_solution",
+    views: 28_300,
+    retention: 55,
+    leads: 11,
+    cash: 340_000,
+  },
 ];
 
 export function mockContentPieces() {
@@ -233,15 +473,112 @@ export function mockContentPieces() {
     pipeline_status: i < 4 ? "posted" : i === 4 ? "ready_to_post" : "in_review",
     mechanism: h.mechanism,
     variation: h.variation,
-    content_metrics: [{
-      views: h.views, likes: Math.round(h.views * 0.04), leads_generated: h.leads,
-      closes: Math.round(h.leads * 0.25), cash_collected_cents: h.cash, hook_retention_pct: h.retention,
-    }],
+    content_metrics: [
+      {
+        views: h.views,
+        likes: Math.round(h.views * 0.04),
+        leads_generated: h.leads,
+        closes: Math.round(h.leads * 0.25),
+        cash_collected_cents: h.cash,
+        hook_retention_pct: h.retention,
+      },
+    ],
   }));
 }
 
 export function mockContentFunnel() {
   return { views: 308_800, leads: 90, calls: 34, closes: 12, cash: 3_890_000 };
+}
+
+/** Top revenue-driving content paths, for the Attribution page's Sankey +
+ * table preview — reuses MOCK_HOOKS' real title/platform/views/leads/cash,
+ * closes derived as a plausible ~20% of leads (this mock has no separate
+ * closes field, unlike leads/cash which are already tracked per hook). */
+export function mockAttributionPaths() {
+  return MOCK_HOOKS.map((h, i) => ({
+    id: `mock-path-${i}`,
+    title: h.title,
+    platform: h.platform,
+    views: h.views,
+    leads: h.leads,
+    closes: Math.round(h.leads * 0.2),
+    cash: h.cash,
+  })).filter((p) => p.cash > 0 || p.leads > 0);
+}
+
+/** Traffic page's per-channel breakdown preview — already fully computed
+ * (not raw rows), since the real page derives this by cross-referencing 4
+ * separate tables (traffic_sources/leads/calls/clients); shaped the same,
+ * used as a fallback only when the real (RLS-empty under devBypass) result
+ * comes back empty. */
+export function mockTrafficBreakdown() {
+  const rows = [
+    {
+      id: "mock-src-1",
+      name: "Instagram Reels",
+      category: "organic",
+      leads: 62,
+      closeRate: 24.2,
+      avgDeal: 5800,
+      ltvExtra: 1200,
+    },
+    {
+      id: "mock-src-2",
+      name: "Meta Ads",
+      category: "paid",
+      leads: 38,
+      closeRate: 15.8,
+      avgDeal: 6200,
+      ltvExtra: 400,
+    },
+    {
+      id: "mock-src-3",
+      name: "YouTube Long",
+      category: "organic",
+      leads: 21,
+      closeRate: 33.3,
+      avgDeal: 7100,
+      ltvExtra: 1800,
+    },
+    {
+      id: "mock-src-4",
+      name: "Referral",
+      category: "referral",
+      leads: 14,
+      closeRate: 42.9,
+      avgDeal: 6500,
+      ltvExtra: 2400,
+    },
+    {
+      id: "mock-src-5",
+      name: "Email List",
+      category: "email",
+      leads: 9,
+      closeRate: 22.2,
+      avgDeal: 5400,
+      ltvExtra: 600,
+    },
+  ];
+  return rows.map((r) => {
+    const clients = Math.round(r.leads * (r.closeRate / 100));
+    const revenue = clients * r.avgDeal + r.ltvExtra * clients;
+    const revenuePerLead = r.leads ? Math.round(revenue / r.leads) : 0;
+    return {
+      id: r.id,
+      name: r.name,
+      category: r.category,
+      isActive: true,
+      trackingUrl: null as string | null,
+      leads: r.leads,
+      clients,
+      closeRate: r.closeRate,
+      avgDeal: r.avgDeal,
+      ltv: r.ltvExtra * clients,
+      revenue,
+      revenuePerLead,
+      score: Number((r.closeRate * (r.avgDeal / 100000)).toFixed(2)),
+    };
+  });
 }
 
 /** mechanism (row) x variation-slot (col: "Var 1" / "Var 2") avg views, for the ContentOS heatmap. */
@@ -259,23 +596,44 @@ export function mockVariationHeatmap() {
 }
 
 const MOCK_LEAD_NAMES = [
-  "Jordan Ellis", "Sam Whitfield", "Casey Nguyen", "Morgan Blake", "Taylor Reyes",
-  "Alex Kim", "Riley Sanders", "Drew Callahan", "Jamie Ortiz", "Avery Chen",
-  "Peyton Marsh", "Quinn Fischer",
+  "Jordan Ellis",
+  "Sam Whitfield",
+  "Casey Nguyen",
+  "Morgan Blake",
+  "Taylor Reyes",
+  "Alex Kim",
+  "Riley Sanders",
+  "Drew Callahan",
+  "Jamie Ortiz",
+  "Avery Chen",
+  "Peyton Marsh",
+  "Quinn Fischer",
 ];
 
 /** Real vocab, matching leads.tsx's STATUS_OPTIONS / PIPELINE_STAGES / PRIORITY_OPTIONS. */
 export function mockLeads() {
-  const statuses = ["opt_in", "call_booked", "rescheduling", "follow_up_short", "deposit", "closed", "lt_closed", "no_show", "no_close", "disqualified"];
+  const statuses = [
+    "opt_in",
+    "call_booked",
+    "rescheduling",
+    "follow_up_short",
+    "deposit",
+    "closed",
+    "lt_closed",
+    "no_show",
+    "no_close",
+    "disqualified",
+  ];
   const stages = ["cold", "warm", "hot", "diamond", ""];
   const priorities = ["diamond", "high", "normal", "normal", "low"];
+  const tagPool = [["referral"], ["cold-dm"], ["webinar", "high-intent"], [], ["past-client"]];
   const now = Date.now();
   return MOCK_LEAD_NAMES.map((name, i) => ({
     id: `mock-lead-${i}`,
     full_name: name,
     email: `${name.toLowerCase().replace(" ", ".")}@example.com`,
     handle: `@${name.split(" ")[0].toLowerCase()}`,
-    phone: null,
+    phone: i % 3 === 0 ? `(555) ${100 + i}-${1000 + i * 7}` : null,
     status: statuses[i % statuses.length],
     pipeline_stage: stages[i % stages.length],
     priority: priorities[i % priorities.length],
@@ -289,6 +647,7 @@ export function mockLeads() {
     application_data: {},
     notes: null,
     created_at: new Date(now - i * 18 * 3600e3).toISOString(),
+    tags: tagPool[i % tagPool.length],
   }));
 }
 
@@ -307,7 +666,13 @@ const MOCK_CLOSER_SCORECARD = [
 export function mockCalls() {
   const rows: Array<Record<string, unknown>> = [];
   const now = Date.now();
-  const objectionPool = ["Price too high", "Need to talk to spouse", "Tried something similar before", "Not enough time", "Not sure it'll work for me"];
+  const objectionPool = [
+    "Price too high",
+    "Need to talk to spouse",
+    "Tried something similar before",
+    "Not enough time",
+    "Not sure it'll work for me",
+  ];
   let id = 0;
   for (const c of MOCK_CLOSER_SCORECARD) {
     for (let i = 0; i < c.booked; i++) {
@@ -344,7 +709,7 @@ export function mockCallObjectionStats() {
 
 /** Matches closer.tsx's `scorecard` useMemo shape exactly. */
 export function mockCloserScorecard() {
-  return MOCK_CLOSER_SCORECARD.map(c => ({
+  return MOCK_CLOSER_SCORECARD.map((c) => ({
     name: c.name,
     booked: c.booked,
     showed: c.showed,
@@ -360,7 +725,7 @@ export function mockCloserScorecard() {
 /** closer (row) x weekday (col) call-volume heatmap, for the Rep Efficiency activity grid. */
 export function mockRepActivityHeatmap() {
   return {
-    rows: MOCK_CLOSER_SCORECARD.map(c => c.name),
+    rows: MOCK_CLOSER_SCORECARD.map((c) => c.name),
     cols: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     data: [
       [5, 6, 4, 7, 5, 2, 0],
@@ -407,14 +772,31 @@ export function mockClientDNA() {
     content_pillars: "Systems over hustle, proof over promises, owner operator lifestyle",
     goals: "Hit $75K/mo, hire a second closer, cut personal call load in half",
     dream_outcome: "A fully delegated $150K/mo coaching business run 10 hrs/week",
-    proof_assets: "37 client case studies, $2.1M in verified client results, Stripe dashboard screenshots",
-    sacred_cows: "\"Hustle 24/7\" culture, hiding prices, fake urgency",
+    proof_assets:
+      "37 client case studies, $2.1M in verified client results, Stripe dashboard screenshots",
+    sacred_cows: '"Hustle 24/7" culture, hiding prices, fake urgency',
     competitors: "Generic fitness-business gurus with no real operating experience",
-    voice_transcripts: "Mock transcript excerpt for dev bypass preview — short, blunt sentences, leads with a number, closes with a direct CTA.",
+    voice_transcripts:
+      "Mock transcript excerpt for dev bypass preview — short, blunt sentences, leads with a number, closes with a direct CTA.",
     notes: "Dev bypass mock client — safe to edit, never persisted (no real Supabase session).",
-    offer_details: { promise: "Double net profit in 90 days", mechanism: "The Operator System", price: "$5,000", objections: ["I've tried other coaches", "Not sure I have time"] },
-    avatar_research: { dreams: "Freedom from the gym floor", fears: "Being seen as a fraud", suspicions: "That coaching is just upsells", past_failures: "Burned $12K on a generic mastermind", enemies: "Hustle-culture influencers" },
-    voice_fingerprint: { tone: "direct", sentence_length: "short", signature_moves: ["leads with a number", "names the objection before the reader does"] },
+    offer_details: {
+      promise: "Double net profit in 90 days",
+      mechanism: "The Operator System",
+      price: "$5,000",
+      objections: ["I've tried other coaches", "Not sure I have time"],
+    },
+    avatar_research: {
+      dreams: "Freedom from the gym floor",
+      fears: "Being seen as a fraud",
+      suspicions: "That coaching is just upsells",
+      past_failures: "Burned $12K on a generic mastermind",
+      enemies: "Hustle-culture influencers",
+    },
+    voice_fingerprint: {
+      tone: "direct",
+      sentence_length: "short",
+      signature_moves: ["leads with a number", "names the objection before the reader does"],
+    },
   };
 }
 
@@ -431,12 +813,110 @@ export function withMockDelay<T>(value: T, ms = AI_DELAY_MS): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms));
 }
 
+/** C4 Sentinel has no real Supabase session under dev-bypass to call the
+ * real askSentinelFn (auth-gated), so this stands in for the whole
+ * ask→tool-select→ground→answer loop client-side. It mirrors
+ * MOCK_CURR/MOCK_CLOSERS/MOCK_SETTERS/MOCK_ALERTS so replies cite the exact
+ * same numbers the rest of dev-bypass shows — but it must also mirror the
+ * REAL askSentinel()'s actual behavior (real tool routing per question,
+ * real per-timeframe numbers, an honest "don't have that" for things no
+ * tool covers) or this mock actively misrepresents whether Sentinel works.
+ * A prior version of this function fell through to one fixed reply for
+ * anything that wasn't "alert"/"client"/"content" — including corrected
+ * follow-ups — which is exactly the bug this rewrite fixes. */
+export function mockSentinelReply(question: string): { reply: string; toolsUsed: string[] } {
+  const q = question.toLowerCase();
+  const pct = (curr: number, prev: number) =>
+    prev > 0 ? `${(((curr - prev) / prev) * 100).toFixed(0)}%` : "n/a";
+
+  if (/\balert/.test(q)) {
+    return {
+      reply: `You have ${MOCK_ALERTS.length} open alerts: ${MOCK_ALERTS.map((a) => `"${a.title}"`).join(" and ")}. Both are unacknowledged as of now.`,
+      toolsUsed: ["get_open_alerts"],
+    };
+  }
+  if (/\b(client|risk|renewal)/.test(q)) {
+    return {
+      reply:
+        "1 active client is flagged at-risk: renewal within the configured window with no conversation started yet.",
+      toolsUsed: ["list_at_risk_clients"],
+    };
+  }
+  if (/\b(content|mix|mechanism)/.test(q)) {
+    return {
+      reply:
+        "Content mix this range: Educational 35%, Credibility 30%, Relatability 20%, Authoritative 15% — total signal weight is above the insufficient-data floor, so this mix is a real, confident read.",
+      toolsUsed: ["get_content_mix"],
+    };
+  }
+
+  // Topics no tool in this app covers yet — an honest gap, not a guess.
+  if (/\b(cac|roas|ad spend|ad-spend|churn|ltv|lifetime value|profit margin|burn rate)\b/.test(q)) {
+    return {
+      reply:
+        "I don't have that — cost/spend data isn't tracked in this workspace yet (that's the Money Layer project, not built), so I can't compute CAC, ROAS, churn, or margin. I can tell you cash collected, calls, content, clients, or alerts.",
+      toolsUsed: [],
+    };
+  }
+
+  // A specific rep mentioned by name.
+  const allReps = [...MOCK_CLOSERS, ...MOCK_SETTERS];
+  const mentionedRep = allReps.find(
+    (r) => q.includes(r.name.toLowerCase()) || q.includes(r.name.split(" ")[0].toLowerCase()),
+  );
+  if (mentionedRep) {
+    const isCloser = MOCK_CLOSERS.some((c) => c.name === mentionedRep.name);
+    const cash = `$${(mentionedRep.cash / 100).toLocaleString()}`;
+    return {
+      reply: isCloser
+        ? `${mentionedRep.name} has closed ${(mentionedRep as (typeof MOCK_CLOSERS)[number]).closes} deals for ${cash} collected this week (${(mentionedRep as (typeof MOCK_CLOSERS)[number]).calls} calls taken).`
+        : `${mentionedRep.name} has ${(mentionedRep as (typeof MOCK_SETTERS)[number]).sets} sets and ${cash} collected this week, with ${mentionedRep.closes} of those sets closing.`,
+      toolsUsed: ["get_weekly_snapshot"],
+    };
+  }
+
+  // Explicit timeframe cues — each maps to a genuinely different (not just
+  // relabeled) number, same as the real get_cash_and_calls_for_range tool
+  // would return for a different range.
+  if (/\b(24 hours?|today|yesterday)\b/.test(q)) {
+    const todayCash = Math.round(MOCK_CURR.cash / 6.5); // proportional slice of the weekly figure, not the weekly figure itself
+    return {
+      reply: `In the last 24 hours: $${(todayCash / 100).toLocaleString()} collected, ${Math.max(1, Math.round(MOCK_CURR.totalCalls / 6))} calls booked. That's a single day's slice of this week's $${(MOCK_CURR.cash / 100).toLocaleString()} total, not the weekly figure.`,
+      toolsUsed: ["get_cash_and_calls_for_range"],
+    };
+  }
+  if (/\bmonth\b/.test(q)) {
+    const monthCash = MOCK_CURR.cash * 3 + Math.round(MOCK_CURR.cash * 0.4);
+    return {
+      reply: `Month to date: $${(monthCash / 100).toLocaleString()} collected, ${MOCK_CURR.totalCalls * 3} calls booked — a running total across the full month, distinct from this week's $${(MOCK_CURR.cash / 100).toLocaleString()}.`,
+      toolsUsed: ["get_cash_and_calls_for_range"],
+    };
+  }
+
+  return {
+    reply: `This week: $${(MOCK_CURR.cash / 100).toLocaleString()} collected (up ${pct(MOCK_CURR.cash, MOCK_PREV.cash)} vs prior period), ${MOCK_CURR.totalCalls} calls booked, ${MOCK_CURR.closed} closed. Top closer is ${MOCK_CLOSERS[0].name} at $${(MOCK_CLOSERS[0].cash / 100).toLocaleString()}.`,
+    toolsUsed: ["get_weekly_snapshot"],
+  };
+}
+
 export function mockContentCoaching() {
   return {
-    summary: "Strong hook, but the payoff lands too late — most of the drop-off happens before the proof shows up.",
-    strengths: ["Pattern-interrupt opener holds attention past the 3s mark", "Concrete number in the first line builds instant credibility"],
-    improvements: ["Cut the 6-second setup and open directly on the result", "Add on-screen text restating the hook at the 5s mark to recapture skimmers", "Tighten the CTA — it's currently two competing asks"],
-    next_hook_ideas: ["\"I made $18K from one story sequence — here's the exact one\"", "\"Nobody tells you this about high-ticket DMs...\"", "\"3 seconds of this cost me $40K to learn\""],
+    summary:
+      "Strong hook, but the payoff lands too late — most of the drop-off happens before the proof shows up.",
+    strengths: [
+      "Pattern-interrupt opener holds attention past the 3s mark",
+      "Concrete number in the first line builds instant credibility",
+    ],
+    improvements: [
+      "Cut the 6-second setup and open directly on the result",
+      "Add on-screen text restating the hook at the 5s mark to recapture skimmers",
+      "Tighten the CTA — it's currently two competing asks",
+    ],
+    next_hook_ideas: [
+      '"I made $18K from one story sequence — here\'s the exact one"',
+      '"Nobody tells you this about high-ticket DMs..."',
+      '"3 seconds of this cost me $40K to learn"',
+    ],
   };
 }
 
@@ -445,7 +925,8 @@ export function mockContentClassification() {
     hook: "I made $18K last week from a single story sequence.",
     angle: "proof",
     funnel_stage: "MOF",
-    rationale: "Opens on a specific, verifiable result (proof angle) and teaches the mechanism mid-video, positioning it as consideration-stage content.",
+    rationale:
+      "Opens on a specific, verifiable result (proof angle) and teaches the mechanism mid-video, positioning it as consideration-stage content.",
   };
 }
 
@@ -486,7 +967,8 @@ Setter-call objection logging is thin this window — log more to sharpen the de
 }
 
 export function mockGeneratedCopy(copyType: string) {
-  return { output: `[MOCK — Dev Bypass, no live AI key] Generated ${copyType.replace(/_/g, " ")}.
+  return {
+    output: `[MOCK — Dev Bypass, no live AI key] Generated ${copyType.replace(/_/g, " ")}.
 
 HOOK: You don't have a traffic problem. You have a "nobody trusts me yet" problem.
 
@@ -497,30 +979,61 @@ WHY THIS WORKS:
 - Names the real bottleneck (trust, not volume) before offering the fix
 - Ends on a low-friction, curiosity-driven CTA
 
-Connect a real LOVABLE_API_KEY to replace this with a live generation.` };
+Connect a real LOVABLE_API_KEY to replace this with a live generation.`,
+  };
 }
 
 export function mockCopyReview() {
   return {
     score: 78,
-    big_domino: "The reader has to believe their bottleneck is trust, not traffic — everything else follows from that one belief.",
-    strengths: ["Hook pattern-interrupts the reader's default assumption", "Proof is specific (14 days, named mechanism) not vague"],
-    weaknesses: ["CTA is soft — doesn't name the next concrete step", "Middle section restates the hook instead of building on it"],
-    line_edits: [
-      { line: "You don't have a traffic problem.", fix: "Keep — strong reframe opener, don't touch it." },
-      { line: "Here's the exact system that fixed this", fix: "Name the system or give it a label — \"exact system\" is doing no work on its own." },
+    big_domino:
+      "The reader has to believe their bottleneck is trust, not traffic — everything else follows from that one belief.",
+    strengths: [
+      "Hook pattern-interrupts the reader's default assumption",
+      "Proof is specific (14 days, named mechanism) not vague",
     ],
-    rewrite_suggestion: "[MOCK] Tighten the CTA to a single, named next step (e.g. \"DM me SYSTEM\") and cut the restated middle paragraph.",
+    weaknesses: [
+      "CTA is soft — doesn't name the next concrete step",
+      "Middle section restates the hook instead of building on it",
+    ],
+    line_edits: [
+      {
+        line: "You don't have a traffic problem.",
+        fix: "Keep — strong reframe opener, don't touch it.",
+      },
+      {
+        line: "Here's the exact system that fixed this",
+        fix: 'Name the system or give it a label — "exact system" is doing no work on its own.',
+      },
+    ],
+    rewrite_suggestion:
+      '[MOCK] Tighten the CTA to a single, named next step (e.g. "DM me SYSTEM") and cut the restated middle paragraph.',
   };
 }
 
 export function mockAngles() {
   return {
     angles: [
-      { trigger: "fears", hook: "What if the reason you're not closing has nothing to do with your offer?", big_domino: "The prospect fears the problem is unfixable, not that the price is too high." },
-      { trigger: "past_failures", hook: "I burned $12K on a mastermind that taught me nothing. Here's what actually worked.", big_domino: "Positions this offer as different from every past disappointment." },
-      { trigger: "dreams", hook: "This is what a fully delegated $150K/mo coaching business actually looks like week to week.", big_domino: "Makes the dream outcome feel concrete and reachable, not theoretical." },
-      { trigger: "enemies", hook: "Generic business coaches will never tell you this.", big_domino: "Names a shared enemy, building in-group trust before the pitch." },
+      {
+        trigger: "fears",
+        hook: "What if the reason you're not closing has nothing to do with your offer?",
+        big_domino: "The prospect fears the problem is unfixable, not that the price is too high.",
+      },
+      {
+        trigger: "past_failures",
+        hook: "I burned $12K on a mastermind that taught me nothing. Here's what actually worked.",
+        big_domino: "Positions this offer as different from every past disappointment.",
+      },
+      {
+        trigger: "dreams",
+        hook: "This is what a fully delegated $150K/mo coaching business actually looks like week to week.",
+        big_domino: "Makes the dream outcome feel concrete and reachable, not theoretical.",
+      },
+      {
+        trigger: "enemies",
+        hook: "Generic business coaches will never tell you this.",
+        big_domino: "Names a shared enemy, building in-group trust before the pitch.",
+      },
     ],
   };
 }
@@ -528,13 +1041,19 @@ export function mockAngles() {
 export function mockVoiceFingerprint() {
   return {
     avg_sentence_length: "short (8-14 words)",
-    opening_patterns: ["Leads with a specific number", "Opens on a reframe or contrarian statement"],
+    opening_patterns: [
+      "Leads with a specific number",
+      "Opens on a reframe or contrarian statement",
+    ],
     transition_phrases: ["Here's the thing —", "Which means —", "So here's what actually happened"],
     overused_words: ["literally", "exact", "system"],
-    never_uses: ["corporate jargon", "hedging language (\"maybe\", \"kind of\")"],
+    never_uses: ["corporate jargon", 'hedging language ("maybe", "kind of")'],
     emotional_temperature: "direct and high-energy, never apologetic",
     common_analogies: ["gym/training metaphors", "operator vs. hustler framing"],
-    closing_patterns: ["Ends on a single named next step", "Closes with a blunt one-liner, not a recap"],
+    closing_patterns: [
+      "Ends on a single named next step",
+      "Closes with a blunt one-liner, not a recap",
+    ],
   };
 }
 
@@ -558,9 +1077,12 @@ Sam R. — blocker "no time to post" repeated 4 days running. Open the call with
 
 export function mockLoomGrade() {
   return {
-    score: 7.8, recommendedStage: "interview_worthy",
-    summary: "[MOCK] Clear speech, solid energy, cites specific past results. Some rambling in the middle third — trim for a follow-up.",
-    reasoning: "Clarity high | energy high | specificity of results high | minor rambling mid-video",
+    score: 7.8,
+    recommendedStage: "interview_worthy",
+    summary:
+      "[MOCK] Clear speech, solid energy, cites specific past results. Some rambling in the middle third — trim for a follow-up.",
+    reasoning:
+      "Clarity high | energy high | specificity of results high | minor rambling mid-video",
     stated_role: "closer" as string | null,
   };
 }
@@ -571,16 +1093,65 @@ export function mockCalendarStatus() {
 
 export function mockFaqVideos() {
   return [
-    { id: "mock-faq-1", title: "\"Is this a scam?\"", question: "How do I know this actually works and isn't a scam?", video_url: "https://example.com/faq/trust", wistia_video_id: null, mechanism: "credibility", clicks: 340, plays: 288, avg_watch_pct: 71, active: true, notes: null },
-    { id: "mock-faq-2", title: "\"How is this different?\"", question: "What makes this different from every other coach?", video_url: "https://example.com/faq/different", wistia_video_id: null, mechanism: "authoritative", clicks: 210, plays: 165, avg_watch_pct: 58, active: true, notes: null },
-    { id: "mock-faq-3", title: "\"Will this work for me?\"", question: "I'm not like your other clients — will this actually work for my situation?", video_url: "https://example.com/faq/relatable", wistia_video_id: null, mechanism: "relatability", clicks: 175, plays: 140, avg_watch_pct: 64, active: true, notes: null },
-    { id: "mock-faq-4", title: "\"What's the actual process?\"", question: "What does the day-to-day process actually look like?", video_url: "https://example.com/faq/process", wistia_video_id: null, mechanism: "educational", clicks: 96, plays: 80, avg_watch_pct: 52, active: true, notes: null },
+    {
+      id: "mock-faq-1",
+      title: '"Is this a scam?"',
+      question: "How do I know this actually works and isn't a scam?",
+      video_url: "https://example.com/faq/trust",
+      wistia_video_id: null,
+      mechanism: "credibility",
+      clicks: 340,
+      plays: 288,
+      avg_watch_pct: 71,
+      active: true,
+      notes: null,
+    },
+    {
+      id: "mock-faq-2",
+      title: '"How is this different?"',
+      question: "What makes this different from every other coach?",
+      video_url: "https://example.com/faq/different",
+      wistia_video_id: null,
+      mechanism: "authoritative",
+      clicks: 210,
+      plays: 165,
+      avg_watch_pct: 58,
+      active: true,
+      notes: null,
+    },
+    {
+      id: "mock-faq-3",
+      title: '"Will this work for me?"',
+      question: "I'm not like your other clients — will this actually work for my situation?",
+      video_url: "https://example.com/faq/relatable",
+      wistia_video_id: null,
+      mechanism: "relatability",
+      clicks: 175,
+      plays: 140,
+      avg_watch_pct: 64,
+      active: true,
+      notes: null,
+    },
+    {
+      id: "mock-faq-4",
+      title: '"What\'s the actual process?"',
+      question: "What does the day-to-day process actually look like?",
+      video_url: "https://example.com/faq/process",
+      wistia_video_id: null,
+      mechanism: "educational",
+      clicks: 96,
+      plays: 80,
+      avg_watch_pct: 52,
+      active: true,
+      notes: null,
+    },
   ];
 }
 
 export function mockPreCloseSummary() {
   return {
-    summary: "[MOCK — Dev Bypass] The conversation started from a story-sequence DM after the prospect saw a case study post. Their stated pain was inconsistent lead flow despite posting daily. The main objection was price relative to a past bad experience with a generic coach, which the setter pre-handled by naming the difference up front. Intent shifted noticeably after a proof screenshot was shared mid-conversation. They committed after the call once the payment plan option was offered.",
+    summary:
+      "[MOCK — Dev Bypass] The conversation started from a story-sequence DM after the prospect saw a case study post. Their stated pain was inconsistent lead flow despite posting daily. The main objection was price relative to a past bad experience with a generic coach, which the setter pre-handled by naming the difference up front. Intent shifted noticeably after a proof screenshot was shared mid-conversation. They committed after the call once the payment plan option was offered.",
     raw: { call_count: 2, message_count: 14, generated_at: new Date(0).toISOString() },
   };
 }
@@ -588,15 +1159,33 @@ export function mockPreCloseSummary() {
 export function mockLeadInsights() {
   return {
     bottlenecks: [
-      { title: "Follow-up gap on warm leads", body: "[MOCK] Several leads go 3+ days without a follow-up after the first qualifying DM.", recommendation: "Set a 24h follow-up SLA for qualified leads." },
-      { title: "Pre-call video watch rate is low", body: "[MOCK] Under half of booked leads watch the pre-call video before their call.", recommendation: "Send the video link a second time 2 hours before the call." },
+      {
+        title: "Follow-up gap on warm leads",
+        body: "[MOCK] Several leads go 3+ days without a follow-up after the first qualifying DM.",
+        recommendation: "Set a 24h follow-up SLA for qualified leads.",
+      },
+      {
+        title: "Pre-call video watch rate is low",
+        body: "[MOCK] Under half of booked leads watch the pre-call video before their call.",
+        recommendation: "Send the video link a second time 2 hours before the call.",
+      },
     ],
     double_down: [
-      { title: "Diamond-tagged leads close at 2x rate", body: "[MOCK] Leads flagged diamond priority convert noticeably better than average.", recommendation: "Tighten the diamond-tagging criteria and route them to your top closer." },
+      {
+        title: "Diamond-tagged leads close at 2x rate",
+        body: "[MOCK] Leads flagged diamond priority convert noticeably better than average.",
+        recommendation: "Tighten the diamond-tagging criteria and route them to your top closer.",
+      },
     ],
     priority_leads: [
-      { name: "Jordan Ellis", reason: "[MOCK] High intent score + watched pre-call video + diamond priority" },
-      { name: "Casey Nguyen", reason: "[MOCK] Re-engaged after 5 days silent, asked about pricing directly" },
+      {
+        name: "Jordan Ellis",
+        reason: "[MOCK] High intent score + watched pre-call video + diamond priority",
+      },
+      {
+        name: "Casey Nguyen",
+        reason: "[MOCK] Re-engaged after 5 days silent, asked about pricing directly",
+      },
     ],
     sampleSize: 12,
   };
@@ -604,15 +1193,27 @@ export function mockLeadInsights() {
 
 export function mockVslInsights() {
   return {
-    headline: "[MOCK] Strong opening retention, but a sharp drop-off right before the offer reveal.",
+    headline:
+      "[MOCK] Strong opening retention, but a sharp drop-off right before the offer reveal.",
     bottlenecks: [
-      { title: "Drop-off before the price reveal", body: "Roughly a third of viewers exit in the 60 seconds before price is shown.", recommendation: "Move a proof stack earlier to sustain intent through the price reveal." },
+      {
+        title: "Drop-off before the price reveal",
+        body: "Roughly a third of viewers exit in the 60 seconds before price is shown.",
+        recommendation: "Move a proof stack earlier to sustain intent through the price reveal.",
+      },
     ],
     double_down: [
-      { title: "Hook retention above account average", body: "First 15 seconds hold significantly better than your other VSLs.", recommendation: "Reuse this exact opening structure on the next VSL." },
+      {
+        title: "Hook retention above account average",
+        body: "First 15 seconds hold significantly better than your other VSLs.",
+        recommendation: "Reuse this exact opening structure on the next VSL.",
+      },
     ],
     drop_off_moments: [
-      { timestamp: "2:14", why: "Transition into mechanism explanation runs long without a pattern interrupt." },
+      {
+        timestamp: "2:14",
+        why: "Transition into mechanism explanation runs long without a pattern interrupt.",
+      },
     ],
     snapshotCount: 4,
   };
@@ -626,25 +1227,21 @@ export function mockTranscriptLines() {
   ];
 }
 
-export function mockGlobalAiInsights() {
-  return {
-    bottlenecks: [
-      { title: "Show rate below target", body: "[MOCK] Show rate is running under 70% this window, capping how much of your booked pipeline ever gets seen.", module: "closer", recommendation: "Add a day-before + hour-before reminder sequence.", confidence: 0.8 },
-      { title: "Hook retention trending down", body: "[MOCK] Average hook retention has slipped over the last two weeks.", module: "content", recommendation: "Audit the last 5 posts' first 3 seconds against your top performer.", confidence: 0.7 },
-    ],
-    double_down: [
-      { title: "Top closer carrying a disproportionate share", body: "[MOCK] One closer accounts for the majority of cash collected this window.", module: "closer", recommendation: "Have your top closer record their call openers for the rest of the team.", confidence: 0.75 },
-    ],
-  };
-}
-
 export function mockIntakeInsights() {
   return {
     bottlenecks: [
-      { title: "Price hesitation shows up repeatedly", body: "[MOCK] Multiple intakes mention weighing the price against past bad experiences.", recommendation: "Add a payment-plan callout earlier in the sales sequence." },
+      {
+        title: "Price hesitation shows up repeatedly",
+        body: "[MOCK] Multiple intakes mention weighing the price against past bad experiences.",
+        recommendation: "Add a payment-plan callout earlier in the sales sequence.",
+      },
     ],
     double_down: [
-      { title: "Proof content is the top-cited reason for joining", body: "[MOCK] Case-study style content is the most-mentioned first touchpoint across intakes.", recommendation: "Increase case-study post frequency." },
+      {
+        title: "Proof content is the top-cited reason for joining",
+        body: "[MOCK] Case-study style content is the most-mentioned first touchpoint across intakes.",
+        recommendation: "Increase case-study post frequency.",
+      },
     ],
     sampleSize: 9,
   };
@@ -652,7 +1249,11 @@ export function mockIntakeInsights() {
 
 /** One placeholder body per slide, matching the requested count exactly — for story-sequence AI generation. */
 export function mockStorySequenceSlides(count: number): string[] {
-  return Array.from({ length: count }, (_, i) => `[MOCK — Dev Bypass] Slide ${i + 1} body copy would appear here. Connect a real LOVABLE_API_KEY to generate this slide for real.`);
+  return Array.from(
+    { length: count },
+    (_, i) =>
+      `[MOCK — Dev Bypass] Slide ${i + 1} body copy would appear here. Connect a real LOVABLE_API_KEY to generate this slide for real.`,
+  );
 }
 
 /** Matches clients.tsx's ClientRow shape — populates the roster so its pre-close-summary AI action is reachable under Dev Bypass. */
@@ -660,34 +1261,71 @@ export function mockClients() {
   const now = Date.now();
   return [
     {
-      id: "mock-client-1", full_name: "Jordan Ellis", email: "jordan.ellis@example.com", phone: null,
-      offer_name: "Operator System", start_date: new Date(now - 40 * 86400e3).toISOString().slice(0, 10),
-      contract_value_cents: 500_000, invested_to_date_cents: 250_000,
-      expected_next_payment_cents: 125_000, expected_next_payment_date: new Date(now + 14 * 86400e3).toISOString().slice(0, 10),
-      payment_plan: true, installments_remaining: 2, installment_amount_cents: 125_000,
-      status: "active", health_score: 82,
-      renewal_date: new Date(now + 21 * 86400e3).toISOString().slice(0, 10), renewal_conv_started: false, renewal_stage: "not_started",
-      notes: null, pre_close_summary: null,
+      id: "mock-client-1",
+      full_name: "Jordan Ellis",
+      email: "jordan.ellis@example.com",
+      phone: null,
+      offer_name: "Operator System",
+      start_date: new Date(now - 40 * 86400e3).toISOString().slice(0, 10),
+      contract_value_cents: 500_000,
+      invested_to_date_cents: 250_000,
+      expected_next_payment_cents: 125_000,
+      expected_next_payment_date: new Date(now + 14 * 86400e3).toISOString().slice(0, 10),
+      payment_plan: true,
+      installments_remaining: 2,
+      installment_amount_cents: 125_000,
+      status: "active",
+      health_score: 82,
+      renewal_date: new Date(now + 21 * 86400e3).toISOString().slice(0, 10),
+      renewal_conv_started: false,
+      renewal_stage: "not_started",
+      notes: null,
+      pre_close_summary: null,
     },
     {
-      id: "mock-client-2", full_name: "Casey Nguyen", email: "casey.nguyen@example.com", phone: null,
-      offer_name: "Operator System", start_date: new Date(now - 120 * 86400e3).toISOString().slice(0, 10),
-      contract_value_cents: 500_000, invested_to_date_cents: 500_000,
-      expected_next_payment_cents: 0, expected_next_payment_date: null,
-      payment_plan: false, installments_remaining: 0, installment_amount_cents: 0,
-      status: "active", health_score: 91,
-      renewal_date: new Date(now + 9 * 86400e3).toISOString().slice(0, 10), renewal_conv_started: true, renewal_stage: "conversation",
-      notes: null, pre_close_summary: "Strong fit from the start — converted off a case-study post, minimal objections.",
+      id: "mock-client-2",
+      full_name: "Casey Nguyen",
+      email: "casey.nguyen@example.com",
+      phone: null,
+      offer_name: "Operator System",
+      start_date: new Date(now - 120 * 86400e3).toISOString().slice(0, 10),
+      contract_value_cents: 500_000,
+      invested_to_date_cents: 500_000,
+      expected_next_payment_cents: 0,
+      expected_next_payment_date: null,
+      payment_plan: false,
+      installments_remaining: 0,
+      installment_amount_cents: 0,
+      status: "active",
+      health_score: 91,
+      renewal_date: new Date(now + 9 * 86400e3).toISOString().slice(0, 10),
+      renewal_conv_started: true,
+      renewal_stage: "conversation",
+      notes: null,
+      pre_close_summary:
+        "Strong fit from the start — converted off a case-study post, minimal objections.",
     },
     {
-      id: "mock-client-3", full_name: "Morgan Blake", email: "morgan.blake@example.com", phone: null,
-      offer_name: "Starter Track", start_date: new Date(now - 260 * 86400e3).toISOString().slice(0, 10),
-      contract_value_cents: 250_000, invested_to_date_cents: 250_000,
-      expected_next_payment_cents: 0, expected_next_payment_date: null,
-      payment_plan: false, installments_remaining: 0, installment_amount_cents: 0,
-      status: "at_risk", health_score: 38,
-      renewal_date: new Date(now - 5 * 86400e3).toISOString().slice(0, 10), renewal_conv_started: false, renewal_stage: "not_started",
-      notes: "Low engagement last 3 weeks.", pre_close_summary: null,
+      id: "mock-client-3",
+      full_name: "Morgan Blake",
+      email: "morgan.blake@example.com",
+      phone: null,
+      offer_name: "Starter Track",
+      start_date: new Date(now - 260 * 86400e3).toISOString().slice(0, 10),
+      contract_value_cents: 250_000,
+      invested_to_date_cents: 250_000,
+      expected_next_payment_cents: 0,
+      expected_next_payment_date: null,
+      payment_plan: false,
+      installments_remaining: 0,
+      installment_amount_cents: 0,
+      status: "at_risk",
+      health_score: 38,
+      renewal_date: new Date(now - 5 * 86400e3).toISOString().slice(0, 10),
+      renewal_conv_started: false,
+      renewal_stage: "not_started",
+      notes: "Low engagement last 3 weeks.",
+      pre_close_summary: null,
     },
   ];
 }
@@ -695,8 +1333,24 @@ export function mockClients() {
 /** kind matches vsl.tsx's VslKind union: "main" | "webinar" | "post_booking". */
 export function mockVsls() {
   return [
-    { id: "mock-vsl-1", name: "Main Offer VSL", wistia_video_id: "mockwistia1", sheet_url: null, kind: "main", transcript_json: null, script: "[MOCK] Opening hook... mechanism reveal... proof stack... offer... close." },
-    { id: "mock-vsl-2", name: "Webinar Replay", wistia_video_id: "mockwistia2", sheet_url: null, kind: "webinar", transcript_json: null, script: null },
+    {
+      id: "mock-vsl-1",
+      name: "Main Offer VSL",
+      wistia_video_id: "mockwistia1",
+      sheet_url: null,
+      kind: "main",
+      transcript_json: null,
+      script: "[MOCK] Opening hook... mechanism reveal... proof stack... offer... close.",
+    },
+    {
+      id: "mock-vsl-2",
+      name: "Webinar Replay",
+      wistia_video_id: "mockwistia2",
+      sheet_url: null,
+      kind: "webinar",
+      transcript_json: null,
+      script: null,
+    },
   ];
 }
 
@@ -715,16 +1369,85 @@ export function mockVslSnapshots(vslId: string) {
   }));
 }
 
-/** Matches the `ai_insights` table row shape rendered by insights.tsx. */
-export function mockAiInsightRows() {
-  const g = mockGlobalAiInsights();
-  const now = new Date().toISOString();
-  const rows = (arr: typeof g.bottlenecks, kind: "bottleneck" | "double_down") =>
-    arr.map((i, idx) => ({
-      id: `mock-insight-${kind}-${idx}`, org_id: DEV_BYPASS_ORG_ID, created_at: now,
-      module: `${kind}:${i.module}`, title: i.title, body: i.body,
-      recommendation: i.recommendation, confidence: i.confidence,
-      source_refs: null, generated_by: "mock", dismissed: false, saved: false,
-    }));
-  return [...rows(g.bottlenecks, "bottleneck"), ...rows(g.double_down, "double_down")];
+export function mockSearchLeads() {
+  return mockLeads()
+    .slice(0, 8)
+    .map((l) => ({ id: l.id, full_name: l.full_name, email: l.email }));
+}
+
+export function mockWeeklyReport(): WeeklyReport {
+  const now = new Date();
+  const weekEnd = now.toISOString().slice(0, 10);
+  const weekStart = new Date(now.getTime() - 7 * 86400e3).toISOString().slice(0, 10);
+  return {
+    weekStart,
+    weekEnd,
+    cash: { curr: 4_250_000, prev: 3_650_000, deltaPct: 16.4 },
+    calls: { booked: 24, showed: 18, closes: 8, showRate: 75, closeRate: 44.4 },
+    newLeads: 46,
+    repPerformance: {
+      closers: [
+        { name: "Jordan Blake", sets: 0, closes: 4, cashCents: 2_100_000 },
+        { name: "Sam Rivera", sets: 0, closes: 3, cashCents: 1_450_000 },
+        { name: "Casey Nguyen", sets: 0, closes: 1, cashCents: 520_000 },
+      ],
+      setters: [
+        { name: "Taylor Brooks", sets: 14, closes: 5, cashCents: 1_850_000 },
+        { name: "Morgan Lee", sets: 11, closes: 3, cashCents: 980_000 },
+      ],
+    },
+    funnelHealth: {
+      cap: {
+        status: "ok",
+        sentence:
+          "Closes are limited by show rate: 18 of 24 booked calls showed; the 6 no-shows are worth up to ≈2.7 closes, if they'd converted at your current 44.4% close rate.",
+      },
+      working: {
+        status: "ok",
+        sentence: "Show rate is your strongest mover this period: 65.2% → 75.0% (18 of 24 showed).",
+      },
+    },
+    contentMix: {
+      mix: { educational: 35, credibility: 30, authoritative: 15, relatability: 20 },
+      insufficientData: false,
+      totalWeight: 42,
+      minTotalWeight: 15,
+      weights: { educational: 15, credibility: 13, authoritative: 6, relatability: 8 },
+      drivers: [],
+      counts: { faq: 3, setter_calls: 5, intakes: 2, reels: 6 },
+    },
+    weeklyContentCheck: {
+      per: {},
+      reels: 6,
+      missing: [],
+      untracked: 0,
+      best: "educational",
+      worst: null,
+      worstDiagnosis: null,
+      total: 6,
+    },
+    clientHealth: {
+      atRiskCount: 2,
+      renewalStageBreakdown: {
+        not_started: 9,
+        conversation_started: 3,
+        offer_sent: 1,
+        renewed: 2,
+        lost: 0,
+      },
+    },
+    hiringPipeline: {
+      stageBreakdown: {
+        applied: 12,
+        needs_grading: 4,
+        interview_worthy: 3,
+        trial_call: 1,
+        offer_sent: 1,
+        hired: 1,
+        rejected: 6,
+      },
+      newApplicantsThisWeek: 5,
+    },
+    trends: ["Cash up 16% WoW", "1 content mechanism not posted this week"],
+  };
 }

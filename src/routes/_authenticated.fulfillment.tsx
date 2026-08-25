@@ -168,7 +168,7 @@ function SignalCard({ label, value }: { label: string; value?: string }) {
   return (
     <div className="rounded-md border border-border p-3">
       <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
-      <div className="text-sm whitespace-pre-wrap min-h-[2.5rem]">{value || <span className="text-muted-foreground italic">no intake answer</span>}</div>
+      <div className="text-sm whitespace-pre-wrap min-h-[2.5rem]">{value || <span className="text-muted-foreground italic">No intake answer</span>}</div>
     </div>
   );
 }

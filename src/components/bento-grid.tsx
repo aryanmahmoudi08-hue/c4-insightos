@@ -29,13 +29,16 @@ const COLS_CLASS: Record<2 | 3 | 4, string> = {
  * importance-sized cells (hero 2x2, wide 2x1, tall 1x2, standard 1x1, compact
  * 1x½). Stacks to a single column below `md`. Every direct BentoCell staggers
  * in on mount (~40ms apart, fading up) — the app-wide default entrance, not opt-in.
+ * `grid-auto-flow: dense` backfills gaps a wide/tall cell would otherwise leave
+ * mid-row with a later smaller cell — required whenever standard and featured
+ * (wide) spans are mixed in one grid, or rows render half-empty.
  */
 export function BentoGrid({ children, className, rowHeight = "9rem", cols = 4 }: { children: ReactNode; className?: string; rowHeight?: string; cols?: 2 | 3 | 4 }) {
   const reduce = useReducedMotion();
   return (
     <motion.div
       className={cn("grid grid-cols-1 gap-3", COLS_CLASS[cols], className)}
-      style={{ gridAutoRows: rowHeight }}
+      style={{ gridAutoRows: rowHeight, gridAutoFlow: "dense" }}
       initial="hidden"
       animate="visible"
       variants={{ visible: { transition: { staggerChildren: reduce ? 0 : STAGGER_STEP } } }}

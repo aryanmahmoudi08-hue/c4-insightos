@@ -1,8 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TopBar } from "@/components/app-sidebar";
+import { useDateRange } from "@/hooks/use-date-range";
 import { StatCard } from "@/components/stat-card";
 import { SlimHeader } from "@/components/slim-header";
 import { Sparkline } from "@/components/sparkline";
@@ -24,6 +25,7 @@ import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { mockVsls, mockVslSnapshots, mockVslInsights, mockTranscriptLines, mockFaqVideos, withMockDelay } from "@/lib/dev-mock-data";
 import { MECHANISM_KEYS, MECHANISMS, type MechanismKey } from "@/lib/content-mechanisms";
+import { cn } from "@/lib/utils";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { VideoEmbed } from "@/components/video-embed";
 
@@ -57,6 +59,7 @@ function mmss(sec: number) { const s = Math.max(0, Math.floor(sec)); return `${M
 function VslPage() {
   const load = useServerFn(listVsls);
   const { devBypass } = useAuth();
+  const { range } = useDateRange();
   const { data: vsls = [], isLoading } = useQuery({
     queryKey: ["vsls", devBypass],
     queryFn: (): Promise<any[]> => (devBypass ? Promise.resolve(mockVsls()) : load()),
@@ -71,7 +74,7 @@ function VslPage() {
 
   return (
     <>
-      <TopBar title="VSL Analytics" subtitle="Wistia performance, drop-off, and script alignment across your video funnel." />
+      <TopBar title="VSL Analytics" subtitle="Wistia performance, drop-off, and script alignment across your video funnel." showDateRange />
       <div className="p-4 md:p-6 space-y-5">
         <Tabs value={kind} onValueChange={(v) => setKind(v as VslKind | "faq")}>
           <TabsList className="w-full justify-start">
@@ -102,7 +105,7 @@ function VslPage() {
                   description="Create one, paste its Wistia sheet, and start tracking play rate, retention, and drop-off timestamps."
                 />
               )}
-              {grouped[k].map((v: any) => <VslCard key={v.id} vsl={v} />)}
+              {grouped[k].map((v: any) => <VslCard key={v.id} vsl={v} range={range} />)}
             </TabsContent>
           ))}
           <TabsContent value="faq" className="space-y-4 mt-4">
@@ -144,7 +147,7 @@ function NewVslButton({ kind }: { kind: VslKind }) {
   );
 }
 
-function VslCard({ vsl }: { vsl: any }) {
+function VslCard({ vsl, range }: { vsl: any; range: { from: string; to: string } }) {
   const qc = useQueryClient();
   const loadSnaps = useServerFn(listSnapshots);
   const analyze = useServerFn(analyzeVsl);
@@ -154,8 +157,8 @@ function VslCard({ vsl }: { vsl: any }) {
   const [analyzing, setAnalyzing] = useState(false);
 
   const { data: snaps = [] } = useQuery({
-    queryKey: ["vsl_snaps", vsl.id, devBypass],
-    queryFn: () => (devBypass ? Promise.resolve(mockVslSnapshots(vsl.id)) : loadSnaps({ data: { vsl_id: vsl.id } })),
+    queryKey: ["vsl_snaps", vsl.id, range.from, range.to, devBypass],
+    queryFn: () => (devBypass ? Promise.resolve(mockVslSnapshots(vsl.id)) : loadSnaps({ data: { vsl_id: vsl.id, from: `${range.from}T00:00:00`, to: `${range.to}T23:59:59` } })),
   });
   const latest = snaps[0];
   const history = [...snaps].reverse();
@@ -482,6 +485,15 @@ function FaqVideosSection() {
   const ranked = [...(faqs ?? [])].sort((a, b) => b.clicks - a.clicks);
   const topBelief = ranked[0];
 
+  // Deep-link from the objection instrument ("content that addresses this
+  // mechanism") — scroll to the specific FAQ video card on arrival.
+  const deepLink = useSearch({ strict: false }) as { faq?: string };
+  useEffect(() => {
+    if (!deepLink.faq) return;
+    const el = document.getElementById(`faq-${deepLink.faq}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [deepLink.faq]);
+
   const del = useMutation({
     mutationFn: async (id: string) => { const { error } = await supabase.from("faq_videos").delete().eq("id", id); if (error) throw error; },
     onSuccess: () => { toast.success("Removed"); qc.invalidateQueries({ queryKey: ["faq-videos"] }); },
@@ -493,7 +505,7 @@ function FaqVideosSection() {
       <SlimHeader
         icon={<HelpCircle className="h-4 w-4" />}
         title="FAQ Videos"
-        subtitle="Objection-answer videos shown post-booking. Ranked most-clicked first — the top one is the audience's #1 subconscious limiting belief."
+        subtitle="Objection-answer video library. Ranked most-clicked first — the top one is the audience's #1 subconscious limiting belief. (No post-booking delivery surface exists yet — clicks/plays are logged manually below, not from a live delivery flow.)"
         right={<Button size="sm" className="gap-1.5" onClick={() => { setEditing(null); setOpen(true); }}><Plus className="h-3.5 w-3.5" />Add FAQ video</Button>}
       />
 
@@ -529,8 +541,9 @@ function FaqVideosSection() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {ranked.map((f, i) => {
           const watchRate = f.clicks > 0 ? Math.round((f.plays / f.clicks) * 100) : 0;
+          const deepLinked = deepLink.faq === f.id;
           return (
-            <div key={f.id} className="hover-lift rounded-lg border border-border bg-card overflow-hidden">
+            <div key={f.id} id={`faq-${f.id}`} className={cn("hover-lift scroll-mt-20 rounded-lg border bg-card overflow-hidden", deepLinked ? "border-primary ring-2 ring-primary/40" : "border-border")}>
               <div className="relative">
                 <VideoEmbed wistiaId={f.wistia_video_id} url={f.video_url} title={f.title} className="rounded-none border-0" />
                 <div className="absolute left-2 top-2 grid h-6 w-6 place-items-center rounded-md bg-background/80 backdrop-blur text-3xs font-mono font-bold text-foreground ring-1 ring-inset ring-white/10">{i + 1}</div>

@@ -138,7 +138,7 @@ function Connectors() {
                   <span className="text-[color:var(--color-success)]">{(connections ?? []).filter(c => c.state === "connected").length}</span>
                   <span className="text-muted-foreground"> / {(registry ?? []).length}</span>
                 </div>
-                <div className="text-2xs text-muted-foreground">active connections</div>
+                <div className="text-2xs text-muted-foreground">Active connections</div>
               </div>
               <div className="relative flex-1 text-xs text-muted-foreground">
                 Click any connector below to attach it to your workspace. Each dashboard picks up the connection automatically —
@@ -170,14 +170,14 @@ function Connectors() {
                   </div>
                   {isConnected && configured ? (
                     <span className="rounded bg-[color:var(--color-success)]/15 px-2 py-0.5 text-3xs uppercase tracking-wide text-[color:var(--color-success)] flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3" /> connected
+                      <CheckCircle2 className="h-3 w-3" /> Connected
                     </span>
                   ) : isConnected ? (
-                    <span className="rounded bg-muted px-2 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">setup needed</span>
+                    <span className="rounded bg-muted px-2 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">Setup needed</span>
                   ) : canConnect ? (
-                    <span className="rounded bg-muted px-2 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">available</span>
+                    <span className="rounded bg-muted px-2 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">Available</span>
                   ) : (
-                    <span className="rounded bg-muted px-2 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">credentials needed</span>
+                    <span className="rounded bg-muted px-2 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">Credentials needed</span>
                   )}
                 </div>
                 {isConnected && hasSetup && (

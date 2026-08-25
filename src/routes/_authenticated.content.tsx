@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
+import { useDateRange } from "@/hooks/use-date-range";
 import { useMemo, useState, Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,6 +76,7 @@ export const Route = createFileRoute("/_authenticated/content")({ component: Con
 function ContentIntel() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { range } = useDateRange();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [prefill, setPrefill] = useState<Prefill | null>(null);
@@ -241,8 +243,14 @@ function ContentIntel() {
   };
 
   // Performance overview — funnel totals, top hooks, mechanism x variation heatmap.
+  // Totals are scoped to the selected date range (by posted_at); the
+  // Pipeline/Table/Calendar tabs below intentionally keep showing every piece
+  // regardless of range — it's a pipeline of drafts/scheduled/posted content,
+  // not a log, and filtering it would hide in-progress pieces outside the window.
+  const rangeToEnd = `${range.to}T23:59:59`;
   const perf = useMemo(() => {
-    const list = pieces ?? [];
+    const all = pieces ?? [];
+    const list = all.filter((p) => !!p.posted_at && p.posted_at >= range.from && p.posted_at <= rangeToEnd);
     const metricsOf = (p: PieceRow) => p.content_metrics?.[0];
     const totals = list.reduce((s, p) => {
       const m = metricsOf(p);
@@ -276,12 +284,14 @@ function ContentIntel() {
       });
     });
 
-    const now = Date.now();
-    const postedThisWeek = list.filter(p => p.posted_at && now - new Date(p.posted_at).getTime() < 7 * 86400e3).length;
-    const inReview = list.filter(p => p.pipeline_status === "in_review").length;
+    // "In review" is current pipeline state, not time-scoped — counted from
+    // every piece regardless of the selected range, same reasoning as the
+    // Pipeline tab itself.
+    const postedThisWeek = list.length;
+    const inReview = all.filter(p => p.pipeline_status === "in_review").length;
 
     return { totals, topHooks: top, heatmapRows: heatRows, heatmapCols: heatCols, heatmapData: heatData, postedThisWeek, inReview };
-  }, [pieces, devBypass]);
+  }, [pieces, devBypass, range.from, rangeToEnd]);
 
   // Real month-grid calendar with month/year navigation.
   const [cursor, setCursor] = useState(() => {
@@ -332,8 +342,8 @@ function ContentIntel() {
 
   return (
     <>
-      <TopBar title="Content Intelligence" subtitle="Hooks, retention, cash-per-view" />
-      <div className="mx-auto max-w-[1680px] space-y-4 p-4 md:p-7">
+      <TopBar title="Content Intelligence" subtitle="Hooks, retention, cash-per-view" showDateRange />
+      <div className="p-6 space-y-4">
         <PageHero
           icon={<Video className="h-5 w-5" />}
           eyebrow="ContentOS"
@@ -341,7 +351,7 @@ function ContentIntel() {
           subtitle="Every post, tagged by mechanism and variation, tracked hook-to-cash."
           status={[
             { label: `${pieces?.length ?? 0} pieces tracked`, tone: "default" },
-            { label: `${perf.postedThisWeek} posted this week`, tone: "success" },
+            { label: `${perf.postedThisWeek} posted in range`, tone: "success" },
             ...(perf.inReview > 0 ? [{ label: `${perf.inReview} in review`, tone: "warning" as const }] : []),
           ]}
           stats={[

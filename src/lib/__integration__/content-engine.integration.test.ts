@@ -88,7 +88,7 @@ describe("computeDemand: real driver + mix computation from seeded signals", () 
       expect(metricErr).toBeNull();
     }
 
-    const result = await computeDemand(ws.userClient, ws.orgId, 30, config);
+    const result = await computeDemand(ws.userClient, ws.orgId, { from: daysAgo(30).slice(0, 10), to: new Date().toISOString().slice(0, 10) }, config);
 
     expect(result.counts.faq).toBe(1);
     expect(result.counts.setter_calls).toBe(1);

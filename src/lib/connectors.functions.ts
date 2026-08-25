@@ -196,7 +196,7 @@ export const connectWorkspaceConnector = createServerFn({ method: "POST" })
           name: "Discord event alerts",
           target_url: validatedConfig.webhookUrl,
           channel: "discord",
-          event_types: ["lead.created", "call.booked", "call.closed_won", "payment.collected", "onboarding.submitted", "alert.fired"],
+          event_types: ["lead.created", "call.booked", "call.closed_won", "payment.collected", "onboarding.submitted", "alert.fired", "digest.weekly"],
           active: true,
         });
       }
@@ -216,7 +216,7 @@ export const connectWorkspaceConnector = createServerFn({ method: "POST" })
           name: validatedConfig.label || "Zapier fan-out",
           target_url: validatedConfig.webhookUrl,
           channel: "zapier",
-          event_types: ["lead.created", "call.booked", "call.closed_won", "payment.collected", "onboarding.submitted", "alert.fired"],
+          event_types: ["lead.created", "call.booked", "call.closed_won", "payment.collected", "onboarding.submitted", "alert.fired", "digest.weekly"],
           active: true,
         });
       }

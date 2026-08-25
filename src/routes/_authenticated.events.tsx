@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
+import { useDateRange } from "@/hooks/use-date-range";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
 import { useState } from "react";
@@ -22,7 +23,7 @@ import { cn } from "@/lib/utils";
 
 const EVENT_TYPES = [
   "lead.created","lead.status_changed","conversation.started","call.booked","call.showed","call.closed_won","call.closed_lost",
-  "payment.collected","content.posted","content.milestone_10k","onboarding.submitted","alert.fired","client.renewed",
+  "payment.collected","content.posted","content.milestone_10k","onboarding.submitted","alert.fired","client.renewed","digest.weekly",
 ];
 
 export const Route = createFileRoute("/_authenticated/events")({ component: EventsBus });
@@ -30,21 +31,27 @@ export const Route = createFileRoute("/_authenticated/events")({ component: Even
 function EventsBus() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { range } = useDateRange();
+  const fromISO = `${range.from}T00:00:00`;
+  const toISO = `${range.to}T23:59:59`;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
 
   const { data: events } = useQuery({
-    queryKey: ["events", orgId],
+    queryKey: ["events", orgId, range.from, range.to],
     enabled: !!orgId,
     refetchInterval: 5000,
     queryFn: async () => {
       const { data, error } = await supabase.from("events").select("id, event_type, subject_type, payload, occurred_at, actor_user_id")
-        .eq("org_id", orgId!).order("occurred_at", { ascending: false }).limit(60);
+        .eq("org_id", orgId!).gte("occurred_at", fromISO).lte("occurred_at", toISO).order("occurred_at", { ascending: false }).limit(60);
       if (error) throw error;
       return data;
     },
   });
 
+  // Subscriptions are webhook config, not a time-scoped log — a date range
+  // would hide an active subscription created outside the window, same
+  // reasoning as the clients/hiring/leads roster pages.
   const { data: subs } = useQuery({
     queryKey: ["webhook-subs", orgId],
     enabled: !!orgId,
@@ -56,17 +63,20 @@ function EventsBus() {
   });
 
   const { data: deliveries } = useQuery({
-    queryKey: ["webhook-deliveries", orgId],
+    queryKey: ["webhook-deliveries", orgId, range.from, range.to],
     enabled: !!orgId,
     refetchInterval: 10000,
     queryFn: async () => {
       const { data, error } = await supabase.from("webhook_deliveries").select("id, status, response_code, attempt, created_at, subscription_id")
-        .eq("org_id", orgId!).order("created_at", { ascending: false }).limit(40);
+        .eq("org_id", orgId!).gte("created_at", fromISO).lte("created_at", toISO).order("created_at", { ascending: false }).limit(40);
       if (error) throw error;
       return data ?? [];
     },
   });
 
+  // Per-connector current sync state, not a log — filtering by date would
+  // hide a connector whose last sync predates the window, same reasoning as
+  // the clients/hiring/leads roster pages.
   const { data: syncs } = useQuery({
     queryKey: ["sync-status", orgId],
     enabled: !!orgId,
@@ -78,12 +88,12 @@ function EventsBus() {
   });
 
   const { data: raw } = useQuery({
-    queryKey: ["raw-payloads", orgId],
+    queryKey: ["raw-payloads", orgId, range.from, range.to],
     enabled: !!orgId,
     refetchInterval: 10000,
     queryFn: async () => {
       const { data, error } = await supabase.from("raw_payloads").select("id, resource, connector_id, received_at, processed_at, process_error")
-        .eq("org_id", orgId!).order("received_at", { ascending: false }).limit(30);
+        .eq("org_id", orgId!).gte("received_at", fromISO).lte("received_at", toISO).order("received_at", { ascending: false }).limit(30);
       if (error) throw error;
       return data ?? [];
     },
@@ -110,7 +120,7 @@ function EventsBus() {
 
   return (
     <>
-      <TopBar title="Event Bus & Webhooks" subtitle="Live event stream, subscriptions, and ingestion payloads" />
+      <TopBar title="Event Bus & Webhooks" subtitle="Live event stream, subscriptions, and ingestion payloads" showDateRange />
       <div className="p-6 space-y-5">
         {/* Page hero (B1) — bounded, fixed-shape content (unlike InboundIngestCard
             below, whose tab content grows with each payload example, which would
@@ -125,7 +135,7 @@ function EventsBus() {
                 <div>
                   <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Live Event Stream</div>
                   <div className="font-mono text-4xl font-bold tabular-nums">{events?.length ?? 0}</div>
-                  <div className="text-2xs text-muted-foreground">events in range · refreshing every 5s</div>
+                  <div className="text-2xs text-muted-foreground">Events in range · refreshing every 5s</div>
                 </div>
               </div>
               <div className="relative h-10 w-px bg-border" />
@@ -133,7 +143,7 @@ function EventsBus() {
                 <AlertCircle className={`h-4 w-4 ${failed ? "text-destructive" : "text-[color:var(--color-success)]"}`} />
                 <div>
                   <div className={`font-mono text-2xl font-bold tabular-nums ${failed ? "text-destructive" : "text-[color:var(--color-success)]"}`}>{failed}</div>
-                  <div className="text-2xs text-muted-foreground">failed deliveries</div>
+                  <div className="text-2xs text-muted-foreground">Failed deliveries</div>
                 </div>
               </div>
             </div>
@@ -152,7 +162,7 @@ function EventsBus() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="rounded-lg border border-border bg-card overflow-hidden">
             <div className="bg-muted/40 px-3 py-2 text-2xs uppercase tracking-wider text-muted-foreground flex justify-between items-center">
-              <span>Live event stream</span><span className="font-mono">refresh 5s</span>
+              <span>Live event stream</span><span className="font-mono">Refresh 5s</span>
             </div>
             <div className="divide-y divide-border max-h-[60vh] overflow-y-auto">
               {/* dispatch.lookup_failed (dispatch.server.ts) is a genuine query
@@ -205,7 +215,7 @@ function EventsBus() {
                 {(subs ?? []).map(s => (
                   <div key={s.id} className="p-3 text-xs">
                     <div className="flex justify-between"><span className="font-medium">{s.name}</span>
-                      <span className={`rounded px-1.5 py-0.5 text-3xs ${s.active ? "bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]" : "bg-muted"}`}>{s.active ? "active" : "off"}</span></div>
+                      <span className={`rounded px-1.5 py-0.5 text-3xs ${s.active ? "bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]" : "bg-muted"}`}>{s.active ? "Active" : "Off"}</span></div>
                     <div className="text-muted-foreground truncate mt-0.5 font-mono">{s.target_url}</div>
                     <div className="text-3xs text-muted-foreground mt-1">{(s.event_types ?? []).length} event types</div>
                   </div>
@@ -263,7 +273,7 @@ function EventsBus() {
                 <tr key={r.id} className="border-t border-border/70">
                   <td className="p-2 font-mono">{r.connector_id}</td>
                   <td className="p-2">{r.resource}</td>
-                  <td className="p-2">{r.process_error ? <span className="text-destructive">err</span> : r.processed_at ? "✓" : <span className="text-muted-foreground">queued</span>}</td>
+                  <td className="p-2">{r.process_error ? <span className="text-destructive">Err</span> : r.processed_at ? "✓" : <span className="text-muted-foreground">Queued</span>}</td>
                   <td className="p-2 text-muted-foreground">{new Date(r.received_at).toLocaleTimeString()}</td>
                 </tr>
               ))}

@@ -44,7 +44,7 @@ export function LiveTicker() {
   if (!orgId) return null;
 
   return (
-    <div className="glass sticky top-0 z-30 flex items-center gap-4 border-b border-border/70 px-4 py-1.5 text-3xs md:px-6">
+    <div className="glass-header sticky top-0 z-30 flex h-8 items-center gap-4 border-b border-border/70 px-4 py-1.5 text-3xs md:px-6">
       <span className="flex items-center gap-1.5 text-muted-foreground">
         <span className={cn("status-dot text-spectrum-hot", "ticker-pulse")} />
         Today
