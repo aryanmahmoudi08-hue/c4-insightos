@@ -73,18 +73,6 @@ type Cal = {
   active: boolean;
 };
 
-type Block = {
-  id: string;
-  member_name: string;
-  role: string | null;
-  title: string;
-  kind: string;
-  block_date: string;
-  start_time: string | null;
-  end_time: string | null;
-  notes: string | null;
-};
-
 const ROLES = ["closer", "dm_setter", "dialer", "manager", "other"];
 const ROLE_GROUPS: { key: string; label: string; roles: string[] }[] = [
   { key: "closer", label: "All Closers", roles: ["closer"] },
@@ -101,18 +89,6 @@ const TEAM_MEMBER_ROLE_MAP: Partial<Record<string, TeamRole>> = {
   dm_setter: "dm_setter",
   dialer: "inbound_dialer",
 };
-const KINDS = [
-  { value: "calls", label: "Calls", tone: "bg-primary/15 text-primary border-primary/30" },
-  { value: "prospecting", label: "Prospecting", tone: "bg-accent/15 text-accent border-accent/30" },
-  { value: "work", label: "Deep work", tone: "bg-muted text-foreground border-border" },
-  { value: "admin", label: "Admin", tone: "bg-muted text-muted-foreground border-border" },
-  {
-    value: "off",
-    label: "Off / PTO",
-    tone: "bg-destructive/10 text-destructive border-destructive/30",
-  },
-];
-
 function TeamCalendarPage() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
@@ -133,16 +109,13 @@ function TeamCalendarPage() {
   // Lifted so both the toolbar's "Connect calendar" button and the empty-state
   // CTA below can open the same dialog instance.
   const [calDialogOpen, setCalDialogOpen] = useState(false);
-  // Quick-add: clicking empty space in a day cell opens BlockDialog pre-filled
-  // with that date, instead of always defaulting to the week's first day.
 
-  // Dev bypass never got a real Supabase session, so writes to team_calendars /
-  // work_blocks get rejected by RLS (401) — the same gap the backfill fixed on
+  // Dev bypass never got a real Supabase session, so writes to team_calendars
+  // get rejected by RLS (401) — the same gap the backfill fixed on
   // team.tsx/daily-wins-panel.tsx. Keep edits in local state
   // instead, mirroring permissions.tsx's established pattern for this exact
   // situation (reads succeed empty under devBypass RLS, only writes fail).
   const [mockCals, setMockCals] = useState<Cal[]>([]);
-  const [mockBlocks, setMockBlocks] = useState<Block[]>([]);
 
   const { data: calsQuery } = useQuery({
     queryKey: ["team-calendars", orgId],
@@ -158,35 +131,6 @@ function TeamCalendarPage() {
     },
   });
   const cals = devBypass ? mockCals : calsQuery;
-
-  const days = useMemo(
-    () =>
-      Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(weekStart);
-        d.setDate(d.getDate() + i);
-        return d.toISOString().slice(0, 10);
-      }),
-    [weekStart],
-  );
-
-  const { data: blocksQuery } = useQuery({
-    queryKey: ["work-blocks", orgId, days[0]],
-    enabled: !!orgId && !devBypass,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("work_blocks")
-        .select("id, member_name, role, title, kind, block_date, start_time, end_time, notes")
-        .eq("org_id", orgId!)
-        .gte("block_date", days[0])
-        .lte("block_date", days[6])
-        .order("start_time");
-      if (error) throw error;
-      return (data ?? []) as Block[];
-    },
-  });
-  const blocks = devBypass
-    ? mockBlocks.filter((b) => b.block_date >= days[0] && b.block_date <= days[6])
-    : blocksQuery;
 
   const matchesFilter = (name: string) => selectedReps.size === 0 || selectedReps.has(name);
 
@@ -320,46 +264,11 @@ function TeamCalendarPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const saveBlock = useMutation({
-    mutationFn: async (row: Omit<Block, "id">) => {
-      if (devBypass) {
-        setMockBlocks((prev) => [...prev, { ...row, id: crypto.randomUUID() }]);
-        return;
-      }
-      const { error } = await (
-        supabase.from("work_blocks") as never as {
-          insert: (p: unknown) => Promise<{ error: { message: string } | null }>;
-        }
-      ).insert({ ...row, org_id: orgId! });
-      if (error) throw new Error(error.message);
-    },
-    onSuccess: () => {
-      if (!devBypass) qc.invalidateQueries({ queryKey: ["work-blocks", orgId, days[0]] });
-      toast.success("Work block added.");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const delBlock = useMutation({
-    mutationFn: async (id: string) => {
-      if (devBypass) {
-        setMockBlocks((prev) => prev.filter((b) => b.id !== id));
-        return;
-      }
-      const { error } = await supabase.from("work_blocks").delete().eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      if (!devBypass) qc.invalidateQueries({ queryKey: ["work-blocks", orgId, days[0]] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   return (
     <>
       <TopBar
         title="Team Calendars"
-        subtitle="Closer + setter availability and work blocks — one view for the whole team"
+        subtitle="Closer + setter availability — one view for the whole team. Work blocks live in Google Calendar."
       />
       <div className="p-4 md:p-6 space-y-5">
         {/* Combined Google Calendar */}

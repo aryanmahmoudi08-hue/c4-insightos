@@ -178,7 +178,7 @@ function MenteeLifecycleEvidence({
             Verified lifecycle stages
           </div>
           <div className="mt-2 text-muted-foreground">
-            Client record{clientPayments.length ? " → payment" : ""}
+            Mentee record{clientPayments.length ? " → payment" : ""}
           </div>
           <div className="mt-1 text-3xs text-muted-foreground">
             {evidence.knownTouchpoints} known touchpoint{evidence.knownTouchpoints === 1 ? "" : "s"}
@@ -322,7 +322,7 @@ function Mentees() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Client added");
+      toast.success("Mentee added");
       qc.invalidateQueries({ queryKey: ["clients"] });
       setOpen(false);
     },
@@ -335,7 +335,7 @@ function Mentees() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Client updated");
+      toast.success("Mentee updated");
       qc.invalidateQueries({ queryKey: ["clients"] });
       setEditing(null);
     },

@@ -78,9 +78,7 @@ const TEAM_NAV: NavItem[] = [
 ];
 
 // Client DNA is the only retained CopyOS surface; copy creation remains external.
-const COPY_OS_NAV: NavItem[] = [
-  { to: "/copy", label: "Client DNA", icon: Users, search: { tab: "clients" } },
-];
+const COPY_OS_NAV: NavItem[] = [{ to: "/copy", label: "Client DNA", icon: Users }];
 
 // MARKETING — content, attribution, analytics, and retained Client DNA.
 const MARKETING_CONTENT_NAV: NavItem[] = [

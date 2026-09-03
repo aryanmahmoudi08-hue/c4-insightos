@@ -22,7 +22,7 @@ export const RESOURCE_GROUPS = [
   "Sales",
   "Team",
   "Marketing",
-  "Clients",
+  "Mentees",
   "Reporting",
   "System",
 ] as const;
@@ -35,13 +35,6 @@ export const RESOURCES: ResourceDef[] = [
     sensitive: true,
     view: "Company KPIs, cash collected, funnel, weekly digest and sparkline trends for the selected date range.",
     edit: "Rearrange tiles and save custom dashboard widgets / metric definitions.",
-  },
-  {
-    key: "insights",
-    label: "C4 Sentinel",
-    group: "Main",
-    view: "Ask direct questions about cash, calls, content, clients, and open alerts — every answer is grounded in a real tool call against live data, never a generated guess.",
-    edit: "No edit surface — C4 Sentinel is read-only by design; it answers questions, it never mutates data.",
   },
   {
     key: "leads",
@@ -117,10 +110,10 @@ export const RESOURCES: ResourceDef[] = [
   },
   {
     key: "copy",
-    label: "CopyOS",
+    label: "Client DNA",
     group: "Marketing",
-    view: "Generated copy, angle bank, swipe library and client DNA profiles.",
-    edit: "Generate new copy, save swipes and edit client DNA / voice fingerprints.",
+    view: "C4's client positioning, voice and persuasion profile.",
+    edit: "Edit client DNA and extract voice fingerprints.",
   },
   {
     key: "vsl",
@@ -153,25 +146,25 @@ export const RESOURCES: ResourceDef[] = [
   },
   {
     key: "clients",
-    label: "Clients",
-    group: "Clients",
+    label: "Mentees & Renewals",
+    group: "Mentees",
     sensitive: true,
-    view: "Client roster with contract values, payment plans, renewals and health scores.",
-    edit: "Edit client records, payments, renewal stage and notes.",
+    view: "Mentee roster with contract values, payment plans, renewals and health scores.",
+    edit: "Edit mentee records, payments, renewal stage and notes.",
   },
   {
     key: "onboarding",
-    label: "Onboarding",
-    group: "Clients",
+    label: "Mentee Onboarding",
+    group: "Mentees",
     view: "Intake responses with bottleneck / double-down signals and the aggregate insight panel.",
     edit: "Send intake links and run AI intake analysis.",
   },
   {
     key: "fulfillment",
-    label: "Client Results / Wins",
-    group: "Clients",
-    view: "Logged student wins, screenshots and magnitude.",
-    edit: "Add, edit and delete wins (these also feed CopyOS proof memory).",
+    label: "Mentee Results",
+    group: "Mentees",
+    view: "Logged mentee wins, screenshots and magnitude.",
+    edit: "Add, edit and delete wins (these also feed Client DNA proof memory).",
   },
   {
     key: "weekly_report",
@@ -188,14 +181,6 @@ export const RESOURCES: ResourceDef[] = [
     sensitive: true,
     view: "Raw event stream and webhook delivery log.",
     edit: "Replay events and manage webhook subscriptions.",
-  },
-  {
-    key: "connectors",
-    label: "Connectors & Channels",
-    group: "System",
-    sensitive: true,
-    view: "Connected integrations and their sync status.",
-    edit: "Connect / disconnect integrations and manage Discord / Slack / n8n routing.",
   },
 ];
 
@@ -238,30 +223,19 @@ export function defaultPerm(
     case "admin":
       return { can_view: true, can_edit: true };
     case "sales_manager":
-      return { can_view: true, can_edit: !["connectors", "events"].includes(resource) };
+      return { can_view: true, can_edit: resource !== "events" };
     case "growth_ops":
       return {
         can_view: !sensitive || resource === "attribution" || resource === "dashboard",
-        can_edit: [
-          "content",
-          "content_calendar",
-          "sequences",
-          "copy",
-          "insights",
-          "traffic",
-          "vsl",
-        ].includes(resource),
+        can_edit: ["content", "content_calendar", "sequences", "copy", "traffic", "vsl"].includes(
+          resource,
+        ),
       };
     case "setter":
       return {
-        can_view: [
-          "dashboard",
-          "leads",
-          "dm_setter",
-          "eod_reports",
-          "content_calendar",
-          "insights",
-        ].includes(resource),
+        can_view: ["dashboard", "leads", "dm_setter", "eod_reports", "content_calendar"].includes(
+          resource,
+        ),
         can_edit: ["leads", "dm_setter", "eod_reports"].includes(resource),
       };
     case "closer":
@@ -273,7 +247,6 @@ export function defaultPerm(
           "eod_reports",
           "clients",
           "content_calendar",
-          "insights",
         ].includes(resource),
         can_edit: ["leads", "closer", "eod_reports"].includes(resource),
       };

@@ -57,7 +57,7 @@ const ROUTES: { to: string; label: string; group: string; icon: typeof LayoutDas
   { to: "/fulfillment", label: "Mentee Results", group: "Go to", icon: BadgeCheck },
   { to: "/vsl", label: "VSL Analytics", group: "Go to", icon: Video },
   { to: "/events", label: "Event Bus", group: "Go to", icon: Activity },
-  { to: "/copy", label: "CopyOS", group: "Go to", icon: Wand2 },
+  { to: "/copy", label: "Client DNA", group: "Go to", icon: Wand2 },
   { to: "/sequences", label: "Story Sequences", group: "Go to", icon: Layers },
   { to: "/settings", label: "Settings", group: "Go to", icon: Settings },
   { to: "/permissions", label: "Access control", group: "Go to", icon: ShieldCheck },
