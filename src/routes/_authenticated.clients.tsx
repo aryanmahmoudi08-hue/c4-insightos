@@ -6,7 +6,7 @@ import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { mockClients, mockPreCloseSummary, withMockDelay } from "@/lib/dev-mock-data";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,22 +36,44 @@ import { KanbanBoard, KanbanCardAnatomy } from "@/components/kanban-board";
 import { GlassTableShell, Pagination, usePagination } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
-import { daysUntilDate, clientAtRiskReason } from "@/lib/client-risk";
+import {
+  daysUntilDate,
+  clientAtRiskReason,
+  evaluateTransparentHealth,
+  HEALTH_STATUS_OPTIONS,
+  type HealthStatus,
+} from "@/lib/client-risk";
 import { deduplicatePaymentRecords, evaluateAttributionEvidence } from "@/lib/acquisition";
+import {
+  generatePaymentSchedule,
+  paymentProgress,
+  expectedVsActualSeries,
+  collectionRatePct,
+  effectiveScheduleStatus,
+} from "@/lib/mentee-payments";
 import { AttributionEvidencePanel } from "@/components/attribution-evidence-panel";
+import { AttributionPathPanel, type AttributionPath } from "@/components/attribution-path-panel";
 import { MenteeOperationsPanel } from "@/components/mentee-operations-panel";
+import { CollectionsChart } from "@/components/mentee-collections-chart";
+import { MenteeScheduledComms } from "@/components/mentee-scheduled-comms";
 import {
   getWorkspaceSettingsFn,
   DEFAULT_WORKSPACE_SETTINGS,
 } from "@/lib/workspace-settings.functions";
 
-export const Route = createFileRoute("/_authenticated/clients")({ component: Mentees });
+export const Route = createFileRoute("/_authenticated/clients")({
+  component: Mentees,
+  validateSearch: (s: Record<string, unknown>) => ({
+    openId: typeof s.openId === "string" ? s.openId : undefined,
+  }),
+});
 
+// Order matches the spec's exact renewal pipeline stage list (section 7).
 const STAGES = [
   { key: "not_started", label: "Not Started", tone: "default" },
+  { key: "outreach_started", label: "Outreach Started", tone: "info" },
   { key: "conversation", label: "Renewal Conversation", tone: "info" },
   { key: "proposal", label: "Proposal / Payment Link Sent", tone: "warning" },
-  { key: "outreach_started", label: "Outreach Started", tone: "info" },
   { key: "won", label: "Renewed", tone: "success" },
   { key: "churned", label: "Churned", tone: "destructive" },
 ] as const;
@@ -69,6 +91,25 @@ type PaymentRow = {
   status: string;
   collected_at: string;
   currency: string;
+};
+
+type ScheduleRow = {
+  id: string;
+  client_id: string;
+  due_date: string;
+  amount_cents: number;
+  status: string;
+};
+
+type RenewalWorkItemRow = {
+  id: string;
+  client_id: string;
+  owner_id: string | null;
+  next_action: string | null;
+  next_action_at: string | null;
+  stage: string;
+  reason: string | null;
+  risk: string;
 };
 
 type ClientRow = {
@@ -130,10 +171,20 @@ function ClientPortfolioHero({
 function MenteeLifecycleEvidence({
   client,
   payments,
+  schedule,
+  health,
+  renewal,
+  orgId,
 }: {
   client: ClientRow;
   payments: PaymentRow[];
+  schedule: ScheduleRow[];
+  health: ReturnType<typeof evaluateTransparentHealth> | undefined;
+  renewal: RenewalWorkItemRow | undefined;
+  orgId: string | undefined;
 }) {
+  const qc = useQueryClient();
+  const [noteDraft, setNoteDraft] = useState("");
   const clientPayments = deduplicatePaymentRecords(
     payments.filter((payment) => payment.client_id === client.id),
   );
@@ -150,8 +201,94 @@ function MenteeLifecycleEvidence({
     directOutcomeLinked: clientPayments.length > 0,
     drilldownKey: client.id,
   });
-  const riskReason = clientAtRiskReason(client, 30);
   const money = (cents: number) => `$${Math.round(cents / 100).toLocaleString()}`;
+
+  const { data: activity = [] } = useQuery({
+    queryKey: ["client-activity", orgId, client.id],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("client_activity_events")
+        .select("id, event_type, body, actor_name, created_at")
+        .eq("client_id", client.id)
+        .order("created_at", { ascending: false })
+        .limit(30);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const addNote = useMutation({
+    mutationFn: async (body: string) => {
+      const { error } = await supabase
+        .from("client_activity_events")
+        .insert({ org_id: orgId!, client_id: client.id, event_type: "note", body });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setNoteDraft("");
+      qc.invalidateQueries({ queryKey: ["client-activity", orgId, client.id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const lifecyclePath: AttributionPath[] = [
+    {
+      id: "mentee-lifecycle",
+      label:
+        "Source/campaign → capture mechanism → setter/dialer → closer → offer → payment plan → cash → health → outcome",
+      stages: [
+        {
+          key: "source",
+          label: "Source / Campaign",
+          value: null,
+          detail: "No verified lead join stored on the mentee record",
+        },
+        {
+          key: "capture",
+          label: "Capture Mechanism",
+          value: null,
+          detail: "Not connected — lives on the originating lead, not the mentee",
+        },
+        {
+          key: "rep",
+          label: "Setter / Dialer / Closer",
+          value: null,
+          detail: "Not connected — join via lead_id → calls when available",
+        },
+        {
+          key: "offer",
+          label: "Offer",
+          value: client.offer_name ? 1 : 0,
+          detail: client.offer_name ?? "No offer recorded",
+        },
+        {
+          key: "plan",
+          label: "Payment Plan",
+          value: client.payment_plan ? 1 : 0,
+          detail: client.payment_plan ? `${schedule.length} scheduled` : "Paid in full",
+        },
+        {
+          key: "cash",
+          label: "Cash Collected",
+          value: Math.round(collectedCents / 100),
+          detail: money(collectedCents),
+        },
+        {
+          key: "health",
+          label: "Health",
+          value: health?.score ?? null,
+          detail: health?.status ?? "unavailable",
+        },
+        {
+          key: "outcome",
+          label: "Renewal / Upgrade / Churn",
+          value: null,
+          detail: stageLabel(client.renewal_stage),
+        },
+      ],
+    },
+  ];
+
   return (
     <div className="space-y-4 rounded-xl border border-border/70 bg-muted/10 p-4">
       <AttributionEvidencePanel
@@ -172,30 +309,123 @@ function MenteeLifecycleEvidence({
           </div>
         ))}
       </div>
-      <div className="grid gap-2 text-xs sm:grid-cols-2">
+
+      <div className="rounded-lg border border-border/60 bg-card/60 p-3">
+        <div className="flex items-center justify-between">
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+            Health — {health?.status ?? "unavailable"}{" "}
+            {health?.score != null ? `(${health.score})` : ""}
+          </div>
+          {renewal?.next_action && (
+            <span className="text-3xs text-cyan-300">Next: {renewal.next_action}</span>
+          )}
+        </div>
+        <ul className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
+          {(health?.reasons ?? ["Insufficient lifecycle and payment data"]).map((r) => (
+            <li key={r}>· {r}</li>
+          ))}
+        </ul>
+      </div>
+
+      {client.payment_plan && (
         <div className="rounded-lg border border-border/60 bg-card/60 p-3">
           <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-            Verified lifecycle stages
+            Payment-plan timeline
           </div>
-          <div className="mt-2 text-muted-foreground">
-            Mentee record{clientPayments.length ? " → payment" : ""}
-          </div>
-          <div className="mt-1 text-3xs text-muted-foreground">
-            {evidence.knownTouchpoints} known touchpoint{evidence.knownTouchpoints === 1 ? "" : "s"}
-            {evidence.sampleWarning ? ` · ${evidence.sampleWarning}` : ""}
-          </div>
+          {schedule.length ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {schedule
+                .sort((a, b) => a.due_date.localeCompare(b.due_date))
+                .map((s) => (
+                  <span
+                    key={s.id}
+                    className={`rounded px-1.5 py-0.5 text-3xs font-mono ${
+                      s.status === "paid"
+                        ? "bg-emerald-500/10 text-emerald-500"
+                        : s.status === "overdue"
+                          ? "bg-destructive/10 text-destructive"
+                          : "bg-muted text-muted-foreground"
+                    }`}
+                    title={`${money(s.amount_cents)} · ${s.status}`}
+                  >
+                    {s.due_date}
+                  </span>
+                ))}
+            </div>
+          ) : (
+            <div className="mt-1 text-xs text-muted-foreground">
+              No schedule generated yet — save the mentee with plan details to generate one.
+            </div>
+          )}
         </div>
-        <div className="rounded-lg border border-border/60 bg-card/60 p-3">
-          <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-            Unavailable without verified join
-          </div>
-          <div className="mt-2 text-muted-foreground">
-            Acquisition source · setter · closer · calls · offers · refunds
-          </div>
-          <div className="mt-1 text-3xs text-muted-foreground">
-            Health: {riskReason ?? "No threshold risk reason"}
-          </div>
+      )}
+
+      <div className="rounded-lg border border-border/60 bg-card/60 p-3">
+        <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+          Payment ledger
         </div>
+        {clientPayments.length ? (
+          <div className="mt-2 max-h-32 overflow-y-auto">
+            <table className="w-full text-2xs">
+              <tbody>
+                {clientPayments.slice(0, 20).map((p) => (
+                  <tr key={p.id} className="border-t border-border/40">
+                    <td className="py-1 text-muted-foreground">
+                      {new Date(p.collected_at).toLocaleDateString()}
+                    </td>
+                    <td className="py-1 uppercase text-muted-foreground">{p.status}</td>
+                    <td className="py-1 text-right font-mono">{money(p.amount_cents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="mt-1 text-xs text-muted-foreground">No payment records yet.</div>
+        )}
+      </div>
+
+      <AttributionPathPanel
+        title="Mentee lifecycle attribution"
+        subtitle="Original source through to renewal/upgrade/churn — stages without a verified join show Not Connected, never guessed"
+        paths={lifecyclePath}
+      />
+
+      <div className="rounded-lg border border-border/60 bg-card/60 p-3">
+        <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+          Activity timeline
+        </div>
+        <div className="mt-2 flex gap-1.5">
+          <Input
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            placeholder="Add a note…"
+            className="h-7 text-xs"
+          />
+          <Button
+            size="sm"
+            className="h-7 text-2xs"
+            disabled={!noteDraft.trim() || addNote.isPending}
+            onClick={() => addNote.mutate(noteDraft.trim())}
+          >
+            Add
+          </Button>
+        </div>
+        {activity.length ? (
+          <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto text-2xs">
+            {activity.map((a) => (
+              <li key={a.id} className="border-t border-border/40 pt-1.5 first:border-0 first:pt-0">
+                <span className="text-muted-foreground">
+                  {new Date(a.created_at).toLocaleString()} ·{" "}
+                </span>
+                <span className="uppercase text-muted-foreground">{a.event_type}</span>
+                {a.body ? <span> — {a.body}</span> : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="mt-2 text-xs text-muted-foreground">No activity logged yet.</div>
+        )}
       </div>
     </div>
   );
@@ -210,6 +440,12 @@ function Mentees() {
   const [editing, setEditing] = useState<ClientRow | null>(null);
   const [planChecked, setPlanChecked] = useState(false);
   const [query, setQuery] = useState("");
+  const [healthFilter, setHealthFilter] = useState<HealthStatus | "all">("all");
+  const [collectionsRange, setCollectionsRange] = useState<
+    "7d" | "30d" | "mtd" | "quarter" | "custom"
+  >("30d");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const generatePreClose = useServerFn(generatePreCloseFn);
   const notifyStageChanged = useServerFn(notifyClientStageChangedFn);
 
@@ -230,6 +466,18 @@ function Mentees() {
     },
   });
 
+  // Deep link from anywhere a mentee name appears elsewhere in the app
+  // (?openId=…) — opens the same profile drawer every other entry point uses.
+  const { openId } = Route.useSearch();
+  useEffect(() => {
+    if (!openId || !clients) return;
+    const match = clients.find((c) => c.id === openId);
+    if (match) {
+      setEditing(match);
+      setPlanChecked(!!match.payment_plan);
+    }
+  }, [openId, clients]);
+
   const { data: payments = [], isLoading: paymentsLoading } = useQuery({
     queryKey: ["mentee-payments", orgId, devBypass],
     enabled: !!orgId,
@@ -240,9 +488,36 @@ function Mentees() {
         .select("id, client_id, amount_cents, status, collected_at, currency")
         .eq("org_id", orgId!)
         .order("collected_at", { ascending: false })
-        .limit(100);
+        .limit(2000);
       if (error) throw error;
       return (data ?? []) as PaymentRow[];
+    },
+  });
+
+  const { data: scheduleItems = [] } = useQuery({
+    queryKey: ["payment-schedule-items", orgId, devBypass],
+    enabled: !!orgId && !devBypass,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("payment_schedule_items")
+        .select("id, client_id, due_date, amount_cents, status")
+        .eq("org_id", orgId!)
+        .limit(5000);
+      if (error) throw error;
+      return (data ?? []) as ScheduleRow[];
+    },
+  });
+
+  const { data: renewalWorkItems = [] } = useQuery({
+    queryKey: ["renewal-work-items", orgId],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("renewal_work_items")
+        .select("id, client_id, owner_id, next_action, next_action_at, stage, reason, risk")
+        .eq("org_id", orgId!);
+      if (error) throw error;
+      return (data ?? []) as RenewalWorkItemRow[];
     },
   });
 
@@ -272,6 +547,23 @@ function Mentees() {
       if (stage === "won") patch.status = "active";
       const { error } = await supabase.from("clients").update(patch).eq("id", id);
       if (error) throw error;
+      // Keep renewal_work_items (the real Renewal Action / Next Step record)
+      // in sync with the kanban stage, and log it to the activity timeline.
+      const existingRenewal = renewalByClient.get(id);
+      const renewalPatch = { stage, renewal_date: current?.renewal_date ?? null };
+      if (existingRenewal) {
+        await supabase.from("renewal_work_items").update(renewalPatch).eq("id", existingRenewal.id);
+      } else {
+        await supabase
+          .from("renewal_work_items")
+          .insert({ org_id: orgId!, client_id: id, ...renewalPatch });
+      }
+      await supabase.from("client_activity_events").insert({
+        org_id: orgId!,
+        client_id: id,
+        event_type: "renewal_stage_changed",
+        body: `${stageLabel(fromStage)} → ${stageLabel(stage)}`,
+      });
       // Fire Slack/Discord/webhook notification — non-blocking on failure
       try {
         await notifyStageChanged({
@@ -284,6 +576,7 @@ function Mentees() {
     onSuccess: () => {
       toast.success("Stage updated · team notified");
       qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["renewal-work-items", orgId] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
@@ -314,16 +607,48 @@ function Mentees() {
     };
   };
 
+  // Strict payment-plan schedule (spec section 7) — regenerated from the
+  // form's current plan fields on every save, so it never drifts from what
+  // the mentee record actually says. Only touches rows that haven't been
+  // paid yet; a real payment already recorded against a due date is untouched.
+  const syncPaymentSchedule = async (clientId: string, patch: ReturnType<typeof buildPatch>) => {
+    if (!orgId) return;
+    await supabase
+      .from("payment_schedule_items")
+      .delete()
+      .eq("org_id", orgId)
+      .eq("client_id", clientId)
+      .neq("status", "paid");
+    const rows = generatePaymentSchedule({
+      id: clientId,
+      payment_plan: patch.payment_plan,
+      installments_remaining: patch.installments_remaining,
+      installment_amount_cents: patch.installment_amount_cents,
+      expected_next_payment_date: patch.expected_next_payment_date,
+    });
+    if (rows.length) {
+      await supabase.from("payment_schedule_items").upsert(
+        rows.map((r) => ({ org_id: orgId, client_id: clientId, ...r })),
+        { onConflict: "org_id,client_id,due_date", ignoreDuplicates: true },
+      );
+    }
+  };
+
   const create = useMutation({
     mutationFn: async (f: FormData) => {
-      const { error } = await supabase
+      const patch = buildPatch(f);
+      const { data, error } = await supabase
         .from("clients")
-        .insert({ org_id: orgId!, status: "active", ...buildPatch(f) });
+        .insert({ org_id: orgId!, status: "active", ...patch })
+        .select("id")
+        .single();
       if (error) throw error;
+      if (data?.id) await syncPaymentSchedule(data.id, patch);
     },
     onSuccess: () => {
       toast.success("Mentee added");
       qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["payment-schedule-items", orgId] });
       setOpen(false);
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
@@ -331,12 +656,15 @@ function Mentees() {
 
   const update = useMutation({
     mutationFn: async ({ id, f }: { id: string; f: FormData }) => {
-      const { error } = await supabase.from("clients").update(buildPatch(f)).eq("id", id);
+      const patch = buildPatch(f);
+      const { error } = await supabase.from("clients").update(patch).eq("id", id);
       if (error) throw error;
+      await syncPaymentSchedule(id, patch);
     },
     onSuccess: () => {
       toast.success("Mentee updated");
       qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["payment-schedule-items", orgId] });
       setEditing(null);
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
@@ -385,15 +713,106 @@ function Mentees() {
       : sum;
   }, 0);
 
+  // Portfolio Cash Health (spec section 7) — the additional KPIs beyond what
+  // was already on the page. Collected cash MTD is deliberately distinct
+  // from all-time "Paid collections" above (never combined into one LTV).
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const collectedMtdCents = deduplicatePaymentRecords(
+    payments.filter((p) => p.status === "paid" && new Date(p.collected_at) >= monthStart),
+  ).reduce((sum, p) => sum + (p.amount_cents ?? 0), 0);
+  const dueNext7dCents = (clients ?? []).reduce((sum, c) => {
+    const days = daysUntilDate(c.expected_next_payment_date);
+    return days !== null && days >= 0 && days <= 7
+      ? sum + (c.expected_next_payment_cents ?? 0)
+      : sum;
+  }, 0);
+  const failedPaymentsCount = payments.filter((p) => p.status === "failed").length;
+  // Ages "scheduled" rows past their due date into "overdue" at read time —
+  // see effectiveScheduleStatus for why (no background job mutates status).
+  const effectiveScheduleItems = useMemo(
+    () => scheduleItems.map((s) => ({ ...s, status: effectiveScheduleStatus(s) })),
+    [scheduleItems],
+  );
+  const collectionRate = collectionRatePct(effectiveScheduleItems);
+  const atRiskFutureCashCents = (clients ?? [])
+    .filter((c) => clientAtRiskReason(c, renewalAtRiskDays))
+    .reduce(
+      (sum, c) =>
+        sum + Math.max((c.contract_value_cents ?? 0) - (c.invested_to_date_cents ?? 0), 0),
+      0,
+    );
+
+  const failedCentsByClient = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of payments) {
+      if (p.status !== "failed" || !p.client_id) continue;
+      m.set(p.client_id, (m.get(p.client_id) ?? 0) + p.amount_cents);
+    }
+    return m;
+  }, [payments]);
+  const lastActivityByClient = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of payments) {
+      if (!p.client_id) continue;
+      const cur = m.get(p.client_id);
+      if (!cur || p.collected_at > cur) m.set(p.client_id, p.collected_at);
+    }
+    return m;
+  }, [payments]);
+  const scheduleByClient = useMemo(() => {
+    const m = new Map<string, ScheduleRow[]>();
+    for (const s of effectiveScheduleItems) {
+      const arr = m.get(s.client_id) ?? [];
+      arr.push(s);
+      m.set(s.client_id, arr);
+    }
+    return m;
+  }, [effectiveScheduleItems]);
+  const renewalByClient = useMemo(
+    () => new Map(renewalWorkItems.map((r) => [r.client_id, r])),
+    [renewalWorkItems],
+  );
+  // Transparent health (visible reasons, never a bare number) — the same
+  // evaluateTransparentHealth() that client-risk.test.ts already covers,
+  // now actually wired into the UI instead of only unit-tested.
+  const healthByClient = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof evaluateTransparentHealth>>();
+    for (const c of clients ?? []) {
+      const lastActivity = lastActivityByClient.get(c.id);
+      const daysSinceActivity = lastActivity
+        ? Math.max(0, -1 * (daysUntilDate(lastActivity.slice(0, 10)) ?? 0))
+        : null;
+      m.set(
+        c.id,
+        evaluateTransparentHealth({
+          renewalDate: c.renewal_date,
+          renewalConversationStarted: c.renewal_conv_started,
+          overdueCents:
+            Math.max(0, (c.contract_value_cents ?? 0) - (c.invested_to_date_cents ?? 0)) > 0 &&
+            daysUntilDate(c.expected_next_payment_date) != null &&
+            (daysUntilDate(c.expected_next_payment_date) ?? 0) < 0
+              ? (c.expected_next_payment_cents ?? 0)
+              : 0,
+          failedCents: failedCentsByClient.get(c.id) ?? 0,
+          daysSinceActivity,
+        }),
+      );
+    }
+    return m;
+  }, [clients, failedCentsByClient, lastActivityByClient]);
+
   const view = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return clients ?? [];
-    return (clients ?? []).filter((c) =>
-      [c.full_name, c.email, c.phone, c.offer_name, c.notes].some((v) =>
+    return (clients ?? []).filter((c) => {
+      if (healthFilter !== "all" && healthByClient.get(c.id)?.status !== healthFilter) return false;
+      if (!q) return true;
+      return [c.full_name, c.email, c.phone, c.offer_name, c.notes].some((v) =>
         (v ?? "").toLowerCase().includes(q),
-      ),
-    );
-  }, [clients, query]);
+      );
+    });
+  }, [clients, query, healthFilter, healthByClient]);
   const {
     page: tablePage,
     setPage: setTablePage,
@@ -522,7 +941,55 @@ function Mentees() {
             icon={<AlertTriangle className="h-4 w-4" />}
             hint="Contracted less invested"
           />
+          <StatCard
+            label="Collected cash MTD"
+            value={`$${(collectedMtdCents / 100).toLocaleString()}`}
+            spectrum="hot"
+            icon={<BadgeCheck className="h-4 w-4" />}
+            hint="Month-to-date, distinct from all-time"
+          />
+          <StatCard
+            label="Due next 7d"
+            value={`$${(dueNext7dCents / 100).toLocaleString()}`}
+            spectrum="mid"
+            icon={<Repeat className="h-4 w-4" />}
+          />
+          <StatCard
+            label="Failed / retry-pending"
+            value={failedPaymentsCount}
+            accent={failedPaymentsCount ? "destructive" : "primary"}
+            icon={<AlertTriangle className="h-4 w-4" />}
+          />
+          <StatCard
+            label="Collection rate"
+            value={collectionRate == null ? "—" : `${collectionRate.toFixed(0)}%`}
+            spectrum="mid"
+            icon={<Repeat className="h-4 w-4" />}
+            hint={
+              collectionRate == null
+                ? "No scheduled payments logged yet"
+                : "Paid / due schedule items"
+            }
+          />
+          <StatCard
+            label="At-risk future cash"
+            value={`$${(atRiskFutureCashCents / 100).toLocaleString()}`}
+            accent={atRiskFutureCashCents ? "destructive" : "primary"}
+            icon={<AlertTriangle className="h-4 w-4" />}
+          />
         </div>
+
+        <CollectionsChart
+          scheduleItems={scheduleItems}
+          payments={payments}
+          range={collectionsRange}
+          onRangeChange={setCollectionsRange}
+          customFrom={customFrom}
+          customTo={customTo}
+          onCustomFrom={setCustomFrom}
+          onCustomTo={setCustomTo}
+        />
+
         <GlassTableShell
           toolbar={
             <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -584,6 +1051,23 @@ function Mentees() {
             </div>
             <div className="text-xs text-muted-foreground whitespace-nowrap">
               {view.length} / {clients?.length ?? 0}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setHealthFilter("all")}
+                className={`rounded border px-2 py-1 text-2xs ${healthFilter === "all" ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40"}`}
+              >
+                All health
+              </button>
+              {HEALTH_STATUS_OPTIONS.map((h) => (
+                <button
+                  key={h}
+                  onClick={() => setHealthFilter(h)}
+                  className={`rounded border px-2 py-1 text-2xs capitalize ${healthFilter === h ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40"}`}
+                >
+                  {h.replace("_", " ")}
+                </button>
+              ))}
             </div>
           </div>
           <div className="flex gap-2">
@@ -780,12 +1264,14 @@ function Mentees() {
             </GlassTableShell>
           </TabsContent>
 
-          <TabsContent value="operations">
+          <TabsContent value="operations" className="space-y-4">
             <MenteeOperationsPanel
+              orgId={orgId}
               clients={view}
               payments={payments}
               renewalAtRiskDays={renewalAtRiskDays}
             />
+            <MenteeScheduledComms orgId={orgId} clients={view} />
           </TabsContent>
           <TabsContent value="table">
             <GlassTableShell
@@ -806,56 +1292,125 @@ function Mentees() {
                   <tr>
                     <th className="text-left p-3">Mentee</th>
                     <th className="text-left p-3">Offer</th>
-                    <th className="text-left p-3">Start</th>
                     <th className="text-right p-3 font-mono">Contract</th>
-                    <th className="text-center p-3">Plan</th>
+                    <th className="text-right p-3 font-mono">Balance</th>
+                    <th className="text-center p-3">Plan progress</th>
+                    <th className="text-left p-3">Next payment</th>
+                    <th className="text-left p-3">Last payment</th>
                     <th className="text-left p-3">Renewal</th>
                     <th className="text-left p-3">Stage</th>
+                    <th className="text-left p-3">Owner / next step</th>
+                    <th className="text-left p-3">Health</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {pagedView.map((c) => (
-                    <tr
-                      key={c.id}
-                      className="border-t border-border/70 hover:bg-muted/20 cursor-pointer"
-                      onClick={() => {
-                        setEditing(c);
-                        setPlanChecked(!!c.payment_plan);
-                      }}
-                    >
-                      <td className="p-3">
-                        <div className="font-medium flex items-center gap-2">
-                          {c.full_name}
-                          <Pencil className="h-3 w-3 text-muted-foreground" />
-                        </div>
-                        <div className="text-2xs text-muted-foreground">{c.email}</div>
-                      </td>
-                      <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
-                      <td className="p-3 text-xs text-muted-foreground">{c.start_date}</td>
-                      <td className="p-3 text-right font-mono">
-                        ${Math.round((c.contract_value_cents ?? 0) / 100).toLocaleString()}
-                      </td>
-                      <td className="p-3 text-center text-xs">
-                        {c.payment_plan ? `${c.installments_remaining} left` : "PIF"}
-                      </td>
-                      <td className="p-3 text-xs">{c.renewal_date ?? "—"}</td>
-                      <td className="p-3">
-                        <span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase">
-                          {stageLabel(c.renewal_stage)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {pagedView.map((c) => {
+                    const schedule = scheduleByClient.get(c.id) ?? [];
+                    const progress = paymentProgress(schedule);
+                    const lastPayment = lastActivityByClient.get(c.id);
+                    const balanceCents = Math.max(
+                      0,
+                      (c.contract_value_cents ?? 0) - (c.invested_to_date_cents ?? 0),
+                    );
+                    const renewal = renewalByClient.get(c.id);
+                    const health = healthByClient.get(c.id);
+                    return (
+                      <tr
+                        key={c.id}
+                        className="border-t border-border/70 hover:bg-muted/20 cursor-pointer"
+                        onClick={() => {
+                          setEditing(c);
+                          setPlanChecked(!!c.payment_plan);
+                        }}
+                      >
+                        <td className="p-3">
+                          <div className="font-medium flex items-center gap-2">
+                            {c.full_name}
+                            <Pencil className="h-3 w-3 text-muted-foreground" />
+                          </div>
+                          <div className="text-2xs text-muted-foreground">{c.email}</div>
+                        </td>
+                        <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
+                        <td className="p-3 text-right font-mono">
+                          ${Math.round((c.contract_value_cents ?? 0) / 100).toLocaleString()}
+                        </td>
+                        <td className="p-3 text-right font-mono">
+                          ${Math.round(balanceCents / 100).toLocaleString()}
+                        </td>
+                        <td className="p-3 text-center text-xs">
+                          {c.payment_plan ? (
+                            progress.total ? (
+                              <div className="mx-auto flex max-w-[110px] items-center gap-1.5">
+                                <div className="h-1.5 flex-1 overflow-hidden rounded bg-muted">
+                                  <div
+                                    className="h-full bg-primary"
+                                    style={{
+                                      width: `${progress.total ? (progress.paid / progress.total) * 100 : 0}%`,
+                                    }}
+                                  />
+                                </div>
+                                <span className="font-mono text-3xs">{progress.label}</span>
+                              </div>
+                            ) : (
+                              <span className="text-3xs text-muted-foreground">
+                                {c.installments_remaining} left (no schedule)
+                              </span>
+                            )
+                          ) : (
+                            "PIF"
+                          )}
+                        </td>
+                        <td className="p-3 text-xs">
+                          {c.expected_next_payment_date ?? "—"}
+                          {c.expected_next_payment_cents ? (
+                            <div className="text-3xs text-muted-foreground">
+                              ${Math.round(c.expected_next_payment_cents / 100).toLocaleString()}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="p-3 text-xs text-muted-foreground">
+                          {lastPayment ? new Date(lastPayment).toLocaleDateString() : "—"}
+                        </td>
+                        <td className="p-3 text-xs">{c.renewal_date ?? "—"}</td>
+                        <td className="p-3">
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase">
+                            {stageLabel(c.renewal_stage)}
+                          </span>
+                        </td>
+                        <td className="p-3 text-2xs text-muted-foreground max-w-[160px] truncate">
+                          {renewal?.next_action ?? "Unassigned"}
+                        </td>
+                        <td className="p-3">
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-3xs uppercase ${
+                              health?.status === "critical"
+                                ? "bg-destructive/15 text-destructive"
+                                : health?.status === "at_risk"
+                                  ? "bg-destructive/10 text-destructive"
+                                  : health?.status === "watch"
+                                    ? "bg-amber-500/10 text-amber-500"
+                                    : health?.status === "healthy"
+                                      ? "bg-emerald-500/10 text-emerald-500"
+                                      : "bg-muted text-muted-foreground"
+                            }`}
+                            title={health?.reasons.join(" · ")}
+                          >
+                            {(health?.status ?? "unavailable").replace("_", " ")}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {clientsLoading && (
                     <tr>
-                      <td colSpan={7} className="p-10 text-center text-sm text-muted-foreground">
+                      <td colSpan={11} className="p-10 text-center text-sm text-muted-foreground">
                         Loading…
                       </td>
                     </tr>
                   )}
                   {!clientsLoading && tableTotal === 0 && (
                     <tr>
-                      <td colSpan={7}>
+                      <td colSpan={11}>
                         <EmptyState
                           icon={<Search className="h-4 w-4" />}
                           title={query ? "No matches" : "No mentees yet"}
@@ -881,7 +1436,14 @@ function Mentees() {
             </DialogHeader>
             {editing && (
               <>
-                <MenteeLifecycleEvidence client={editing} payments={payments} />
+                <MenteeLifecycleEvidence
+                  client={editing}
+                  payments={payments}
+                  schedule={scheduleByClient.get(editing.id) ?? []}
+                  health={healthByClient.get(editing.id)}
+                  renewal={renewalByClient.get(editing.id)}
+                  orgId={orgId}
+                />
                 <ClientForm
                   initial={editing}
                   onSubmit={(f) => update.mutate({ id: editing.id, f })}

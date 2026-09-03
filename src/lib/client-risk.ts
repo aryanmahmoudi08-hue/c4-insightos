@@ -58,7 +58,7 @@ export type TransparentHealthInput = {
 };
 
 export type TransparentHealthResult = {
-  status: "healthy" | "watch" | "at_risk" | "unavailable";
+  status: "healthy" | "watch" | "at_risk" | "critical" | "unavailable";
   score: number | null;
   reasons: string[];
   availableDimensions: number;
@@ -126,10 +126,21 @@ export function evaluateTransparentHealth(
     };
   }
   const score = Math.max(0, 100 - riskPoints * 10);
+  const status =
+    riskPoints >= 12
+      ? "critical"
+      : riskPoints >= 5
+        ? "at_risk"
+        : riskPoints > 0
+          ? "watch"
+          : "healthy";
   return {
-    status: riskPoints >= 5 ? "at_risk" : riskPoints > 0 ? "watch" : "healthy",
+    status,
     score,
     reasons: reasons.length ? reasons : ["No risk signals detected in available dimensions"],
     availableDimensions,
   };
 }
+
+export const HEALTH_STATUS_OPTIONS = ["healthy", "watch", "at_risk", "critical"] as const;
+export type HealthStatus = (typeof HEALTH_STATUS_OPTIONS)[number];

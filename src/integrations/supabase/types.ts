@@ -532,6 +532,269 @@ export type Database = {
           },
         ];
       };
+      client_activity_events: {
+        Row: {
+          actor_id: string | null;
+          actor_name: string | null;
+          body: string | null;
+          client_id: string;
+          created_at: string;
+          event_type: string;
+          id: string;
+          org_id: string;
+        };
+        Insert: {
+          actor_id?: string | null;
+          actor_name?: string | null;
+          body?: string | null;
+          client_id: string;
+          created_at?: string;
+          event_type: string;
+          id?: string;
+          org_id: string;
+        };
+        Update: {
+          actor_id?: string | null;
+          actor_name?: string | null;
+          body?: string | null;
+          client_id?: string;
+          created_at?: string;
+          event_type?: string;
+          id?: string;
+          org_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_activity_events_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      payment_schedule_items: {
+        Row: {
+          amount_cents: number;
+          client_id: string;
+          created_at: string;
+          due_date: string;
+          id: string;
+          notes: string | null;
+          org_id: string;
+          payment_id: string | null;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          amount_cents: number;
+          client_id: string;
+          created_at?: string;
+          due_date: string;
+          id?: string;
+          notes?: string | null;
+          org_id: string;
+          payment_id?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          amount_cents?: number;
+          client_id?: string;
+          created_at?: string;
+          due_date?: string;
+          id?: string;
+          notes?: string | null;
+          org_id?: string;
+          payment_id?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "payment_schedule_items_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payment_schedule_items_payment_id_fkey";
+            columns: ["payment_id"];
+            isOneToOne: false;
+            referencedRelation: "payments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      payment_recovery_items: {
+        Row: {
+          amount_cents: number;
+          client_id: string | null;
+          created_at: string;
+          due_at: string | null;
+          id: string;
+          next_action: string | null;
+          next_action_at: string | null;
+          org_id: string;
+          owner_id: string | null;
+          payment_id: string | null;
+          provider_execution_status: string;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          amount_cents?: number;
+          client_id?: string | null;
+          created_at?: string;
+          due_at?: string | null;
+          id?: string;
+          next_action?: string | null;
+          next_action_at?: string | null;
+          org_id: string;
+          owner_id?: string | null;
+          payment_id?: string | null;
+          provider_execution_status?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          amount_cents?: number;
+          client_id?: string | null;
+          created_at?: string;
+          due_at?: string | null;
+          id?: string;
+          next_action?: string | null;
+          next_action_at?: string | null;
+          org_id?: string;
+          owner_id?: string | null;
+          payment_id?: string | null;
+          provider_execution_status?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "payment_recovery_items_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      renewal_work_items: {
+        Row: {
+          client_id: string;
+          created_at: string;
+          id: string;
+          next_action: string | null;
+          next_action_at: string | null;
+          org_id: string;
+          owner_id: string | null;
+          payment_outcome: string | null;
+          reason: string | null;
+          renewal_date: string | null;
+          renewal_outcome: string | null;
+          risk: string;
+          stage: string;
+          updated_at: string;
+        };
+        Insert: {
+          client_id: string;
+          created_at?: string;
+          id?: string;
+          next_action?: string | null;
+          next_action_at?: string | null;
+          org_id: string;
+          owner_id?: string | null;
+          payment_outcome?: string | null;
+          reason?: string | null;
+          renewal_date?: string | null;
+          renewal_outcome?: string | null;
+          risk?: string;
+          stage?: string;
+          updated_at?: string;
+        };
+        Update: {
+          client_id?: string;
+          created_at?: string;
+          id?: string;
+          next_action?: string | null;
+          next_action_at?: string | null;
+          org_id?: string;
+          owner_id?: string | null;
+          payment_outcome?: string | null;
+          reason?: string | null;
+          renewal_date?: string | null;
+          renewal_outcome?: string | null;
+          risk?: string;
+          stage?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "renewal_work_items_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      scheduled_communications: {
+        Row: {
+          body: string | null;
+          channel: string;
+          client_id: string;
+          created_at: string;
+          id: string;
+          org_id: string;
+          scheduled_for: string;
+          send_status: string;
+          sent_at: string | null;
+          subject: string | null;
+          trigger_type: string;
+          updated_at: string;
+        };
+        Insert: {
+          body?: string | null;
+          channel: string;
+          client_id: string;
+          created_at?: string;
+          id?: string;
+          org_id: string;
+          scheduled_for: string;
+          send_status?: string;
+          sent_at?: string | null;
+          subject?: string | null;
+          trigger_type: string;
+          updated_at?: string;
+        };
+        Update: {
+          body?: string | null;
+          channel?: string;
+          client_id?: string;
+          created_at?: string;
+          id?: string;
+          org_id?: string;
+          scheduled_for?: string;
+          send_status?: string;
+          sent_at?: string | null;
+          subject?: string | null;
+          trigger_type?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_communications_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       connector_connections: {
         Row: {
           config: Json;

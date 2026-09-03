@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
@@ -150,7 +150,14 @@ function Fulfillment() {
             <>
               <div>
                 <div className="text-xs text-muted-foreground">Mentee</div>
-                <div className="display-serif text-xl">{activeClient.full_name}</div>
+                <Link
+                  to="/clients"
+                  search={{ openId: activeClient.id } as never}
+                  className="display-serif text-xl hover:text-primary hover:underline"
+                  title="Open full mentee profile"
+                >
+                  {activeClient.full_name}
+                </Link>
                 <div className="text-xs text-muted-foreground mt-1">
                   {activeClient.offer_name} · started {activeClient.start_date}
                 </div>
