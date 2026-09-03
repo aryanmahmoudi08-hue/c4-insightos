@@ -67,6 +67,7 @@ import {
   compareSpeedBuckets,
   filterSpeedEvents,
   speedDistribution,
+  type SpeedToLeadQueueItem,
 } from "@/lib/speed-to-lead";
 import { dailySeries, seriesValues, seriesRatePoints, priorPeriod, pctDelta } from "@/lib/trend";
 import {
@@ -319,6 +320,209 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       return data;
     },
   });
+  // Active leads available to dial, split by ticket tier (spec section 4).
+  // "Active" = not yet closed/disqualified/ghosted/no-show — still workable.
+  const OPEN_LEAD_STATUSES = [
+    "dm_received",
+    "qualified",
+    "pre_call_assets_sent",
+    "call_booked",
+    "follow_up",
+  ] as const;
+  const { data: dialableLeads = [] } = useQuery({
+    queryKey: ["dialable-leads", orgId],
+    enabled: isDialer && !!orgId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, ticket_tier, status")
+        .eq("org_id", orgId!)
+        .in("status", OPEN_LEAD_STATUSES);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const ticketTierSplit = useMemo(() => {
+    const high = dialableLeads.filter((l) => l.ticket_tier === "high").length;
+    const low = dialableLeads.filter((l) => l.ticket_tier === "low").length;
+    const unclassified = dialableLeads.length - high - low;
+    return { high, low, unclassified, total: dialableLeads.length };
+  }, [dialableLeads]);
+  // Appointment quality (spec section 4) — booking-outcome quality is org-wide
+  // (calls have no "booking dialer" column, only closer/setter), scoped to
+  // the page's date range via scheduled_for.
+  const { data: rangeCalls = [] } = useQuery({
+    queryKey: ["dialer-appointment-quality", orgId, range.from, range.to],
+    enabled: isDialer && !!orgId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("calls")
+        .select(
+          "id, status, cancelled, no_show_recovered, scheduled_for, duration_seconds, talk_seconds",
+        )
+        .eq("org_id", orgId!)
+        .gte("scheduled_for", `${range.from}T00:00:00`)
+        .lte("scheduled_for", `${range.to}T23:59:59`);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const appointmentQuality = useMemo(() => {
+    const total = rangeCalls.length;
+    const cancelled = rangeCalls.filter((c) => c.cancelled).length;
+    const rescheduled = rangeCalls.filter((c) => c.status === "rescheduled").length;
+    const noShows = rangeCalls.filter((c) => c.status === "no_show");
+    const recovered = noShows.filter((c) => c.no_show_recovered).length;
+    const durations = rangeCalls
+      .map((c) => c.duration_seconds)
+      .filter((v): v is number => v != null);
+    const talks = rangeCalls.map((c) => c.talk_seconds).filter((v): v is number => v != null);
+    return {
+      total,
+      cancellationRate: total ? (cancelled / total) * 100 : null,
+      rescheduleRate: total ? (rescheduled / total) * 100 : null,
+      noShowRate: total ? (noShows.length / total) * 100 : null,
+      noShowRecoveryRate: noShows.length ? (recovered / noShows.length) * 100 : null,
+      avgDurationSeconds: durations.length
+        ? durations.reduce((s, v) => s + v, 0) / durations.length
+        : null,
+      avgTalkSeconds: talks.length ? talks.reduce((s, v) => s + v, 0) / talks.length : null,
+    };
+  }, [rangeCalls]);
+  const fmtDuration = (seconds: number | null) => {
+    if (seconds == null) return "Not connected";
+    const m = Math.floor(seconds / 60);
+    const s = Math.round(seconds % 60);
+    return `${m}m ${s}s`;
+  };
+
+  // Callback attribution workflow (spec section 4) — real operational_work_items
+  // rows, not simulated. Requested/Due Today/Completed Today are computed from
+  // actual logged callbacks; empty until a dialer logs the first one.
+  const { data: callbacks = [] } = useQuery({
+    queryKey: ["dialer-callbacks", orgId, range.from, range.to],
+    enabled: isDialer && !!orgId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("operational_work_items")
+        .select("id, state, owner_id, due_at, next_action, created_at, updated_at, payload")
+        .eq("org_id", orgId!)
+        .eq("entity_type", "dialer_callback")
+        .gte("created_at", `${range.from}T00:00:00`)
+        .lte("created_at", `${range.to}T23:59:59`)
+        .order("due_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        state: string;
+        owner_id: string | null;
+        due_at: string | null;
+        next_action: string | null;
+        created_at: string;
+        updated_at: string;
+        payload: { lead_name?: string } | null;
+      }>;
+    },
+  });
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const callbackFunnel = useMemo(
+    () => ({
+      requested: callbacks.length,
+      dueToday: callbacks.filter((c) => c.due_at?.slice(0, 10) === todayStr).length,
+      completedToday: callbacks.filter(
+        (c) => c.state === "completed" && c.updated_at.slice(0, 10) === todayStr,
+      ).length,
+    }),
+    [callbacks, todayStr],
+  );
+  const logCallback = useMutation({
+    mutationFn: async ({ leadName, dueAt }: { leadName: string; dueAt: string }) => {
+      const { error } = await (supabase as any).from("operational_work_items").insert({
+        org_id: orgId!,
+        entity_type: "dialer_callback",
+        state: "requested",
+        due_at: dueAt ? new Date(dueAt).toISOString() : null,
+        next_action: "Call back",
+        next_action_at: dueAt ? new Date(dueAt).toISOString() : null,
+        payload: { lead_name: leadName },
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Callback logged");
+      qc.invalidateQueries({ queryKey: ["dialer-callbacks", orgId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const completeCallback = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any)
+        .from("operational_work_items")
+        .update({ state: "completed", updated_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dialer-callbacks", orgId] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const [callbackLeadName, setCallbackLeadName] = useState("");
+  const [callbackDueAt, setCallbackDueAt] = useState("");
+
+  // Persisted hot-lead alerts (spec section 4: "Create an InsightOS
+  // notification"). A row here IS the InsightOS-side notification — durable,
+  // queryable, visible to the whole team — independent of whether Discord
+  // delivery is configured. Delivery itself stays honestly "unavailable"
+  // until a real Discord webhook secret is connected (never fabricated).
+  const { data: loggedAlertKeys = new Set<string>() } = useQuery({
+    queryKey: ["sla-breach-keys", orgId],
+    enabled: isDialer && !!orgId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("sla_breach_records")
+        .select("notification_key")
+        .eq("org_id", orgId!)
+        .limit(1000);
+      if (error) throw error;
+      return new Set((data ?? []).map((r: { notification_key: string }) => r.notification_key));
+    },
+  });
+  const logAlert = useMutation({
+    mutationFn: async (item: SpeedToLeadQueueItem) => {
+      if (!item.notificationKey) throw new Error("No stable key for this lead yet");
+      await (supabase as any).from("sla_breach_records").upsert(
+        {
+          org_id: orgId!,
+          lead_id: item.leadId,
+          owner_id: item.ownerId,
+          notification_key: item.notificationKey,
+          threshold_minutes: item.thresholdMinutes,
+          breached_at: new Date().toISOString(),
+          status: "open",
+        },
+        { onConflict: "org_id,notification_key", ignoreDuplicates: true },
+      );
+      const { error } = await (supabase as any).from("notification_attempts").upsert(
+        {
+          org_id: orgId!,
+          idempotency_key: item.notificationKey,
+          event: "speed_to_lead.breached",
+          recipient: item.ownerId,
+          channel: "discord",
+          provider: "discord-webhook",
+          status: "unavailable",
+          payload: { leadId: item.leadId, source: item.source, status: item.status },
+        },
+        { onConflict: "org_id,idempotency_key", ignoreDuplicates: true },
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("InsightOS alert logged — Discord delivery unavailable (no webhook connected)");
+      qc.invalidateQueries({ queryKey: ["sla-breach-keys", orgId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const { data: speedEvents = [] } = useQuery({
     queryKey: ["speed-to-lead", role, orgId, range.from, range.to],
     enabled: isDialer && !!orgId,
@@ -852,6 +1056,20 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         total_revenue_cents: Math.round(NUM(f.get("total_revenue")) * 100),
         dials: NUM(f.get("dials")),
         connections: NUM(f.get("connections")),
+        // DM-setter-only metrics (spec section 3) — left unset (not zeroed) on
+        // dialer rows so `observed()` in the dashboard can tell "never asked"
+        // apart from "asked, logged zero".
+        ...(isDialer
+          ? {}
+          : {
+              inbound_dms_sent: NUM(f.get("inbound_dms_sent")),
+              outbound_dms_sent: NUM(f.get("outbound_dms_sent")),
+              replies: NUM(f.get("replies")),
+              followups_sent: NUM(f.get("followups_sent")),
+              links_clicked: NUM(f.get("links_clicked")),
+              post_booking_page_visits: NUM(f.get("post_booking_page_visits")),
+              pre_call_video_watches: NUM(f.get("pre_call_video_watches")),
+            }),
       };
       if (!payload.team_member_name) throw new Error("Team member name required");
       const { error } = await supabase.from("setter_activity").insert(payload);
@@ -994,29 +1212,63 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                         <thead>
                           <tr className="border-b border-border/70 text-left text-muted-foreground">
                             <th className="pb-2 pr-3">Lead</th>
+                            <th className="pb-2 pr-3">Urgency</th>
                             <th className="pb-2 pr-3">Source</th>
                             <th className="pb-2 pr-3">Owner</th>
-                            <th className="pb-2 pr-3">SLA</th>
-                            <th className="pb-2">Delivery</th>
+                            <th className="pb-2 pr-3">Action</th>
+                            <th className="pb-2">InsightOS alert</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {operationalSpeedQueue.slice(0, 25).map((item) => (
-                            <tr
-                              key={item.notificationKey ?? `${item.leadId}-${item.status}`}
-                              className="border-b border-border/40 last:border-0"
-                            >
-                              <td className="py-2 pr-3 font-mono">
-                                {item.leadId ?? "Unavailable"}
-                              </td>
-                              <td className="py-2 pr-3">{item.source ?? "Unavailable"}</td>
-                              <td className="py-2 pr-3">{item.ownerId ?? "Owner unavailable"}</td>
-                              <td className="py-2 pr-3 font-mono uppercase">{item.status}</td>
-                              <td className="py-2">
-                                <span className="text-amber-300">{item.deliveryStatus}</span>
-                              </td>
-                            </tr>
-                          ))}
+                          {operationalSpeedQueue.slice(0, 25).map((item) => {
+                            const logged = item.notificationKey
+                              ? loggedAlertKeys.has(item.notificationKey)
+                              : false;
+                            return (
+                              <tr
+                                key={item.notificationKey ?? `${item.leadId}-${item.status}`}
+                                className="border-b border-border/40 last:border-0"
+                              >
+                                <td className="py-2 pr-3 font-mono">
+                                  {item.leadId ?? "Unavailable"}
+                                </td>
+                                <td className="py-2 pr-3 font-mono uppercase text-amber-300">
+                                  {item.status}
+                                </td>
+                                <td className="py-2 pr-3">{item.source ?? "Unavailable"}</td>
+                                <td className="py-2 pr-3">{item.ownerId ?? "Owner unavailable"}</td>
+                                <td className="py-2 pr-3">
+                                  {item.leadId ? (
+                                    <a
+                                      className="text-accent underline underline-offset-2"
+                                      href={`/leads?leadId=${encodeURIComponent(item.leadId)}`}
+                                    >
+                                      Open lead
+                                    </a>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td className="py-2">
+                                  {logged ? (
+                                    <span className="text-3xs uppercase tracking-wider text-muted-foreground">
+                                      Logged · Discord unavailable
+                                    </span>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 text-2xs"
+                                      disabled={!item.notificationKey || logAlert.isPending}
+                                      onClick={() => logAlert.mutate(item)}
+                                    >
+                                      Log alert
+                                    </Button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     ) : (
@@ -1094,6 +1346,45 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             ) : (
               <div className="rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">
                 Speed to Lead is unavailable until lead response events are connected.
+              </div>
+            )}
+          </div>
+        )}
+        {isDialer && (
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="mb-3 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Active leads available to dial
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-xl border border-border/70 bg-background/40 p-3">
+                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                  High-ticket
+                </div>
+                <div className="mt-2 font-mono text-xl font-semibold text-spectrum-hot">
+                  {ticketTierSplit.high}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-background/40 p-3">
+                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                  Low-ticket
+                </div>
+                <div className="mt-2 font-mono text-xl font-semibold text-spectrum-mid">
+                  {ticketTierSplit.low}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-background/40 p-3">
+                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                  Unclassified
+                </div>
+                <div className="mt-2 font-mono text-xl font-semibold text-muted-foreground">
+                  {ticketTierSplit.unclassified}
+                </div>
+              </div>
+            </div>
+            {ticketTierSplit.unclassified > 0 && (
+              <div className="mt-2 text-3xs text-muted-foreground">
+                Unclassified leads have no ticket_tier set on the lead record — set it on the lead
+                to move it into High or Low ticket.
               </div>
             )}
           </div>
@@ -1357,20 +1648,20 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                         {
                           key: "requested",
                           label: "Callbacks Requested",
-                          value: null,
-                          detail: "Callback event source not connected",
+                          value: callbackFunnel.requested,
+                          detail: "Logged in this range",
                         },
                         {
                           key: "due",
                           label: "Due Today",
-                          value: null,
-                          detail: "Callback due-date source not connected",
+                          value: callbackFunnel.dueToday,
+                          detail: "due_at falls today",
                         },
                         {
                           key: "completed",
                           label: "Completed Today",
-                          value: null,
-                          detail: "Callback completion source not connected",
+                          value: callbackFunnel.completedToday,
+                          detail: "Marked completed today",
                         },
                         {
                           key: "booked",
@@ -1399,31 +1690,130 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                         {
                           key: "cancel",
                           label: "Cancellation Rate",
-                          value: null,
-                          detail: "Requires appointment status events",
+                          value:
+                            appointmentQuality.cancellationRate == null
+                              ? null
+                              : Math.round(appointmentQuality.cancellationRate),
+                          detail: appointmentQuality.total
+                            ? `${appointmentQuality.total} scheduled calls in range`
+                            : "No scheduled calls in range",
                         },
                         {
                           key: "reschedule",
                           label: "Reschedule Rate",
-                          value: null,
-                          detail: "Requires appointment status events",
+                          value:
+                            appointmentQuality.rescheduleRate == null
+                              ? null
+                              : Math.round(appointmentQuality.rescheduleRate),
+                          detail: appointmentQuality.total
+                            ? `${appointmentQuality.total} scheduled calls in range`
+                            : "No scheduled calls in range",
                         },
                         {
                           key: "no-show",
                           label: "No-show Rate",
-                          value: null,
-                          detail: "Requires appointment status events",
+                          value:
+                            appointmentQuality.noShowRate == null
+                              ? null
+                              : Math.round(appointmentQuality.noShowRate),
+                          detail: appointmentQuality.total
+                            ? `${appointmentQuality.total} scheduled calls in range`
+                            : "No scheduled calls in range",
                         },
                         {
                           key: "recovery",
                           label: "No-show Recovery",
-                          value: null,
-                          detail: "Requires rebooked appointment events",
+                          value:
+                            appointmentQuality.noShowRecoveryRate == null
+                              ? null
+                              : Math.round(appointmentQuality.noShowRecoveryRate),
+                          detail: "% of no-shows later marked recovered on a follow-up call",
                         },
                       ],
                     },
                   ]}
                 />
+                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Log a callback
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-2xs">Lead</Label>
+                      <Input
+                        value={callbackLeadName}
+                        onChange={(e) => setCallbackLeadName(e.target.value)}
+                        placeholder="Lead name or email"
+                        className="h-8 w-48 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-2xs">Due</Label>
+                      <Input
+                        type="datetime-local"
+                        value={callbackDueAt}
+                        onChange={(e) => setCallbackDueAt(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      disabled={!callbackLeadName.trim() || logCallback.isPending}
+                      onClick={() => {
+                        logCallback.mutate(
+                          { leadName: callbackLeadName.trim(), dueAt: callbackDueAt },
+                          {
+                            onSuccess: () => {
+                              setCallbackLeadName("");
+                              setCallbackDueAt("");
+                            },
+                          },
+                        );
+                      }}
+                    >
+                      Log callback
+                    </Button>
+                  </div>
+                  {callbacks.filter((c) => c.state !== "completed").length > 0 && (
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-border/70 text-left text-muted-foreground">
+                            <th className="pb-2 pr-3">Lead</th>
+                            <th className="pb-2 pr-3">Due</th>
+                            <th className="pb-2 pr-3">State</th>
+                            <th className="pb-2" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {callbacks
+                            .filter((c) => c.state !== "completed")
+                            .map((c) => (
+                              <tr key={c.id} className="border-b border-border/40 last:border-0">
+                                <td className="py-2 pr-3">{c.payload?.lead_name ?? "—"}</td>
+                                <td className="py-2 pr-3 font-mono">
+                                  {c.due_at ? new Date(c.due_at).toLocaleString() : "—"}
+                                </td>
+                                <td className="py-2 pr-3 uppercase">{c.state}</td>
+                                <td className="py-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 text-2xs"
+                                    onClick={() => completeCallback.mutate(c.id)}
+                                  >
+                                    Mark completed
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </>
             );
           }
@@ -1571,6 +1961,43 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                     <div className="space-y-1.5">
                       <Label>Links sent</Label>
                       <Input name="links_sent" type="number" min={0} defaultValue={0} />
+                    </div>
+                  </div>
+                )}
+                {!isDialer && (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <div className="space-y-1.5">
+                      <Label>Inbound DMs sent</Label>
+                      <Input name="inbound_dms_sent" type="number" min={0} defaultValue={0} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Outbound DMs sent</Label>
+                      <Input name="outbound_dms_sent" type="number" min={0} defaultValue={0} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Replies</Label>
+                      <Input name="replies" type="number" min={0} defaultValue={0} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Follow-ups sent</Label>
+                      <Input name="followups_sent" type="number" min={0} defaultValue={0} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Links clicked</Label>
+                      <Input name="links_clicked" type="number" min={0} defaultValue={0} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Post-booking page visits</Label>
+                      <Input
+                        name="post_booking_page_visits"
+                        type="number"
+                        min={0}
+                        defaultValue={0}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Pre-call video watches</Label>
+                      <Input name="pre_call_video_watches" type="number" min={0} defaultValue={0} />
                     </div>
                   </div>
                 )}
@@ -2119,54 +2546,61 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                       empty: !downsells,
                       emptyHint: "No downsells logged in this range.",
                     },
-                    {
-                      key: "inboundDmsSent",
-                      label: "Inbound DMs Sent",
-                      value: "Not connected",
-                      spectrum: "cold",
-                    },
-                    {
-                      key: "outboundDmsSent",
-                      label: "Outbound DMs Sent",
-                      value: "Not connected",
-                      spectrum: "cold",
-                    },
-                    {
-                      key: "followUpsSent",
-                      label: "Follow-ups Sent",
-                      value: "Not connected",
-                      spectrum: "mid",
-                    },
-                    {
-                      key: "linksClicked",
-                      label: "Links Clicked",
-                      value: "Not connected",
-                      spectrum: "cold",
-                    },
-                    {
-                      key: "postBookingVisits",
-                      label: "Post-booking Page Visits",
-                      value: "Not connected",
-                      spectrum: "mid",
-                    },
-                    {
-                      key: "preCallWatches",
-                      label: "Pre-call Video Watches",
-                      value: "Not connected",
-                      spectrum: "mid",
-                    },
+                    ...(!isDialer
+                      ? [
+                          {
+                            key: "inboundDmsSent",
+                            label: "Inbound DMs Sent",
+                            value: inboundDms == null ? "Not connected" : fmtN0(inboundDms),
+                            spectrum: "cold" as const,
+                          },
+                          {
+                            key: "outboundDmsSent",
+                            label: "Outbound DMs Sent",
+                            value: outboundDms == null ? "Not connected" : fmtN0(outboundDms),
+                            spectrum: "cold" as const,
+                          },
+                          {
+                            key: "followUpsSent",
+                            label: "Follow-ups Sent",
+                            value: followupsSent == null ? "Not connected" : fmtN0(followupsSent),
+                            spectrum: "mid" as const,
+                          },
+                          {
+                            key: "linksClicked",
+                            label: "Links Clicked",
+                            value: linksClicked == null ? "Not connected" : fmtN0(linksClicked),
+                            spectrum: "cold" as const,
+                          },
+                          {
+                            key: "postBookingVisits",
+                            label: "Post-booking Page Visits",
+                            value:
+                              postBookingVisits == null
+                                ? "Not connected"
+                                : fmtN0(postBookingVisits),
+                            spectrum: "mid" as const,
+                          },
+                          {
+                            key: "preCallWatches",
+                            label: "Pre-call Video Watches",
+                            value: preCallWatches == null ? "Not connected" : fmtN0(preCallWatches),
+                            spectrum: "mid" as const,
+                          },
+                        ]
+                      : []),
                     ...(isDialer
                       ? [
                           {
                             key: "averageCallLength",
                             label: "Average Call Length",
-                            value: "Not connected",
+                            value: fmtDuration(appointmentQuality.avgDurationSeconds),
                             spectrum: "cold" as const,
                           },
                           {
                             key: "averageTalkTime",
                             label: "Average Talk Time",
-                            value: "Not connected",
+                            value: fmtDuration(appointmentQuality.avgTalkSeconds),
                             spectrum: "cold" as const,
                           },
                         ]

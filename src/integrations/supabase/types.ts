@@ -117,9 +117,68 @@ export type Database = {
           },
         ];
       };
+      call_coaching_reviews: {
+        Row: {
+          behavior_change: string;
+          call_id: string | null;
+          created_at: string;
+          gap_category: string | null;
+          id: string;
+          org_id: string;
+          rep_name: string;
+          reviewer_id: string | null;
+          reviewer_name: string | null;
+          what_learned: string | null;
+          what_went_wrong: string | null;
+        };
+        Insert: {
+          behavior_change: string;
+          call_id?: string | null;
+          created_at?: string;
+          gap_category?: string | null;
+          id?: string;
+          org_id: string;
+          rep_name: string;
+          reviewer_id?: string | null;
+          reviewer_name?: string | null;
+          what_learned?: string | null;
+          what_went_wrong?: string | null;
+        };
+        Update: {
+          behavior_change?: string;
+          call_id?: string | null;
+          created_at?: string;
+          gap_category?: string | null;
+          id?: string;
+          org_id?: string;
+          rep_name?: string;
+          reviewer_id?: string | null;
+          reviewer_name?: string | null;
+          what_learned?: string | null;
+          what_went_wrong?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "call_coaching_reviews_call_id_fkey";
+            columns: ["call_id"];
+            isOneToOne: false;
+            referencedRelation: "calls";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "call_coaching_reviews_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       call_objections: {
         Row: {
           call_id: string;
+          call_stage: string | null;
+          category: string | null;
           created_at: string;
           id: string;
           objection: string;
@@ -128,6 +187,8 @@ export type Database = {
         };
         Insert: {
           call_id: string;
+          call_stage?: string | null;
+          category?: string | null;
           created_at?: string;
           id?: string;
           objection: string;
@@ -136,6 +197,8 @@ export type Database = {
         };
         Update: {
           call_id?: string;
+          call_stage?: string | null;
+          category?: string | null;
           created_at?: string;
           id?: string;
           objection?: string;
@@ -174,26 +237,32 @@ export type Database = {
           source_format: string | null;
           source_content_id: string | null;
           source_campaign: string | null;
+          cancelled: boolean;
           closed: boolean | null;
           closer_id: string | null;
           closer_name: string | null;
           contract_value_cents: number | null;
           created_at: string;
           deposit_cents: number | null;
+          disposition: string | null;
+          duration_seconds: number | null;
           id: string;
           key_moment: string | null;
           lead_email: string | null;
           lead_id: string | null;
+          no_show_recovered: boolean;
           offer_made: boolean | null;
           org_id: string;
           payment_plan: boolean | null;
           recording_url: string | null;
+          recovered_from_call_id: string | null;
           scheduled_for: string | null;
           setter_id: string | null;
           showed: boolean | null;
           showed_at: string | null;
           offer_at: string | null;
           status: Database["public"]["Enums"]["call_status"];
+          talk_seconds: number | null;
           time_to_close_seconds: number | null;
           updated_at: string;
         };
@@ -204,26 +273,32 @@ export type Database = {
           source_format?: string | null;
           source_content_id?: string | null;
           source_campaign?: string | null;
+          cancelled?: boolean;
           closed?: boolean | null;
           closer_id?: string | null;
           closer_name?: string | null;
           contract_value_cents?: number | null;
           created_at?: string;
           deposit_cents?: number | null;
+          disposition?: string | null;
+          duration_seconds?: number | null;
           id?: string;
           key_moment?: string | null;
           lead_email?: string | null;
           lead_id?: string | null;
+          no_show_recovered?: boolean;
           offer_made?: boolean | null;
           org_id: string;
           payment_plan?: boolean | null;
           recording_url?: string | null;
+          recovered_from_call_id?: string | null;
           scheduled_for?: string | null;
           setter_id?: string | null;
           showed?: boolean | null;
           showed_at?: string | null;
           offer_at?: string | null;
           status?: Database["public"]["Enums"]["call_status"];
+          talk_seconds?: number | null;
           time_to_close_seconds?: number | null;
           updated_at?: string;
         };
@@ -234,26 +309,32 @@ export type Database = {
           source_format?: string | null;
           source_content_id?: string | null;
           source_campaign?: string | null;
+          cancelled?: boolean;
           closed?: boolean | null;
           closer_id?: string | null;
           closer_name?: string | null;
           contract_value_cents?: number | null;
           created_at?: string;
           deposit_cents?: number | null;
+          disposition?: string | null;
+          duration_seconds?: number | null;
           id?: string;
           key_moment?: string | null;
           lead_email?: string | null;
           lead_id?: string | null;
+          no_show_recovered?: boolean;
           offer_made?: boolean | null;
           org_id?: string;
           payment_plan?: boolean | null;
           recording_url?: string | null;
+          recovered_from_call_id?: string | null;
           scheduled_for?: string | null;
           setter_id?: string | null;
           showed?: boolean | null;
           showed_at?: string | null;
           offer_at?: string | null;
           status?: Database["public"]["Enums"]["call_status"];
+          talk_seconds?: number | null;
           time_to_close_seconds?: number | null;
           updated_at?: string;
         };
@@ -277,6 +358,13 @@ export type Database = {
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calls_recovered_from_call_id_fkey";
+            columns: ["recovered_from_call_id"];
+            isOneToOne: false;
+            referencedRelation: "calls";
             referencedColumns: ["id"];
           },
         ];
@@ -1770,6 +1858,7 @@ export type Database = {
           source_connector: string | null;
           status: Database["public"]["Enums"]["lead_status"];
           tags: string[];
+          ticket_tier: string | null;
           traffic_source_id: string | null;
           updated_at: string;
         };
@@ -1805,6 +1894,7 @@ export type Database = {
           source_connector?: string | null;
           status?: Database["public"]["Enums"]["lead_status"];
           tags?: string[];
+          ticket_tier?: string | null;
           traffic_source_id?: string | null;
           updated_at?: string;
         };
@@ -1840,6 +1930,7 @@ export type Database = {
           source_connector?: string | null;
           status?: Database["public"]["Enums"]["lead_status"];
           tags?: string[];
+          ticket_tier?: string | null;
           traffic_source_id?: string | null;
           updated_at?: string;
         };
@@ -2545,16 +2636,23 @@ export type Database = {
           created_at: string;
           dials: number | null;
           downsells: number | null;
+          followups_sent: number | null;
           id: string;
+          inbound_dms_sent: number | null;
           lead_source: string | null;
           leads_contacted: number | null;
+          links_clicked: number | null;
           links_sent: number | null;
           live_calls: number | null;
           notes: string | null;
           objections: string | null;
           org_id: string;
+          outbound_dms_sent: number | null;
+          post_booking_page_visits: number | null;
+          pre_call_video_watches: number | null;
           qualified_convos: number | null;
           rate_today: number | null;
+          replies: number | null;
           role: string;
           sets: number | null;
           team_member_name: string;
@@ -2571,16 +2669,23 @@ export type Database = {
           created_at?: string;
           dials?: number | null;
           downsells?: number | null;
+          followups_sent?: number | null;
           id?: string;
+          inbound_dms_sent?: number | null;
           lead_source?: string | null;
           leads_contacted?: number | null;
+          links_clicked?: number | null;
           links_sent?: number | null;
           live_calls?: number | null;
           notes?: string | null;
           objections?: string | null;
           org_id: string;
+          outbound_dms_sent?: number | null;
+          post_booking_page_visits?: number | null;
+          pre_call_video_watches?: number | null;
           qualified_convos?: number | null;
           rate_today?: number | null;
+          replies?: number | null;
           role?: string;
           sets?: number | null;
           team_member_name: string;
@@ -2597,16 +2702,23 @@ export type Database = {
           created_at?: string;
           dials?: number | null;
           downsells?: number | null;
+          followups_sent?: number | null;
           id?: string;
+          inbound_dms_sent?: number | null;
           lead_source?: string | null;
           leads_contacted?: number | null;
+          links_clicked?: number | null;
           links_sent?: number | null;
           live_calls?: number | null;
           notes?: string | null;
           objections?: string | null;
           org_id?: string;
+          outbound_dms_sent?: number | null;
+          post_booking_page_visits?: number | null;
+          pre_call_video_watches?: number | null;
           qualified_convos?: number | null;
           rate_today?: number | null;
+          replies?: number | null;
           role?: string;
           sets?: number | null;
           team_member_name?: string;

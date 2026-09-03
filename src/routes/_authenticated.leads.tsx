@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Users,
   MessageSquare,
@@ -43,7 +43,12 @@ import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, SPECTRUM_SEQUENCE } from "@/lib/spectrum";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_authenticated/leads")({ component: Leads });
+export const Route = createFileRoute("/_authenticated/leads")({
+  component: Leads,
+  validateSearch: (s: Record<string, unknown>) => ({
+    leadId: typeof s.leadId === "string" ? s.leadId : undefined,
+  }),
+});
 
 type LeadRow = {
   id: string;
@@ -71,6 +76,7 @@ type LeadRow = {
   notes: string | null;
   created_at: string;
   tags: string[] | null;
+  ticket_tier: string | null;
 };
 
 // Row tint (subtle, 5%) for the same tone family used by chips (15%) — one 4-accent
@@ -300,6 +306,11 @@ function Leads() {
   const [selected, setSelected] = useState<LeadRow | null>(null);
   const [qualExpanded, setQualExpanded] = useState(false);
   const [selectedOptInDate, setSelectedOptInDate] = useState("");
+  // Range filter is deliberately local (not the shared global DateRangeProvider,
+  // which defaults to "Last 30d") — this page is a historical lead-record view,
+  // so it must show full history by default, not silently hide older leads.
+  const [entryFrom, setEntryFrom] = useState("");
+  const [entryTo, setEntryTo] = useState("");
   const [setterFilter, setSetterFilter] = useState("all");
   const [closerFilter, setCloserFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -315,7 +326,7 @@ function Leads() {
       const { data, error } = await supabase
         .from("leads")
         .select(
-          "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, source_platform, source_format, source_campaign, first_touch_at, first_touch_content_id, assigned_setter_id, qualification_notes, application_data, notes, created_at, tags, calls(closer_id)",
+          "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, source_platform, source_format, source_campaign, first_touch_at, first_touch_content_id, assigned_setter_id, qualification_notes, application_data, notes, created_at, tags, ticket_tier, calls(closer_id)",
         )
         .eq("org_id", orgId!)
         .order("created_at", { ascending: false })
@@ -328,6 +339,15 @@ function Leads() {
       });
     },
   });
+
+  // Immediate-action deep link from hot-lead alerts / other pages (?leadId=…)
+  // — opens the matching lead's drawer as soon as the list has loaded.
+  const { leadId: deepLinkLeadId } = Route.useSearch();
+  useEffect(() => {
+    if (!deepLinkLeadId || !leads) return;
+    const match = leads.find((l) => l.id === deepLinkLeadId);
+    if (match) setSelected(match);
+  }, [deepLinkLeadId, leads]);
 
   const updateLead = useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: Record<string, unknown> }) => {
@@ -365,6 +385,8 @@ function Leads() {
       const entryAt = l.first_touch_at ?? l.created_at;
       const offer = typeof l.application_data?.offer === "string" ? l.application_data.offer : null;
       if (selectedOptInDate && entryAt.slice(0, 10) !== selectedOptInDate) return false;
+      if (entryFrom && entryAt.slice(0, 10) < entryFrom) return false;
+      if (entryTo && entryAt.slice(0, 10) > entryTo) return false;
       if (setterFilter !== "all" && (l.assigned_setter_id ?? "unassigned") !== setterFilter)
         return false;
       if (closerFilter !== "all" && (l.closer_id ?? "unassigned") !== closerFilter) return false;
@@ -394,6 +416,8 @@ function Leads() {
     statusFilter,
     bucket,
     selectedOptInDate,
+    entryFrom,
+    entryTo,
     setterFilter,
     closerFilter,
     sourceFilter,
@@ -563,7 +587,8 @@ function Leads() {
                   type="date"
                   value={selectedOptInDate}
                   onChange={(e) => setSelectedOptInDate(e.target.value)}
-                  aria-label="Filter leads by opt-in date"
+                  aria-label="Filter leads by a specific opt-in day"
+                  title="Show all leads that opted in on this exact day"
                   className="h-8 bg-transparent text-2xs outline-none"
                 />
                 {selectedOptInDate && (
@@ -572,6 +597,39 @@ function Leads() {
                     onClick={() => setSelectedOptInDate("")}
                     className="text-2xs text-muted-foreground hover:text-foreground"
                     aria-label="Clear opt-in date filter"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1 rounded-md border border-input bg-background px-2">
+                <span className="text-3xs uppercase tracking-wider text-muted-foreground">
+                  Entry range
+                </span>
+                <input
+                  type="date"
+                  value={entryFrom}
+                  onChange={(e) => setEntryFrom(e.target.value)}
+                  aria-label="Entry date range — from"
+                  className="h-8 bg-transparent text-2xs outline-none"
+                />
+                <span className="text-3xs text-muted-foreground">→</span>
+                <input
+                  type="date"
+                  value={entryTo}
+                  onChange={(e) => setEntryTo(e.target.value)}
+                  aria-label="Entry date range — to"
+                  className="h-8 bg-transparent text-2xs outline-none"
+                />
+                {(entryFrom || entryTo) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEntryFrom("");
+                      setEntryTo("");
+                    }}
+                    className="text-2xs text-muted-foreground hover:text-foreground"
+                    aria-label="Clear entry date range"
                   >
                     ×
                   </button>
@@ -1000,6 +1058,20 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leads", orgId] }),
     onError: (e: Error) => toast.error(e.message),
   });
+  const updateTicketTier = useMutation({
+    mutationFn: async (tier: string) => {
+      const { error } = await supabase
+        .from("leads")
+        .update({ ticket_tier: tier || null })
+        .eq("id", lead.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["leads", orgId] });
+      qc.invalidateQueries({ queryKey: ["dialable-leads", orgId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const addTag = () => {
     const t = tagDraft.trim();
     if (!t || tags.includes(t)) {
@@ -1083,6 +1155,18 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
           </div>
           <div>
             <span className="text-muted-foreground">Source:</span> {lead.source_connector ?? "—"}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">Ticket tier:</span>
+            <select
+              value={lead.ticket_tier ?? ""}
+              onChange={(e) => updateTicketTier.mutate(e.target.value)}
+              className="h-6 rounded border border-border bg-background px-1 text-2xs"
+            >
+              <option value="">Unclassified</option>
+              <option value="high">High-ticket</option>
+              <option value="low">Low-ticket</option>
+            </select>
           </div>
         </div>
         <div className="space-y-1.5">
