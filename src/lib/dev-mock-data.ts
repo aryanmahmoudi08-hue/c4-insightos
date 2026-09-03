@@ -1351,20 +1351,66 @@ export function mockVsls() {
       transcript_json: null,
       script: null,
     },
+    {
+      id: "mock-vsl-3",
+      name: "Post-booking Confirmation",
+      wistia_video_id: "mockwistia3",
+      sheet_url: null,
+      kind: "post_booking",
+      transcript_json: mockTranscriptLines(),
+      script: "[MOCK] Confirmation, expectations, onboarding steps, and next action.",
+    },
+    {
+      id: "mock-testimonial-1",
+      name: "Jordan — From inconsistent leads to a predictable pipeline",
+      wistia_video_id: "mocktestimonial1",
+      sheet_url: null,
+      kind: "testimonial",
+      transcript_json: [
+        { t: 0, text: "[MOCK] Jordan testimonial timeline" },
+        { t: 8, text: "The before-and-after became predictable." },
+      ],
+      script: "[MOCK] Jordan explains the before-and-after, the mechanism, and the result.",
+    },
+    {
+      id: "mock-testimonial-2",
+      name: "Casey — First qualified calls in 30 days",
+      wistia_video_id: "mocktestimonial2",
+      sheet_url: null,
+      kind: "testimonial",
+      transcript_json: [
+        { t: 0, text: "[MOCK] Casey testimonial timeline" },
+        { t: 11, text: "The first qualified call arrived in 30 days." },
+      ],
+      script: "[MOCK] Casey explains the implementation and the first qualified call milestone.",
+    },
+    {
+      id: "mock-testimonial-3",
+      name: "Morgan — Turning content into booked conversations",
+      wistia_video_id: "mocktestimonial3",
+      sheet_url: null,
+      kind: "testimonial",
+      transcript_json: [
+        { t: 0, text: "[MOCK] Morgan testimonial timeline" },
+        { t: 14, text: "Content became a repeatable acquisition channel." },
+      ],
+      script: "[MOCK] Morgan explains how content became a repeatable acquisition channel.",
+    },
   ];
 }
 
 export function mockVslSnapshots(vslId: string) {
   const now = Date.now();
+  const variant = [...vslId].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 140;
   return Array.from({ length: 6 }, (_, i) => ({
     id: `mock-snap-${vslId}-${i}`,
     vsl_id: vslId,
     captured_at: new Date(now - (5 - i) * 86400e3).toISOString(),
-    total_plays: 800 + i * 120,
-    unique_viewers: 600 + i * 90,
-    play_rate: 42 + i * 1.5,
-    avg_percent_watched: 38 + i * 2,
-    page_loads: 1400 + i * 150,
+    total_plays: 680 + variant + i * 120,
+    unique_viewers: 480 + Math.round(variant * 0.7) + i * 90,
+    play_rate: 38 + (variant % 18) + i * 1.5,
+    avg_percent_watched: 34 + (variant % 20) + i * 2,
+    page_loads: 1200 + variant * 2 + i * 150,
     engagement_json: null,
   }));
 }

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { mockAttributionPaths } from "@/lib/dev-mock-data";
+import { evaluateAttributionEvidence } from "@/lib/acquisition";
 import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
 import { StatCard } from "@/components/stat-card";
@@ -259,7 +260,7 @@ function Attribution() {
                 <th className="text-right p-3 font-mono">Leads</th>
                 <th className="text-right p-3 font-mono">Closes</th>
                 <th className="text-right p-3 font-mono">Cash</th>
-                <th className="text-left p-3 w-40">Path strength</th>
+                <th className="text-left p-3 w-52">Attribution confidence</th>
               </tr>
             </thead>
             <tbody>
@@ -268,6 +269,13 @@ function Attribution() {
                   4,
                   Math.round((p.cash / Math.max(1, filteredPaths[0].cash)) * 100),
                 );
+                const evidence = evaluateAttributionEvidence({
+                  model: "first_touch",
+                  supportingEvents: ["content_metrics"],
+                  sampleSize: p.closes,
+                  directOutcomeLinked: false,
+                  drilldownKey: p.id,
+                });
                 return (
                   <tr key={p.id} className="border-t border-border/70 hover:bg-muted/20">
                     <td className="p-3 font-mono text-xs text-muted-foreground">{i + 1}</td>
@@ -280,8 +288,21 @@ function Attribution() {
                       ${Math.round(p.cash / 100).toLocaleString()}
                     </td>
                     <td className="p-3">
-                      <div className="h-2 rounded bg-muted overflow-hidden">
-                        <div className="h-full bg-spectrum-hot" style={{ width: `${w}%` }} />
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2 text-3xs uppercase tracking-wider">
+                          <span className="text-spectrum-hot">{evidence.coverage}</span>
+                          <span className="text-muted-foreground">
+                            {evidence.model.replaceAll("_", " ")}
+                          </span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded bg-muted">
+                          <div className="h-full bg-spectrum-hot" style={{ width: `${w}%` }} />
+                        </div>
+                        <div className="text-3xs text-muted-foreground">
+                          {evidence.knownTouchpoints} known touchpoint
+                          {evidence.knownTouchpoints === 1 ? "" : "s"}
+                          {evidence.sampleWarning ? ` · ${evidence.sampleWarning}` : ""}
+                        </div>
                       </div>
                     </td>
                   </tr>

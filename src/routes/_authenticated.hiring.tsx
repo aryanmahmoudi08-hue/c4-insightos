@@ -178,61 +178,6 @@ function deriveFlags(a: Applicant): Flag[] {
   return flags;
 }
 
-function HiringFunnelHero({
-  total,
-  interviewWorthy,
-  hired,
-}: {
-  total: number;
-  interviewWorthy: number;
-  hired: number;
-}) {
-  const stages: { label: string; value: number; spectrum: SpectrumPosition }[] = [
-    { label: "Total Applicants", value: total, spectrum: "cold" },
-    { label: "Interview / Trial", value: interviewWorthy, spectrum: "mid" },
-    { label: "Hired", value: hired, spectrum: "hot" },
-  ];
-  const max = Math.max(1, stages[0].value);
-  return (
-    <div className="hover-lift relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
-      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
-      <div className="relative">
-        <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Hiring Pipeline
-        </div>
-        <div className="display-serif mt-0.5 text-2xl">Applicants to hires</div>
-      </div>
-      <div className="relative flex flex-1 flex-col justify-center gap-2.5 py-3">
-        {stages.map((s, i) => {
-          const width = Math.max(4, Math.round((s.value / max) * 100));
-          const prev = stages[i - 1];
-          const conv =
-            prev && prev.value > 0 ? `${((s.value / prev.value) * 100).toFixed(0)}%` : null;
-          return (
-            <div key={s.label} className="space-y-1">
-              <div className="flex items-center justify-between text-2xs">
-                <span className="font-medium">{s.label}</span>
-                <span className="font-mono text-muted-foreground">
-                  {s.value}
-                  {conv && (
-                    <span className={`ml-1.5 ${SPECTRUM_TEXT_CLASS[s.spectrum]}`}>· {conv}</span>
-                  )}
-                </span>
-              </div>
-              <div className="h-2 rounded bg-muted/30 overflow-hidden">
-                <div
-                  className="h-full rounded transition-all duration-500"
-                  style={{ width: `${width}%`, background: SPECTRUM_VAR[s.spectrum] }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function Hiring() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
@@ -435,12 +380,6 @@ function Hiring() {
         subtitle="Applicant pipeline · AI-scored · drag to move stages"
       />
       <div className="p-6 space-y-5">
-        <BentoGrid cols={2} rowHeight="8rem">
-          <BentoCell span="hero">
-            <HiringFunnelHero total={total} interviewWorthy={interviewWorthy} hired={hired} />
-          </BentoCell>
-        </BentoGrid>
-
         {/* Sticky on scroll — the Kanban board below can run long, so the
             headline counts stay visible instead of scrolling out of view.
             top-[155px] docks it directly below the two stacked sticky headers

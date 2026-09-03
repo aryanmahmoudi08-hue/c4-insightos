@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 // Every field here is a number this project's audit found buried as a
@@ -43,11 +45,26 @@ const FunnelInstrumentSettings = z.object({
   minCapSample: z.number().int().min(1).max(200).default(10),
 });
 
+const TypeformUrl = z
+  .string()
+  .trim()
+  .refine((value) => !value || /^https:\/\//i.test(value), "Use an HTTPS Typeform URL.");
+
+const EodSettings = z.object({
+  /** Fallback Typeform for users without a specific user or role assignment. */
+  defaultUrl: TypeformUrl.default(""),
+  /** Role keys remain free-form so new rep roles do not require a migration. */
+  roleUrls: z.record(z.string(), TypeformUrl).default({}),
+  /** User-id overrides win over roleUrls and defaultUrl. */
+  userUrls: z.record(z.string(), TypeformUrl).default({}),
+});
+
 export const WorkspaceSettingsSchema = z.object({
   content_engine: ContentEngineSettings.default({}),
   alerts: AlertSettings.default({}),
   clients: ClientSettings.default({}),
   funnel_instrument: FunnelInstrumentSettings.default({}),
+  eod: EodSettings.default({}),
 });
 
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>;
@@ -55,10 +72,26 @@ export type ContentEngineSettingsT = WorkspaceSettings["content_engine"];
 export type AlertSettingsT = WorkspaceSettings["alerts"];
 export type ClientSettingsT = WorkspaceSettings["clients"];
 export type FunnelInstrumentSettingsT = WorkspaceSettings["funnel_instrument"];
+export type EodSettingsT = WorkspaceSettings["eod"];
 
 /** Used wherever settings haven't loaded yet, or by any server logic that
  * wants documented defaults without a round-trip (e.g. tests, cold paths). */
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = WorkspaceSettingsSchema.parse({});
+
+/** Development-preview-only storage key; production settings remain Supabase-backed. */
+export const DEV_EOD_SETTINGS_STORAGE_KEY = "c4-dev-eod-settings";
+
+export function readDevEodSettings(): WorkspaceSettings {
+  if (typeof window !== "undefined") {
+    try {
+      const stored = sessionStorage.getItem(DEV_EOD_SETTINGS_STORAGE_KEY);
+      if (stored) return WorkspaceSettingsSchema.parse(JSON.parse(stored));
+    } catch {
+      // Ignore malformed local preview state and use documented defaults.
+    }
+  }
+  return DEFAULT_WORKSPACE_SETTINGS;
+}
 
 function parseStoredSettings(raw: Record<string, unknown>): WorkspaceSettings {
   // organizations.settings is a shared free-form jsonb column — ingest.functions.ts
@@ -69,10 +102,11 @@ function parseStoredSettings(raw: Record<string, unknown>): WorkspaceSettings {
     alerts: raw.alerts ?? {},
     clients: raw.clients ?? {},
     funnel_instrument: raw.funnel_instrument ?? {},
+    eod: raw.eod ?? {},
   });
 }
 
-type Sb = { from: (t: string) => any };
+type Sb = SupabaseClient<Database>;
 
 /** Plain, server-side-reusable fetch — called directly by other server logic
  * (e.g. content-signals.server.ts) that needs the resolved config, not just
@@ -81,7 +115,11 @@ type Sb = { from: (t: string) => any };
  * ingest.functions.ts — RLS is the real authorization boundary for writes
  * (see "owners update org" policy, owner/admin only); reads are member-scoped. */
 export async function fetchWorkspaceSettings(sb: Sb, orgId: string): Promise<WorkspaceSettings> {
-  const { data: org, error } = await sb.from("organizations").select("settings").eq("id", orgId).single();
+  const { data: org, error } = await sb
+    .from("organizations")
+    .select("settings")
+    .eq("id", orgId)
+    .single();
   if (error) throw new Error(error.message);
   return parseStoredSettings((org.settings ?? {}) as Record<string, unknown>);
 }
@@ -97,6 +135,7 @@ const UpdateInput = z.object({
   alerts: AlertSettings.partial().optional(),
   clients: ClientSettings.partial().optional(),
   funnel_instrument: FunnelInstrumentSettings.partial().optional(),
+  eod: EodSettings.partial().optional(),
 });
 
 export const updateWorkspaceSettingsFn = createServerFn({ method: "POST" })
@@ -104,7 +143,11 @@ export const updateWorkspaceSettingsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    const { data: org, error } = await supabase.from("organizations").select("settings").eq("id", data.orgId).single();
+    const { data: org, error } = await supabase
+      .from("organizations")
+      .select("settings")
+      .eq("id", data.orgId)
+      .single();
     if (error) throw new Error(error.message);
     const raw = (org.settings ?? {}) as Record<string, unknown>;
     const current = parseStoredSettings(raw);
@@ -113,6 +156,12 @@ export const updateWorkspaceSettingsFn = createServerFn({ method: "POST" })
       alerts: { ...current.alerts, ...(data.alerts ?? {}) },
       clients: { ...current.clients, ...(data.clients ?? {}) },
       funnel_instrument: { ...current.funnel_instrument, ...(data.funnel_instrument ?? {}) },
+      eod: {
+        ...current.eod,
+        ...(data.eod ?? {}),
+        roleUrls: { ...current.eod.roleUrls, ...(data.eod?.roleUrls ?? {}) },
+        userUrls: { ...current.eod.userUrls, ...(data.eod?.userUrls ?? {}) },
+      },
     };
     const { error: upErr } = await supabase
       .from("organizations")

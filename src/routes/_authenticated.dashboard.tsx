@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
-import { mockDashboardStats } from "@/lib/dev-mock-data";
+import { mockDashboardStats, mockHubMetrics } from "@/lib/dev-mock-data";
 import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
 import { Link } from "@tanstack/react-router";
@@ -17,23 +17,55 @@ import {
   Calendar,
   Inbox,
   AlertTriangle,
+  Flame,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ResponsiveContainer, AreaChart, Area } from "recharts";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  ComposedChart,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts";
 import { SlimHeader } from "@/components/slim-header";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { useCountUp } from "@/hooks/use-count-up";
 import { KpiBand } from "@/components/kpi-band";
+import { KpiCard } from "@/components/kpi-card";
+import { InteractiveSparkline } from "@/components/interactive-sparkline";
 import { HubOperatingMetrics } from "@/components/hub-operating-metrics";
-import { FunnelInstrument } from "@/components/funnel-instrument";
 import { MoneyInstrument, type MoneyPoint } from "@/components/money-instrument";
 import { RepLeaderboard, type RepMetricOption } from "@/components/rep-leaderboard";
-import type { FunnelStage } from "@/lib/funnel-derivation";
 import { pctDelta } from "@/lib/trend";
+import { SPECTRUM_VAR, type SpectrumPosition } from "@/lib/spectrum";
 import type { DateRange } from "@/components/date-range-picker";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  SOCIAL_PLATFORMS,
+  type SocialPlatform,
+  normalizeSocialPlatform,
+} from "@/lib/social-platform";
+import {
+  ACQUISITION_SOURCES,
+  type AcquisitionSource,
+  acquisitionSourceMatches,
+} from "@/lib/acquisition-source";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: Dashboard });
 
@@ -114,10 +146,15 @@ const HUB_SETTER_METRICS: RepMetricOption<HubSetterPerson>[] = [
   },
 ];
 
-async function fetchPeriod(orgId: string, from: string, to: string) {
+async function fetchPeriod(
+  orgId: string,
+  from: string,
+  to: string,
+  filters: { socialPlatform: SocialPlatform | "all"; acquisitionSource: AcquisitionSource | "all" },
+) {
   const fromISO = `${from}T00:00:00`;
   const toISO = `${to}T23:59:59`;
-  const [pays, leads, calls, content, setters] = await Promise.all([
+  const [pays, leads, calls, content, setters, clients] = await Promise.all([
     supabase
       .from("payments")
       .select("amount_cents, collected_at")
@@ -126,13 +163,15 @@ async function fetchPeriod(orgId: string, from: string, to: string) {
       .lte("collected_at", toISO),
     supabase
       .from("leads")
-      .select("id, created_at")
+      .select("id, created_at, source_platform, source_campaign")
       .eq("org_id", orgId)
       .gte("created_at", fromISO)
       .lte("created_at", toISO),
     supabase
       .from("calls")
-      .select("showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at")
+      .select(
+        "showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at, source_platform, source_campaign",
+      )
       .eq("org_id", orgId)
       .gte("created_at", fromISO)
       .lte("created_at", toISO),
@@ -150,13 +189,33 @@ async function fetchPeriod(orgId: string, from: string, to: string) {
       .eq("org_id", orgId)
       .gte("activity_date", from)
       .lte("activity_date", to),
+    supabase.from("clients").select("id, status").eq("org_id", orgId),
   ]);
   const payList = pays.data ?? [];
-  const leadList = leads.data ?? [];
-  const callList = calls.data ?? [];
-  const contentList = content.data ?? [];
-  const setterList = setters.data ?? [];
-  const paymentsCash = payList.reduce((s, p) => s + (p.amount_cents ?? 0), 0);
+  const matches = (row: {
+    source_platform?: string | null;
+    source_type?: string | null;
+    source_campaign?: string | null;
+  }) =>
+    (filters.socialPlatform === "all" ||
+      normalizeSocialPlatform(row.source_campaign, row.source_platform) ===
+        filters.socialPlatform) &&
+    acquisitionSourceMatches(row.source_type, filters.acquisitionSource, row.source_campaign);
+  const leadList = (leads.data ?? []).filter(matches);
+  const callList = (calls.data ?? []).filter(matches);
+  const contentList =
+    filters.socialPlatform === "all" && filters.acquisitionSource === "all"
+      ? (content.data ?? [])
+      : [];
+  const setterList =
+    filters.socialPlatform === "all" && filters.acquisitionSource === "all"
+      ? (setters.data ?? [])
+      : [];
+  const activeClients = (clients.data ?? []).filter((client) => client.status === "active").length;
+  const paymentsCash =
+    filters.socialPlatform === "all" && filters.acquisitionSource === "all"
+      ? payList.reduce((s, p) => s + (p.amount_cents ?? 0), 0)
+      : 0;
   const callsCash = callList.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
   const setterCash = setterList.reduce((s, a) => s + (a.cash_collected_cents ?? 0), 0);
   // Unified cash = max of (payments) vs (sales-team self-reported). Avoids double counting
@@ -184,6 +243,7 @@ async function fetchPeriod(orgId: string, from: string, to: string) {
     contractValue: callList.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0),
     views: contentList.reduce((s, m) => s + (m.views ?? 0), 0),
     contentLeads: contentList.reduce((s, m) => s + (m.leads_generated ?? 0), 0),
+    activeClients,
   };
 }
 
@@ -192,6 +252,8 @@ function Dashboard() {
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
   const { range } = useDateRange();
+  const [socialPlatform, setSocialPlatform] = useState<SocialPlatform | "all">("all");
+  const [acquisitionSource, setAcquisitionSource] = useState<AcquisitionSource | "all">("all");
 
   const {
     data: stats,
@@ -200,7 +262,15 @@ function Dashboard() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["exec-dash", orgId, range.from, range.to, devBypass],
+    queryKey: [
+      "exec-dash",
+      orgId,
+      range.from,
+      range.to,
+      devBypass,
+      socialPlatform,
+      acquisitionSource,
+    ],
     enabled: !!orgId,
     queryFn: async () => {
       // Dev bypass has no real Supabase session, so every query below would come back
@@ -238,8 +308,8 @@ function Dashboard() {
         insights,
         contentAttribution,
       ] = await Promise.all([
-        fetchPeriod(orgId!, range.from, range.to),
-        fetchPeriod(orgId!, prevFrom, prevTo),
+        fetchPeriod(orgId!, range.from, range.to, { socialPlatform, acquisitionSource }),
+        fetchPeriod(orgId!, prevFrom, prevTo, { socialPlatform, acquisitionSource }),
         supabase
           .from("payments")
           .select("amount_cents")
@@ -498,8 +568,9 @@ function Dashboard() {
     },
   });
 
-  const c = stats?.curr;
-  const p = stats?.prev;
+  type DashboardPeriod = Awaited<ReturnType<typeof fetchPeriod>>;
+  const c = stats?.curr as DashboardPeriod | undefined;
+  const p = stats?.prev as DashboardPeriod | undefined;
 
   // Leaderboards get their own independently-overridable date range, same C3
   // pattern the rep dashboards already established — defaults to the page
@@ -565,28 +636,11 @@ function Dashboard() {
     },
   });
 
-  // Split by natural scale break — Views runs 100k+ while Leads/Booked/Showed/
-  // Offers/Closed run in the 10s-100s, same reason the rep dashboards split
-  // their own funnels into Reach/Close rather than one instrument spanning
-  // every order of magnitude (a single linear axis would make 5 of 6 bars
-  // visually disappear next to Views).
-  const reachStages: FunnelStage[] = useMemo(
-    () => [
-      { key: "views", label: "Views", value: c?.views ?? 0, spectrum: "cold" },
-      { key: "leads", label: "Leads", value: c?.newLeads ?? 0, spectrum: "cold" },
-    ],
-    [c],
+  const hubSeries = stats?.series ?? [];
+  const hubLabels = hubSeries.map((point) => point.d);
+  const reachConversionSeries = hubSeries.map((point) =>
+    Number(point.views ?? 0) > 0 ? (Number(point.leads ?? 0) / Number(point.views ?? 0)) * 100 : 0,
   );
-  const closeStages: FunnelStage[] = useMemo(
-    () => [
-      { key: "booked", label: "Booked", value: c?.totalCalls ?? 0, spectrum: "mid" },
-      { key: "showed", label: "Showed", value: c?.showed ?? 0, spectrum: "mid" },
-      { key: "offers", label: "Offers", value: c?.offers ?? 0, spectrum: "mid" },
-      { key: "closed", label: "Closed", value: c?.closed ?? 0, spectrum: "hot" },
-    ],
-    [c],
-  );
-
   const moneySeries: MoneyPoint[] = useMemo(
     () => (stats?.series ?? []).map((s) => ({ d: s.d, cash: s.cash, revenue: s.contractValue })),
     [stats?.series],
@@ -600,21 +654,55 @@ function Dashboard() {
         subtitle="Real-time KPIs across content, attribution, and sales"
         showDateRange
       />
-      <div className="p-4 md:p-6 space-y-4">
-        <SlimHeader
-          icon={<Activity className="h-4 w-4" />}
-          title="Executive Command Center"
-          subtitle="Real-time KPIs across content, attribution, and sales"
-          accent="accent"
-          right={
-            <span className="text-2xs font-mono text-muted-foreground">
-              {isLoading
-                ? "syncing…"
-                : `${range.from} → ${range.to} · vs prior ${Math.max(1, Math.round((new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400e3) + 1)}d`}
-            </span>
-          }
-        />
-
+      <div className="space-y-6 p-4 md:p-6">
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-card/60 p-3">
+          <div className="mr-auto min-w-[12rem]">
+            <div className="text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Executive filters
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              Filters recalculate only metrics with explicit attribution.
+            </div>
+          </div>
+          <label className="grid gap-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+            Social Platform
+            <Select
+              value={socialPlatform}
+              onValueChange={(value) => setSocialPlatform(value as SocialPlatform | "all")}
+            >
+              <SelectTrigger className="h-8 w-44 text-xs normal-case tracking-normal text-foreground">
+                <SelectValue placeholder="All Platforms" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Platforms</SelectItem>
+                {SOCIAL_PLATFORMS.map((platform) => (
+                  <SelectItem key={platform} value={platform}>
+                    {platform}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="grid gap-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+            Acquisition Source
+            <Select
+              value={acquisitionSource}
+              onValueChange={(value) => setAcquisitionSource(value as AcquisitionSource | "all")}
+            >
+              <SelectTrigger className="h-8 w-44 text-xs normal-case tracking-normal text-foreground">
+                <SelectValue placeholder="All Sources" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sources</SelectItem>
+                {ACQUISITION_SOURCES.map((source) => (
+                  <SelectItem key={source} value={source}>
+                    {source}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+        </div>
         {isError && (
           <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 animate-in fade-in-0 slide-in-from-top-1 duration-200">
             <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
@@ -657,12 +745,13 @@ function Dashboard() {
             undefined. `!!stats` is the actual "do we have real data" check. */}
         {!!stats && (
           <>
-            <BentoGrid rowHeight="9.5rem" cols={3}>
+            <BentoGrid rowHeight="10.5rem" cols={3}>
               <BentoCell span="hero">
                 <CashHero
                   curr={c?.cash}
                   prev={p?.cash}
-                  series={stats?.series ?? []}
+                  revenue={c?.contractValue}
+                  series={moneySeries}
                   pace={stats?.pace}
                 />
               </BentoCell>
@@ -676,20 +765,20 @@ function Dashboard() {
           </>
         )}
 
-        {/* KPI band — same composed KpiBand treatment already fixed on the rep
-            dashboards (Part 4 of this project): real breathing room, consistent
-            value sizing, money/outcome metrics featured over volume metrics.
-            Cash Collected lives in the mega-hero above, not duplicated here. */}
+        {/* Company KPIs stay focused on four executive-level measures. Detailed
+            funnel stages remain in Level 3 and are not duplicated here. */}
         {!!stats && (
           <KpiBand
             title="Company KPIs"
             items={[
               {
                 key: "contractValue",
-                label: "Contract Value",
+                label: "Contract Value / Cash",
                 value: money(c?.contractValue ?? 0),
                 spectrum: "hot",
                 featured: true,
+                spark: stats.series.map((point) => point.contractValue),
+                sparkLabels: stats.series.map((point) => point.d),
                 deltaPct: pctDelta(c?.contractValue ?? 0, p?.contractValue ?? 0),
                 priorValue: money(p?.contractValue ?? 0),
                 empty: !c?.contractValue,
@@ -700,6 +789,9 @@ function Dashboard() {
                 label: "New Leads",
                 value: fmt(c?.newLeads ?? 0),
                 spectrum: "cold",
+                spark: stats.series.map((point) => point.leads),
+                sparkLabels: stats.series.map((point) => point.d),
+                sparkVariant: "bar",
                 deltaPct: pctDelta(c?.newLeads ?? 0, p?.newLeads ?? 0),
                 priorValue: fmt(p?.newLeads ?? 0),
                 empty: !c?.newLeads,
@@ -710,56 +802,30 @@ function Dashboard() {
                 label: "Total Views",
                 value: fmt(c?.views ?? 0),
                 spectrum: "cold",
+                spark: stats.series.map((point) => point.views),
+                sparkLabels: stats.series.map((point) => point.d),
                 deltaPct: pctDelta(c?.views ?? 0, p?.views ?? 0),
                 priorValue: fmt(p?.views ?? 0),
                 empty: !c?.views,
                 emptyHint: "Log content metrics to see views here.",
               },
               {
-                key: "callsBooked",
-                label: "Calls Booked",
-                value: fmt(c?.totalCalls ?? 0),
+                key: "activeClients",
+                label: "Active Clients",
+                value: fmt(devBypass ? mockHubMetrics().activeClients : (c?.activeClients ?? 0)),
                 spectrum: "mid",
-                deltaPct: pctDelta(c?.totalCalls ?? 0, p?.totalCalls ?? 0),
-                priorValue: fmt(p?.totalCalls ?? 0),
-                empty: !c?.totalCalls,
-                emptyHint: "Nothing on the calendar yet for this range.",
-              },
-              {
-                key: "showed",
-                label: "Showed",
-                value: fmt(c?.showed ?? 0),
-                spectrum: "mid",
-                deltaPct: pctDelta(c?.showed ?? 0, p?.showed ?? 0),
-                priorValue: fmt(p?.showed ?? 0),
-                empty: !c?.showed,
-                emptyHint: "Mark calls as showed to populate.",
-              },
-              {
-                key: "offersMade",
-                label: "Offers Made",
-                value: fmt(c?.offers ?? 0),
-                spectrum: "mid",
-                deltaPct: pctDelta(c?.offers ?? 0, p?.offers ?? 0),
-                priorValue: fmt(p?.offers ?? 0),
-                empty: !c?.offers,
-                emptyHint: "Mark an offer made on a call to populate.",
-              },
-              {
-                key: "closes",
-                label: "Closes",
-                value: fmt(c?.closed ?? 0),
-                spectrum: "hot",
-                featured: true,
-                deltaPct: pctDelta(c?.closed ?? 0, p?.closed ?? 0),
-                priorValue: fmt(p?.closed ?? 0),
-                empty: !c?.closed,
-                emptyHint: "No closes yet this range — they'll show up here.",
+                spark: [],
+                sparkLabels: [],
+                empty: !(devBypass ? mockHubMetrics().activeClients : (c?.activeClients ?? 0)),
+                emptyHint: "No active clients found.",
               },
             ]}
           />
         )}
 
+        <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+          Level 2 · Operating performance
+        </div>
         {/* Operating metrics — VSL/Applications/Rep-efficiency/Client-momentum
             data that used to live in the flat `HubMetrics` bands before Part 6
             deleted that module without folding any of it back in (confirmed
@@ -767,21 +833,37 @@ function Dashboard() {
             KpiBand/RateSmallMultiples vocabulary as the rest of this page. */}
         <HubOperatingMetrics />
 
-        {/* Charts row — composed instruments (FunnelInstrument/MoneyInstrument),
-            same components AND layout the rep dashboards already use: Reach +
-            Close funnels side by side, money chart alongside — not a parallel
-            hand-rolled chart + flat proportional bar. */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FunnelInstrument title="Reach" subtitle="Views → Leads" stages={reachStages} />
-            <FunnelInstrument title="Close" subtitle="Booked → Closed" stages={closeStages} />
-          </div>
-          <MoneyInstrument series={moneySeries} cashRatePct={cashRatePct} fmtMoney={money} />
+        <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+          Level 3 · Funnel and cash outcomes
         </div>
-
+        {/* Reach and Close are deliberate summary instruments: two horizontal cards
+            keep the funnel readable without nesting legacy stage capsules inside a
+            grouped container. The cash-vs-revenue chart remains below them. */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <ReachSummaryCard
+            views={c?.views ?? 0}
+            leads={c?.newLeads ?? 0}
+            priorViews={p?.views ?? 0}
+            priorLeads={p?.newLeads ?? 0}
+            series={hubSeries}
+          />
+          <CloseSummaryCard
+            booked={c?.totalCalls ?? 0}
+            showed={c?.showed ?? 0}
+            offers={c?.offers ?? 0}
+            closed={c?.closed ?? 0}
+            series={hubSeries}
+          />
+        </div>
+        <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+          Level 3 · Content attribution
+        </div>
         {/* Content-to-cash attribution strip */}
         <ContentToCashStrip rows={stats?.contentAttribution ?? []} />
 
+        <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+          Level 4 · Team efficiency
+        </div>
         {/* Leaderboards — RepLeaderboard + metric-selector, same component and
             pattern the rep dashboards already use. Closers rank by Closes /
             Cash Collected / Revenue Generated; Setters by Sets / Cash
@@ -813,81 +895,279 @@ function Dashboard() {
           />
         </div>
 
-        {/* Alerts + Insights */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30">
-              <div className="text-xs font-semibold uppercase tracking-wider">Open alerts</div>
-              <Link
-                to="/insights"
-                className="text-xs text-primary hover:underline flex items-center gap-1"
-              >
-                View all <ArrowUpRight className="h-3 w-3" />
-              </Link>
-            </div>
-            <div className="divide-y divide-border">
-              {(stats?.alerts ?? []).map((a) => (
-                <div key={a.id} className="px-4 py-2.5 flex items-start gap-3">
-                  <span
-                    className={`mt-1 h-2 w-2 rounded-full ${a.severity === "critical" ? "bg-destructive" : a.severity === "warning" ? "bg-[color:var(--color-warning)]" : "bg-primary"}`}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{a.title}</div>
-                    <div className="text-2xs text-muted-foreground">
-                      {new Date(a.created_at).toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {(!stats?.alerts || stats.alerts.length === 0) && (
-                <EmptyState
-                  icon={<Inbox className="h-4 w-4" />}
-                  title="All systems nominal"
-                  description="No open alerts in this range."
-                />
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30">
-              <div className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-accent" /> AI insights
-              </div>
-              <Link
-                to="/insights"
-                className="text-xs text-primary hover:underline flex items-center gap-1"
-              >
-                Open module <ArrowUpRight className="h-3 w-3" />
-              </Link>
-            </div>
-            <div className="divide-y divide-border">
-              {(stats?.insights ?? []).map((i) => (
-                <div key={i.id} className="px-4 py-2.5">
-                  <div className="text-sm font-medium truncate">{i.title}</div>
-                  <div className="text-2xs text-muted-foreground line-clamp-2">{i.body}</div>
-                  <div className="text-3xs uppercase tracking-wider text-accent mt-1">
-                    {i.module}
-                  </div>
-                </div>
-              ))}
-              {(!stats?.insights || stats.insights.length === 0) && (
-                <EmptyState
-                  icon={<Sparkles className="h-4 w-4" />}
-                  title="No insights yet"
-                  description="Generate signals from the AI Insights module."
-                  action={
-                    <Link to="/insights" className="text-xs text-primary hover:underline">
-                      Open AI Insights →
-                    </Link>
-                  }
-                />
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Level 5 Action and Intelligence is intentionally removed per product specification. */}
       </div>
     </>
+  );
+}
+
+type FunnelSeriesPoint = {
+  d: string;
+  views?: number;
+  leads?: number;
+  calls?: number;
+  showed?: number;
+  offers?: number;
+  closed?: number;
+};
+
+function StatusDot({ tone }: { tone: "cold" | "mid" | "hot" }) {
+  return (
+    <span
+      className="h-2 w-2 rounded-full shadow-[0_0_10px_currentColor]"
+      style={{ color: SPECTRUM_VAR[tone], background: SPECTRUM_VAR[tone] }}
+      aria-hidden
+    />
+  );
+}
+
+function ReachSummaryCard({
+  views,
+  leads,
+  priorViews,
+  priorLeads,
+  series,
+}: {
+  views: number;
+  leads: number;
+  priorViews: number;
+  priorLeads: number;
+  series: FunnelSeriesPoint[];
+}) {
+  const conversion = views > 0 ? (leads / views) * 100 : 0;
+  const priorConversion = priorViews > 0 ? (priorLeads / priorViews) * 100 : 0;
+  const conversionDelta =
+    priorConversion > 0 ? ((conversion - priorConversion) / priorConversion) * 100 : 0;
+  const chartData = series.map((point) => ({
+    d: point.d,
+    views: Number(point.views ?? 0),
+    leads: Number(point.leads ?? 0),
+  }));
+  return (
+    <div className="group relative overflow-hidden rounded-2xl border border-spectrum-cold/30 bg-gradient-to-br from-card via-card to-spectrum-cold/[0.08] p-4 shadow-[0_18px_55px_-34px_rgba(34,211,238,0.55)]">
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative flex items-center justify-between gap-3 border-b border-border/60 pb-3">
+        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <Activity className="h-4 w-4 shrink-0 text-spectrum-cold" />
+          <span className="truncate">Reach: Views to Leads</span>
+        </div>
+        <StatusDot tone="cold" />
+      </div>
+      <div className="relative mt-4 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
+        <div className="min-w-0">
+          <div className="font-sans text-3xl font-bold tabular-nums tracking-tight text-spectrum-cold">
+            {fmt(views)}
+          </div>
+          <div className="mt-1 text-2xs text-muted-foreground">Top-of-funnel volume</div>
+          <div className="mt-1 text-3xs text-muted-foreground">vs {fmt(priorViews)} prior</div>
+        </div>
+        <div className="min-w-[5.5rem] text-center">
+          <div className="font-sans text-xl font-bold tabular-nums text-spectrum-hot">
+            {conversion.toFixed(2)}%
+          </div>
+          <div className="mt-0.5 flex items-center justify-center gap-1 text-3xs uppercase tracking-[0.12em] text-muted-foreground">
+            {conversionDelta >= 0 ? (
+              <TrendingUp className="h-3 w-3 text-[color:var(--color-success)]" />
+            ) : (
+              <TrendingDown className="h-3 w-3 text-destructive" />
+            )}
+            {Math.abs(conversionDelta).toFixed(0)}% · Lead Conv
+          </div>
+        </div>
+        <div className="min-w-0 text-right">
+          <div className="font-sans text-3xl font-bold tabular-nums tracking-tight text-spectrum-cold">
+            {fmt(leads)}
+          </div>
+          <div className="mt-1 text-2xs text-muted-foreground">Qualified outcomes</div>
+          <div className="mt-1 text-3xs text-muted-foreground">vs {fmt(priorLeads)} prior</div>
+        </div>
+      </div>
+      <div className="relative mt-4 rounded-lg border border-spectrum-cold/20 bg-background/20 px-2 py-2">
+        <div className="mb-1 flex items-center justify-between text-3xs uppercase tracking-[0.12em] text-muted-foreground">
+          <span>Volume history</span>
+          <span className="flex items-center gap-2">
+            <span className="text-spectrum-cold">Views</span>
+            <span className="text-spectrum-hot">Leads</span>
+          </span>
+        </div>
+        <div className="h-16">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 3, right: 3, left: 3, bottom: 0 }}>
+              <CartesianGrid
+                stroke="var(--border)"
+                strokeDasharray="2 3"
+                vertical={false}
+                opacity={0.35}
+              />
+              <XAxis dataKey="d" hide />
+              <YAxis yAxisId="views" hide domain={["auto", "auto"]} />
+              <YAxis yAxisId="leads" hide domain={["auto", "auto"]} />
+              <Tooltip
+                contentStyle={{
+                  background: "var(--popover)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  fontSize: 11,
+                }}
+                formatter={(value: number, name: string) => [
+                  value.toLocaleString(),
+                  name === "views" ? "Views" : "Leads",
+                ]}
+                labelFormatter={(label) => String(label)}
+              />
+              <Line
+                yAxisId="views"
+                type="monotone"
+                dataKey="views"
+                name="views"
+                stroke={SPECTRUM_VAR.cold}
+                strokeWidth={1.8}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Line
+                yAxisId="leads"
+                type="monotone"
+                dataKey="leads"
+                name="leads"
+                stroke={SPECTRUM_VAR.hot}
+                strokeWidth={1.8}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+      <span className="absolute inset-x-0 bottom-0 h-1 bg-spectrum-cold shadow-[0_0_18px_var(--color-cold)]" />
+    </div>
+  );
+}
+
+function CloseSummaryCard({
+  booked,
+  showed,
+  offers,
+  closed,
+  series,
+}: {
+  booked: number;
+  showed: number;
+  offers: number;
+  closed: number;
+  series: FunnelSeriesPoint[];
+}) {
+  const stages = [
+    { label: "Booked", value: booked, tone: "mid" as const, rate: null },
+    {
+      label: "Showed",
+      value: showed,
+      tone: "mid" as const,
+      rate: booked > 0 ? (showed / booked) * 100 : null,
+    },
+    {
+      label: "Offers",
+      value: offers,
+      tone: "mid" as const,
+      rate: showed > 0 ? (offers / showed) * 100 : null,
+    },
+    {
+      label: "Closed",
+      value: closed,
+      tone: "hot" as const,
+      rate: offers > 0 ? (closed / offers) * 100 : null,
+    },
+  ];
+  const chartData = stages.map((stage) => ({
+    stage: stage.label,
+    value: series.reduce((sum, point) => {
+      const key = stage.label === "Booked" ? "calls" : stage.label.toLowerCase();
+      return sum + Number(point[key as keyof FunnelSeriesPoint] ?? 0);
+    }, 0),
+  }));
+  return (
+    <div className="group relative overflow-hidden rounded-2xl border border-spectrum-hot/30 bg-gradient-to-br from-card via-card to-spectrum-hot/[0.08] p-4 shadow-[0_18px_55px_-34px_rgba(236,72,153,0.55)]">
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative flex items-center justify-between gap-3 border-b border-border/60 pb-3">
+        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <Flame className="h-4 w-4 shrink-0 text-spectrum-hot" />
+          <span className="truncate">Close: Booked to Closed</span>
+        </div>
+        <StatusDot tone="hot" />
+      </div>
+      <div className="relative mt-4 grid grid-cols-4 gap-1.5">
+        {stages.map((stage, index) => (
+          <div
+            key={stage.label}
+            className="relative min-w-0 rounded-lg border border-spectrum-mid/20 bg-spectrum-mid/[0.07] px-2 py-2.5 text-center"
+          >
+            <div className="text-3xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+              {stage.label}
+            </div>
+            <div className="mt-1 font-sans text-2xl font-bold tabular-nums text-foreground">
+              {fmt(stage.value)}
+            </div>
+            {stage.rate !== null && (
+              <div className="mt-1 text-3xs font-mono tabular-nums text-spectrum-mid">
+                {stage.rate.toFixed(1)}%
+              </div>
+            )}
+            {index < stages.length - 1 && (
+              <span className="absolute -right-2 top-1/2 z-10 text-muted-foreground">→</span>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-muted/60">
+        {stages.map((stage, index) => (
+          <span
+            key={stage.label}
+            className="inline-block h-full"
+            style={{
+              width: `${Math.max(8, (stage.value / Math.max(booked, 1)) * 25)}%`,
+              background: SPECTRUM_VAR[stage.tone],
+              opacity: 0.55 + index * 0.12,
+            }}
+          />
+        ))}
+      </div>
+      <div className="relative mt-3 rounded-lg border border-spectrum-hot/20 bg-background/20 px-2 py-2">
+        <div className="mb-1 text-3xs uppercase tracking-[0.12em] text-muted-foreground">
+          Stage volume
+        </div>
+        <div className="h-14">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 2, right: 2, left: 2, bottom: 0 }}>
+              <CartesianGrid
+                stroke="var(--border)"
+                strokeDasharray="2 3"
+                vertical={false}
+                opacity={0.35}
+              />
+              <XAxis dataKey="stage" hide />
+              <YAxis hide domain={[0, "auto"]} />
+              <Tooltip
+                contentStyle={{
+                  background: "var(--popover)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  fontSize: 11,
+                }}
+                formatter={(value: number) => [value.toLocaleString(), "Count"]}
+              />
+              <Bar
+                dataKey="value"
+                fill={SPECTRUM_VAR.hot}
+                radius={[3, 3, 0, 0]}
+                maxBarSize={32}
+                isAnimationActive={false}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+      <span className="absolute inset-x-0 bottom-0 h-1 bg-spectrum-hot shadow-[0_0_18px_var(--color-hot)]" />
+    </div>
   );
 }
 
@@ -900,15 +1180,23 @@ function DigestRow({ item, positive }: { item: DigestItem; positive: boolean }) 
   const Icon = positive ? TrendingUp : TrendingDown;
   const tone = positive ? "text-[color:var(--color-success)]" : "text-destructive";
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg bg-background/50 px-2.5 py-1.5">
-      <span className="text-2xs font-medium text-foreground">{item.label}</span>
-      <span className="flex items-center gap-1.5 font-mono text-2xs">
-        <span className="font-semibold text-foreground">{item.value}</span>
-        <span className={cn("flex items-center gap-0.5", tone)}>
-          <Icon className="h-2.5 w-2.5" />
-          {Math.abs(item.deltaPct).toFixed(0)}%
+    <div className="rounded-lg border border-border/60 bg-background/45 px-2.5 py-1.5">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">{item.label}</span>
+        <span className="flex items-center gap-2 font-mono text-sm tabular-nums">
+          <span className="font-semibold text-foreground">{item.value}</span>
+          <span className={cn("flex items-center gap-0.5 whitespace-nowrap", tone)}>
+            <Icon className="h-3 w-3" />
+            {Math.abs(item.deltaPct).toFixed(0)}%
+          </span>
         </span>
-      </span>
+      </div>
+      <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-muted/60">
+        <div
+          className={cn("h-full rounded-full shadow-[0_0_10px_currentColor]", tone)}
+          style={{ width: `${Math.min(100, Math.max(10, Math.abs(item.deltaPct)))}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -941,32 +1229,32 @@ function WeeklyDigest({
   // volume metric. What was missing was the L1 depth/typography treatment every
   // other card on this page now has.
   return (
-    <div className="hover-lift relative overflow-hidden rounded-2xl border border-border bg-card p-4">
+    <div className="hover-lift relative overflow-hidden rounded-xl border border-border/80 bg-gradient-to-br from-card via-card to-background/70 p-2 shadow-[0_12px_34px_-30px_rgba(255,255,255,0.3)]">
       <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
-      <div className="relative flex items-center justify-between gap-3 flex-wrap">
+      <div className="relative flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-2">
         <div className="flex items-center gap-2.5">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-muted/60 text-foreground">
+          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-muted/60 text-foreground">
             <Calendar className="h-4 w-4" />
           </div>
           <div>
-            <div className="text-3xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Period Digest
             </div>
-            <div className="display-serif text-lg leading-tight">
+            <div className="mt-0.5 text-sm leading-tight text-foreground/90 md:text-base">
               Vs prior period of equal length
             </div>
           </div>
         </div>
         {pace && (
-          <div className="text-2xs font-mono text-muted-foreground">
+          <div className="text-3xs font-mono text-muted-foreground">
             Month pace ·{" "}
             <span className="text-foreground font-semibold">{money(pace.projection)}</span>{" "}
             projected · {money(pace.dailyPace)}/day
           </div>
         )}
       </div>
-      <div className="relative mt-3 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-[color:var(--color-success)]/25 bg-[color:var(--color-success)]/[0.06] p-3 space-y-1.5">
+      <div className="relative mt-2 grid gap-2 lg:grid-cols-2">
+        <div className="rounded-xl border border-[color:var(--color-success)]/25 bg-[color:var(--color-success)]/[0.06] p-2 space-y-1.5">
           <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-[color:var(--color-success)]">
             <TrendingUp className="h-3 w-3" /> Wins
           </div>
@@ -982,7 +1270,7 @@ function WeeklyDigest({
             </div>
           )}
         </div>
-        <div className="rounded-xl border border-destructive/25 bg-destructive/[0.06] p-3 space-y-1.5">
+        <div className="rounded-xl border border-destructive/25 bg-destructive/[0.06] p-2 space-y-1.5">
           <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-destructive">
             <TrendingDown className="h-3 w-3" /> Pressure
           </div>
@@ -1003,6 +1291,33 @@ function WeeklyDigest({
   );
 }
 
+function TrendChart({
+  data,
+  labels,
+  spectrum,
+  variant = "line",
+}: {
+  data: number[];
+  labels: string[];
+  spectrum: SpectrumPosition;
+  variant?: "line" | "bar";
+}) {
+  return (
+    <div className="flex h-14 items-center px-1">
+      <InteractiveSparkline
+        data={data}
+        labels={labels}
+        variant={variant}
+        width={220}
+        height={42}
+        stroke={SPECTRUM_VAR[spectrum]}
+        fill={SPECTRUM_VAR[spectrum]}
+        strokeWidth={1.5}
+      />
+    </div>
+  );
+}
+
 type PaceStats = {
   monthCash: number;
   projection: number;
@@ -1016,15 +1331,55 @@ type PaceStats = {
  * date-range change; the daily-cash series renders as a dim ambient background
  * area chart, not a readable standalone chart (the full readable version stays
  * in the Charts row below, untouched — nothing here replaces it). */
+function MoneyHeroTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: MoneyPoint }>;
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload;
+  if (!point) return null;
+  const rate = point.revenue > 0 ? (point.cash / point.revenue) * 100 : 0;
+  const date = new Date(`${point.d}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  return (
+    <div className="rounded-lg border border-border bg-popover/95 px-3 py-2 text-xs shadow-xl">
+      <div className="mb-1.5 text-2xs font-medium text-muted-foreground">{date || label}</div>
+      <div className="space-y-0.5 font-mono tabular-nums">
+        <div className="flex items-center justify-between gap-5">
+          <span className="text-spectrum-hot">Cash Collected</span>
+          <span className="text-spectrum-hot">{money(point.cash)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-5">
+          <span className="text-foreground">Revenue Generated</span>
+          <span className="text-foreground">{money(point.revenue)}</span>
+        </div>
+        <div className="mt-1 border-t border-border/60 pt-1 text-muted-foreground">
+          Cash collected rate: <span className="text-foreground">{rate.toFixed(1)}%</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CashHero({
   curr,
   prev,
+  revenue,
   series,
   pace,
 }: {
   curr?: number;
   prev?: number;
-  series: { d: string; cash: number }[];
+  revenue?: number;
+  series: MoneyPoint[];
   pace?: PaceStats;
 }) {
   const animated = useCountUp(curr ?? 0, 700);
@@ -1034,65 +1389,124 @@ function CashHero({
   const up = delta > 0.5;
   const down = delta < -0.5;
   const DeltaIcon = up ? TrendingUp : down ? TrendingDown : Minus;
+  const cashRate = revenue && revenue > 0 ? ((curr ?? 0) / revenue) * 100 : 0;
 
   return (
-    <div className="hover-lift group relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
-      <div className="pointer-events-none absolute inset-0 opacity-40 transition-opacity group-hover:opacity-55">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={series} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="cashHeroGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--spectrum-hot)" stopOpacity={0.55} />
-                <stop offset="100%" stopColor="var(--spectrum-hot)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <Area
-              type="monotone"
-              dataKey="cash"
-              stroke="var(--spectrum-hot)"
-              strokeWidth={1.5}
-              fill="url(#cashHeroGrad)"
-              isAnimationActive={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+    <div className="group relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-spectrum-hot/25 bg-gradient-to-br from-card via-card to-spectrum-hot/[0.08] p-4 shadow-[0_22px_68px_-42px_rgba(236,72,153,0.8)]">
       <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
-
-      <div className="relative flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Cash Collected
-          </div>
-          <div className="display-serif mt-1 text-5xl font-bold tabular-nums text-spectrum-hot md:text-6xl">
-            {money(animated)}
-          </div>
+      <div className="relative flex items-center justify-between gap-3 border-b border-border/60 pb-2.5">
+        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <Activity className="h-4 w-4 shrink-0 text-spectrum-hot" />
+          <span className="truncate">Cash Collected vs. Revenue Generated</span>
         </div>
         {hasDelta && (
           <span
             className={cn(
-              "badge-glass shrink-0 font-mono normal-case tracking-normal",
+              "flex shrink-0 items-center gap-1 rounded-full border border-border/70 bg-background/35 px-2 py-1 font-mono text-2xs",
               up && "text-[color:var(--color-success)]",
               down && "text-destructive",
               !up && !down && "text-muted-foreground",
             )}
           >
-            <DeltaIcon className="h-2.5 w-2.5" />
-            {Math.abs(delta).toFixed(0)}%
+            <DeltaIcon className="h-2.5 w-2.5" /> {Math.abs(delta).toFixed(0)}%
           </span>
         )}
       </div>
-
-      <div className="relative flex items-end justify-between gap-3 text-2xs">
-        <div className="text-muted-foreground">
-          vs prior period · {prev !== undefined ? money(prev) : "—"}
-        </div>
-        {pace && (
-          <div className="font-mono text-muted-foreground">
-            Pace <span className="font-semibold text-foreground">{money(pace.dailyPace)}</span>/day
+      <div className="relative mt-3 flex flex-wrap items-end gap-3 font-sans tabular-nums">
+        <div>
+          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Cash Collected
           </div>
+          <div className="mt-0.5 text-3xl font-bold tracking-tight text-spectrum-hot md:text-4xl">
+            {money(animated)}
+          </div>
+        </div>
+        <div className="pb-1 text-lg text-muted-foreground">→</div>
+        <div>
+          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Revenue Generated
+          </div>
+          <div className="mt-0.5 text-3xl font-bold tracking-tight text-foreground md:text-4xl">
+            {money(revenue ?? 0)}
+          </div>
+        </div>
+      </div>
+      <div className="relative mt-3 flex items-center justify-between text-3xs uppercase tracking-[0.12em] text-muted-foreground">
+        <span className="flex items-center gap-2">
+          <span className="h-1.5 w-3 rounded-full bg-spectrum-hot shadow-[0_0_8px_var(--color-hot)]" />
+          Cash
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="h-0 w-3 border-t border-dashed border-muted-foreground" />
+          Revenue
+        </span>
+      </div>
+      <div className="relative mt-3 flex h-full min-h-0 flex-1 flex-col rounded-lg border border-spectrum-hot/20 bg-background/20 px-1 py-1">
+        <div className="min-h-0 flex-1">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={series} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="cashHeroGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--spectrum-hot)" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="var(--spectrum-hot)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid
+                strokeDasharray="2 4"
+                stroke="var(--border)"
+                vertical={false}
+                opacity={0.45}
+              />
+              <XAxis dataKey="d" hide />
+              <YAxis hide domain={["auto", "auto"]} />
+              <Tooltip
+                cursor={{ stroke: "var(--spectrum-hot)", strokeDasharray: "3 3", opacity: 0.8 }}
+                content={<MoneyHeroTooltip />}
+              />
+              <Area
+                type="monotone"
+                dataKey="cash"
+                name="cash"
+                stroke="var(--spectrum-hot)"
+                fill="url(#cashHeroGrad)"
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="revenue"
+                name="revenue"
+                stroke="var(--muted-foreground)"
+                strokeDasharray="5 4"
+                strokeWidth={1.6}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+      <div className="relative mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border/60 pt-2 text-2xs text-muted-foreground">
+        <span>
+          vs prior period ·{" "}
+          <span className="font-mono text-foreground">
+            {prev !== undefined ? money(prev) : "—"}
+          </span>
+        </span>
+        <span>
+          Cash collected rate:{" "}
+          <span className="font-mono text-foreground">{cashRate.toFixed(1)}%</span>
+        </span>
+        {pace && (
+          <span>
+            Pace{" "}
+            <span className="font-mono font-semibold text-foreground">{money(pace.dailyPace)}</span>
+            /day
+          </span>
         )}
       </div>
+      <span className="absolute inset-x-0 bottom-0 h-1 bg-spectrum-hot shadow-[0_0_18px_var(--color-hot)]" />
     </div>
   );
 }
@@ -1105,40 +1519,51 @@ function PaceTallCard({ pace }: { pace?: PaceStats }) {
   const progress = Math.min(100, (pace.dayOfMonth / pace.daysInMonth) * 100);
   const remaining = Math.max(0, pace.daysInMonth - pace.dayOfMonth);
   return (
-    <div className="flex h-full flex-col gap-4 rounded-2xl border border-border bg-gradient-to-b from-spectrum-mid/10 via-card to-card p-4">
+    <div className="relative flex h-full flex-col gap-3 overflow-hidden rounded-2xl border border-spectrum-mid/35 bg-gradient-to-br from-spectrum-mid/[0.2] via-card to-card p-4 shadow-[0_22px_62px_-38px_rgba(139,92,246,0.82)]">
       <div className="flex items-center gap-2">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-spectrum-mid/15 text-spectrum-mid">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-spectrum-mid/20 text-spectrum-mid ring-1 ring-spectrum-mid/30 shadow-[0_0_22px_-8px_rgba(168,85,247,0.9)]">
           <Target className="h-4 w-4" />
         </div>
-        <div className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="flex-1 text-3xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           Month-end pace
         </div>
+        <span className="h-2 w-2 rounded-full bg-spectrum-mid shadow-[0_0_12px_rgba(168,85,247,0.9)]" />
       </div>
 
-      <div className="flex flex-1 flex-col justify-center gap-3">
+      <div className="flex flex-1 flex-col justify-center gap-2">
         <div>
-          <div className="font-mono text-3xl font-bold tabular-nums text-spectrum-mid">
+          <div className="font-sans text-4xl font-bold tabular-nums tracking-tight text-spectrum-mid">
             {money(pace.projection)}
           </div>
-          <div className="mt-0.5 text-2xs text-muted-foreground">Projected close</div>
+          <div className="mt-0.5 text-3xs uppercase tracking-[0.14em] text-muted-foreground">
+            Projected close
+          </div>
         </div>
         {/* Same monthCash/dailyPace values as before, just grouped into a real
             content block instead of two loose lines — fills the tall cell's
             middle instead of leaving it as dead space. */}
-        <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted/20 p-2.5">
+        <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/50 bg-background/35 p-2.5">
           <div>
-            <div className="font-mono text-sm font-semibold">{money(pace.monthCash)}</div>
-            <div className="text-3xs text-muted-foreground">Collected so far</div>
+            <div className="font-sans text-base font-semibold tabular-nums">
+              {money(pace.monthCash)}
+            </div>
+            <div className="mt-0.5 text-3xs uppercase tracking-wide text-muted-foreground">
+              Collected so far
+            </div>
           </div>
           <div>
-            <div className="font-mono text-sm font-semibold">{money(pace.dailyPace)}</div>
-            <div className="text-3xs text-muted-foreground">Per day</div>
+            <div className="font-sans text-base font-semibold tabular-nums">
+              {money(pace.dailyPace)}
+            </div>
+            <div className="mt-0.5 text-3xs uppercase tracking-wide text-muted-foreground">
+              Per day
+            </div>
           </div>
         </div>
       </div>
 
       <div>
-        <div className="mb-1 flex justify-between text-3xs uppercase tracking-wider text-muted-foreground">
+        <div className="mb-1.5 flex justify-between text-3xs uppercase tracking-[0.14em] text-muted-foreground">
           <span>
             Day {pace.dayOfMonth}/{pace.daysInMonth}
           </span>
@@ -1146,8 +1571,11 @@ function PaceTallCard({ pace }: { pace?: PaceStats }) {
             {remaining} left · {progress.toFixed(0)}%
           </span>
         </div>
-        <div className="h-1.5 rounded bg-muted overflow-hidden">
-          <div className="h-full rounded bg-spectrum-mid" style={{ width: `${progress}%` }} />
+        <div className="h-2 rounded-full bg-background/60 p-0.5 ring-1 ring-spectrum-mid/15">
+          <div
+            className="h-full rounded-full bg-spectrum-mid shadow-[0_0_14px_rgba(139,92,246,0.8)]"
+            style={{ width: `${progress}%` }}
+          />
         </div>
       </div>
     </div>

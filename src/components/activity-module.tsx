@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+/* eslint-disable @typescript-eslint/no-explicit-any -- legacy dynamic Supabase rows in this shared module */
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg, useAuth } from "@/hooks/use-auth";
 import { useServerFn } from "@tanstack/react-start";
@@ -48,6 +49,8 @@ import { PageHero } from "@/components/page-hero";
 import { FunnelInstrument } from "@/components/funnel-instrument";
 import { MoneyInstrument, type MoneyPoint } from "@/components/money-instrument";
 import { KpiBand, type KpiBandItem } from "@/components/kpi-band";
+import { OperationalWorkflowPanel } from "@/components/operational-workflow-panel";
+import { AttributionPathPanel, type AttributionPath } from "@/components/attribution-path-panel";
 import { RateSmallMultiples, type RateChartSpec } from "@/components/rate-small-multiples";
 import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
 import {
@@ -56,6 +59,15 @@ import {
   type FaqVideoLite,
 } from "@/components/objection-instrument";
 import { scoreText, pickTop, type MechanismKey } from "@/lib/content-mechanisms";
+import { normalizeSocialPlatform, SOCIAL_PLATFORMS, platformMatches } from "@/lib/social-platform";
+import { evaluateAttributionEvidence } from "@/lib/acquisition";
+import {
+  buildSpeedToLeadQueue,
+  calculateSpeedToLead,
+  compareSpeedBuckets,
+  filterSpeedEvents,
+  speedDistribution,
+} from "@/lib/speed-to-lead";
 import { dailySeries, seriesValues, seriesRatePoints, priorPeriod, pctDelta } from "@/lib/trend";
 import {
   deriveCap,
@@ -278,6 +290,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   }, [actionSearch.action]);
   const { range } = useDateRange();
   const [member, setMember] = useState<string>(ALL_MEMBERS);
+  const [platformFilter, setPlatformFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [speedWeekday, setSpeedWeekday] = useState("all");
+  const [speedTimeWindow, setSpeedTimeWindow] = useState("all");
   const isDialer = role === "inbound_dialer";
   // Part C3 — leaderboard's own metric selector + independent date range,
   // defaulting to inherit the page range until explicitly overridden.
@@ -303,8 +319,101 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       return data;
     },
   });
-  const rows =
-    member === ALL_MEMBERS ? allRows : (allRows ?? []).filter((r) => r.team_member_name === member);
+  const { data: speedEvents = [] } = useQuery({
+    queryKey: ["speed-to-lead", role, orgId, range.from, range.to],
+    enabled: isDialer && !!orgId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("lead_response_events")
+        .select(
+          "lead_id,lead_created_at,lead_assigned_at,first_attempt_at,first_connection_at,rep_id,source_platform,lead_source,campaign,connected,qualified,set,booked_call,showed,closed,content_id,call_id,client_id,payment_id,event_at,event_type",
+        )
+        .eq("org_id", orgId!)
+        .gte("lead_created_at", `${range.from}T00:00:00`)
+        .lte("lead_created_at", `${range.to}T23:59:59`)
+        .limit(1000);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const speedSummary = useMemo(() => {
+    const weekday = speedWeekday === "all" ? undefined : Number(speedWeekday);
+    const [hourStart, hourEnd] =
+      speedTimeWindow === "all" ? [undefined, undefined] : speedTimeWindow.split("-").map(Number);
+    const filtered = filterSpeedEvents(
+      speedEvents.map((event: any) => ({
+        leadCreatedAt: event.lead_created_at,
+        leadAssignedAt: event.lead_assigned_at,
+        firstAttemptAt: event.first_attempt_at,
+        firstConnectionAt: event.first_connection_at,
+        repId: event.rep_id,
+        sourcePlatform: normalizeSocialPlatform(event.lead_source, event.source_platform),
+        leadSource: event.lead_source,
+        campaign: event.campaign,
+        connected: event.connected,
+        qualified: event.qualified,
+        set: event.set,
+        bookedCall: event.booked_call,
+        showed: event.showed,
+        close: event.closed,
+      })),
+      {
+        sourcePlatform: platformFilter === "all" ? undefined : platformFilter,
+        leadSource: sourceFilter === "all" ? undefined : sourceFilter,
+        weekday,
+        hourStart,
+        hourEnd,
+      },
+    );
+    const summary = speedDistribution(filtered);
+    return {
+      ...summary,
+      comparison: compareSpeedBuckets(
+        filtered.map((event: any) => ({
+          minutesToAttempt: calculateSpeedToLead(event).minutesToAttempt,
+          connected: event.connected,
+          qualified: event.qualified,
+          set: event.set,
+          bookedCall: event.bookedCall,
+          showed: event.showed,
+          close: event.close,
+        })),
+      ),
+    };
+  }, [speedEvents, platformFilter, sourceFilter, speedWeekday, speedTimeWindow]);
+  const operationalSpeedQueue = useMemo(
+    () =>
+      buildSpeedToLeadQueue(
+        speedEvents.map((event: any) => ({
+          leadId: event.lead_id,
+          leadCreatedAt: event.lead_created_at,
+          leadAssignedAt: event.lead_assigned_at,
+          firstAttemptAt: event.first_attempt_at,
+          firstConnectionAt: event.first_connection_at,
+          repId: event.rep_id,
+          sourcePlatform: event.source_platform,
+          leadSource: event.lead_source,
+          campaign: event.campaign,
+        })),
+        new Date(),
+        [],
+        { connectorAvailable: false },
+      ),
+    [speedEvents],
+  );
+  const rows = (allRows ?? []).filter((r) => {
+    const matchesMember = member === ALL_MEMBERS || r.team_member_name === member;
+    const source = String((r as Record<string, unknown>).lead_source ?? "").trim();
+    const explicitPlatform =
+      String((r as Record<string, unknown>).source_platform ?? "").trim() || null;
+    const matchesPlatform = platformMatches(
+      source,
+      platformFilter as (typeof SOCIAL_PLATFORMS)[number] | "all",
+      explicitPlatform,
+    );
+    const matchesSource = sourceFilter === "all" || source === sourceFilter;
+    return matchesMember && matchesPlatform && matchesSource;
+  });
   const {
     page,
     setPage,
@@ -316,6 +425,16 @@ export function ActivityModule({ role, title, subtitle }: Props) {
 
   const sum = (k: string) =>
     (rows ?? []).reduce((s, r) => s + (Number((r as Record<string, unknown>)[k] ?? 0) || 0), 0);
+  const observed = (k: string) =>
+    (rows ?? []).some((r) => Object.prototype.hasOwnProperty.call(r, k));
+  const optionalMetric = (k: string) => (observed(k) ? sum(k) : null);
+  const inboundDms = optionalMetric("inbound_dms_sent");
+  const outboundDms = optionalMetric("outbound_dms_sent");
+  const replies = optionalMetric("replies");
+  const followupsSent = optionalMetric("followups_sent");
+  const linksClicked = optionalMetric("links_clicked");
+  const postBookingVisits = optionalMetric("post_booking_page_visits");
+  const preCallWatches = optionalMetric("pre_call_video_watches");
   const dials = sum("dials");
   const conns = sum("connections");
   const contacted = sum("leads_contacted");
@@ -348,10 +467,19 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       return data;
     },
   });
-  const prevRows =
-    member === ALL_MEMBERS
-      ? prevAllRows
-      : (prevAllRows ?? []).filter((r) => r.team_member_name === member);
+  const prevRows = (prevAllRows ?? []).filter((r) => {
+    const matchesMember = member === ALL_MEMBERS || r.team_member_name === member;
+    const source = String((r as Record<string, unknown>).lead_source ?? "").trim();
+    const explicitPlatform =
+      String((r as Record<string, unknown>).source_platform ?? "").trim() || null;
+    const matchesPlatform = platformMatches(
+      source,
+      platformFilter as (typeof SOCIAL_PLATFORMS)[number] | "all",
+      explicitPlatform,
+    );
+    const matchesSource = sourceFilter === "all" || source === sourceFilter;
+    return matchesMember && matchesPlatform && matchesSource;
+  });
   const prevSum = (k: string) =>
     (prevRows ?? []).reduce((s, r) => s + (Number((r as Record<string, unknown>)[k] ?? 0) || 0), 0);
   const prevDials = prevSum("dials");
@@ -744,6 +872,232 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     <>
       <TopBar title={title} subtitle={subtitle} showDateRange />
       <div className="p-6 space-y-4">
+        {isDialer && (
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Inbound response intelligence
+                </div>
+                <div className="mt-1 text-base font-semibold">Speed to Lead</div>
+              </div>
+              <span className="text-3xs text-muted-foreground">Assignment → first attempt</span>
+            </div>
+            {speedSummary.contacted ? (
+              <>
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <Select value={speedWeekday} onValueChange={setSpeedWeekday}>
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue placeholder="Day of week" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All weekdays</SelectItem>
+                      <SelectItem value="0">Sunday</SelectItem>
+                      <SelectItem value="1">Monday</SelectItem>
+                      <SelectItem value="2">Tuesday</SelectItem>
+                      <SelectItem value="3">Wednesday</SelectItem>
+                      <SelectItem value="4">Thursday</SelectItem>
+                      <SelectItem value="5">Friday</SelectItem>
+                      <SelectItem value="6">Saturday</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={speedTimeWindow} onValueChange={setSpeedTimeWindow}>
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue placeholder="Time of day" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All times</SelectItem>
+                      <SelectItem value="0-11">Morning</SelectItem>
+                      <SelectItem value="12-16">Afternoon</SelectItem>
+                      <SelectItem value="17-23">Evening</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {[
+                    [
+                      "Median",
+                      speedSummary.medianMinutes == null
+                        ? "—"
+                        : `${speedSummary.medianMinutes.toFixed(1)} min`,
+                    ],
+                    [
+                      "Average",
+                      speedSummary.averageMinutes == null
+                        ? "—"
+                        : `${speedSummary.averageMinutes.toFixed(1)} min`,
+                    ],
+                    ["Within 5 min", `${speedSummary.within[5]} / ${speedSummary.contacted}`],
+                    [
+                      "Fastest",
+                      speedSummary.fastestMinutes == null
+                        ? "—"
+                        : `${speedSummary.fastestMinutes.toFixed(1)} min`,
+                    ],
+                    [
+                      "Slowest",
+                      speedSummary.slowestMinutes == null
+                        ? "—"
+                        : `${speedSummary.slowestMinutes.toFixed(1)} min`,
+                    ],
+                    ["Uncontacted", String(speedSummary.uncontacted)],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-xl border border-border/70 bg-background/40 p-3"
+                    >
+                      <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                        {label}
+                      </div>
+                      <div className="mt-2 font-mono text-xl font-semibold text-spectrum-cold">
+                        {value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6">
+                  {[
+                    ["<1 min", speedSummary.buckets.underOneMinute],
+                    ["<5 min", speedSummary.buckets.underFiveMinutes],
+                    ["<15 min", speedSummary.buckets.underFifteenMinutes],
+                    ["<30 min", speedSummary.buckets.underThirtyMinutes],
+                    ["<1 hour", speedSummary.buckets.underOneHour],
+                    [">1 hour", speedSummary.buckets.overOneHour],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-lg border border-border/70 bg-background/30 px-2 py-2"
+                    >
+                      <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                        {label}
+                      </div>
+                      <div className="mt-1 font-mono">{value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 rounded-xl border border-border/70 bg-background/30 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold">Actionable 5-minute queue</div>
+                      <div className="mt-1 text-3xs uppercase tracking-wider text-muted-foreground">
+                        Verified lead-response events · delivery remains unavailable until a
+                        connector is configured
+                      </div>
+                    </div>
+                    <span className="text-3xs uppercase tracking-wider text-amber-300">
+                      {operationalSpeedQueue.length} open
+                    </span>
+                  </div>
+                  <div className="mt-3 overflow-x-auto">
+                    {operationalSpeedQueue.length ? (
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-border/70 text-left text-muted-foreground">
+                            <th className="pb-2 pr-3">Lead</th>
+                            <th className="pb-2 pr-3">Source</th>
+                            <th className="pb-2 pr-3">Owner</th>
+                            <th className="pb-2 pr-3">SLA</th>
+                            <th className="pb-2">Delivery</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {operationalSpeedQueue.slice(0, 25).map((item) => (
+                            <tr
+                              key={item.notificationKey ?? `${item.leadId}-${item.status}`}
+                              className="border-b border-border/40 last:border-0"
+                            >
+                              <td className="py-2 pr-3 font-mono">
+                                {item.leadId ?? "Unavailable"}
+                              </td>
+                              <td className="py-2 pr-3">{item.source ?? "Unavailable"}</td>
+                              <td className="py-2 pr-3">{item.ownerId ?? "Owner unavailable"}</td>
+                              <td className="py-2 pr-3 font-mono uppercase">{item.status}</td>
+                              <td className="py-2">
+                                <span className="text-amber-300">{item.deliveryStatus}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+                        No pending or breached eligible leads in this range.
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-4 rounded-xl border border-border/70 bg-background/30 p-3">
+                  <div className="text-xs font-semibold">Observed segment performance</div>
+                  <div className="mt-1 text-3xs uppercase tracking-wider text-muted-foreground">
+                    Correlation only · not a causal claim
+                  </div>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-border/70 text-left text-muted-foreground">
+                          <th className="pb-2 pr-3">Metric</th>
+                          <th className="pb-2 pr-3">&lt;5 min</th>
+                          <th className="pb-2">30+ min</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          [
+                            "Connection rate",
+                            speedSummary.comparison.underFive.connectionRate,
+                            speedSummary.comparison.thirtyPlus.connectionRate,
+                          ],
+                          [
+                            "Qualified convo rate",
+                            speedSummary.comparison.underFive.qualificationRate,
+                            speedSummary.comparison.thirtyPlus.qualificationRate,
+                          ],
+                          [
+                            "Set rate",
+                            speedSummary.comparison.underFive.setRate,
+                            speedSummary.comparison.thirtyPlus.setRate,
+                          ],
+                          [
+                            "Booked-call rate",
+                            speedSummary.comparison.underFive.bookedCallRate,
+                            speedSummary.comparison.thirtyPlus.bookedCallRate,
+                          ],
+                          [
+                            "Show rate",
+                            speedSummary.comparison.underFive.showRate,
+                            speedSummary.comparison.thirtyPlus.showRate,
+                          ],
+                          [
+                            "Close rate",
+                            speedSummary.comparison.underFive.closeRate,
+                            speedSummary.comparison.thirtyPlus.closeRate,
+                          ],
+                        ].map(([label, fast, slow]) => (
+                          <tr
+                            key={label as string}
+                            className="border-b border-border/40 last:border-0"
+                          >
+                            <td className="py-2 pr-3 text-muted-foreground">{label}</td>
+                            <td className="py-2 pr-3 font-mono">
+                              {fast == null ? "Unavailable" : `${(Number(fast) * 100).toFixed(1)}%`}
+                            </td>
+                            <td className="py-2 font-mono">
+                              {slow == null ? "Unavailable" : `${(Number(slow) * 100).toFixed(1)}%`}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">
+                Speed to Lead is unavailable until lead response events are connected.
+              </div>
+            )}
+          </div>
+        )}
         <PageHero
           icon={
             isDialer ? <PhoneIncoming className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />
@@ -769,7 +1123,318 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 ]
           }
         />
-
+        {!isDialer && (
+          <KpiBand
+            title="DM Setter · Primary Activity"
+            items={[
+              {
+                key: "contacted",
+                label: "Leads Contacted",
+                value: fmtN0(contacted),
+                spectrum: "cold",
+              },
+              {
+                key: "inbound-dms",
+                label: "Inbound DMs Sent",
+                value: inboundDms == null ? "Unavailable" : fmtN0(inboundDms),
+                spectrum: "mid",
+                empty: inboundDms == null,
+                emptyHint: "Requires connected message events.",
+              },
+              {
+                key: "outbound-dms",
+                label: "Outbound DMs Sent",
+                value: outboundDms == null ? "Unavailable" : fmtN0(outboundDms),
+                spectrum: "mid",
+                empty: outboundDms == null,
+                emptyHint: "Requires connected message events.",
+              },
+              {
+                key: "followups",
+                label: "Follow-ups Sent",
+                value: followupsSent == null ? "Unavailable" : fmtN0(followupsSent),
+                spectrum: "mid",
+                empty: followupsSent == null,
+                emptyHint: "Requires connected message events.",
+              },
+              { key: "links-sent", label: "Links Sent", value: fmtN0(linksSent), spectrum: "mid" },
+              {
+                key: "links-clicked",
+                label: "Links Clicked",
+                value: linksClicked == null ? "Unavailable" : fmtN0(linksClicked),
+                spectrum: "mid",
+                empty: linksClicked == null,
+                emptyHint: "Requires connected link events.",
+              },
+              {
+                key: "post-booking",
+                label: "Post-booking Visits",
+                value: postBookingVisits == null ? "Unavailable" : fmtN0(postBookingVisits),
+                spectrum: "hot",
+                empty: postBookingVisits == null,
+                emptyHint: "Requires connected page events.",
+              },
+              {
+                key: "precall",
+                label: "Pre-call Watches",
+                value: preCallWatches == null ? "Unavailable" : fmtN0(preCallWatches),
+                spectrum: "hot",
+                empty: preCallWatches == null,
+                emptyHint: "Requires connected video events.",
+              },
+            ]}
+          />
+        )}
+        <OperationalWorkflowPanel
+          role={role}
+          qualified={qualified}
+          sets={sets}
+          booked={onCalendar}
+          closes={closes}
+          cashLabel={fmtMoney(cashCents)}
+          linksSent={linksSent}
+          connectorAvailable={false}
+        />
+        {(() => {
+          const setterPaths: AttributionPath[] = [
+            {
+              id: "dm-lifecycle",
+              label: "Path 1 · DM → reply → qualified → booked → showed → closed → cash",
+              stages: [
+                {
+                  key: "outbound",
+                  label: "Outbound DMs",
+                  value: outboundDms,
+                  detail: "Verified daily activity",
+                },
+                {
+                  key: "inbound",
+                  label: "Inbound DMs",
+                  value: inboundDms,
+                  detail: "Verified daily activity",
+                },
+                {
+                  key: "replies",
+                  label: "Replies",
+                  value: replies,
+                  detail: "Verified message replies",
+                },
+                {
+                  key: "qualified",
+                  label: "Qualified",
+                  value: qualified,
+                  detail: "Qualified conversations",
+                },
+                { key: "booked", label: "Booked", value: onCalendar, detail: "Calls on calendar" },
+                { key: "showed", label: "Showed", value: showed, detail: "Live calls" },
+                { key: "closed", label: "Closed", value: closes, detail: "Closed calls" },
+                {
+                  key: "cash",
+                  label: "Cash",
+                  value: cashCents ? Math.round(cashCents / 100) : 0,
+                  detail: `${fmtMoney(cashCents)} collected`,
+                },
+              ],
+            },
+            {
+              id: "content-mechanism",
+              label: "Path 2 · format/content → conversation → booked → cash",
+              stages: [
+                {
+                  key: "format",
+                  label: "Format / content",
+                  value: null,
+                  detail: "No verified content-touch join in daily activity",
+                },
+                {
+                  key: "conversation",
+                  label: "Conversation",
+                  value: replies,
+                  detail: "Verified replies when available",
+                },
+                { key: "booked", label: "Booked", value: onCalendar, detail: "Calls on calendar" },
+                {
+                  key: "cash",
+                  label: "Cash",
+                  value: cashCents ? Math.round(cashCents / 100) : 0,
+                  detail: `${fmtMoney(cashCents)} collected`,
+                },
+              ],
+            },
+            {
+              id: "vsl-flow",
+              label: "Path 3 · platform → first touch → content/campaign → setter/VSL → outcome",
+              stages: [
+                {
+                  key: "platform",
+                  label: "Platform",
+                  value: null,
+                  detail: "No verified platform join in aggregate activity",
+                },
+                {
+                  key: "touch",
+                  label: "First touch",
+                  value: null,
+                  detail: "No verified content touchpoint join",
+                },
+                {
+                  key: "setter",
+                  label: isDialer ? "Dialer" : "DM Setter",
+                  value: isDialer ? dials : contacted,
+                  detail: "Current role activity",
+                },
+                {
+                  key: "qualified",
+                  label: "Qualified",
+                  value: qualified,
+                  detail: "Qualified conversations",
+                },
+                { key: "booked", label: "Booked", value: onCalendar, detail: "Calls on calendar" },
+                {
+                  key: "cash",
+                  label: "Cash",
+                  value: cashCents ? Math.round(cashCents / 100) : 0,
+                  detail: `${fmtMoney(cashCents)} collected`,
+                },
+              ],
+            },
+            {
+              id: "dm-vsl-flow",
+              label:
+                "DM Setter → VSL → post-booking → testimonial → FAQ/objection → booking → cash",
+              stages: [
+                { key: "dm", label: "DM Setter", value: contacted, detail: "Leads contacted" },
+                {
+                  key: "vsl",
+                  label: "VSL",
+                  value: null,
+                  detail: "VSL identity/event join not connected",
+                },
+                {
+                  key: "post-booking",
+                  label: "Post-booking page",
+                  value: postBookingVisits,
+                  detail: "Verified page visits when connected",
+                },
+                {
+                  key: "testimonial",
+                  label: "Testimonial videos",
+                  value: preCallWatches,
+                  detail: "Pre-call watches; video identity unavailable",
+                },
+                {
+                  key: "faq",
+                  label: "FAQ / objections",
+                  value: null,
+                  detail: "No verified FAQ-video event source",
+                },
+                { key: "booked", label: "Booking", value: onCalendar, detail: "Calls on calendar" },
+                {
+                  key: "cash",
+                  label: "Cash",
+                  value: cashCents ? Math.round(cashCents / 100) : 0,
+                  detail: `${fmtMoney(cashCents)} collected`,
+                },
+              ],
+            },
+          ];
+          if (isDialer) {
+            return (
+              <>
+                <AttributionPathPanel
+                  title="Inbound Dialer attribution"
+                  subtitle="Source → capture → connection → qualified → booked → showed → closed → cash"
+                  paths={[setterPaths[2]]}
+                />
+                <AttributionPathPanel
+                  title="Dialer callbacks & appointment quality"
+                  subtitle="Callbacks Requested → Due Today → Completed Today → Booked → Closed → Cash"
+                  paths={[
+                    {
+                      id: "callbacks",
+                      label: "Callback workflow",
+                      stages: [
+                        {
+                          key: "requested",
+                          label: "Callbacks Requested",
+                          value: null,
+                          detail: "Callback event source not connected",
+                        },
+                        {
+                          key: "due",
+                          label: "Due Today",
+                          value: null,
+                          detail: "Callback due-date source not connected",
+                        },
+                        {
+                          key: "completed",
+                          label: "Completed Today",
+                          value: null,
+                          detail: "Callback completion source not connected",
+                        },
+                        {
+                          key: "booked",
+                          label: "Calls Booked",
+                          value: onCalendar,
+                          detail: "Verified calls on calendar",
+                        },
+                        {
+                          key: "closed",
+                          label: "Closed",
+                          value: closes,
+                          detail: "Verified closes",
+                        },
+                        {
+                          key: "cash",
+                          label: "Cash",
+                          value: cashCents ? Math.round(cashCents / 100) : 0,
+                          detail: `${fmtMoney(cashCents)} collected`,
+                        },
+                      ],
+                    },
+                    {
+                      id: "appointment-quality",
+                      label: "Appointment quality",
+                      stages: [
+                        {
+                          key: "cancel",
+                          label: "Cancellation Rate",
+                          value: null,
+                          detail: "Requires appointment status events",
+                        },
+                        {
+                          key: "reschedule",
+                          label: "Reschedule Rate",
+                          value: null,
+                          detail: "Requires appointment status events",
+                        },
+                        {
+                          key: "no-show",
+                          label: "No-show Rate",
+                          value: null,
+                          detail: "Requires appointment status events",
+                        },
+                        {
+                          key: "recovery",
+                          label: "No-show Recovery",
+                          value: null,
+                          detail: "Requires rebooked appointment events",
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              </>
+            );
+          }
+          return (
+            <AttributionPathPanel
+              title="DM Setter attribution"
+              subtitle="Distinct DM, content, platform, and VSL paths; aggregate rows stay evidence-scoped"
+              paths={setterPaths}
+            />
+          );
+        })()}
         {/* Leaderboard with metric selector + independent date range (Part C3) + spectrum activity heatmap (Part C4) */}
         <div className="grid gap-4 lg:grid-cols-2">
           <RepLeaderboard
@@ -805,6 +1470,32 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
             <TeamMemberFilter role={role} value={member} onChange={setMember} />
+            <Select value={platformFilter} onValueChange={setPlatformFilter}>
+              <SelectTrigger className="w-[190px]">
+                <SelectValue placeholder="Platform: All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Platform: All</SelectItem>
+                {SOCIAL_PLATFORMS.map((platform) => (
+                  <SelectItem key={platform} value={platform}>
+                    {platform}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <SelectTrigger className="w-[190px]">
+                <SelectValue placeholder="Source: All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Source: All</SelectItem>
+                {LEAD_SOURCES.map((source) => (
+                  <SelectItem key={source} value={source}>
+                    Source: {source}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -975,20 +1666,28 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         {(() => {
           const reachStages: FunnelStage[] = isDialer
             ? [
-                { key: "dials", label: "Dials", value: dials, spectrum: "cold" },
-                { key: "connections", label: "Connections", value: conns, spectrum: "cold" },
+                { key: "inbound_leads", label: "Inbound Leads", value: dials, spectrum: "cold" },
                 { key: "qualified", label: "Qualified Convos", value: qualified, spectrum: "mid" },
                 { key: "sets", label: "Sets", value: sets, spectrum: "mid" },
               ]
             : [
-                { key: "contacted", label: "Leads Contacted", value: contacted, spectrum: "cold" },
+                {
+                  key: "inbound_leads",
+                  label: "Inbound Leads",
+                  value: contacted,
+                  spectrum: "cold",
+                },
                 { key: "qualified", label: "Qualified Convos", value: qualified, spectrum: "mid" },
                 { key: "sets", label: "Sets", value: sets, spectrum: "mid" },
               ];
           const prevReachStages: FunnelStage[] = isDialer
             ? [
-                { key: "dials", label: "Dials", value: prevDials, spectrum: "cold" },
-                { key: "connections", label: "Connections", value: prevConns, spectrum: "cold" },
+                {
+                  key: "inbound_leads",
+                  label: "Inbound Leads",
+                  value: prevDials,
+                  spectrum: "cold",
+                },
                 {
                   key: "qualified",
                   label: "Qualified Convos",
@@ -999,8 +1698,8 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               ]
             : [
                 {
-                  key: "contacted",
-                  label: "Leads Contacted",
+                  key: "inbound_leads",
+                  label: "Inbound Leads",
                   value: prevContacted,
                   spectrum: "cold",
                 },
@@ -1013,7 +1712,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 { key: "sets", label: "Sets", value: prevSets, spectrum: "mid" },
               ];
           const reachFields = isDialer
-            ? ["dials", "connections", "qualified_convos", "sets"]
+            ? ["dials", "qualified_convos", "sets"]
             : ["leads_contacted", "qualified_convos", "sets"];
 
           const closeStages: FunnelStage[] = [
@@ -1044,6 +1743,21 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             { key: "name", label: "Rep", render: (r) => String(r.team_member_name ?? "—") },
             { key: "date", label: "Date", render: (r) => String(r.activity_date ?? "—") },
             { key: "source", label: "Source", render: (r) => String(r.lead_source ?? "—") },
+            {
+              key: "canonicalPath",
+              label: "Canonical path",
+              render: (r) => {
+                const evidence = evaluateAttributionEvidence({
+                  model: "lead_source",
+                  supportingEvents: r.activity_date ? ["daily_activity"] : [],
+                  knownTouchpoints: 0,
+                  sampleSize: null,
+                  directOutcomeLinked: false,
+                  drilldownKey: null,
+                });
+                return `${evidence.coverage} — aggregate row`;
+              },
+            },
             {
               key: "value",
               label,
@@ -1310,17 +2024,55 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             },
           ];
 
+          const activityChartFields: Record<string, string> = {
+            dials: "dials",
+            connections: "connections",
+            contacted: "leads_contacted",
+            qualified: "qualified_convos",
+            sets: "sets",
+            oncal: "calls_on_calendar",
+            showed: "live_calls",
+            closes: "closes",
+            cash: "cash_collected_cents",
+            revenue: "total_revenue_cents",
+          };
+          const activityBarKeys = new Set([
+            "dials",
+            "connections",
+            "contacted",
+            "qualified",
+            "sets",
+            "oncal",
+            "showed",
+            "closes",
+          ]);
+          const chartedKpiItems = kpiItems.map((item) => {
+            const field = activityChartFields[item.key];
+            return field
+              ? {
+                  ...item,
+                  spark: daySeries.map((point) =>
+                    Number((point as Record<string, unknown>)[field] ?? 0),
+                  ),
+                  sparkLabels: daySeries.map((point) => point.d),
+                  sparkVariant: activityBarKeys.has(item.key)
+                    ? ("bar" as const)
+                    : ("line" as const),
+                }
+              : item;
+          });
+
           return (
             <>
               <KpiBand
-                items={kpiItems}
+                items={chartedKpiItems}
                 title={isDialer ? "Inbound Dialer · Key Metrics" : "DM Setter · Key Metrics"}
               />
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <FunnelInstrument
                     title="Reach"
-                    subtitle={isDialer ? "Dials → Sets" : "Contacted → Sets"}
+                    subtitle="Inbound Leads → Sets"
                     stages={reachStages}
                     onStageClick={(i) => setSelected({ kind: "reach", index: i })}
                   />
@@ -1341,19 +2093,87 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 />
               </div>
               <RateSmallMultiples charts={rateCharts} />
-              {/* Confirmed (Sales Tracking Part 2): downsells itself was never
-                  mis-styled relative to its sibling — the whole row just had no
-                  card shell, unlike every other instrument on this page. */}
-              <div className="hover-lift relative overflow-hidden rounded-xl border border-border bg-card p-4">
-                <div className="glass-highlight pointer-events-none absolute inset-0 rounded-xl" />
-                <div className="relative mb-2 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Additional Stats
-                </div>
-                <div className="relative flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
-                  {!isDialer && <span>{linksSent.toLocaleString()} links sent</span>}
-                  <span>{downsells.toLocaleString()} downsells</span>
-                </div>
-              </div>
+              <KpiBand
+                title="Additional Stats"
+                items={
+                  [
+                    !isDialer
+                      ? {
+                          key: "linksSent",
+                          label: "Links Sent",
+                          value: linksSent.toLocaleString(),
+                          spectrum: "cold",
+                          deltaPct: pctDelta(linksSent, prevLinksSent),
+                          priorValue: prevLinksSent.toLocaleString(),
+                          empty: !linksSent,
+                          emptyHint: "No links sent logged in this range.",
+                        }
+                      : null,
+                    {
+                      key: "downsells",
+                      label: "Downsells",
+                      value: downsells.toLocaleString(),
+                      spectrum: "mid",
+                      deltaPct: pctDelta(downsells, prevDownsells),
+                      priorValue: prevDownsells.toLocaleString(),
+                      empty: !downsells,
+                      emptyHint: "No downsells logged in this range.",
+                    },
+                    {
+                      key: "inboundDmsSent",
+                      label: "Inbound DMs Sent",
+                      value: "Not connected",
+                      spectrum: "cold",
+                    },
+                    {
+                      key: "outboundDmsSent",
+                      label: "Outbound DMs Sent",
+                      value: "Not connected",
+                      spectrum: "cold",
+                    },
+                    {
+                      key: "followUpsSent",
+                      label: "Follow-ups Sent",
+                      value: "Not connected",
+                      spectrum: "mid",
+                    },
+                    {
+                      key: "linksClicked",
+                      label: "Links Clicked",
+                      value: "Not connected",
+                      spectrum: "cold",
+                    },
+                    {
+                      key: "postBookingVisits",
+                      label: "Post-booking Page Visits",
+                      value: "Not connected",
+                      spectrum: "mid",
+                    },
+                    {
+                      key: "preCallWatches",
+                      label: "Pre-call Video Watches",
+                      value: "Not connected",
+                      spectrum: "mid",
+                    },
+                    ...(isDialer
+                      ? [
+                          {
+                            key: "averageCallLength",
+                            label: "Average Call Length",
+                            value: "Not connected",
+                            spectrum: "cold" as const,
+                          },
+                          {
+                            key: "averageTalkTime",
+                            label: "Average Talk Time",
+                            value: "Not connected",
+                            spectrum: "cold" as const,
+                          },
+                        ]
+                      : []),
+                  ].filter(Boolean) as KpiBandItem[]
+                }
+              />
               {panel && (
                 <MetricDetailPanel
                   open={!!selected}

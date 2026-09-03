@@ -6,6 +6,10 @@ import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
 import { useServerFn } from "@tanstack/react-start";
 import { autoIngestCallSignalFn } from "@/lib/content-signals.functions";
+import { captureCallLifecycleEventsFn } from "@/lib/dispatch.functions";
+import { evaluateAttributionEvidence } from "@/lib/acquisition";
+import { CLOSER_DISPOSITIONS, normalizeCloserDisposition } from "@/lib/operating-workflows";
+import { AttributionEvidencePanel } from "@/components/attribution-evidence-panel";
 import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +75,7 @@ import { HeatmapGrid } from "@/components/heatmap-grid";
 import { RepLeaderboard, type RepMetricOption } from "@/components/rep-leaderboard";
 import type { DateRange } from "@/components/date-range-picker";
 import { mockCalls, mockCallObjectionStats } from "@/lib/dev-mock-data";
+import { normalizeSocialPlatform, SOCIAL_PLATFORMS, platformMatches } from "@/lib/social-platform";
 import { GlassTableShell, Pagination, usePagination } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
@@ -82,6 +87,7 @@ const fmtMoney = (cents: number) =>
   `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%");
 const fmtN0 = (n: number) => Math.round(n).toLocaleString();
+const CLOSER_SOURCES = ["Instagram Spiderweb", "Keyword", "Inbound", "Referral", "Ads", "Other"];
 
 interface CloserLbPerson {
   name: string;
@@ -222,6 +228,7 @@ function Closer() {
   }, [actionSearch.action]);
   const { range } = useDateRange();
   const [member, setMember] = useState<string>(ALL_MEMBERS);
+  const [platformFilter, setPlatformFilter] = useState("all");
   // Part C3 — leaderboard's own metric selector + independent date range,
   // defaulting to inherit the page range until explicitly overridden.
   const [lbMetric, setLbMetric] = useState<string>("cash");
@@ -243,6 +250,7 @@ function Closer() {
           contract_value_cents: number | null;
           cash_collected_cents: number | null;
           deposit_cents: number | null;
+          payment_plan: boolean | null;
           call_summary: string | null;
           recording_url: string | null;
           closer_name: string | null;
@@ -254,7 +262,7 @@ function Closer() {
       const { data, error } = await supabase
         .from("calls")
         .select(
-          "id, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, leads(full_name, handle, email)",
+          "id, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, payment_plan, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, source_platform, source_format, source_content_id, source_campaign, leads(full_name, handle, email)",
         )
         .eq("org_id", orgId!)
         .gte("scheduled_for", `${range.from}T00:00:00`)
@@ -467,7 +475,14 @@ function Closer() {
     },
   });
 
-  const list = (calls ?? []).filter((c) => member === ALL_MEMBERS || c.closer_name === member);
+  const list = (calls ?? []).filter((c) => {
+    const matchesMember = member === ALL_MEMBERS || c.closer_name === member;
+    const source = String((c as Record<string, unknown>).source_platform ?? "").trim();
+    return (
+      matchesMember &&
+      platformMatches(source, platformFilter as (typeof SOCIAL_PLATFORMS)[number] | "all")
+    );
+  });
   const {
     page: callsPage,
     setPage: setCallsPage,
@@ -502,14 +517,35 @@ function Closer() {
   const cashCents = useDayLogs ? Math.max(callsCash, setCash) : callsCash;
   const revCents = useDayLogs ? Math.max(callsRev, setRev) : callsRev;
   const depositCount = list.filter((c) => (c.deposit_cents ?? 0) > 0).length;
+  const depositAmountCents = list.reduce((sum, call) => sum + (call.deposit_cents ?? 0), 0);
+  const paymentPlanCount = list.filter((call) => call.payment_plan === true).length;
+  const depositConversionPct = closes > 0 ? (depositCount / closes) * 100 : null;
+  const averageDepositPct =
+    depositCount > 0 ? (depositAmountCents / Math.max(1, revCents)) * 100 : null;
+  const dispositionMix = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const call of list) {
+      const disposition = normalizeCloserDisposition(call.status, call.closed, call.offer_made);
+      counts.set(disposition, (counts.get(disposition) ?? 0) + 1);
+    }
+    return CLOSER_DISPOSITIONS.map((item) => ({
+      ...item,
+      count: counts.get(item.value) ?? 0,
+    })).filter((item) => item.count > 0 || list.length === 0);
+  }, [list]);
   const avgCashPerBooked = onCalendar ? cashCents / onCalendar : 0;
   const avgCashPerShowed = showed ? cashCents / showed : 0;
   const avgCashPerClosed = closes ? cashCents / closes : 0;
 
   // Prior-period totals — same dual-source max() logic as the current period above.
-  const prevList = (prevCalls ?? []).filter(
-    (c) => member === ALL_MEMBERS || c.closer_name === member,
-  );
+  const prevList = (prevCalls ?? []).filter((c) => {
+    const matchesMember = member === ALL_MEMBERS || c.closer_name === member;
+    const source = String((c as Record<string, unknown>).source_platform ?? "").trim();
+    return (
+      matchesMember &&
+      platformMatches(source, platformFilter as (typeof SOCIAL_PLATFORMS)[number] | "all")
+    );
+  });
   const prevCallsBooked = prevList.length;
   const prevCallsShowed = prevList.filter((c) => c.showed).length;
   const prevCallsOffers = prevList.filter((c) => c.offer_made).length;
@@ -728,6 +764,7 @@ function Closer() {
   const followUps = useMemo(() => list.filter((c) => c.status === "follow_up"), [list]);
 
   const autoIngest = useServerFn(autoIngestCallSignalFn);
+  const captureCallLifecycle = useServerFn(captureCallLifecycleEventsFn);
   const create = useMutation({
     mutationFn: async (f: FormData) => {
       const status = f.get("status") as
@@ -740,6 +777,7 @@ function Closer() {
         | "follow_up"
         | "rescheduled";
       const closed = status === "closed";
+      const mutationAt = new Date().toISOString();
       const payload = {
         org_id: orgId!,
         lead_id: (f.get("lead_id") as string) || null,
@@ -750,7 +788,9 @@ function Closer() {
           ? new Date(String(f.get("date_of_call"))).toISOString()
           : null,
         showed: f.get("showed") === "on",
+        showed_at: f.get("showed") === "on" ? mutationAt : null,
         offer_made: f.get("offer_made") === "on",
+        offer_at: f.get("offer_made") === "on" ? mutationAt : null,
         closed,
         contract_value_cents: Math.round(Number(f.get("total_revenue") || 0) * 100),
         cash_collected_cents: Math.round(Number(f.get("cash_collected") || 0) * 100),
@@ -767,7 +807,9 @@ function Closer() {
         .select("id")
         .single();
       if (error) throw error;
-
+      if (callRow?.id) {
+        await captureCallLifecycle({ data: { callId: callRow.id } });
+      }
       // Objections — comma-separated, written to call_objections table
       const objRaw = String(f.get("objections") || "");
       const parts = objRaw
@@ -775,16 +817,14 @@ function Closer() {
         .map((s) => s.trim())
         .filter(Boolean);
       if (parts.length && callRow) {
-        await supabase
-          .from("call_objections")
-          .insert(
-            parts.map((p) => ({
-              org_id: orgId!,
-              call_id: callRow.id,
-              objection: p,
-              resolved: closed,
-            })),
-          );
+        await supabase.from("call_objections").insert(
+          parts.map((p) => ({
+            org_id: orgId!,
+            call_id: callRow.id,
+            objection: p,
+            resolved: closed,
+          })),
+        );
       }
 
       // 2.8 — screen the call summary for limiting beliefs/objections automatically,
@@ -866,6 +906,19 @@ function Closer() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
             <TeamMemberFilter role="closer" value={member} onChange={setMember} />
+            <Select value={platformFilter} onValueChange={setPlatformFilter}>
+              <SelectTrigger className="w-[190px]">
+                <SelectValue placeholder="Platform: All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Platform: All</SelectItem>
+                {SOCIAL_PLATFORMS.map((platform) => (
+                  <SelectItem key={platform} value={platform}>
+                    {platform}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -1069,8 +1122,30 @@ function Closer() {
               label: "Lead",
               render: (c) => c.lead_email ?? c.leads?.full_name ?? "—",
             },
-            { key: "status", label: "Status", render: (c) => STATUS_LABEL[c.status] ?? c.status },
+            {
+              key: "status",
+              label: "Status",
+              render: (c) =>
+                STATUS_LABEL[c.status] ??
+                normalizeCloserDisposition(c.status, c.closed, c.offer_made),
+            },
             { key: "value", label, align: "right", render },
+            {
+              key: "evidence",
+              label: "Attribution evidence",
+              render: (c) => {
+                const leadEvidenceKey = c.leads?.email ?? c.lead_email ?? null;
+                const evidence = evaluateAttributionEvidence({
+                  model: "booking_source",
+                  supportingEvents: ["call"],
+                  knownTouchpoints: leadEvidenceKey ? 1 : 0,
+                  sampleSize: 1,
+                  directOutcomeLinked: !!leadEvidenceKey,
+                  drilldownKey: leadEvidenceKey ?? c.id,
+                });
+                return <AttributionEvidencePanel evidence={evidence} title="Evidence" compact />;
+              },
+            },
           ];
 
           let panel: {
@@ -1202,6 +1277,53 @@ function Closer() {
           const prevCloseRatePct = prevShowed ? (prevClosed / prevShowed) * 100 : 0;
           const cashRatePct = revCents ? (cashCents / revCents) * 100 : 0;
 
+          const closerChartFields: Record<
+            string,
+            { values: number[]; labels: string[]; variant: "line" | "bar" }
+          > = {
+            oncal: {
+              values: heroSeries.map((point) => Number(point.booked ?? 0)),
+              labels: heroSeries.map((point) => point.d),
+              variant: "bar",
+            },
+            showed: {
+              values: heroSeries.map((point) => Number(point.showed ?? 0)),
+              labels: heroSeries.map((point) => point.d),
+              variant: "bar",
+            },
+            offers: {
+              values: heroSeries.map((point) => Number(point.offers ?? 0)),
+              labels: heroSeries.map((point) => point.d),
+              variant: "bar",
+            },
+            closes: {
+              values: heroSeries.map((point) => Number(point.closed ?? 0)),
+              labels: heroSeries.map((point) => point.d),
+              variant: "bar",
+            },
+            cash: {
+              values: moneySeries.map((point) => Number(point.cash ?? 0)),
+              labels: moneySeries.map((point) => point.d),
+              variant: "line",
+            },
+            revenue: {
+              values: moneySeries.map((point) => Number(point.revenue ?? 0)),
+              labels: moneySeries.map((point) => point.d),
+              variant: "line",
+            },
+          };
+          const chartedKpiItems = kpiItems.map((item) => {
+            const chart = closerChartFields[item.key];
+            return chart
+              ? {
+                  ...item,
+                  spark: chart.values,
+                  sparkLabels: chart.labels,
+                  sparkVariant: chart.variant,
+                }
+              : item;
+          });
+
           const rateCharts: RateChartSpec[] = [
             {
               key: "showrate",
@@ -1243,7 +1365,7 @@ function Closer() {
 
           return (
             <>
-              <KpiBand items={kpiItems} title="Closer · Key Metrics" />
+              <KpiBand items={chartedKpiItems} title="Closer · Key Metrics" />
               <div className="grid gap-4 lg:grid-cols-2">
                 <FunnelInstrument
                   title="Close"
@@ -1261,35 +1383,136 @@ function Closer() {
                 />
               </div>
               <RateSmallMultiples charts={rateCharts} />
-              {/* Avg-cash-per-stage attaches to Booked/Showed/Closed the way the plan
-                  said it would — cash ÷ that stage's own count — plus deposits/downsells,
-                  which have no predecessor stage of their own so stay non-interactive.
-                  Confirmed (Sales Tracking Part 2): downsells itself was never
-                  singled out or mis-styled relative to its siblings — the whole
-                  row just had no card shell at all, unlike every other instrument
-                  on this page. Wrapping the row fixes that for all 5 stats, not
-                  just downsells specifically. */}
-              <div className="hover-lift relative overflow-hidden rounded-xl border border-border bg-card p-4">
-                <div className="glass-highlight pointer-events-none absolute inset-0 rounded-xl" />
-                <div className="relative mb-2 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Additional Stats
+              <KpiBand
+                title="Additional Stats"
+                items={[
+                  {
+                    key: "avgCashBooked",
+                    label: "Avg Cash / Booked",
+                    value: fmtMoney(avgCashPerBooked),
+                    spectrum: "mid",
+                    empty: !avgCashPerBooked,
+                    emptyHint: "No booked-call cash in this range.",
+                  },
+                  {
+                    key: "avgCashShowed",
+                    label: "Avg Cash / Showed",
+                    value: fmtMoney(avgCashPerShowed),
+                    spectrum: "mid",
+                    empty: !avgCashPerShowed,
+                    emptyHint: "No showed-call cash in this range.",
+                  },
+                  {
+                    key: "avgCashClosed",
+                    label: "Avg Cash / Closed",
+                    value: fmtMoney(avgCashPerClosed),
+                    spectrum: "hot",
+                    empty: !avgCashPerClosed,
+                    emptyHint: "No closed-call cash in this range.",
+                  },
+                  {
+                    key: "deposits",
+                    label: "Deposits",
+                    value: depositCount.toLocaleString(),
+                    spectrum: "hot",
+                    empty: !depositCount,
+                    emptyHint: "No deposits logged in this range.",
+                  },
+                  {
+                    key: "depositAmount",
+                    label: "Deposit Amount",
+                    value: depositAmountCents ? fmtMoney(depositAmountCents) : "—",
+                    spectrum: "hot",
+                    empty: !depositAmountCents,
+                    emptyHint: "No deposit amount logged in this range.",
+                  },
+                  {
+                    key: "depositConversion",
+                    label: "Deposit → Close",
+                    value:
+                      depositConversionPct == null ? "—" : `${depositConversionPct.toFixed(1)}%`,
+                    spectrum: "hot",
+                    empty: depositConversionPct == null,
+                    emptyHint: "Requires a closed call and a logged deposit.",
+                  },
+                  {
+                    key: "averageDepositPct",
+                    label: "Avg Deposit %",
+                    value: averageDepositPct == null ? "—" : `${averageDepositPct.toFixed(1)}%`,
+                    spectrum: "mid",
+                    empty: averageDepositPct == null,
+                    emptyHint: "Requires deposit and contract values.",
+                  },
+                  {
+                    key: "paymentPlanUptake",
+                    label: "Payment Plan Uptake",
+                    value: list.length
+                      ? `${((paymentPlanCount / list.length) * 100).toFixed(1)}%`
+                      : "—",
+                    spectrum: "mid",
+                    empty: !list.length,
+                    emptyHint: "No calls in this date range.",
+                  },
+                  {
+                    key: "paymentQuality",
+                    label: "On-Time / Failed Payments",
+                    value: "Unavailable",
+                    spectrum: "mid",
+                    empty: true,
+                    emptyHint: "Requires connected payment-provider ledger data.",
+                  },
+                  {
+                    key: "futureScheduledCash",
+                    label: "Future Scheduled Cash",
+                    value: "Unavailable",
+                    spectrum: "mid",
+                    empty: true,
+                    emptyHint: "Requires connected payment-plan schedule data.",
+                  },
+                  {
+                    key: "downsells",
+                    label: "Downsells",
+                    value: downsells.toLocaleString(),
+                    spectrum: "mid",
+                    empty: !downsells,
+                    emptyHint: "No downsells logged in this range.",
+                  },
+                ]}
+              />
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">Post-call disposition mix</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Canonical taxonomy from recorded call status and offer fields
+                    </div>
+                  </div>
+                  <span className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    {list.length} calls
+                  </span>
                 </div>
-                <div className="relative flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
-                  <span>
-                    Avg cash/booked:{" "}
-                    <span className="font-mono text-foreground">{fmtMoney(avgCashPerBooked)}</span>
-                  </span>
-                  <span>
-                    Avg cash/showed:{" "}
-                    <span className="font-mono text-foreground">{fmtMoney(avgCashPerShowed)}</span>
-                  </span>
-                  <span>
-                    Avg cash/closed:{" "}
-                    <span className="font-mono text-foreground">{fmtMoney(avgCashPerClosed)}</span>
-                  </span>
-                  <span>{depositCount.toLocaleString()} deposits</span>
-                  <span>{downsells.toLocaleString()} downsells</span>
-                </div>
+                {list.length ? (
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {dispositionMix.map((item) => (
+                      <div
+                        key={item.value}
+                        className="rounded-lg border border-border/70 bg-background/40 p-3"
+                      >
+                        <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                          {item.label}
+                        </div>
+                        <div className="mt-1 font-mono text-xl font-semibold">{item.count}</div>
+                        <div className="mt-1 text-3xs text-muted-foreground">
+                          {pct(item.count, list.length)} of calls
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
+                    No post-call dispositions in this date range.
+                  </div>
+                )}
               </div>
               {panel && (
                 <MetricDetailPanel
@@ -1541,7 +1764,8 @@ function Closer() {
                     <span
                       className={`rounded px-1.5 py-0.5 text-3xs uppercase tracking-wide ${CHIP_TONE_CLASSES[STATUS_TONE_KEY[c.status] ?? "default"]}`}
                     >
-                      {STATUS_LABEL[c.status] ?? c.status}
+                      {STATUS_LABEL[c.status] ??
+                        normalizeCloserDisposition(c.status, c.closed, c.offer_made)}
                     </span>
                   </td>
                   <td className="p-2.5 text-right font-mono text-[color:var(--color-success)]">

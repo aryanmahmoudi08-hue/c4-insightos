@@ -5,13 +5,34 @@ import { useMemo, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { analyzeDailyWinsFn, submitDailyWinFn } from "@/lib/daily-wins.functions";
+import {
+  getWorkspaceSettingsFn,
+  DEFAULT_WORKSPACE_SETTINGS,
+} from "@/lib/workspace-settings.functions";
 import { mockDailyWinsInsight, withMockDelay } from "@/lib/dev-mock-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Trophy, DollarSign, Brain, Dumbbell, Sparkles, Link2, AlertTriangle, Loader2, Flame, Plus } from "lucide-react";
+import {
+  Trophy,
+  DollarSign,
+  Brain,
+  Dumbbell,
+  Sparkles,
+  Link2,
+  AlertTriangle,
+  Loader2,
+  Flame,
+  Plus,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
 
@@ -46,15 +67,33 @@ const RANGES = [
   { label: "90d", days: 90 },
 ];
 
-export function DailyWinsPanel({ studentName }: { studentName?: string }) {
+export function DailyWinsPanel({
+  studentName,
+  formRole,
+}: {
+  studentName?: string;
+  formRole?: string;
+}) {
   const { data: org } = useCurrentOrg();
-  const { devBypass } = useAuth();
+  const { devBypass, user } = useAuth();
   const orgId = org?.org_id;
   const qc = useQueryClient();
+  const getSettings = useServerFn(getWorkspaceSettingsFn);
+  const { data: workspaceSettings } = useQuery({
+    queryKey: ["workspace-settings", orgId, devBypass],
+    enabled: devBypass || !!orgId,
+    queryFn: () =>
+      devBypass
+        ? Promise.resolve(DEFAULT_WORKSPACE_SETTINGS)
+        : getSettings({ data: { orgId: orgId! } }),
+  });
   const [days, setDays] = useState(7);
   const [insight, setInsight] = useState("");
 
-  const since = useMemo(() => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10), [days]);
+  const since = useMemo(
+    () => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10),
+    [days],
+  );
 
   const { data: wins } = useQuery({
     queryKey: ["daily-wins", orgId, days, studentName ?? "all", devBypass],
@@ -69,18 +108,31 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
         return [0, 1, 2].map((i) => {
           const d = new Date(today.getTime() - i * 86400000).toISOString().slice(0, 10);
           return {
-            id: `dev-win-${i}`, student_name: name, win_date: d, yesterday_status: "done",
+            id: `dev-win-${i}`,
+            student_name: name,
+            win_date: d,
+            yesterday_status: "done",
             win_types: i === 0 ? ["financial", "mental"] : ["physical"],
-            win_description: i === 0 ? "Closed a new client on the follow-up call." : "Stayed consistent with the morning routine.",
-            financial_amount_cents: i === 0 ? 250000 : null, financial_source: i === 0 ? "New client" : null,
-            proof_url: null, energy_score: 8 - i, blocker: null, tomorrow_needle_mover: "Follow up with warm leads.",
-            priority: "high", source: "manual",
+            win_description:
+              i === 0
+                ? "Closed a new client on the follow-up call."
+                : "Stayed consistent with the morning routine.",
+            financial_amount_cents: i === 0 ? 250000 : null,
+            financial_source: i === 0 ? "New client" : null,
+            proof_url: null,
+            energy_score: 8 - i,
+            blocker: null,
+            tomorrow_needle_mover: "Follow up with warm leads.",
+            priority: "high",
+            source: "manual",
           };
         }) as Win[];
       }
       let q = supabase
         .from("daily_wins")
-        .select("id, student_name, win_date, yesterday_status, win_types, win_description, financial_amount_cents, financial_source, proof_url, energy_score, blocker, tomorrow_needle_mover, priority, source")
+        .select(
+          "id, student_name, win_date, yesterday_status, win_types, win_description, financial_amount_cents, financial_source, proof_url, energy_score, blocker, tomorrow_needle_mover, priority, source",
+        )
         .eq("org_id", orgId!)
         .gte("win_date", since)
         .order("win_date", { ascending: false });
@@ -94,7 +146,10 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
   const rows = wins ?? [];
   const cash = rows.reduce((s, w) => s + (w.financial_amount_cents ?? 0), 0);
   const financialCount = rows.filter((w) => (w.win_types ?? []).includes("financial")).length;
-  const avgEnergy = rows.length ? rows.reduce((s, w) => s + (w.energy_score ?? 0), 0) / rows.filter(w => w.energy_score != null).length : 0;
+  const avgEnergy = rows.length
+    ? rows.reduce((s, w) => s + (w.energy_score ?? 0), 0) /
+      rows.filter((w) => w.energy_score != null).length
+    : 0;
   const kept = rows.filter((w) => w.yesterday_status === "done").length;
 
   // Repeat-blocker detection → save-call trigger.
@@ -120,36 +175,152 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const formLink = orgId ? `${typeof window !== "undefined" ? window.location.origin : ""}/daily-win?org=${orgId}` : "";
+  const formLink = orgId
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/daily-win?org=${orgId}`
+    : "";
+  const configuredFormUrl =
+    workspaceSettings?.eod?.userUrls?.[user?.id ?? ""] ||
+    workspaceSettings?.eod?.roleUrls?.[formRole ?? ""] ||
+    workspaceSettings?.eod?.defaultUrl ||
+    "";
+  const assignedFormUrl = configuredFormUrl || formLink;
+  const isExternalForm = Boolean(configuredFormUrl);
+  const [embedForm, setEmbedForm] = useState(false);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Trophy className="h-4 w-4 text-[color:var(--color-warning)]" />
-          <span className="text-sm font-semibold">The Daily W {studentName && <span className="font-normal text-muted-foreground">· {studentName}</span>}</span>
+          <span className="text-sm font-semibold">
+            The Daily W{" "}
+            {studentName && (
+              <span className="font-normal text-muted-foreground">· {studentName}</span>
+            )}
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
           {RANGES.map((r) => (
-            <button key={r.days} onClick={() => setDays(r.days)}
-              className={cn("rounded border px-2 py-1 text-2xs", days === r.days ? "border-primary bg-primary/10" : "border-border text-muted-foreground hover:bg-muted/40")}>
+            <button
+              key={r.days}
+              onClick={() => setDays(r.days)}
+              className={cn(
+                "rounded border px-2 py-1 text-2xs",
+                days === r.days
+                  ? "border-primary bg-primary/10"
+                  : "border-border text-muted-foreground hover:bg-muted/40",
+              )}
+            >
               {r.label}
             </button>
           ))}
-          <Button size="sm" variant="outline" className="h-7 text-2xs"
-            onClick={() => { navigator.clipboard.writeText(formLink); toast.success("Daily W form link copied — send it to your students."); }}>
-            <Link2 className="h-3 w-3 mr-1" /> Copy form link
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-2xs"
+            onClick={() => {
+              navigator.clipboard.writeText(assignedFormUrl);
+              toast.success(
+                isExternalForm
+                  ? "Assigned Typeform link copied."
+                  : "Daily W form link copied — send it to your students.",
+              );
+            }}
+          >
+            <Link2 className="h-3 w-3 mr-1" />{" "}
+            {isExternalForm ? "Copy assigned form" : "Copy form link"}
           </Button>
-          <LogWinDialog orgId={orgId} defaultName={studentName} onLogged={() => qc.invalidateQueries({ queryKey: ["daily-wins"] })} />
+          <LogWinDialog
+            orgId={orgId}
+            defaultName={studentName}
+            onLogged={() => qc.invalidateQueries({ queryKey: ["daily-wins"] })}
+          />
         </div>
+      </div>
+
+      <div
+        className={cn(
+          "rounded-2xl border p-4 shadow-sm",
+          isExternalForm
+            ? "border-spectrum-mid/35 bg-spectrum-mid/[0.045]"
+            : "border-border bg-card",
+        )}
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2.5">
+            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-spectrum-mid/15 text-spectrum-mid">
+              <Link2 className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                EOD form routing
+              </div>
+              <div className="mt-1 text-sm font-semibold">
+                {isExternalForm ? "Assigned Typeform" : "InsightOS Daily W"}
+              </div>
+              <div className="mt-0.5 text-2xs text-muted-foreground">
+                {isExternalForm
+                  ? formRole
+                    ? `Resolved for ${formRole.replace(/_/g, " ")} · user overrides role`
+                    : "Resolved from workspace assignment"
+                  : "Built-in fallback · no external Typeform assigned"}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-2xs"
+              onClick={() => setEmbedForm((v) => !v)}
+            >
+              {embedForm ? "Hide form" : "Open form here"}
+            </Button>
+            <Button asChild size="sm" className="h-8 text-2xs">
+              <a href={assignedFormUrl} target="_blank" rel="noopener noreferrer">
+                Open form <Link2 className="ml-1 h-3 w-3" />
+              </a>
+            </Button>
+          </div>
+        </div>
+        {embedForm && isExternalForm && (
+          <div className="mt-4 overflow-hidden rounded-xl border border-border bg-background">
+            <iframe
+              title="Assigned EOD Typeform"
+              src={assignedFormUrl}
+              className="h-[620px] w-full"
+              loading="lazy"
+            />
+          </div>
+        )}
+        {embedForm && !isExternalForm && (
+          <div className="mt-4 rounded-xl border border-border bg-background/50 p-4 text-xs text-muted-foreground">
+            The built-in InsightOS form is available from the{" "}
+            <a className="text-foreground underline" href={assignedFormUrl}>
+              Open form
+            </a>{" "}
+            link. It remains the fallback until an HTTPS Typeform is assigned in Settings.
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
         <Mini label="Logs" value={rows.length} />
         <Mini label="Financial wins" value={financialCount} tone="success" />
-        <Mini label="Cash logged" value={`$${Math.round(cash / 100).toLocaleString()}`} tone="success" />
-        <Mini label="Commitments kept" value={rows.length ? `${Math.round((kept / rows.length) * 100)}%` : "—"} />
-        <Mini label="Avg energy" value={avgEnergy ? avgEnergy.toFixed(1) : "—"} tone={avgEnergy && avgEnergy < 5 ? "danger" : "default"} />
+        <Mini
+          label="Cash logged"
+          value={`$${Math.round(cash / 100).toLocaleString()}`}
+          tone="success"
+        />
+        <Mini
+          label="Commitments kept"
+          value={rows.length ? `${Math.round((kept / rows.length) * 100)}%` : "—"}
+        />
+        <Mini
+          label="Avg energy"
+          value={avgEnergy ? avgEnergy.toFixed(1) : "—"}
+          tone={avgEnergy && avgEnergy < 5 ? "danger" : "default"}
+        />
       </div>
 
       {repeatBlockers.length > 0 && (
@@ -158,7 +329,10 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
             <AlertTriangle className="h-3.5 w-3.5" /> Save-call triggers · same blocker 3+ days
           </div>
           {repeatBlockers.map((b, i) => (
-            <div key={i} className="text-xs"><span className="font-medium">{b.name}</span> — {b.blocker} <span className="font-mono text-destructive">×{b.count}</span></div>
+            <div key={i} className="text-xs">
+              <span className="font-medium">{b.name}</span> — {b.blocker}{" "}
+              <span className="font-mono text-destructive">×{b.count}</span>
+            </div>
           ))}
         </div>
       )}
@@ -168,18 +342,42 @@ export function DailyWinsPanel({ studentName }: { studentName?: string }) {
           <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5" /> AI coach read · last {days}d
           </div>
-          <Button size="sm" variant="outline" className="h-7 text-2xs" disabled={m.isPending} onClick={() => m.mutate()}>
-            {m.isPending ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Reading…</> : "Analyze wins"}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-2xs"
+            disabled={m.isPending}
+            onClick={() => m.mutate()}
+          >
+            {m.isPending ? (
+              <>
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                Reading…
+              </>
+            ) : (
+              "Analyze wins"
+            )}
           </Button>
         </div>
-        {insight
-          ? <div className="text-xs leading-relaxed whitespace-pre-wrap">{insight}</div>
-          : <p className="text-xs text-muted-foreground">Surfaces what to double down on, the bottlenecks holding students back, and who needs a save call.</p>}
+        {insight ? (
+          <div className="text-xs leading-relaxed whitespace-pre-wrap">{insight}</div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Surfaces what to double down on, the bottlenecks holding students back, and who needs a
+            save call.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
-        {rows.map((w) => <WinRow key={w.id} w={w} />)}
-        {rows.length === 0 && <div className="py-8 text-center text-xs text-muted-foreground italic">No daily wins in this window. Share the form link — it's non-negotiable.</div>}
+        {rows.map((w) => (
+          <WinRow key={w.id} w={w} />
+        ))}
+        {rows.length === 0 && (
+          <div className="py-8 text-center text-xs text-muted-foreground italic">
+            No daily wins in this window. Share the form link — it's non-negotiable.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -191,19 +389,35 @@ function WinRow({ w }: { w: Win }) {
   useEffect(() => {
     if (!w.proof_url) return;
     let live = true;
-    supabase.storage.from("win-proof").createSignedUrl(w.proof_url, 3600).then(({ data }) => {
-      if (live && data?.signedUrl) setProof(data.signedUrl);
-    });
-    return () => { live = false; };
+    supabase.storage
+      .from("win-proof")
+      .createSignedUrl(w.proof_url, 3600)
+      .then(({ data }) => {
+        if (live && data?.signedUrl) setProof(data.signedUrl);
+      });
+    return () => {
+      live = false;
+    };
   }, [w.proof_url]);
 
   return (
-    <div className={cn("rounded-md border p-3 space-y-1.5 text-xs",
-      financial ? "border-[color:var(--color-success)]/45 bg-[color:var(--color-success)]/5" : "border-border bg-card")}>
+    <div
+      className={cn(
+        "rounded-md border p-3 space-y-1.5 text-xs",
+        financial
+          ? "border-[color:var(--color-success)]/45 bg-[color:var(--color-success)]/5"
+          : "border-border bg-card",
+      )}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">{w.student_name}</span>
         <span className="font-mono text-3xs text-muted-foreground">{w.win_date}</span>
-        <span className={cn("rounded px-1.5 py-0.5 text-3xs uppercase tracking-wider", w.source === "typeform" ? CHIP_TONE_CLASSES.info : CHIP_TONE_CLASSES.default)}>
+        <span
+          className={cn(
+            "rounded px-1.5 py-0.5 text-3xs uppercase tracking-wider",
+            w.source === "typeform" ? CHIP_TONE_CLASSES.info : CHIP_TONE_CLASSES.default,
+          )}
+        >
           source: {w.source}
         </span>
         {financial && (
@@ -212,21 +426,51 @@ function WinRow({ w }: { w: Win }) {
           </span>
         )}
         {(w.win_types ?? []).map((t) => (
-          <span key={t} className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-3xs uppercase tracking-wider text-muted-foreground">
-            {t === "financial" ? <DollarSign className="h-3 w-3" /> : t === "mental" ? <Brain className="h-3 w-3" /> : <Dumbbell className="h-3 w-3" />}{t}
+          <span
+            key={t}
+            className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-3xs uppercase tracking-wider text-muted-foreground"
+          >
+            {t === "financial" ? (
+              <DollarSign className="h-3 w-3" />
+            ) : t === "mental" ? (
+              <Brain className="h-3 w-3" />
+            ) : (
+              <Dumbbell className="h-3 w-3" />
+            )}
+            {t}
           </span>
         ))}
-        <span className="ml-auto font-mono text-3xs text-muted-foreground">energy {w.energy_score ?? "—"}/10 · {w.yesterday_status}</span>
+        <span className="ml-auto font-mono text-3xs text-muted-foreground">
+          energy {w.energy_score ?? "—"}/10 · {w.yesterday_status}
+        </span>
       </div>
       <div className="whitespace-pre-wrap">{w.win_description}</div>
       {financial && w.financial_amount_cents != null && (
         <div className="font-mono text-[color:var(--color-success)]">
-          ${Math.round(w.financial_amount_cents / 100).toLocaleString()} {w.financial_source && `— ${w.financial_source}`}
+          ${Math.round(w.financial_amount_cents / 100).toLocaleString()}{" "}
+          {w.financial_source && `— ${w.financial_source}`}
         </div>
       )}
-      {proof && <img src={proof} alt="Win proof" loading="lazy" className="max-h-48 w-full rounded border border-border object-cover" />}
-      {w.blocker && <div className="text-muted-foreground"><span className="uppercase tracking-wider text-3xs text-destructive">Blocker</span> — {w.blocker}</div>}
-      {w.tomorrow_needle_mover && <div className="text-muted-foreground"><span className="uppercase tracking-wider text-3xs">Tomorrow</span> — {w.tomorrow_needle_mover}</div>}
+      {proof && (
+        <img
+          src={proof}
+          alt="Win proof"
+          loading="lazy"
+          className="max-h-48 w-full rounded border border-border object-cover"
+        />
+      )}
+      {w.blocker && (
+        <div className="text-muted-foreground">
+          <span className="uppercase tracking-wider text-3xs text-destructive">Blocker</span> —{" "}
+          {w.blocker}
+        </div>
+      )}
+      {w.tomorrow_needle_mover && (
+        <div className="text-muted-foreground">
+          <span className="uppercase tracking-wider text-3xs">Tomorrow</span> —{" "}
+          {w.tomorrow_needle_mover}
+        </div>
+      )}
     </div>
   );
 }
@@ -236,7 +480,15 @@ function WinRow({ w }: { w: Win }) {
  * /daily-win form so manual and Typeform submissions carry identical data, distinguished
  * only by `source`. Always shows the full field set, even before any entries exist.
  */
-function LogWinDialog({ orgId, defaultName, onLogged }: { orgId: string | undefined; defaultName?: string; onLogged: () => void }) {
+function LogWinDialog({
+  orgId,
+  defaultName,
+  onLogged,
+}: {
+  orgId: string | undefined;
+  defaultName?: string;
+  onLogged: () => void;
+}) {
   const [open, setOpen] = useState(false);
   // Command palette's "Log Win" quick action lands here with ?action=log-win.
   const actionSearch = useSearch({ strict: false }) as { action?: string };
@@ -267,86 +519,168 @@ function LogWinDialog({ orgId, defaultName, onLogged }: { orgId: string | undefi
   const m = useMutation({
     mutationFn: async () => {
       if (!orgId) throw new Error("No workspace");
-      if (devBypass) return withMockDelay({ id: "mock", matched_client: null, priority: financial ? "high" : "normal" });
-      return submit({ data: {
-        org_id: orgId,
-        student_name: name.trim(),
-        win_date: date,
-        yesterday_status: kept,
-        work_done: workDone || null,
-        win_types: types as never,
-        win_description: description.trim(),
-        financial_amount_cents: financial && amount ? Math.round(parseFloat(amount.replace(/[^\d.]/g, "")) * 100) : null,
-        financial_source: financial ? (source || null) : null,
-        energy_score: energy,
-        blocker: blocker || null,
-        tomorrow_needle_mover: tomorrow || null,
-        source: "manual",
-      }});
+      if (devBypass)
+        return withMockDelay({
+          id: "mock",
+          matched_client: null,
+          priority: financial ? "high" : "normal",
+        });
+      return submit({
+        data: {
+          org_id: orgId,
+          student_name: name.trim(),
+          win_date: date,
+          yesterday_status: kept,
+          work_done: workDone || null,
+          win_types: types as never,
+          win_description: description.trim(),
+          financial_amount_cents:
+            financial && amount
+              ? Math.round(parseFloat(amount.replace(/[^\d.]/g, "")) * 100)
+              : null,
+          financial_source: financial ? source || null : null,
+          energy_score: energy,
+          blocker: blocker || null,
+          tomorrow_needle_mover: tomorrow || null,
+          source: "manual",
+        },
+      });
     },
     onSuccess: () => {
       toast.success("Win logged");
       onLogged();
       setOpen(false);
-      setWorkDone(""); setTypes([]); setDescription(""); setAmount(""); setSource(""); setBlocker(""); setTomorrow("");
+      setWorkDone("");
+      setTypes([]);
+      setDescription("");
+      setAmount("");
+      setSource("");
+      setBlocker("");
+      setTomorrow("");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const valid = !!orgId && name.trim().length > 1 && types.length > 0 && description.trim().length > 2;
+  const valid =
+    !!orgId && name.trim().length > 1 && types.length > 0 && description.trim().length > 2;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" className="h-7 text-2xs"><Plus className="h-3 w-3 mr-1" /> Log win</Button>
+        <Button size="sm" className="h-7 text-2xs">
+          <Plus className="h-3 w-3 mr-1" /> Log win
+        </Button>
       </DialogTrigger>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Log a Daily W</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Log a Daily W</DialogTitle>
+        </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Student name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-            <Field label="Date"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+            <Field label="Student name">
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+            <Field label="Date">
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </Field>
           </div>
           <Field label="Did they do yesterday's needle-mover?">
             <div className="flex gap-2">
               {(["done", "partial", "no"] as const).map((s) => (
-                <button key={s} type="button" onClick={() => setKept(s)}
-                  className={cn("rounded-md border px-3 py-1.5 text-xs capitalize", kept === s ? "border-primary bg-primary/10" : "border-border hover:bg-muted/40")}>
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setKept(s)}
+                  className={cn(
+                    "rounded-md border px-3 py-1.5 text-xs capitalize",
+                    kept === s ? "border-primary bg-primary/10" : "border-border hover:bg-muted/40",
+                  )}
+                >
                   {s}
                 </button>
               ))}
             </div>
           </Field>
-          <Field label="What did they get done today?"><Textarea rows={2} value={workDone} onChange={(e) => setWorkDone(e.target.value)} /></Field>
+          <Field label="What did they get done today?">
+            <Textarea rows={2} value={workDone} onChange={(e) => setWorkDone(e.target.value)} />
+          </Field>
           <Field label="Win type (select all that apply)">
             <div className="flex flex-wrap gap-2">
               {WIN_TYPE_OPTS.map((t) => {
                 const active = types.includes(t.value);
                 const Icon = t.icon;
                 return (
-                  <button key={t.value} type="button"
-                    onClick={() => setTypes((prev) => active ? prev.filter((x) => x !== t.value) : [...prev, t.value])}
-                    className={cn("flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs", active ? "border-primary bg-primary/10" : "border-border hover:bg-muted/40")}>
-                    <Icon className="h-3.5 w-3.5" />{t.label}
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() =>
+                      setTypes((prev) =>
+                        active ? prev.filter((x) => x !== t.value) : [...prev, t.value],
+                      )
+                    }
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs",
+                      active ? "border-primary bg-primary/10" : "border-border hover:bg-muted/40",
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {t.label}
                   </button>
                 );
               })}
             </div>
           </Field>
-          <Field label="Win description"><Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+          <Field label="Win description">
+            <Textarea
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </Field>
           {financial && (
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Amount ($)"><Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="1500" /></Field>
-              <Field label="From what?"><Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Closed a client…" /></Field>
+              <Field label="Amount ($)">
+                <Input
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="1500"
+                />
+              </Field>
+              <Field label="From what?">
+                <Input
+                  value={source}
+                  onChange={(e) => setSource(e.target.value)}
+                  placeholder="Closed a client…"
+                />
+              </Field>
             </div>
           )}
           <Field label={`Energy — ${energy}/10`}>
-            <input type="range" min={1} max={10} value={energy} onChange={(e) => setEnergy(Number(e.target.value))} className="w-full accent-[color:var(--color-success)]" />
+            <input
+              type="range"
+              min={1}
+              max={10}
+              value={energy}
+              onChange={(e) => setEnergy(Number(e.target.value))}
+              className="w-full accent-[color:var(--color-success)]"
+            />
           </Field>
-          <Field label="Biggest blocker"><Textarea rows={2} value={blocker} onChange={(e) => setBlocker(e.target.value)} /></Field>
-          <Field label="Tomorrow's #1 needle-mover"><Input value={tomorrow} onChange={(e) => setTomorrow(e.target.value)} /></Field>
+          <Field label="Biggest blocker">
+            <Textarea rows={2} value={blocker} onChange={(e) => setBlocker(e.target.value)} />
+          </Field>
+          <Field label="Tomorrow's #1 needle-mover">
+            <Input value={tomorrow} onChange={(e) => setTomorrow(e.target.value)} />
+          </Field>
           <Button className="w-full" disabled={!valid || m.isPending} onClick={() => m.mutate()}>
-            {m.isPending ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving…</> : "Save win"}
+            {m.isPending ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                Saving…
+              </>
+            ) : (
+              "Save win"
+            )}
           </Button>
         </div>
       </DialogContent>
@@ -363,13 +697,27 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function Mini({ label, value, tone = "default" }: { label: string; value: string | number; tone?: "default" | "success" | "danger" }) {
+function Mini({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string | number;
+  tone?: "default" | "success" | "danger";
+}) {
   return (
     <div className="rounded-md border border-border bg-card p-2.5">
       <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("mt-0.5 font-mono text-lg font-semibold tabular-nums",
-        tone === "success" && "text-[color:var(--color-success)]",
-        tone === "danger" && "text-destructive")}>{value}</div>
+      <div
+        className={cn(
+          "mt-0.5 font-mono text-lg font-semibold tabular-nums",
+          tone === "success" && "text-[color:var(--color-success)]",
+          tone === "danger" && "text-destructive",
+        )}
+      >
+        {value}
+      </div>
     </div>
   );
 }

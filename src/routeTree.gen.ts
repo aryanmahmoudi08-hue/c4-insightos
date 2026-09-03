@@ -16,18 +16,17 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.index'
 import { Route as PcvTokenRouteImport } from './routes/pcv.$token'
 import { Route as AuthenticatedWeeklyReportRouteImport } from './routes/_authenticated.weekly-report'
+import { Route as AuthenticatedWebinarAnalyticsRouteImport } from './routes/_authenticated.webinar-analytics'
 import { Route as AuthenticatedVslRouteImport } from './routes/_authenticated.vsl'
 import { Route as AuthenticatedTrafficRouteImport } from './routes/_authenticated.traffic'
 import { Route as AuthenticatedTeamCalendarRouteImport } from './routes/_authenticated.team-calendar'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
 import { Route as AuthenticatedSequencesRouteImport } from './routes/_authenticated.sequences'
-import { Route as AuthenticatedSalesRouteImport } from './routes/_authenticated.sales'
 import { Route as AuthenticatedPermissionsRouteImport } from './routes/_authenticated.permissions'
 import { Route as AuthenticatedOutreachRouteImport } from './routes/_authenticated.outreach'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated.onboarding'
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated.leads'
-import { Route as AuthenticatedInsightsRouteImport } from './routes/_authenticated.insights'
 import { Route as AuthenticatedInboundDialerRouteImport } from './routes/_authenticated.inbound-dialer'
 import { Route as AuthenticatedHiringRouteImport } from './routes/_authenticated.hiring'
 import { Route as AuthenticatedFulfillmentRouteImport } from './routes/_authenticated.fulfillment'
@@ -39,15 +38,12 @@ import { Route as AuthenticatedCopyRouteImport } from './routes/_authenticated.c
 import { Route as AuthenticatedContentSignalsRouteImport } from './routes/_authenticated.content-signals'
 import { Route as AuthenticatedContentCalendarRouteImport } from './routes/_authenticated.content-calendar'
 import { Route as AuthenticatedContentRouteImport } from './routes/_authenticated.content'
-import { Route as AuthenticatedConnectorsRouteImport } from './routes/_authenticated.connectors'
 import { Route as AuthenticatedCloserRouteImport } from './routes/_authenticated.closer'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated.clients'
 import { Route as AuthenticatedAttributionRouteImport } from './routes/_authenticated.attribution'
 import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typeform'
-import { Route as AuthenticatedSalesInboxRouteImport } from './routes/_authenticated.sales.inbox'
 import { Route as ApiPublicTwilioEventRouteImport } from './routes/api/public/twilio.$event'
 import { Route as ApiPublicIngestTokenRouteImport } from './routes/api/public/ingest.$token'
-import { Route as AuthenticatedSalesContactsIdRouteImport } from './routes/_authenticated.sales.contacts.$id'
 
 const RequestAccessRoute = RequestAccessRouteImport.update({
   id: '/request-access',
@@ -84,6 +80,12 @@ const AuthenticatedWeeklyReportRoute =
     path: '/weekly-report',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedWebinarAnalyticsRoute =
+  AuthenticatedWebinarAnalyticsRouteImport.update({
+    id: '/webinar-analytics',
+    path: '/webinar-analytics',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedVslRoute = AuthenticatedVslRouteImport.update({
   id: '/vsl',
   path: '/vsl',
@@ -115,11 +117,6 @@ const AuthenticatedSequencesRoute = AuthenticatedSequencesRouteImport.update({
   path: '/sequences',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedSalesRoute = AuthenticatedSalesRouteImport.update({
-  id: '/sales',
-  path: '/sales',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedPermissionsRoute =
   AuthenticatedPermissionsRouteImport.update({
     id: '/permissions',
@@ -139,11 +136,6 @@ const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
 const AuthenticatedLeadsRoute = AuthenticatedLeadsRouteImport.update({
   id: '/leads',
   path: '/leads',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedInsightsRoute = AuthenticatedInsightsRouteImport.update({
-  id: '/insights',
-  path: '/insights',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedInboundDialerRoute =
@@ -205,11 +197,6 @@ const AuthenticatedContentRoute = AuthenticatedContentRouteImport.update({
   path: '/content',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedConnectorsRoute = AuthenticatedConnectorsRouteImport.update({
-  id: '/connectors',
-  path: '/connectors',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedCloserRoute = AuthenticatedCloserRouteImport.update({
   id: '/closer',
   path: '/closer',
@@ -231,11 +218,6 @@ const ApiPublicTypeformRoute = ApiPublicTypeformRouteImport.update({
   path: '/api/public/typeform',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedSalesInboxRoute = AuthenticatedSalesInboxRouteImport.update({
-  id: '/inbox',
-  path: '/inbox',
-  getParentRoute: () => AuthenticatedSalesRoute,
-} as any)
 const ApiPublicTwilioEventRoute = ApiPublicTwilioEventRouteImport.update({
   id: '/api/public/twilio/$event',
   path: '/api/public/twilio/$event',
@@ -246,12 +228,6 @@ const ApiPublicIngestTokenRoute = ApiPublicIngestTokenRouteImport.update({
   path: '/api/public/ingest/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedSalesContactsIdRoute =
-  AuthenticatedSalesContactsIdRouteImport.update({
-    id: '/contacts/$id',
-    path: '/contacts/$id',
-    getParentRoute: () => AuthenticatedSalesRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -261,7 +237,6 @@ export interface FileRoutesByFullPath {
   '/attribution': typeof AuthenticatedAttributionRoute
   '/clients': typeof AuthenticatedClientsRoute
   '/closer': typeof AuthenticatedCloserRoute
-  '/connectors': typeof AuthenticatedConnectorsRoute
   '/content': typeof AuthenticatedContentRoute
   '/content-calendar': typeof AuthenticatedContentCalendarRoute
   '/content-signals': typeof AuthenticatedContentSignalsRoute
@@ -273,23 +248,20 @@ export interface FileRoutesByFullPath {
   '/fulfillment': typeof AuthenticatedFulfillmentRoute
   '/hiring': typeof AuthenticatedHiringRoute
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
-  '/insights': typeof AuthenticatedInsightsRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/outreach': typeof AuthenticatedOutreachRoute
   '/permissions': typeof AuthenticatedPermissionsRoute
-  '/sales': typeof AuthenticatedSalesRouteWithChildren
   '/sequences': typeof AuthenticatedSequencesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/team': typeof AuthenticatedTeamRoute
   '/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/vsl': typeof AuthenticatedVslRoute
+  '/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
-  '/sales/inbox': typeof AuthenticatedSalesInboxRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
-  '/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
@@ -300,7 +272,6 @@ export interface FileRoutesByTo {
   '/attribution': typeof AuthenticatedAttributionRoute
   '/clients': typeof AuthenticatedClientsRoute
   '/closer': typeof AuthenticatedCloserRoute
-  '/connectors': typeof AuthenticatedConnectorsRoute
   '/content': typeof AuthenticatedContentRoute
   '/content-calendar': typeof AuthenticatedContentCalendarRoute
   '/content-signals': typeof AuthenticatedContentSignalsRoute
@@ -312,24 +283,21 @@ export interface FileRoutesByTo {
   '/fulfillment': typeof AuthenticatedFulfillmentRoute
   '/hiring': typeof AuthenticatedHiringRoute
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
-  '/insights': typeof AuthenticatedInsightsRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/outreach': typeof AuthenticatedOutreachRoute
   '/permissions': typeof AuthenticatedPermissionsRoute
-  '/sales': typeof AuthenticatedSalesRouteWithChildren
   '/sequences': typeof AuthenticatedSequencesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/team': typeof AuthenticatedTeamRoute
   '/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/traffic': typeof AuthenticatedTrafficRoute
   '/vsl': typeof AuthenticatedVslRoute
+  '/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
   '/': typeof AuthenticatedIndexRoute
-  '/sales/inbox': typeof AuthenticatedSalesInboxRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
-  '/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
@@ -342,7 +310,6 @@ export interface FileRoutesById {
   '/_authenticated/attribution': typeof AuthenticatedAttributionRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRoute
   '/_authenticated/closer': typeof AuthenticatedCloserRoute
-  '/_authenticated/connectors': typeof AuthenticatedConnectorsRoute
   '/_authenticated/content': typeof AuthenticatedContentRoute
   '/_authenticated/content-calendar': typeof AuthenticatedContentCalendarRoute
   '/_authenticated/content-signals': typeof AuthenticatedContentSignalsRoute
@@ -354,24 +321,21 @@ export interface FileRoutesById {
   '/_authenticated/fulfillment': typeof AuthenticatedFulfillmentRoute
   '/_authenticated/hiring': typeof AuthenticatedHiringRoute
   '/_authenticated/inbound-dialer': typeof AuthenticatedInboundDialerRoute
-  '/_authenticated/insights': typeof AuthenticatedInsightsRoute
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/outreach': typeof AuthenticatedOutreachRoute
   '/_authenticated/permissions': typeof AuthenticatedPermissionsRoute
-  '/_authenticated/sales': typeof AuthenticatedSalesRouteWithChildren
   '/_authenticated/sequences': typeof AuthenticatedSequencesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/team-calendar': typeof AuthenticatedTeamCalendarRoute
   '/_authenticated/traffic': typeof AuthenticatedTrafficRoute
   '/_authenticated/vsl': typeof AuthenticatedVslRoute
+  '/_authenticated/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/_authenticated/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
-  '/_authenticated/sales/inbox': typeof AuthenticatedSalesInboxRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
-  '/_authenticated/sales/contacts/$id': typeof AuthenticatedSalesContactsIdRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
@@ -385,7 +349,6 @@ export interface FileRouteTypes {
     | '/attribution'
     | '/clients'
     | '/closer'
-    | '/connectors'
     | '/content'
     | '/content-calendar'
     | '/content-signals'
@@ -397,23 +360,20 @@ export interface FileRouteTypes {
     | '/fulfillment'
     | '/hiring'
     | '/inbound-dialer'
-    | '/insights'
     | '/leads'
     | '/onboarding'
     | '/outreach'
     | '/permissions'
-    | '/sales'
     | '/sequences'
     | '/settings'
     | '/team'
     | '/team-calendar'
     | '/traffic'
     | '/vsl'
+    | '/webinar-analytics'
     | '/weekly-report'
     | '/pcv/$token'
-    | '/sales/inbox'
     | '/api/public/typeform'
-    | '/sales/contacts/$id'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
   fileRoutesByTo: FileRoutesByTo
@@ -424,7 +384,6 @@ export interface FileRouteTypes {
     | '/attribution'
     | '/clients'
     | '/closer'
-    | '/connectors'
     | '/content'
     | '/content-calendar'
     | '/content-signals'
@@ -436,24 +395,21 @@ export interface FileRouteTypes {
     | '/fulfillment'
     | '/hiring'
     | '/inbound-dialer'
-    | '/insights'
     | '/leads'
     | '/onboarding'
     | '/outreach'
     | '/permissions'
-    | '/sales'
     | '/sequences'
     | '/settings'
     | '/team'
     | '/team-calendar'
     | '/traffic'
     | '/vsl'
+    | '/webinar-analytics'
     | '/weekly-report'
     | '/pcv/$token'
     | '/'
-    | '/sales/inbox'
     | '/api/public/typeform'
-    | '/sales/contacts/$id'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
   id:
@@ -465,7 +421,6 @@ export interface FileRouteTypes {
     | '/_authenticated/attribution'
     | '/_authenticated/clients'
     | '/_authenticated/closer'
-    | '/_authenticated/connectors'
     | '/_authenticated/content'
     | '/_authenticated/content-calendar'
     | '/_authenticated/content-signals'
@@ -477,24 +432,21 @@ export interface FileRouteTypes {
     | '/_authenticated/fulfillment'
     | '/_authenticated/hiring'
     | '/_authenticated/inbound-dialer'
-    | '/_authenticated/insights'
     | '/_authenticated/leads'
     | '/_authenticated/onboarding'
     | '/_authenticated/outreach'
     | '/_authenticated/permissions'
-    | '/_authenticated/sales'
     | '/_authenticated/sequences'
     | '/_authenticated/settings'
     | '/_authenticated/team'
     | '/_authenticated/team-calendar'
     | '/_authenticated/traffic'
     | '/_authenticated/vsl'
+    | '/_authenticated/webinar-analytics'
     | '/_authenticated/weekly-report'
     | '/pcv/$token'
     | '/_authenticated/'
-    | '/_authenticated/sales/inbox'
     | '/api/public/typeform'
-    | '/_authenticated/sales/contacts/$id'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
   fileRoutesById: FileRoutesById
@@ -561,6 +513,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWeeklyReportRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/webinar-analytics': {
+      id: '/_authenticated/webinar-analytics'
+      path: '/webinar-analytics'
+      fullPath: '/webinar-analytics'
+      preLoaderRoute: typeof AuthenticatedWebinarAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/vsl': {
       id: '/_authenticated/vsl'
       path: '/vsl'
@@ -603,13 +562,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSequencesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/sales': {
-      id: '/_authenticated/sales'
-      path: '/sales'
-      fullPath: '/sales'
-      preLoaderRoute: typeof AuthenticatedSalesRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/permissions': {
       id: '/_authenticated/permissions'
       path: '/permissions'
@@ -636,13 +588,6 @@ declare module '@tanstack/react-router' {
       path: '/leads'
       fullPath: '/leads'
       preLoaderRoute: typeof AuthenticatedLeadsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/insights': {
-      id: '/_authenticated/insights'
-      path: '/insights'
-      fullPath: '/insights'
-      preLoaderRoute: typeof AuthenticatedInsightsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/inbound-dialer': {
@@ -722,13 +667,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedContentRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/connectors': {
-      id: '/_authenticated/connectors'
-      path: '/connectors'
-      fullPath: '/connectors'
-      preLoaderRoute: typeof AuthenticatedConnectorsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/closer': {
       id: '/_authenticated/closer'
       path: '/closer'
@@ -757,13 +695,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicTypeformRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/sales/inbox': {
-      id: '/_authenticated/sales/inbox'
-      path: '/inbox'
-      fullPath: '/sales/inbox'
-      preLoaderRoute: typeof AuthenticatedSalesInboxRouteImport
-      parentRoute: typeof AuthenticatedSalesRoute
-    }
     '/api/public/twilio/$event': {
       id: '/api/public/twilio/$event'
       path: '/api/public/twilio/$event'
@@ -778,34 +709,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicIngestTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/sales/contacts/$id': {
-      id: '/_authenticated/sales/contacts/$id'
-      path: '/contacts/$id'
-      fullPath: '/sales/contacts/$id'
-      preLoaderRoute: typeof AuthenticatedSalesContactsIdRouteImport
-      parentRoute: typeof AuthenticatedSalesRoute
-    }
   }
 }
-
-interface AuthenticatedSalesRouteChildren {
-  AuthenticatedSalesInboxRoute: typeof AuthenticatedSalesInboxRoute
-  AuthenticatedSalesContactsIdRoute: typeof AuthenticatedSalesContactsIdRoute
-}
-
-const AuthenticatedSalesRouteChildren: AuthenticatedSalesRouteChildren = {
-  AuthenticatedSalesInboxRoute: AuthenticatedSalesInboxRoute,
-  AuthenticatedSalesContactsIdRoute: AuthenticatedSalesContactsIdRoute,
-}
-
-const AuthenticatedSalesRouteWithChildren =
-  AuthenticatedSalesRoute._addFileChildren(AuthenticatedSalesRouteChildren)
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAttributionRoute: typeof AuthenticatedAttributionRoute
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRoute
   AuthenticatedCloserRoute: typeof AuthenticatedCloserRoute
-  AuthenticatedConnectorsRoute: typeof AuthenticatedConnectorsRoute
   AuthenticatedContentRoute: typeof AuthenticatedContentRoute
   AuthenticatedContentCalendarRoute: typeof AuthenticatedContentCalendarRoute
   AuthenticatedContentSignalsRoute: typeof AuthenticatedContentSignalsRoute
@@ -817,18 +727,17 @@ interface AuthenticatedRouteChildren {
   AuthenticatedFulfillmentRoute: typeof AuthenticatedFulfillmentRoute
   AuthenticatedHiringRoute: typeof AuthenticatedHiringRoute
   AuthenticatedInboundDialerRoute: typeof AuthenticatedInboundDialerRoute
-  AuthenticatedInsightsRoute: typeof AuthenticatedInsightsRoute
   AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedOutreachRoute: typeof AuthenticatedOutreachRoute
   AuthenticatedPermissionsRoute: typeof AuthenticatedPermissionsRoute
-  AuthenticatedSalesRoute: typeof AuthenticatedSalesRouteWithChildren
   AuthenticatedSequencesRoute: typeof AuthenticatedSequencesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedTeamCalendarRoute: typeof AuthenticatedTeamCalendarRoute
   AuthenticatedTrafficRoute: typeof AuthenticatedTrafficRoute
   AuthenticatedVslRoute: typeof AuthenticatedVslRoute
+  AuthenticatedWebinarAnalyticsRoute: typeof AuthenticatedWebinarAnalyticsRoute
   AuthenticatedWeeklyReportRoute: typeof AuthenticatedWeeklyReportRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
@@ -837,7 +746,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAttributionRoute: AuthenticatedAttributionRoute,
   AuthenticatedClientsRoute: AuthenticatedClientsRoute,
   AuthenticatedCloserRoute: AuthenticatedCloserRoute,
-  AuthenticatedConnectorsRoute: AuthenticatedConnectorsRoute,
   AuthenticatedContentRoute: AuthenticatedContentRoute,
   AuthenticatedContentCalendarRoute: AuthenticatedContentCalendarRoute,
   AuthenticatedContentSignalsRoute: AuthenticatedContentSignalsRoute,
@@ -849,18 +757,17 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedFulfillmentRoute: AuthenticatedFulfillmentRoute,
   AuthenticatedHiringRoute: AuthenticatedHiringRoute,
   AuthenticatedInboundDialerRoute: AuthenticatedInboundDialerRoute,
-  AuthenticatedInsightsRoute: AuthenticatedInsightsRoute,
   AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedOutreachRoute: AuthenticatedOutreachRoute,
   AuthenticatedPermissionsRoute: AuthenticatedPermissionsRoute,
-  AuthenticatedSalesRoute: AuthenticatedSalesRouteWithChildren,
   AuthenticatedSequencesRoute: AuthenticatedSequencesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedTeamCalendarRoute: AuthenticatedTeamCalendarRoute,
   AuthenticatedTrafficRoute: AuthenticatedTrafficRoute,
   AuthenticatedVslRoute: AuthenticatedVslRoute,
+  AuthenticatedWebinarAnalyticsRoute: AuthenticatedWebinarAnalyticsRoute,
   AuthenticatedWeeklyReportRoute: AuthenticatedWeeklyReportRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }

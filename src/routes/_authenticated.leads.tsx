@@ -22,6 +22,7 @@ import {
   Loader2,
   Copy,
   FileText,
+  CalendarDays,
 } from "lucide-react";
 import { generatePreCallVideoLinkFn } from "@/lib/pre-call-video.functions";
 import { toast } from "sonner";
@@ -58,7 +59,13 @@ type LeadRow = {
   engagement_score: number | null;
   estimated_close_probability: number | null;
   source_connector: string | null;
+  source_platform: string | null;
+  source_format: string | null;
+  source_campaign: string | null;
+  first_touch_at: string | null;
   first_touch_content_id: string | null;
+  assigned_setter_id: string | null;
+  closer_id?: string | null;
   qualification_notes: string | null;
   application_data: Record<string, string> | null;
   notes: string | null;
@@ -292,6 +299,13 @@ function Leads() {
   const [bucket, setBucket] = useState<"all" | "active" | "booked" | "closed" | "lost">("all");
   const [selected, setSelected] = useState<LeadRow | null>(null);
   const [qualExpanded, setQualExpanded] = useState(false);
+  const [selectedOptInDate, setSelectedOptInDate] = useState("");
+  const [setterFilter, setSetterFilter] = useState("all");
+  const [closerFilter, setCloserFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [platformFilter, setPlatformFilter] = useState("all");
+  const [campaignFilter, setCampaignFilter] = useState("all");
+  const [offerFilter, setOfferFilter] = useState("all");
 
   const { data: leads, isLoading: leadsLoading } = useQuery({
     queryKey: ["leads", orgId, devBypass],
@@ -301,13 +315,17 @@ function Leads() {
       const { data, error } = await supabase
         .from("leads")
         .select(
-          "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, first_touch_content_id, qualification_notes, application_data, notes, created_at, tags",
+          "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, source_platform, source_format, source_campaign, first_touch_at, first_touch_content_id, assigned_setter_id, qualification_notes, application_data, notes, created_at, tags, calls(closer_id)",
         )
         .eq("org_id", orgId!)
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
-      return (data ?? []) as unknown as LeadRow[];
+      type LeadWithCalls = LeadRow & { calls?: Array<{ closer_id: string | null }> };
+      return (data ?? []).map((row) => {
+        const lead = row as unknown as LeadWithCalls;
+        return { ...lead, closer_id: lead.calls?.[0]?.closer_id ?? null };
+      });
     },
   });
 
@@ -344,6 +362,19 @@ function Leads() {
     return (leads ?? []).filter((l) => {
       if (bucket !== "all" && !BUCKET_STATUSES[bucket].includes(l.status)) return false;
       if (statusFilter !== "all" && l.status !== statusFilter) return false;
+      const entryAt = l.first_touch_at ?? l.created_at;
+      const offer = typeof l.application_data?.offer === "string" ? l.application_data.offer : null;
+      if (selectedOptInDate && entryAt.slice(0, 10) !== selectedOptInDate) return false;
+      if (setterFilter !== "all" && (l.assigned_setter_id ?? "unassigned") !== setterFilter)
+        return false;
+      if (closerFilter !== "all" && (l.closer_id ?? "unassigned") !== closerFilter) return false;
+      if (sourceFilter !== "all" && (l.source_connector ?? "unavailable") !== sourceFilter)
+        return false;
+      if (platformFilter !== "all" && (l.source_platform ?? "unavailable") !== platformFilter)
+        return false;
+      if (campaignFilter !== "all" && (l.source_campaign ?? "unavailable") !== campaignFilter)
+        return false;
+      if (offerFilter !== "all" && (offer ?? "unavailable") !== offerFilter) return false;
       if (!q) return true;
       const hay = [
         l.full_name,
@@ -357,7 +388,40 @@ function Leads() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [leads, query, statusFilter, bucket]);
+  }, [
+    leads,
+    query,
+    statusFilter,
+    bucket,
+    selectedOptInDate,
+    setterFilter,
+    closerFilter,
+    sourceFilter,
+    platformFilter,
+    campaignFilter,
+    offerFilter,
+  ]);
+
+  const filterOptions = useMemo(() => {
+    const values = (pick: (lead: LeadRow) => string | null) =>
+      Array.from(new Set((leads ?? []).map(pick).filter(Boolean))) as string[];
+    return {
+      setters: values((lead) => lead.assigned_setter_id),
+      closers: values((lead) => lead.closer_id ?? null),
+      sources: values((lead) => lead.source_connector),
+      platforms: values((lead) => lead.source_platform),
+      campaigns: values((lead) => lead.source_campaign),
+      offers: Array.from(
+        new Set(
+          (leads ?? [])
+            .map((lead) =>
+              typeof lead.application_data?.offer === "string" ? lead.application_data.offer : null,
+            )
+            .filter(Boolean),
+        ),
+      ) as string[],
+    };
+  }, [leads]);
 
   const { page, setPage, pageCount, paged, total, pageSize } = usePagination(view, 25);
 
@@ -493,6 +557,49 @@ function Leads() {
                 value={bucket}
                 onChange={setBucket}
               />
+              <div className="flex items-center gap-1.5 rounded-md border border-input bg-background px-2">
+                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                <input
+                  type="date"
+                  value={selectedOptInDate}
+                  onChange={(e) => setSelectedOptInDate(e.target.value)}
+                  aria-label="Filter leads by opt-in date"
+                  className="h-8 bg-transparent text-2xs outline-none"
+                />
+                {selectedOptInDate && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOptInDate("")}
+                    className="text-2xs text-muted-foreground hover:text-foreground"
+                    aria-label="Clear opt-in date filter"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              {[
+                ["Setter", setterFilter, setSetterFilter, filterOptions.setters],
+                ["Closer", closerFilter, setCloserFilter, filterOptions.closers],
+                ["Source", sourceFilter, setSourceFilter, filterOptions.sources],
+                ["Platform", platformFilter, setPlatformFilter, filterOptions.platforms],
+                ["Campaign", campaignFilter, setCampaignFilter, filterOptions.campaigns],
+                ["Offer", offerFilter, setOfferFilter, filterOptions.offers],
+              ].map(([label, value, setter, options]) => (
+                <select
+                  key={label as string}
+                  value={value as string}
+                  onChange={(event) => (setter as (value: string) => void)(event.target.value)}
+                  className="h-8 max-w-[150px] rounded-md border border-input bg-background px-2 text-2xs"
+                >
+                  <option value="all">All {label as string}s</option>
+                  <option value="unassigned">Unavailable / unassigned</option>
+                  {(options as string[]).map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              ))}
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -553,6 +660,8 @@ function Leads() {
                   </th>
                 )}
                 <th className="text-left p-2.5 min-w-[140px]">Email</th>
+                <th className="text-left p-2.5 min-w-[130px]">Setter</th>
+                <th className="text-left p-2.5 min-w-[130px]">Closer</th>
                 {/* Confirmed real gap (Sales Tracking Part 1): phone was a real, already-
                     fetched column, but only ever shown as a Contact-column fallback
                     (email ?? phone) — never its own visible column. */}
@@ -571,11 +680,14 @@ function Leads() {
                     className={`border-t border-border cursor-pointer transition-colors ${isDiamond ? "bg-accent/5 hover:bg-accent/10" : t.row || "hover:bg-muted/30"}`}
                     onClick={() => setSelected(l)}
                   >
-                    <td className="p-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                      {new Date(l.created_at).toLocaleDateString()}
+                    <td
+                      className="p-2.5 text-xs text-muted-foreground whitespace-nowrap"
+                      title={`Entry: ${new Date(l.first_touch_at ?? l.created_at).toISOString()}`}
+                    >
+                      {new Date(l.first_touch_at ?? l.created_at).toLocaleDateString()}
                       <br />
                       <span className="text-3xs">
-                        {new Date(l.created_at).toLocaleTimeString([], {
+                        {new Date(l.first_touch_at ?? l.created_at).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
@@ -686,6 +798,8 @@ function Leads() {
                       </td>
                     )}
                     <td className="p-2.5 text-xs text-muted-foreground">{l.email ?? "—"}</td>
+                    <td className="p-2.5 text-xs text-muted-foreground">Unavailable</td>
+                    <td className="p-2.5 text-xs text-muted-foreground">Unavailable</td>
                     <td className="p-2.5 text-xs text-muted-foreground whitespace-nowrap">
                       {l.phone ?? "—"}
                     </td>
@@ -702,7 +816,7 @@ function Leads() {
               {leadsLoading && (
                 <tr>
                   <td
-                    colSpan={6 + (qualExpanded ? APP_COLS.length : 1) + 3}
+                    colSpan={6 + (qualExpanded ? APP_COLS.length : 1) + 5}
                     className="p-10 text-center text-sm text-muted-foreground"
                   >
                     Loading…
@@ -712,7 +826,7 @@ function Leads() {
               {!leadsLoading && view.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6 + (qualExpanded ? APP_COLS.length : 1) + 3}
+                    colSpan={6 + (qualExpanded ? APP_COLS.length : 1) + 5}
                     className="p-10 text-center text-sm text-muted-foreground"
                   >
                     No leads match.

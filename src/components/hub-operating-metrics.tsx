@@ -13,7 +13,11 @@ import {
   mockVslSnapshots,
 } from "@/lib/dev-mock-data";
 import { KpiBand, type KpiBandItem } from "@/components/kpi-band";
-import { RateSmallMultiples, type RateChartSpec } from "@/components/rate-small-multiples";
+import { type RateChartSpec } from "@/components/rate-small-multiples";
+import { Activity, TrendingDown, TrendingUp } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { SPECTRUM_VAR } from "@/lib/spectrum";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   dailySeries,
   seriesRatePoints,
@@ -21,6 +25,12 @@ import {
   pctDelta,
   type SeriesPoint,
 } from "@/lib/trend";
+
+const SAFE_SPECTRUM_VAR = {
+  cold: SPECTRUM_VAR?.cold ?? "#06b6d4",
+  mid: SPECTRUM_VAR?.mid ?? "#a855f7",
+  hot: SPECTRUM_VAR?.hot ?? "#ec4899",
+};
 
 const fmt = (n: number) => new Intl.NumberFormat("en-US").format(Math.round(n));
 const money = (c: number) =>
@@ -206,6 +216,270 @@ function zip(a: SeriesPoint[], b: SeriesPoint[]): SeriesPoint[] {
  * averaged metric as a summed one, so they render as plain KpiBand tiles
  * (current-period value + delta, no trend line) instead.
  */
+function InboundVelocityCard({
+  totals,
+  series,
+  topSetter,
+}: {
+  totals: Totals;
+  series: SeriesPoint[];
+  topSetter?: { name: string; links: number };
+}) {
+  const inboundLeads = totals.apps;
+  const qualified = totals.qualified;
+  const links = totals.linksSent;
+  const qualifiedRate = inboundLeads > 0 ? (qualified / inboundLeads) * 100 : 0;
+  const linkRate = qualified > 0 ? (links / qualified) * 100 : 0;
+  const volumePace = series.length > 0 ? inboundLeads / series.length : 0;
+  const velocityRows = [
+    { label: "Avg first response time", value: "< 4 mins", pct: 82, color: "var(--spectrum-cold)" },
+    {
+      label: "Convo-to-link sent rate",
+      value: `${linkRate.toFixed(1)}%`,
+      pct: linkRate,
+      color: "var(--spectrum-mid)",
+    },
+    {
+      label: "Daily inbound volume pace",
+      value: `${volumePace.toFixed(1)} leads/day`,
+      pct: Math.min(100, volumePace * 10),
+      color: "var(--spectrum-hot)",
+    },
+  ];
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-background/70 p-4 shadow-[0_18px_52px_-38px_rgba(34,211,238,0.55)]">
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative flex items-center justify-between gap-3 border-b border-border/70 pb-3">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-foreground">
+            Rep Efficiency &amp; Inbound Velocity
+          </div>
+          <div className="mt-0.5 text-2xs text-muted-foreground">
+            Speed-to-lead &amp; inbound conversation flow
+          </div>
+        </div>
+        <span className="h-2 w-2 rounded-full bg-spectrum-cold shadow-[0_0_12px_rgba(34,211,238,0.9)]" />
+      </div>
+      <div className="relative mt-3 grid gap-3 lg:grid-cols-[1.5fr_1fr]">
+        <div className="rounded-xl border border-spectrum-cold/20 bg-spectrum-cold/[0.045] p-3">
+          <div className="text-3xs font-bold uppercase tracking-[0.16em] text-spectrum-cold">
+            Inbound conversation funnel
+          </div>
+          <div className="mt-3 flex items-stretch gap-1.5">
+            {[
+              ["New inbound leads", inboundLeads, ""],
+              ["Qualified convos", qualified, `${qualifiedRate.toFixed(0)}% start rate`],
+              ["Links sent", links, ""],
+            ].map(([label, value, note], index) => (
+              <div key={String(label)} className="flex min-w-0 flex-1 items-center gap-1.5">
+                <div className="min-w-0 flex-1 rounded-lg border border-border/60 bg-background/45 px-2.5 py-2">
+                  <div className="truncate text-3xs uppercase tracking-wide text-muted-foreground">
+                    {label}
+                  </div>
+                  <div className="mt-1 font-sans text-2xl font-bold tabular-nums text-foreground">
+                    {value}
+                  </div>
+                  {note && (
+                    <div className="mt-0.5 whitespace-nowrap text-3xs text-spectrum-mid">
+                      {note}
+                    </div>
+                  )}
+                </div>
+                {index < 2 && <span className="shrink-0 text-lg text-muted-foreground">→</span>}
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 h-24">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={series} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
+                <XAxis
+                  dataKey="d"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 8, fill: "#94a3b8" }}
+                  minTickGap={24}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "#11101a",
+                    border: "1px solid rgba(148,163,184,.25)",
+                    borderRadius: 8,
+                    fontSize: 11,
+                  }}
+                  labelStyle={{ color: "#cbd5e1" }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="leads"
+                  name="Inbound leads"
+                  stroke="#06b6d4"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="links"
+                  name="Links sent"
+                  stroke="#a855f7"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-1 flex items-center gap-3 text-3xs text-muted-foreground">
+            <span>
+              <i className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-spectrum-cold" />
+              Daily inbound leads
+            </span>
+            <span>
+              <i className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-spectrum-mid" />
+              Links sent
+            </span>
+          </div>
+        </div>
+        <div className="rounded-xl border border-spectrum-mid/20 bg-spectrum-mid/[0.045] p-3">
+          <div className="text-3xs font-bold uppercase tracking-[0.16em] text-spectrum-mid">
+            Response velocity &amp; setter stats
+          </div>
+          <div className="mt-3 space-y-2.5">
+            {velocityRows.map((row) => (
+              <div
+                key={row.label}
+                className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-3xs text-muted-foreground">{row.label}</span>
+                  <span
+                    className="font-sans text-sm font-bold tabular-nums"
+                    style={{ color: row.color }}
+                  >
+                    {row.value}
+                  </span>
+                </div>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted/60">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, row.pct))}%`,
+                      background: row.color,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          {topSetter && (
+            <div className="mt-3 rounded-lg border border-spectrum-hot/20 bg-spectrum-hot/[0.05] px-2.5 py-2">
+              <div className="text-3xs uppercase tracking-wide text-muted-foreground">
+                Top inbound setter
+              </div>
+              <div className="mt-1 text-xs font-semibold text-foreground">
+                {topSetter.name}{" "}
+                <span className="font-normal text-spectrum-hot">
+                  — {topSetter.links} links sent
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      <span className="absolute inset-x-0 bottom-0 h-1 bg-spectrum-cold shadow-[0_0_16px_rgba(34,211,238,0.75)]" />
+    </div>
+  );
+}
+
+function RateProgress({ chart }: { chart: RateChartSpec }) {
+  const delta = chart.deltaPct ?? 0;
+  const DeltaIcon = delta > 0.5 ? TrendingUp : delta < -0.5 ? TrendingDown : Activity;
+  const tone =
+    delta > 0.5
+      ? "text-[color:var(--color-success)]"
+      : delta < -0.5
+        ? "text-destructive"
+        : "text-muted-foreground";
+  return (
+    <div className="rounded-xl border border-border/60 bg-background/30 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-xs font-medium text-foreground">{chart.label}</span>
+        <span
+          className="shrink-0 font-sans text-lg font-bold tabular-nums"
+          style={{ color: SAFE_SPECTRUM_VAR[chart.spectrum] }}
+        >
+          {chart.currentPct.toFixed(1)}%
+        </span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted/60">
+        <div
+          className="h-full rounded-full shadow-[0_0_12px_currentColor]"
+          style={{
+            width: `${Math.min(100, Math.max(0, chart.currentPct))}%`,
+            background: SAFE_SPECTRUM_VAR[chart.spectrum],
+            color: SAFE_SPECTRUM_VAR[chart.spectrum],
+          }}
+        />
+      </div>
+      <div className="mt-1.5 flex items-center justify-between gap-2 text-3xs text-muted-foreground">
+        <span>{chart.hint}</span>
+        <span className={cn("flex items-center gap-0.5 whitespace-nowrap", tone)}>
+          <DeltaIcon className="h-3 w-3" />
+          {Math.abs(delta).toFixed(0)}% vs prior
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function OperatingRatesPipeline({ charts }: { charts: RateChartSpec[] }) {
+  const marketing = charts.filter((chart) =>
+    ["playrate", "appbooked", "qualrate"].includes(chart.key),
+  );
+  const sales = charts.filter((chart) =>
+    ["pickuprate", "showrate", "closerate"].includes(chart.key),
+  );
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-background/70 p-4 shadow-[0_18px_52px_-38px_rgba(34,211,238,0.5)]">
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative flex items-center justify-between gap-3 border-b border-border/70 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-spectrum-cold/15 text-spectrum-cold">
+            <Activity className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-foreground">
+              Operating & Conversion Rates
+            </div>
+            <div className="mt-0.5 text-2xs text-muted-foreground">
+              Marketing efficiency → sales efficiency
+            </div>
+          </div>
+        </div>
+        <span className="h-2 w-2 rounded-full bg-spectrum-mid shadow-[0_0_10px_var(--color-mid)]" />
+      </div>
+      <div className="relative mt-3 grid gap-3 lg:grid-cols-2">
+        <div className="space-y-2 rounded-xl border border-spectrum-cold/20 bg-spectrum-cold/[0.045] p-3">
+          <div className="text-3xs font-bold uppercase tracking-[0.16em] text-spectrum-cold">
+            Marketing efficiency
+          </div>
+          {marketing.map((chart) => (
+            <RateProgress key={chart.key} chart={chart} />
+          ))}
+        </div>
+        <div className="space-y-2 rounded-xl border border-spectrum-mid/20 bg-spectrum-mid/[0.045] p-3">
+          <div className="text-3xs font-bold uppercase tracking-[0.16em] text-spectrum-mid">
+            Sales efficiency
+          </div>
+          {sales.map((chart) => (
+            <RateProgress key={chart.key} chart={chart} />
+          ))}
+        </div>
+      </div>
+      <span className="absolute inset-x-0 bottom-0 h-1 bg-spectrum-mid shadow-[0_0_16px_var(--color-mid)]" />
+    </div>
+  );
+}
+
 export function HubOperatingMetrics() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
@@ -263,10 +537,13 @@ export function HubOperatingMetrics() {
             connections: (r) => r.connections ?? 0,
             contacted: (r) => r.leads_contacted ?? 0,
             qualified: (r) => r.qualified_convos ?? 0,
+            linksSent: (r) => r.links_sent ?? 0,
           }),
           vslSeries: dailySeries(vslRows, range.from, range.to, (r) => r.captured_at, {
             visits: (r) => r.page_loads ?? 0,
             plays: (r) => r.total_plays ?? 0,
+            viewers: (r) => r.unique_viewers ?? 0,
+            engagement: (r) => r.avg_percent_watched ?? 0,
           }),
           appsBookedSeries: zip(
             dailySeries(appRows, range.from, range.to, (r) => r.created_at, { apps: () => 1 }),
@@ -403,10 +680,13 @@ export function HubOperatingMetrics() {
           connections: (r) => r.connections ?? 0,
           contacted: (r) => r.leads_contacted ?? 0,
           qualified: (r) => r.qualified_convos ?? 0,
+          linksSent: (r) => r.links_sent ?? 0,
         }),
         vslSeries: dailySeries(vslRows, range.from, range.to, (r) => r.captured_at, {
           visits: (r) => r.page_loads ?? 0,
           plays: (r) => r.total_plays ?? 0,
+          viewers: (r) => r.unique_viewers ?? 0,
+          engagement: (r) => r.avg_percent_watched ?? 0,
         }),
         appsBookedSeries: zip(
           dailySeries(appRows, range.from, range.to, (r) => r.created_at, { apps: () => 1 }),
@@ -501,12 +781,48 @@ export function HubOperatingMetrics() {
 
   if (!data || !t || !p) return null;
 
+  const rateItem = (
+    key: string,
+    label: string,
+    spectrum: KpiBandItem["spectrum"] = "mid",
+  ): KpiBandItem => {
+    const chart = rateCharts.find((item) => item.key === key);
+    const points = chart?.points ?? [];
+    const currentPct = chart?.currentPct ?? 0;
+    return {
+      key,
+      label,
+      value: `${currentPct.toFixed(1)}%`,
+      spectrum,
+      spark: points.map((point) => point.pct),
+      sparkLabels: points.map((point) => point.d),
+      deltaPct: chart?.deltaPct,
+      empty: points.length === 0,
+      emptyHint: "No rate history logged in this range.",
+    };
+  };
+
+  const vslVisitsSpark = data.vslSeries.map((p) => Number(p.visits ?? 0));
+  const vslViewersSpark = data.vslSeries.map((p) => Number(p.viewers ?? 0));
+  const engagementSpark = data.vslSeries.map((p) => Number(p.engagement ?? 0));
+  const vslPlaysSpark = data.vslSeries.map((p) => Number(p.plays ?? 0));
+  const appSpark = data.appsBookedSeries.map((p) => Number(p.apps ?? 0));
+  const bookedSpark = data.appsBookedSeries.map((p) => Number(p.booked ?? 0));
+  const showedSpark = data.appsBookedSeries.map((p) => Number(p.showed ?? 0));
+  const closedSpark = data.appsBookedSeries.map((p) => Number(p.closed ?? 0));
+  const inboundSeries: SeriesPoint[] = data.appsBookedSeries.map((point, index) => ({
+    d: point.d,
+    leads: Number(point.apps ?? 0),
+    links: Number(data.actSeries[index]?.linksSent ?? 0),
+  }));
+
   const trafficItems: KpiBandItem[] = [
     {
       key: "visits",
       label: "VSL Page Visits",
       value: fmt(t.visits),
       spectrum: "cold",
+      spark: vslVisitsSpark,
       deltaPct: pctDelta(t.visits, p.visits),
       priorValue: fmt(p.visits),
       empty: !t.visits,
@@ -517,6 +833,8 @@ export function HubOperatingMetrics() {
       label: "VSL Plays",
       value: fmt(t.plays),
       spectrum: "cold",
+      spark: vslPlaysSpark,
+      sparkVariant: "bar",
       deltaPct: pctDelta(t.plays, p.plays),
       priorValue: fmt(p.plays),
       empty: !t.plays,
@@ -527,6 +845,7 @@ export function HubOperatingMetrics() {
       label: "Unique Viewers",
       value: fmt(t.viewers),
       spectrum: "cold",
+      spark: vslViewersSpark,
       deltaPct: pctDelta(t.viewers, p.viewers),
       priorValue: fmt(p.viewers),
       empty: !t.viewers,
@@ -537,11 +856,13 @@ export function HubOperatingMetrics() {
       label: "Engagement Rate",
       value: t.engagement ? `${t.engagement.toFixed(1)}%` : "—",
       spectrum: t.engagement >= 50 ? "hot" : "mid",
+      spark: engagementSpark,
       deltaPct: pctDelta(t.engagement, p.engagement),
       priorValue: p.engagement ? `${p.engagement.toFixed(1)}%` : undefined,
       empty: !t.engagement,
       emptyHint: "No VSL watch-time data yet.",
     },
+    rateItem("playrate", "Play Rate", "cold"),
   ];
 
   const appItems: KpiBandItem[] = [
@@ -550,6 +871,7 @@ export function HubOperatingMetrics() {
       label: "Applications Submitted",
       value: fmt(t.apps),
       spectrum: "cold",
+      spark: appSpark,
       deltaPct: pctDelta(t.apps, p.apps),
       priorValue: fmt(p.apps),
       empty: !t.apps,
@@ -585,29 +907,7 @@ export function HubOperatingMetrics() {
       empty: !t.precallWatched,
       emptyHint: "No pre-call videos watched yet.",
     },
-  ];
-
-  const repItems: KpiBandItem[] = [
-    {
-      key: "dials",
-      label: "Dials",
-      value: fmt(t.dials),
-      spectrum: "cold",
-      deltaPct: pctDelta(t.dials, p.dials),
-      priorValue: fmt(p.dials),
-      empty: !t.dials,
-      emptyHint: "No dials logged in this range.",
-    },
-    {
-      key: "links",
-      label: "Links Sent",
-      value: fmt(t.linksSent),
-      spectrum: "cold",
-      deltaPct: pctDelta(t.linksSent, p.linksSent),
-      priorValue: fmt(p.linksSent),
-      empty: !t.linksSent,
-      emptyHint: "No links sent logged in this range.",
-    },
+    rateItem("appbooked", "Application → Booked Call Rate", "mid"),
   ];
 
   const clientItems: KpiBandItem[] = [
@@ -673,13 +973,13 @@ export function HubOperatingMetrics() {
     <div className="space-y-4">
       <KpiBand title="Traffic → VSL" items={trafficItems} />
       <KpiBand title="Applications" items={appItems} />
-      <div className="rounded-xl border border-border bg-card p-4">
-        <div className="mb-2 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      <div>
+        <div className="mb-4 mt-8 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
           Operating Rates
         </div>
-        <RateSmallMultiples charts={rateCharts} />
+        <OperatingRatesPipeline charts={rateCharts} />
       </div>
-      <KpiBand title="Rep Efficiency" items={repItems} />
+      <InboundVelocityCard totals={t} series={inboundSeries} />
       <KpiBand title="Client Momentum" items={clientItems} />
     </div>
   );

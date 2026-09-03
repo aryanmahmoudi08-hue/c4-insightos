@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Sparkline } from "@/components/sparkline";
+import { InteractiveSparkline } from "@/components/interactive-sparkline";
 import { useCountUp } from "@/hooks/use-count-up";
 import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, type SpectrumPosition } from "@/lib/spectrum";
 
@@ -23,29 +23,46 @@ const TONE_GLOW: Record<Tone, string> = {
 };
 
 /**
- * "Enterprise" metric visualizer: glass elevation, a live +/- trend badge, a mini
- * bar or line sparkline, and an optional sub-label. Replaces flat KPI boxes wherever
- * a number needs more context than "here's a value" — trend direction and shape matter too.
+ * Canonical InsightOS metric tile. The four Content Intelligence outcome cards
+ * (Views, Leads Generated, Closes Attributed, Cash Attributed) are the visual
+ * source of truth for every KPI surface in the application.
  */
 export function MetricCard({
-  label, value, subLabel, icon, tone = "default", spectrum,
-  deltaPct, spark, sparkVariant = "line",
-  numericValue, format,
+  label,
+  value,
+  subLabel,
+  supporting,
+  icon,
+  tone = "default",
+  spectrum,
+  accentColor,
+  deltaPct,
+  trend,
+  spark,
+  sparkVariant = "line",
+  chart,
+  numericValue,
+  format,
+  onClick,
+  className,
 }: {
   label: string;
   value: ReactNode;
-  subLabel?: string;
+  subLabel?: ReactNode;
+  supporting?: ReactNode;
   icon?: ReactNode;
   tone?: Tone;
-  /** Opt-in funnel-position data encoding (B4) — takes precedence over `tone` for the value color, ambient glow, and sparkline color when set. Leaves the delta badge's up/down semantics untouched — temperature and trend are different signals. */
   spectrum?: SpectrumPosition;
-  /** Signed percent change vs. the prior period — renders the trend badge. Omit to hide it. */
+  accentColor?: string;
   deltaPct?: number;
+  trend?: ReactNode;
   spark?: number[];
   sparkVariant?: "line" | "bar";
-  /** Opt-in: pass the raw number + a formatter to get a count-up animation on change (e.g. date-range switches). Omit to render `value` as-is. */
+  chart?: ReactNode;
   numericValue?: number;
   format?: (n: number) => string;
+  onClick?: () => void;
+  className?: string;
 }) {
   const hasDelta = deltaPct !== undefined && Number.isFinite(deltaPct);
   const up = hasDelta && deltaPct > 0.5;
@@ -53,50 +70,122 @@ export function MetricCard({
   const DeltaIcon = up ? TrendingUp : down ? TrendingDown : Minus;
   const deltaTone = up ? "success" : down ? "destructive" : "default";
   const animated = useCountUp(numericValue ?? 0);
-  const display: ReactNode = numericValue !== undefined ? (format ? format(animated) : Math.round(animated)) : value;
-  const sparkColor = spectrum ? SPECTRUM_VAR[spectrum] : (up ? "var(--color-success)" : down ? "var(--destructive)" : "var(--muted-foreground)");
-
-  return (
-    <div className="hover-lift group relative overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm">
-      <div className={cn(
-        "pointer-events-none absolute inset-0 bg-gradient-to-br to-transparent opacity-70 transition-opacity group-hover:opacity-100",
-        spectrum ? undefined : TONE_GLOW[tone],
-      )} style={spectrum ? { backgroundImage: `linear-gradient(to bottom right, color-mix(in oklch, ${SPECTRUM_VAR[spectrum]} 15%, transparent), transparent)` } : undefined} />
-      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+  const display: ReactNode =
+    numericValue !== undefined ? (format ? format(animated) : Math.round(animated)) : value;
+  const accent = accentColor ?? (spectrum ? SPECTRUM_VAR[spectrum] : undefined);
+  const sparkColor =
+    accent ??
+    (up ? "var(--color-success)" : down ? "var(--destructive)" : "var(--muted-foreground)");
+  const generatedTrend = hasDelta ? (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1",
+        deltaTone === "success" && "text-[color:var(--color-success)]",
+        deltaTone === "destructive" && "text-destructive",
+        deltaTone === "default" && "text-muted-foreground",
+      )}
+    >
+      <DeltaIcon className="h-2.5 w-2.5" />
+      {Math.abs(deltaPct).toFixed(0)}%
+    </span>
+  ) : undefined;
+  const badge = trend ?? generatedTrend;
+  const secondary = supporting ?? subLabel;
+  const comparison = secondary ? (
+    <>
+      {hasDelta && generatedTrend}
+      {hasDelta && secondary && <span className="mx-1">·</span>}
+      {secondary}
+    </>
+  ) : null;
+  const content = (
+    <>
       <div className="relative flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {icon && <span className="text-muted-foreground/80">{icon}</span>}
-            <span className="truncate">{label}</span>
+          <div className="flex items-start gap-1.5 text-3xs font-semibold uppercase leading-tight tracking-[0.14em] text-muted-foreground">
+            {icon && <span className="mt-0.5 shrink-0 text-muted-foreground/80">{icon}</span>}
+            <span className="break-words">{label}</span>
           </div>
-          <div className={cn("mt-2 font-mono text-2xl font-bold tabular-nums tracking-tight md:text-[1.75rem]", spectrum ? SPECTRUM_TEXT_CLASS[spectrum] : TONE_TEXT[tone])}>{display}</div>
-          {subLabel && <div className="mt-0.5 text-2xs text-muted-foreground">{subLabel}</div>}
+          <div
+            className={cn(
+              "mt-1.5 font-sans text-3xl font-bold tabular-nums tracking-tight md:text-[2.35rem]",
+              accent ? undefined : spectrum ? SPECTRUM_TEXT_CLASS[spectrum] : TONE_TEXT[tone],
+            )}
+            style={accent ? { color: accent } : undefined}
+          >
+            {display}
+          </div>
+          {comparison && <div className="mt-1 text-2xs text-muted-foreground">{comparison}</div>}
         </div>
-        {hasDelta && (
-          <span className={cn(
-            "badge-glass shrink-0 font-mono normal-case tracking-normal",
-            deltaTone === "success" && "text-[color:var(--color-success)]",
-            deltaTone === "destructive" && "text-destructive",
-            deltaTone === "default" && "text-muted-foreground",
-          )}>
-            <DeltaIcon className="h-2.5 w-2.5" />
-            {Math.abs(deltaPct).toFixed(0)}%
+        {badge && (
+          <span className="badge-glass shrink-0 font-mono normal-case tracking-normal">
+            {badge}
           </span>
         )}
       </div>
-      {spark && spark.length > 1 && (
-        <div className="relative mt-4 h-9 rounded-lg border border-border/50 bg-background/20 px-1 py-0.5 opacity-80 transition-opacity group-hover:opacity-100">
-          <Sparkline
-            data={spark}
-            variant={sparkVariant}
-            width={220}
-            height={30}
-            stroke={sparkColor}
-            fill={sparkColor}
-            strokeWidth={1.5}
-          />
-        </div>
-      )}
-    </div>
+      <div className="relative mt-3 min-h-8 rounded-lg border border-border/50 bg-background/20 px-1 py-0.5 opacity-80 transition-opacity group-hover:opacity-100">
+        {chart ??
+          (spark && spark.length > 1 ? (
+            <InteractiveSparkline
+              data={spark}
+              variant={sparkVariant}
+              width={220}
+              height={44}
+              stroke={sparkColor}
+              fill={sparkColor}
+              strokeWidth={1.5}
+            />
+          ) : (
+            <div
+              className="flex h-8 items-center gap-1 px-2"
+              aria-label="No daily series available"
+            >
+              <span className="h-px flex-1 bg-muted-foreground/30" />
+              <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/60">
+                No daily series
+              </span>
+              <span className="h-px flex-1 bg-muted-foreground/30" />
+            </div>
+          ))}
+      </div>
+    </>
   );
+  const surface = (
+    <>
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-0 bg-gradient-to-br to-transparent opacity-70 transition-opacity group-hover:opacity-100",
+          accent || spectrum ? undefined : TONE_GLOW[tone],
+        )}
+        style={
+          accent || spectrum
+            ? {
+                backgroundImage: `linear-gradient(to bottom right, color-mix(in oklch, ${accent ?? SPECTRUM_VAR[spectrum!]} 15%, transparent), transparent)`,
+              }
+            : undefined
+        }
+      />
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="relative">{content}</div>
+      {accent && (
+        <span
+          className="absolute inset-x-0 bottom-0 h-1"
+          style={{ background: accent, boxShadow: `0 0 18px ${accent}` }}
+        />
+      )}
+    </>
+  );
+  const classes = cn(
+    "group relative w-full overflow-hidden rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-spectrum-mid/60",
+    onClick && "cursor-pointer",
+    className,
+  );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={classes}>
+        {surface}
+      </button>
+    );
+  }
+  return <div className={classes}>{surface}</div>;
 }

@@ -28,7 +28,6 @@ import {
   Plus,
   Trash2,
   ExternalLink,
-  Clock,
   AlertTriangle,
   CheckCircle2,
   Loader2,
@@ -50,13 +49,12 @@ export const Route = createFileRoute("/_authenticated/team-calendar")({
       { title: "Team Calendars — C4 InsightOS" },
       {
         name: "description",
-        content:
-          "Every closer and setter calendar in one view, with day work blocks the whole team can see.",
+        content: "Every closer and setter calendar in one view, with day the whole team can see.",
       },
       { property: "og:title", content: "Team Calendars — C4 InsightOS" },
       {
         property: "og:description",
-        content: "Closer and setter Google Calendars plus work blocks, visible to the whole team.",
+        content: "Closer and setter Google Calendars visible to the whole team.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -137,11 +135,10 @@ function TeamCalendarPage() {
   const [calDialogOpen, setCalDialogOpen] = useState(false);
   // Quick-add: clicking empty space in a day cell opens BlockDialog pre-filled
   // with that date, instead of always defaulting to the week's first day.
-  const [blockDialogDate, setBlockDialogDate] = useState<string | null>(null);
 
   // Dev bypass never got a real Supabase session, so writes to team_calendars /
   // work_blocks get rejected by RLS (401) — the same gap the backfill fixed on
-  // team.tsx/connectors.tsx/daily-wins-panel.tsx. Keep edits in local state
+  // team.tsx/daily-wins-panel.tsx. Keep edits in local state
   // instead, mirroring permissions.tsx's established pattern for this exact
   // situation (reads succeed empty under devBypass RLS, only writes fail).
   const [mockCals, setMockCals] = useState<Cal[]>([]);
@@ -648,117 +645,7 @@ function TeamCalendarPage() {
             )}
           </div>
         </section>
-
-        {/* Work blocks week grid */}
-        <section className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider">
-              <Clock className="h-3.5 w-3.5" /> Work blocks · week of {days[0]}
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-2xs"
-                onClick={() => setWeekStart(shiftWeek(weekStart, -7))}
-              >
-                ← Prev
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-2xs"
-                onClick={() => setWeekStart(startOfWeek(new Date()))}
-              >
-                This week
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-2xs"
-                onClick={() => setWeekStart(shiftWeek(weekStart, 7))}
-              >
-                Next →
-              </Button>
-              <BlockDialog days={days} onSave={(r) => saveBlock.mutate(r)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-7 divide-y sm:divide-y-0 sm:divide-x divide-border">
-            {days.map((d) => {
-              const dayBlocks = (blocks ?? []).filter(
-                (b) =>
-                  b.block_date === d &&
-                  (selectedReps.size === 0 ||
-                    visibleCals.some((c) => c.member_name === b.member_name)),
-              );
-              const isToday = d === new Date().toISOString().slice(0, 10);
-              return (
-                // Click-to-quick-add (Sales Tracking Part 4): clicking empty
-                // space in a day cell opens the same BlockDialog pre-filled
-                // with that date, instead of always defaulting to the week's
-                // first day — a real, honestly-scoped improvement over the
-                // generic dialog, not full click-drag duration selection
-                // (this grid has no hour axis to drag across).
-                <div
-                  key={d}
-                  onClick={() => setBlockDialogDate(d)}
-                  className={cn(
-                    "min-h-[150px] p-2 space-y-1.5 cursor-pointer transition-colors hover:bg-muted/10",
-                    isToday && "bg-primary/5",
-                  )}
-                >
-                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                    {new Date(d + "T12:00:00").toLocaleDateString(undefined, {
-                      weekday: "short",
-                      day: "numeric",
-                    })}
-                  </div>
-                  {dayBlocks.map((b) => {
-                    const kind = KINDS.find((k) => k.value === b.kind) ?? KINDS[2];
-                    return (
-                      <div
-                        key={b.id}
-                        className={cn("group rounded border px-1.5 py-1 text-2xs", kind.tone)}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex items-start gap-1">
-                          <span className="flex-1 font-medium leading-tight">{b.title}</span>
-                          <button
-                            onClick={() => delBlock.mutate(b.id)}
-                            className="opacity-0 group-hover:opacity-100"
-                            aria-label="Delete block"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
-                        <div className="font-mono text-3xs opacity-80">
-                          {b.start_time ?? ""}
-                          {b.end_time ? `–${b.end_time}` : ""}
-                        </div>
-                        <div className="truncate text-3xs opacity-80">{b.member_name}</div>
-                      </div>
-                    );
-                  })}
-                  {dayBlocks.length === 0 && (
-                    <div className="text-3xs text-muted-foreground/60 italic">Click to add…</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
       </div>
-
-      <BlockDialog
-        days={days}
-        initialDate={blockDialogDate}
-        open={!!blockDialogDate}
-        onOpenChange={(o) => {
-          if (!o) setBlockDialogDate(null);
-        }}
-        trigger={null}
-        onSave={(r) => saveBlock.mutate(r)}
-      />
     </>
   );
 }
@@ -848,138 +735,6 @@ function CalendarDialog({
             }}
           >
             Connect
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function BlockDialog({
-  days,
-  initialDate,
-  open,
-  onOpenChange,
-  trigger,
-  onSave,
-}: {
-  days: string[];
-  initialDate?: string | null;
-  open?: boolean;
-  onOpenChange?: (o: boolean) => void;
-  trigger?: ReactNode;
-  onSave: (r: Omit<Block, "id">) => void;
-}) {
-  const [internalOpen, setInternalOpen] = useState(false);
-  const isOpen = open ?? internalOpen;
-  const setIsOpen = onOpenChange ?? setInternalOpen;
-  const [member, setMember] = useState("");
-  const [memberRole, setMemberRole] = useState("closer");
-  const [title, setTitle] = useState("");
-  const [kind, setKind] = useState("calls");
-  const [date, setDate] = useState(initialDate ?? days[0]);
-  const [start, setStart] = useState("09:00");
-  const [end, setEnd] = useState("11:00");
-  const [notes, setNotes] = useState("");
-  const pickerRole = TEAM_MEMBER_ROLE_MAP[memberRole];
-
-  return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(o) => {
-        setIsOpen(o);
-        if (o) setDate(initialDate ?? days[0]);
-      }}
-    >
-      {trigger !== undefined ? (
-        trigger
-      ) : (
-        <DialogTrigger asChild>
-          <Button size="sm" variant="outline" className="h-7 text-2xs">
-            <Plus className="h-3 w-3 mr-1" /> Work block
-          </Button>
-        </DialogTrigger>
-      )}
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add a work block{initialDate ? ` · ${initialDate}` : ""}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <Select value={memberRole} onValueChange={setMemberRole}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ROLES.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {r.replace("_", " ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {pickerRole ? (
-            <TeamMemberPicker
-              role={pickerRole}
-              name="block_rep"
-              value={member}
-              onChange={setMember}
-              placeholder="Select rep"
-            />
-          ) : (
-            <Input
-              placeholder="Rep name"
-              value={member}
-              onChange={(e) => setMember(e.target.value)}
-            />
-          )}
-          <Input
-            placeholder="What's happening? (e.g. Call block, DM sprint)"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-          <Select value={kind} onValueChange={setKind}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {KINDS.map((k) => (
-                <SelectItem key={k.value} value={k.value}>
-                  {k.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          <div className="grid grid-cols-2 gap-2">
-            <Input type="time" value={start} onChange={(e) => setStart(e.target.value)} />
-            <Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
-          </div>
-          <Textarea
-            rows={2}
-            placeholder="Notes (optional)"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-          <Button
-            className="w-full"
-            disabled={!member.trim() || !title.trim()}
-            onClick={() => {
-              onSave({
-                member_name: member.trim(),
-                role: memberRole,
-                title: title.trim(),
-                kind,
-                block_date: date,
-                start_time: start,
-                end_time: end,
-                notes: notes || null,
-              });
-              setIsOpen(false);
-              setTitle("");
-              setNotes("");
-            }}
-          >
-            Add block
           </Button>
         </div>
       </DialogContent>

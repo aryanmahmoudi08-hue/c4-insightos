@@ -29,128 +29,184 @@ export const RESOURCE_GROUPS = [
 
 export const RESOURCES: ResourceDef[] = [
   {
-    key: "dashboard", label: "Main Hub", group: "Main", sensitive: true,
+    key: "dashboard",
+    label: "Main Hub",
+    group: "Main",
+    sensitive: true,
     view: "Company KPIs, cash collected, funnel, weekly digest and sparkline trends for the selected date range.",
     edit: "Rearrange tiles and save custom dashboard widgets / metric definitions.",
   },
   {
-    key: "sales_crm", label: "Sales CRM", group: "Sales", sensitive: true,
-    view: "Connected sales workspace for contacts, companies, opportunities, pipelines, tasks, activities, and legacy sales history.",
-    edit: "Create and update CRM records, manage assignments and stages, and complete sales tasks within the operator's authorized scope.",
-  },
-  {
-    key: "insights", label: "C4 Sentinel", group: "Main",
+    key: "insights",
+    label: "C4 Sentinel",
+    group: "Main",
     view: "Ask direct questions about cash, calls, content, clients, and open alerts — every answer is grounded in a real tool call against live data, never a generated guess.",
     edit: "No edit surface — C4 Sentinel is read-only by design; it answers questions, it never mutates data.",
   },
   {
-    key: "leads", label: "Legacy Leads", group: "Sales",
+    key: "leads",
+    label: "Legacy Leads",
+    group: "Sales",
     view: "Legacy lead table with application answers, stage, priority, pre-call video status and full activity timeline.",
     edit: "Change legacy lead status / stage / priority, toggle pre-call video watched, add notes, and run lead AI insights.",
   },
   {
-    key: "eod_reports", label: "EOD Reports", group: "Sales",
+    key: "eod_reports",
+    label: "EOD Reports",
+    group: "Sales",
     view: "The one-question-at-a-time EOD flow for DM Setter, Dialer and Closer.",
     edit: "Submit a daily EOD report for any of the three roles.",
   },
   {
-    key: "dm_setter", label: "DM Setter dashboard", group: "Sales",
+    key: "dm_setter",
+    label: "DM Setter dashboard",
+    group: "Sales",
     view: "Setter activity: conversations, qualified convos, sets, show rate — plus the 5% payout tile.",
     edit: "Log and correct daily setter activity rows.",
   },
   {
-    key: "inbound_dialer", label: "Inbound Dialer dashboard", group: "Sales",
+    key: "inbound_dialer",
+    label: "Inbound Dialer dashboard",
+    group: "Sales",
     view: "Dial volume, connects, sets and the 5% payout tile.",
     edit: "Log and correct daily dialer activity rows.",
   },
   {
-    key: "closer", label: "Closer dashboard", group: "Sales",
+    key: "closer",
+    label: "Closer dashboard",
+    group: "Sales",
     view: "Calls, show rate, close rate, cash collected and the 10% payout tile.",
     edit: "Log call outcomes, cash collected, objections and key moments.",
   },
   {
-    key: "team", label: "Team Members", group: "Team", sensitive: true,
+    key: "team",
+    label: "Team Members",
+    group: "Team",
+    sensitive: true,
     view: "Roster of setters, dialers and closers with their active status.",
     edit: "Add / deactivate members, change their role, and open per-person permission overrides.",
   },
   {
-    key: "hiring", label: "Hiring", group: "Team", sensitive: true,
+    key: "hiring",
+    label: "Hiring",
+    group: "Team",
+    sensitive: true,
     view: "Applicant pipeline with AI fit scores and interview stages.",
     edit: "Move applicants between stages, score them, and record notes.",
   },
   {
-    key: "content_calendar", label: "Content Calendar", group: "Marketing",
+    key: "content_calendar",
+    label: "Content Calendar",
+    group: "Marketing",
     view: "The month calendar of scheduled posts with full script, hook, CTA and posting instructions.",
     edit: "Reschedule posts, edit posting instructions, and mark pieces as posted.",
   },
   {
-    key: "content", label: "Content Intelligence", group: "Marketing",
+    key: "content",
+    label: "Content Intelligence",
+    group: "Marketing",
     view: "Pipeline board and content table with per-post metrics and retention analysis.",
     edit: "Move pieces through Draft → Ready to Post, schedule them, and run AI content coaching.",
   },
   {
-    key: "sequences", label: "Story Sequences", group: "Marketing",
+    key: "sequences",
+    label: "Story Sequences",
+    group: "Marketing",
     view: "Weekly story sequence templates and their slide plans.",
     edit: "Create, rewrite and schedule story sequences.",
   },
   {
-    key: "copy", label: "CopyOS", group: "Marketing",
+    key: "copy",
+    label: "CopyOS",
+    group: "Marketing",
     view: "Generated copy, angle bank, swipe library and client DNA profiles.",
     edit: "Generate new copy, save swipes and edit client DNA / voice fingerprints.",
   },
   {
-    key: "vsl", label: "VSL Analytics", group: "Marketing",
+    key: "vsl",
+    label: "VSL Analytics",
+    group: "Marketing",
     view: "Wistia metrics, retention KPIs, transcript timeline and drop-off analysis.",
     edit: "Import metrics, edit scripts / transcripts and run bottleneck analysis.",
   },
   {
-    key: "attribution", label: "Attribution", group: "Marketing", sensitive: true,
+    key: "attribution",
+    label: "Attribution",
+    group: "Marketing",
+    sensitive: true,
     view: "First-touch content → lead → call → cash joins, so you can see which post produced revenue.",
     edit: "Adjust attribution mapping and save attribution segments.",
   },
   {
-    key: "traffic", label: "Traffic", group: "Marketing",
+    key: "traffic",
+    label: "Traffic",
+    group: "Marketing",
     view: "Traffic source performance and volume trends.",
     edit: "Add, rename or deactivate traffic sources.",
   },
   {
-    key: "outreach", label: "Messaging (Email & SMS)", group: "Marketing",
+    key: "outreach",
+    label: "Messaging (Email & SMS)",
+    group: "Marketing",
     view: "Recipient lists and the send queue with delivery status.",
     edit: "Create lists, compose, schedule and queue email / SMS blasts.",
   },
   {
-    key: "clients", label: "Clients", group: "Clients", sensitive: true,
+    key: "clients",
+    label: "Clients",
+    group: "Clients",
+    sensitive: true,
     view: "Client roster with contract values, payment plans, renewals and health scores.",
     edit: "Edit client records, payments, renewal stage and notes.",
   },
   {
-    key: "onboarding", label: "Onboarding", group: "Clients",
+    key: "onboarding",
+    label: "Onboarding",
+    group: "Clients",
     view: "Intake responses with bottleneck / double-down signals and the aggregate insight panel.",
     edit: "Send intake links and run AI intake analysis.",
   },
   {
-    key: "fulfillment", label: "Client Results / Wins", group: "Clients",
+    key: "fulfillment",
+    label: "Client Results / Wins",
+    group: "Clients",
     view: "Logged student wins, screenshots and magnitude.",
     edit: "Add, edit and delete wins (these also feed CopyOS proof memory).",
   },
   {
-    key: "weekly_report", label: "Weekly Report", group: "Reporting", sensitive: true,
+    key: "weekly_report",
+    label: "Weekly Report",
+    group: "Reporting",
+    sensitive: true,
     view: "Cash, calls, funnel, content, rep performance, client health and hiring pipeline for the past 7 days, reused from the same numbers each module already computes.",
     edit: "Send the report to your connected Discord/Slack/n8n channel.",
   },
   {
-    key: "events", label: "Event Bus", group: "System", sensitive: true,
+    key: "events",
+    label: "Event Bus",
+    group: "System",
+    sensitive: true,
     view: "Raw event stream and webhook delivery log.",
     edit: "Replay events and manage webhook subscriptions.",
   },
   {
-    key: "connectors", label: "Connectors & Channels", group: "System", sensitive: true,
+    key: "connectors",
+    label: "Connectors & Channels",
+    group: "System",
+    sensitive: true,
     view: "Connected integrations and their sync status.",
     edit: "Connect / disconnect integrations and manage Discord / Slack / n8n routing.",
   },
 ];
 
-export const ROLES = ["admin", "sales_manager", "growth_ops", "setter", "closer", "viewer"] as const;
+export const ROLES = [
+  "admin",
+  "sales_manager",
+  "growth_ops",
+  "setter",
+  "closer",
+  "viewer",
+] as const;
 export type ManagedRole = (typeof ROLES)[number];
 
 export const ROLE_LABELS: Record<ManagedRole, string> = {
@@ -172,8 +228,11 @@ export const ROLE_BLURBS: Record<ManagedRole, string> = {
 };
 
 /** Sensible starting point when no explicit row exists yet. */
-export function defaultPerm(role: string, resource: string): { can_view: boolean; can_edit: boolean } {
-  const def = RESOURCES.find(r => r.key === resource);
+export function defaultPerm(
+  role: string,
+  resource: string,
+): { can_view: boolean; can_edit: boolean } {
+  const def = RESOURCES.find((r) => r.key === resource);
   const sensitive = !!def?.sensitive;
   switch (role) {
     case "admin":
@@ -183,17 +242,40 @@ export function defaultPerm(role: string, resource: string): { can_view: boolean
     case "growth_ops":
       return {
         can_view: !sensitive || resource === "attribution" || resource === "dashboard",
-        can_edit: ["content", "content_calendar", "sequences", "copy", "insights", "traffic", "vsl"].includes(resource),
+        can_edit: [
+          "content",
+          "content_calendar",
+          "sequences",
+          "copy",
+          "insights",
+          "traffic",
+          "vsl",
+        ].includes(resource),
       };
     case "setter":
       return {
-        can_view: ["dashboard", "sales_crm", "leads", "dm_setter", "eod_reports", "content_calendar", "insights"].includes(resource),
-        can_edit: ["sales_crm", "leads", "dm_setter", "eod_reports"].includes(resource),
+        can_view: [
+          "dashboard",
+          "leads",
+          "dm_setter",
+          "eod_reports",
+          "content_calendar",
+          "insights",
+        ].includes(resource),
+        can_edit: ["leads", "dm_setter", "eod_reports"].includes(resource),
       };
     case "closer":
       return {
-        can_view: ["dashboard", "sales_crm", "leads", "closer", "eod_reports", "clients", "content_calendar", "insights"].includes(resource),
-        can_edit: ["sales_crm", "leads", "closer", "eod_reports"].includes(resource),
+        can_view: [
+          "dashboard",
+          "leads",
+          "closer",
+          "eod_reports",
+          "clients",
+          "content_calendar",
+          "insights",
+        ].includes(resource),
+        can_edit: ["leads", "closer", "eod_reports"].includes(resource),
       };
     default: // viewer
       return { can_view: !sensitive, can_edit: false };

@@ -1,0 +1,41 @@
+# InsightOS implementation status
+
+## Verification snapshot
+
+The current worktree is `upgrade/localhost-8081-command-center` at commit `ec17857` with local uncommitted implementation changes. No production Supabase writes, merges to `main`, or production deployment actions were performed during this pass.
+
+The complete Vitest suite passes with **105 tests across 17 files**. The production build completes successfully with `npm run build`. Focused lint, formatting, and TypeScript validation also pass for the newly added notification and transparent-health modules.
+
+## Requirement matrix
+
+| Area                                         | Status                  | Evidence / boundary                                                                                                                                                                                                        |
+| -------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Canonical lifecycle event model              | DONE                    | `src/lib/lifecycle-events.ts`, tests, and migration define deterministic event identity and lifecycle stages.                                                                                                              |
+| Verified attribution evidence                | DONE                    | `src/lib/acquisition.ts` and attribution panels expose direct/partial/inferred/unavailable evidence states; no verified ID means no attributed value.                                                                      |
+| Payment deduplication                        | DONE                    | Existing payment identity and dedupe helpers are covered by the lifecycle/payment test suite.                                                                                                                              |
+| Speed-to-Lead SLA evaluator                  | DONE                    | Five-minute deterministic SLA calculation, queue bucketing, urgency ordering, and tests are present in `src/lib/speed-to-lead.ts`.                                                                                         |
+| Notification provider boundary               | DONE (code-completable) | `src/lib/notification-service.ts` provides idempotent request creation, delivery-audit types, and explicit unavailable/failed states. Speed-to-Lead now emits a normalized request only for actionable breached items.     |
+| Discord delivery                             | BLOCKED BY INTEGRATION  | No real Discord connector/webhook is connected. The UI and service must remain in `connector-unavailable` / `unavailable` state rather than fabricating delivery.                                                          |
+| Inbound Dialer and DM Setter operations      | PARTIAL                 | Existing activity module and Speed-to-Lead queue are present; full provider-backed message/call ingestion remains connector-dependent.                                                                                     |
+| Closer dispositions and payment-plan quality | PARTIAL                 | Disposition and financial foundations exist; end-to-end verified call-provider and payment-provider joins remain blocked until integrations are connected.                                                                 |
+| Mentee lifecycle evidence                    | DONE                    | Mentee profiles include lifecycle evidence panels and canonical attribution metadata.                                                                                                                                      |
+| Mentee transparent health                    | DONE (code-completable) | `evaluateTransparentHealth` returns healthy/watch/at-risk/unavailable with reason codes and only scores available dimensions. The dead `health_score` column is not treated as authoritative.                              |
+| Payment recovery queue                       | PARTIAL                 | Deterministic payment identities and financial records exist; recovery action execution requires a payment-provider connector and verified failure events.                                                                 |
+| Renewal workflow                             | PARTIAL                 | Renewal proximity risk is deterministic and reason-coded; automated renewal outreach is integration-blocked.                                                                                                               |
+| Content Command Center                       | PARTIAL                 | Content taxonomy, performance, signals, Sankey/content-flow presentation, and attribution contracts are implemented and covered by tests. Provider-backed content and platform data remain unavailable without connectors. |
+| VSL / Webinar analytics                      | PARTIAL                 | Analytics contracts, mock-safe states, event pipeline foundations, and presentation surfaces exist. Real telemetry and spend joins require integrations.                                                                   |
+| EOD Typeform routing                         | PARTIAL                 | Routing and RBAC foundations are implemented; live Typeform submission delivery remains connector-dependent.                                                                                                               |
+| EOD RBAC                                     | DONE (code-completable) | Server-side permission helpers and route protection are covered by `src/lib/eod-rbac.test.ts`; no production data was changed.                                                                                             |
+| Sales CRM                                    | DEFERRED                | Intentionally not expanded beyond the existing deferred/foundation state.                                                                                                                                                  |
+
+## Integration blockers
+
+The remaining gaps are not safe to close with fabricated values. They require verified connector configuration and source identifiers for Discord, telephony, messaging, Typeform, payment processing, social/content platforms, and any spend/ad network. Once those are available in a safe staging workspace, the provider adapters can populate the existing canonical event contracts without changing the data model or production data.
+
+## Completion-enforcement additions
+
+The current pass added `operating-workflows.ts` for canonical Setter, Callback, Payment Recovery, Renewal, and Closer state transitions; `operational-queue.ts` for scheduler decisions and bounded retry backoff; `access-workflow.ts` for scoped invitation lifecycle; and `media-intelligence.ts` for VSL action queues, objection evidence normalization, and verified Content-to-Cash path strength. The new UI surfaces are `OperationalWorkflowPanel`, `MenteeOperationsPanel`, `EodWorkflowStatus`, and `VideoActionQueue`, wired into the existing Activity, Mentee, EOD, and VSL routes. Webinar Analytics now presents Net Profit as unavailable when attributable costs are absent and computes it only from available cost data.
+
+A local HTTP smoke test returned **200** for `/dashboard`, `/dm-setter`, `/inbound-dialer`, `/closer`, `/clients`, `/content`, `/content-calendar`, `/content-signals`, `/eod-reports`, `/vsl`, `/webinar-analytics`, `/permissions`, and `/settings`. The connected browser endpoint was unavailable during this session, so route-level visual inspection was not possible through that browser; the isolated local server itself responded successfully.
+
+The full completion-enforcement migration is additive and remains unapplied to production. It defines persistence for operational work items, audit events, SLA breach records, notification attempts, payment recovery items, renewal work items, objection intelligence, and EOD submissions with organization-scoped RLS policies.

@@ -14,9 +14,15 @@ export const Route = createFileRoute("/_authenticated")({ component: AuthedLayou
 function AuthedLayout() {
   const { user, loading } = useAuth();
   const nav = useNavigate();
-  useEffect(() => { if (!loading && !user) nav({ to: "/login" }); }, [loading, user, nav]);
+  useEffect(() => {
+    if (!loading && !user) nav({ to: "/login" });
+  }, [loading, user, nav]);
   if (loading || !user) {
-    return <div className="grid min-h-screen place-items-center text-sm text-muted-foreground">Loading workspace…</div>;
+    return (
+      <div className="grid min-h-screen place-items-center text-sm text-muted-foreground">
+        Loading workspace…
+      </div>
+    );
   }
   return (
     <DateRangeProvider>
@@ -39,7 +45,12 @@ function AuthedShell() {
     <div className="min-h-screen bg-background">
       <AppSidebar />
       <CommandPalette />
-      <main className={cn("relative min-h-screen overflow-x-clip transition-[margin] duration-200", collapsed ? "ml-0 md:ml-14" : "ml-0 md:ml-60")}>
+      <main
+        className={cn(
+          "relative min-h-screen overflow-x-clip transition-[margin] duration-200",
+          collapsed ? "ml-0 md:ml-14" : "ml-0 md:ml-60",
+        )}
+      >
         <LiveTicker />
         <Outlet />
       </main>
