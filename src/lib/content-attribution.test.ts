@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAttributionPathsForModel } from "./content-attribution";
+import { buildAttributionPathsForModel, aggregateCashByContent } from "./content-attribution";
 
 const leads = [
   { id: "lead-1", created_at: "2026-08-01T00:00:00Z", source_content_id: "content-src" },
@@ -95,6 +95,82 @@ describe("buildAttributionPathsForModel", () => {
       sampleSize: 10,
     });
     expect(paths.every((p) => p.outcomeKey !== "call-2")).toBe(true);
+  });
+
+  describe("aggregateCashByContent (Sankey cash source)", () => {
+    it("sums real call cash per content, with no double count across content for a direct model", () => {
+      const directPaths = buildAttributionPathsForModel("first_touch", {
+        leads,
+        calls,
+        touches,
+        sampleSize: 10,
+      });
+      const result = aggregateCashByContent(directPaths, { "call-1": 50000 });
+      // Exactly one content node gets exactly one call's cash — not split,
+      // not duplicated onto a second node.
+      expect(result).toEqual([{ contentId: "content-first", cashCents: 50000, callCount: 1 }]);
+    });
+
+    it("never exceeds the real total cash of the calls it draws from, for a direct model", () => {
+      const directPaths = buildAttributionPathsForModel("last_touch", {
+        leads: [
+          ...leads,
+          { id: "lead-3", created_at: "2026-08-01T00:00:00Z", source_content_id: null },
+        ],
+        calls: [
+          ...calls,
+          {
+            id: "call-3",
+            lead_id: "lead-3",
+            created_at: "2026-08-12T00:00:00Z",
+            closed: true,
+            source_content_id: null,
+          },
+        ],
+        touches: [
+          ...touches,
+          { lead_id: "lead-3", content_id: "content-other", touched_at: "2026-08-02T00:00:00Z" },
+        ],
+        sampleSize: 10,
+      });
+      const callCash = { "call-1": 30000, "call-3": 20000 };
+      const result = aggregateCashByContent(directPaths, callCash);
+      const totalRealCash = Object.values(callCash).reduce((s, v) => s + v, 0);
+      const totalAggregated = result.reduce((s, r) => s + r.cashCents, 0);
+      expect(totalAggregated).toBe(totalRealCash);
+      expect(totalAggregated).toBe(50000);
+    });
+
+    it("intentionally spreads one call's cash across multiple assisting content pieces", () => {
+      const assistedPaths = buildAttributionPathsForModel("assisted_touch", {
+        leads,
+        calls,
+        touches,
+        sampleSize: 10,
+      });
+      const result = aggregateCashByContent(assistedPaths, { "call-1": 40000 });
+      // Two assisting pieces (content-first, content-middle) both credited
+      // the same call's cash — the sum legitimately exceeds the single
+      // call's real amount, which is exactly why assisted_touch must never
+      // be labeled as a direct/aggregate total by callers.
+      expect(result).toHaveLength(2);
+      expect(result.reduce((s, r) => s + r.cashCents, 0)).toBe(80000);
+      expect(new Set(result.map((r) => r.contentId))).toEqual(
+        new Set(["content-first", "content-middle"]),
+      );
+    });
+
+    it("excludes paths with no cash on record rather than treating missing as zero-flow", () => {
+      const directPaths = buildAttributionPathsForModel("first_touch", {
+        leads,
+        calls,
+        touches,
+        sampleSize: 10,
+      });
+      expect(aggregateCashByContent(directPaths, {})).toEqual([]);
+      expect(aggregateCashByContent(directPaths, { "call-1": 0 })).toEqual([]);
+      expect(aggregateCashByContent(directPaths, { "call-1": null })).toEqual([]);
+    });
   });
 
   it("returns nothing for a lead with no touches under first_touch/last_touch", () => {

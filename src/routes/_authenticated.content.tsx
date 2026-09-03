@@ -54,7 +54,6 @@ import {
   mockContentCoaching,
   mockContentClassification,
   mockTrafficBreakdown,
-  mockAttributionPaths,
   withMockDelay,
 } from "@/lib/dev-mock-data";
 import {
@@ -79,6 +78,7 @@ import {
 import { contentDemandFn, weeklyContentCheckFn } from "@/lib/content-signals.functions";
 import type { AttributionModel, CanonicalLifecycleAttributionPath } from "@/lib/acquisition";
 import { buildAttributionPathsForModel, ATTRIBUTION_MODELS } from "@/lib/content-attribution";
+import { computeChannelRevenue } from "@/lib/traffic-channel-revenue";
 import { SOCIAL_PLATFORMS } from "@/lib/social-platform";
 import { PlatformIcon } from "@/components/platform-icon";
 
@@ -158,6 +158,11 @@ type ContentBusinessBridge = {
   attribution: ContentAttributionSummary;
   canonicalPaths: CanonicalLifecycleAttributionPath[];
   canonicalPathsByModel?: Record<AttributionModel, CanonicalLifecycleAttributionPath[]>;
+  /** cash_collected_cents per closed call id, in range — the real, verified
+   * source the Sankey joins against via canonicalPathsByModel's callId
+   * (see Priority 2 correction: content_metrics.cash_collected_cents has no
+   * write path anywhere in the app, so the Sankey no longer reads it). */
+  callCashById: Record<string, number>;
 };
 
 type Prefill = {
@@ -245,37 +250,55 @@ function ContentIntel() {
     enabled: devBypass || !!orgId,
     queryFn: async () => {
       if (devBypass) {
-        const channels = mockTrafficBreakdown();
-        const paths = mockAttributionPaths();
+        // Mock preview only (never reachable outside dev-bypass) — reshapes
+        // mockTrafficBreakdown()'s already-mock numbers into the corrected
+        // field split (contracted/collected/client-LTV kept separate) rather
+        // than inventing new fabricated figures on top of the existing mock
+        // generator.
+        const mockChannels = mockTrafficBreakdown();
+        const channels = mockChannels.map((r) => ({
+          id: r.id,
+          name: r.name,
+          category: r.category,
+          leads: r.leads,
+          clients: r.clients,
+          closeRate: r.closeRate,
+          contractedCents: Math.round(r.revenue * 100 - r.ltv * 100),
+          collectedCents: Math.round(r.revenue * 100 - r.ltv * 100),
+          clientContractedCents: Math.round(r.ltv * 100),
+          revenuePerLeadCents: r.revenuePerLead * 100,
+        }));
+        const totalLeads = channels.reduce((sum, row) => sum + row.leads, 0);
+        const totalContracted = channels.reduce((sum, row) => sum + row.contractedCents, 0);
         return {
           traffic: {
-            leads: channels.reduce((sum, row) => sum + row.leads, 0),
+            leads: totalLeads,
             clients: channels.reduce((sum, row) => sum + row.clients, 0),
-            revenue: channels.reduce((sum, row) => sum + row.revenue, 0),
-            revenuePerLead:
-              channels.reduce((sum, row) => sum + row.revenue, 0) /
-              Math.max(
-                1,
-                channels.reduce((sum, row) => sum + row.leads, 0),
-              ),
+            contractedCents: totalContracted,
+            collectedCents: channels.reduce((sum, row) => sum + row.collectedCents, 0),
+            clientContractedCents: channels.reduce(
+              (sum, row) => sum + row.clientContractedCents,
+              0,
+            ),
+            revenuePerLeadCents: totalLeads ? Math.round(totalContracted / totalLeads) : 0,
             noSource: 0,
             channels: channels.slice(0, 5),
           },
           attribution: {
-            touches: paths.reduce((sum, row) => sum + row.leads, 0),
-            leads: paths.reduce((sum, row) => sum + row.leads, 0),
-            attributed: paths.reduce((sum, row) => sum + row.leads, 0),
-            closes: paths.reduce((sum, row) => sum + row.closes, 0),
-            contractValue: paths.reduce((sum, row) => sum + row.cash, 0),
-            cashCollected: paths.reduce((sum, row) => sum + row.cash, 0),
-            paths: paths.slice(0, 5),
+            touches: 0,
+            leads: totalLeads,
+            attributed: 0,
+            closes: channels.reduce((sum, row) => sum + row.clients, 0),
+            contractValueCents: totalContracted,
+            cashCollectedCents: channels.reduce((sum, row) => sum + row.collectedCents, 0),
           },
           canonicalPaths: [],
+          callCashById: {},
         } as ContentBusinessBridge;
       }
       const fromISO = `${range.from}T00:00:00`;
       const toISO = `${range.to}T23:59:59`;
-      const [sources, leads, calls, clients, touches, closed, contentPaths] = await Promise.all([
+      const [sources, leads, calls, clients, touches, closed] = await Promise.all([
         supabase
           .from("traffic_sources")
           .select("id, name, category, is_active")
@@ -313,77 +336,17 @@ function ContentIntel() {
           .eq("closed", true)
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
-        supabase
-          .from("content_pieces")
-          .select(
-            "id, title, platform, content_metrics!inner(views, leads_generated, closes, cash_collected_cents, captured_at)",
-          )
-          .eq("org_id", orgId!)
-          .gte("content_metrics.captured_at", fromISO)
-          .lte("content_metrics.captured_at", toISO)
-          .limit(100),
       ]);
       const sourceRows = sources.data ?? [];
       const leadRows = leads.data ?? [];
       const callRows = calls.data ?? [];
       const clientRows = clients.data ?? [];
-      const leadsBySource = new Map<string, typeof leadRows>();
-      for (const lead of leadRows)
-        if (lead.traffic_source_id)
-          leadsBySource.set(lead.traffic_source_id, [
-            ...(leadsBySource.get(lead.traffic_source_id) ?? []),
-            lead,
-          ]);
-      const callsByLead = new Map<string, typeof callRows>();
-      for (const call of callRows)
-        if (call.lead_id)
-          callsByLead.set(call.lead_id, [...(callsByLead.get(call.lead_id) ?? []), call]);
-      const clientsByLead = new Map<string, number>();
-      for (const client of clientRows)
-        if (client.lead_id)
-          clientsByLead.set(
-            client.lead_id,
-            (clientsByLead.get(client.lead_id) ?? 0) + (client.contract_value_cents ?? 0),
-          );
-      const channels = sourceRows
-        .map((source) => {
-          const matched = leadsBySource.get(source.id) ?? [];
-          const won = matched.filter((lead) => lead.status === "closed").length;
-          let dealCents = 0;
-          let ltvCents = 0;
-          for (const lead of matched) {
-            for (const call of callsByLead.get(lead.id) ?? [])
-              if (call.closed) dealCents += call.contract_value_cents ?? 0;
-            ltvCents += clientsByLead.get(lead.id) ?? 0;
-          }
-          const revenue = Math.round((dealCents + ltvCents) / 100);
-          return {
-            id: source.id,
-            name: source.name,
-            category: source.category,
-            leads: matched.length,
-            clients: won,
-            closeRate: matched.length ? (won / matched.length) * 100 : 0,
-            revenue,
-            revenuePerLead: matched.length ? Math.round(revenue / matched.length) : 0,
-          };
-        })
-        .sort((a, b) => b.revenue - a.revenue);
-      const pathRows = (contentPaths.data ?? [])
-        .map((piece) => {
-          const metrics = Array.isArray(piece.content_metrics) ? piece.content_metrics : [];
-          return {
-            id: piece.id,
-            title: piece.title ?? "(untitled)",
-            platform: piece.platform,
-            views: metrics.reduce((sum, row) => sum + (row.views ?? 0), 0),
-            leads: metrics.reduce((sum, row) => sum + (row.leads_generated ?? 0), 0),
-            closes: metrics.reduce((sum, row) => sum + (row.closes ?? 0), 0),
-            cash: metrics.reduce((sum, row) => sum + (row.cash_collected_cents ?? 0), 0),
-          };
-        })
-        .filter((row) => row.cash > 0 || row.leads > 0)
-        .sort((a, b) => b.cash - a.cash);
+      // Priority 1 correction: contractedCents/collectedCents (verified,
+      // closed-call basis) and clientContractedCents (a separate LTV
+      // concept) are computed independently — never summed into one
+      // ambiguous "revenue" figure. See traffic-channel-revenue.ts and its
+      // tests for the exact double-count scenario this fixes.
+      const channels = computeChannelRevenue(sourceRows, leadRows, callRows, clientRows);
       const modelInput = {
         leads: leadRows.map((l) => ({
           id: l.id,
@@ -406,14 +369,20 @@ function ContentIntel() {
           buildAttributionPathsForModel(model, modelInput),
         ]),
       ) as Record<AttributionModel, CanonicalLifecycleAttributionPath[]>;
+      const callCashById: Record<string, number> = {};
+      for (const c of closed.data ?? []) {
+        if (c.id && c.cash_collected_cents != null) callCashById[c.id] = c.cash_collected_cents;
+      }
       const totalLeads = leadRows.length;
-      const totalRevenue = channels.reduce((sum, row) => sum + row.revenue, 0);
+      const totalContracted = channels.reduce((sum, row) => sum + row.contractedCents, 0);
       return {
         traffic: {
           leads: totalLeads,
           clients: channels.reduce((sum, row) => sum + row.clients, 0),
-          revenue: totalRevenue,
-          revenuePerLead: totalLeads ? Math.round(totalRevenue / totalLeads) : 0,
+          contractedCents: totalContracted,
+          collectedCents: channels.reduce((sum, row) => sum + row.collectedCents, 0),
+          clientContractedCents: channels.reduce((sum, row) => sum + row.clientContractedCents, 0),
+          revenuePerLeadCents: totalLeads ? Math.round(totalContracted / totalLeads) : 0,
           noSource: leadRows.filter((lead) => !lead.traffic_source_id).length,
           channels: channels.slice(0, 5),
         },
@@ -422,18 +391,18 @@ function ContentIntel() {
           leads: leadRows.length,
           attributed: leadRows.filter((lead) => lead.first_touch_content_id).length,
           closes: closed.data?.length ?? 0,
-          contractValue: (closed.data ?? []).reduce(
+          contractValueCents: (closed.data ?? []).reduce(
             (sum, row) => sum + (row.contract_value_cents ?? 0),
             0,
           ),
-          cashCollected: (closed.data ?? []).reduce(
+          cashCollectedCents: (closed.data ?? []).reduce(
             (sum, row) => sum + (row.cash_collected_cents ?? 0),
             0,
           ),
-          paths: pathRows.slice(0, 5),
         },
         canonicalPaths: canonicalPathsByModel.first_touch,
         canonicalPathsByModel,
+        callCashById,
       } as ContentBusinessBridge;
     },
     retry: false,
@@ -833,6 +802,7 @@ function ContentIntel() {
           canonicalPathsByModel={businessBridge?.canonicalPathsByModel}
           traffic={businessBridge?.traffic}
           attributionSummary={businessBridge?.attribution}
+          callCashById={businessBridge?.callCashById}
         />
 
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/70 pt-3">

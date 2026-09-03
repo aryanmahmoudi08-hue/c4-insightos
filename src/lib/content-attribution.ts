@@ -174,6 +174,50 @@ export function buildAttributionPathsForModel(
   return deduplicateCanonicalAttributionPaths(paths);
 }
 
+export type ContentCashAggregate = {
+  contentId: string;
+  cashCents: number;
+  callCount: number;
+};
+
+/**
+ * Aggregates verified `calls.cash_collected_cents` by contentId, using the
+ * SAME canonical paths that drive the Canonical Content -> Cash table — so
+ * the money-flow view and the evidence table can never disagree about which
+ * calls are attributed to which content for a given model.
+ *
+ * For the single-attribution models (first_touch/last_touch/lead_source/
+ * booking_source), buildAttributionPathsForModel already guarantees at most
+ * one path per call (deduplicateCanonicalAttributionPaths keys on
+ * person+outcome+payment+call), so each call's cash is counted toward
+ * exactly one content piece — the totals here can never exceed real total
+ * cash for those models.
+ *
+ * assisted_touch is different by design: the same call can legitimately
+ * appear against several assisting content pieces, so the same dollars are
+ * intentionally counted toward more than one node. That's real assisted
+ * credit, not a bug — callers MUST label assisted_touch output as inferred/
+ * assisted rather than presenting it as an aggregate total (see
+ * ATTRIBUTION_MODEL_LABELS / evidence.coverage, which is already always
+ * "inferred" for this model).
+ */
+export function aggregateCashByContent(
+  paths: CanonicalLifecycleAttributionPath[],
+  callCashCentsById: Record<string, number | null | undefined>,
+): ContentCashAggregate[] {
+  const byContent = new Map<string, { cashCents: number; callCount: number }>();
+  for (const path of paths) {
+    if (!path.contentId || !path.callId) continue;
+    const cash = callCashCentsById[path.callId];
+    if (cash == null || cash <= 0) continue;
+    const cur = byContent.get(path.contentId) ?? { cashCents: 0, callCount: 0 };
+    cur.cashCents += cash;
+    cur.callCount += 1;
+    byContent.set(path.contentId, cur);
+  }
+  return Array.from(byContent.entries()).map(([contentId, v]) => ({ contentId, ...v }));
+}
+
 export const ATTRIBUTION_MODEL_LABELS: Record<AttributionModel, string> = {
   first_touch: "First touch",
   lead_source: "Lead source",

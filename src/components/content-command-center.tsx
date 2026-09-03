@@ -33,7 +33,11 @@ import { SPECTRUM_VAR, type SpectrumPosition } from "@/lib/spectrum";
 import { cn } from "@/lib/utils";
 import type { AttributionModel, CanonicalLifecycleAttributionPath } from "@/lib/acquisition";
 import { FUNNEL_STAGES, normalizeTaxonomy } from "@/lib/content-taxonomy";
-import { ATTRIBUTION_MODELS, ATTRIBUTION_MODEL_LABELS } from "@/lib/content-attribution";
+import {
+  ATTRIBUTION_MODELS,
+  ATTRIBUTION_MODEL_LABELS,
+  aggregateCashByContent,
+} from "@/lib/content-attribution";
 import { normalizeSocialPlatform } from "@/lib/social-platform";
 import { PlatformIcon } from "@/components/platform-icon";
 
@@ -107,6 +111,10 @@ export type ContentWeeklySummary = {
 
 type SortKey = "views" | "reach" | "engagement" | "cash";
 
+// Reuses the exact shape traffic-channel-revenue.ts produces — contracted
+// (verified closed-call basis), collected (verified cash), and client LTV
+// kept as three separate fields rather than one combined "revenue" number
+// (Priority 1 correction).
 export type ContentTrafficChannel = {
   id: string;
   name: string;
@@ -114,27 +122,21 @@ export type ContentTrafficChannel = {
   leads: number;
   clients: number;
   closeRate: number;
-  revenue: number;
-  revenuePerLead: number;
+  contractedCents: number;
+  collectedCents: number;
+  clientContractedCents: number;
+  revenuePerLeadCents: number;
 };
 
 export type ContentTrafficSummary = {
   leads: number;
   clients: number;
-  revenue: number;
-  revenuePerLead: number;
+  contractedCents: number;
+  collectedCents: number;
+  clientContractedCents: number;
+  revenuePerLeadCents: number;
   noSource: number;
   channels: ContentTrafficChannel[];
-};
-
-export type ContentAttributionPathRow = {
-  id: string;
-  title: string;
-  platform: string | null;
-  views: number;
-  leads: number;
-  closes: number;
-  cash: number;
 };
 
 export type ContentAttributionSummary = {
@@ -142,9 +144,8 @@ export type ContentAttributionSummary = {
   leads: number;
   attributed: number;
   closes: number;
-  contractValue: number;
-  cashCollected: number;
-  paths: ContentAttributionPathRow[];
+  contractValueCents: number;
+  cashCollectedCents: number;
 };
 
 type Props = {
@@ -155,6 +156,9 @@ type Props = {
   canonicalPathsByModel?: Record<AttributionModel, CanonicalLifecycleAttributionPath[]>;
   traffic?: ContentTrafficSummary;
   attributionSummary?: ContentAttributionSummary;
+  /** cash_collected_cents per closed call id — the Sankey's real cash
+   * source, joined via canonicalPathsByModel's callId (Priority 2). */
+  callCashById?: Record<string, number>;
 };
 
 const fmt = (value: number) =>
@@ -176,19 +180,34 @@ function interactionsOf(metric: ContentCommandMetric) {
   return (metric.likes ?? 0) + (metric.comments ?? 0) + (metric.saves ?? 0) + (metric.shares ?? 0);
 }
 
+type MoneySankeyNodePayload = {
+  name: string;
+  kind: "content" | "platform" | "cash";
+  refId: string | null;
+};
+
 /** Custom Sankey node — recharts' default renders a bare rectangle with no
  * label. Mirrors the one already proven out on the old standalone Attribution
  * page (same known recharts quirk: no containerWidth prop reaches a custom
- * node renderer, so the terminal-node side is keyed off its name instead). */
-function MoneySankeyNode(props: unknown) {
-  const { x, y, width, height, payload } = props as {
+ * node renderer, so the terminal-node side is keyed off its name instead).
+ * Content/platform nodes are clickable (Priority 4) — they filter the
+ * Canonical Content -> Cash table below via real contentId/platform values,
+ * not a decorative interaction. The terminal "Cash Collected" node isn't a
+ * specific record, so it stays inert. */
+function MoneySankeyNode(props: { onSelect?: (payload: MoneySankeyNodePayload) => void }) {
+  // recharts clones this element and merges in x/y/width/height/payload/
+  // index at render time — none of that reaches our declared prop type, so
+  // it's read back out via a cast (same approach the pre-existing
+  // attribution.tsx SankeyNodeLabel uses for the same recharts quirk).
+  const { x, y, width, height, payload, onSelect } = props as typeof props & {
     x: number;
     y: number;
     width: number;
     height: number;
-    payload: { name: string };
+    payload: MoneySankeyNodePayload;
   };
-  const isOut = payload.name === "Cash Collected";
+  const clickable = payload.kind !== "cash" && !!onSelect;
+  const isOut = payload.kind === "cash";
   return (
     <Layer>
       <Rectangle
@@ -198,13 +217,17 @@ function MoneySankeyNode(props: unknown) {
         height={height}
         fill="var(--spectrum-hot)"
         fillOpacity={0.8}
+        style={clickable ? { cursor: "pointer" } : undefined}
+        onClick={clickable ? () => onSelect!(payload) : undefined}
       />
       <text
         x={isOut ? x - 6 : x + width + 6}
         y={y + height / 2}
         textAnchor={isOut ? "end" : "start"}
         dominantBaseline="middle"
-        className="fill-foreground text-[10px]"
+        className={cn("fill-foreground text-[10px]", clickable && "cursor-pointer underline")}
+        style={clickable ? { cursor: "pointer" } : undefined}
+        onClick={clickable ? () => onSelect!(payload) : undefined}
       >
         {payload.name}
       </text>
@@ -215,150 +238,237 @@ function MoneySankeyNode(props: unknown) {
 /** Unified money-origin attribution (spec section 9): Platform → content →
  * cash, as a real flow diagram, plus Traffic channel performance —
  * consolidating what used to be two separate dashboards (standalone
- * Attribution and Traffic pages) into Content Command Center. Every number
- * here comes from `attributionSummary`/`traffic`, both computed in
- * content.tsx from real content_metrics/traffic_sources/calls/payments
- * rows — nothing in this section is decorative or hardcoded. */
+ * Attribution and Traffic pages) into Content Command Center.
+ *
+ * Priority 2/3 correction: the Sankey no longer reads content_metrics.
+ * cash_collected_cents (confirmed to have no write path anywhere in the
+ * app). It's built from aggregateCashByContent(canonicalPaths, callCashById)
+ * — the SAME model-selected canonical paths driving the table below, joined
+ * to calls.cash_collected_cents. This makes the model selector genuinely
+ * reshape the diagram, and keeps the diagram and the table unable to
+ * disagree about which calls are attributed to which content. */
 function MoneyOriginSection({
   attributionSummary,
   traffic,
+  canonicalPaths,
+  callCashById,
+  attributionModel,
+  pieces,
+  onFilterContent,
+  onFilterPlatform,
 }: {
   attributionSummary?: ContentAttributionSummary;
   traffic?: ContentTrafficSummary;
+  canonicalPaths: CanonicalLifecycleAttributionPath[];
+  callCashById: Record<string, number>;
+  attributionModel: AttributionModel;
+  pieces: ContentCommandPiece[];
+  onFilterContent: (contentId: string) => void;
+  onFilterPlatform: (platform: string) => void;
 }) {
+  const pieceById = useMemo(() => new Map(pieces.map((p) => [p.id, p])), [pieces]);
+  const attributedCallCount = useMemo(
+    () => new Set(canonicalPaths.map((p) => p.callId).filter(Boolean)).size,
+    [canonicalPaths],
+  );
+
+  const cashRows = useMemo(
+    () => aggregateCashByContent(canonicalPaths, callCashById),
+    [canonicalPaths, callCashById],
+  );
+
   const sankeyData = useMemo(() => {
-    const paths = attributionSummary?.paths ?? [];
-    const top = [...paths].sort((a, b) => b.cash - a.cash).slice(0, 8);
+    const top = [...cashRows].sort((a, b) => b.cashCents - a.cashCents).slice(0, 8);
     if (top.length === 0) return null;
-    const platformNames: string[] = Array.from(
-      new Set(top.map((p) => normalizeSocialPlatform(p.platform) as string)),
-    );
-    const nodes = [
-      ...top.map((p) => ({ name: p.title.length > 24 ? p.title.slice(0, 24) + "…" : p.title })),
-      ...platformNames.map((pl) => ({ name: pl })),
-      { name: "Cash Collected" },
+    const titleFor2 = (contentId: string) => {
+      const piece = pieceById.get(contentId);
+      const t = (piece ? titleFor(piece) : contentId) || contentId;
+      return t.length > 24 ? t.slice(0, 24) + "…" : t;
+    };
+    const platformFor2 = (contentId: string) => {
+      const piece = pieceById.get(contentId);
+      return piece ? pieceSocialPlatform(piece) : "Unknown / Unattributed";
+    };
+    const platformNames: string[] = Array.from(new Set(top.map((r) => platformFor2(r.contentId))));
+    const nodes: MoneySankeyNodePayload[] = [
+      ...top.map((r) => ({
+        name: titleFor2(r.contentId),
+        kind: "content" as const,
+        refId: r.contentId,
+      })),
+      ...platformNames.map((pl) => ({ name: pl, kind: "platform" as const, refId: pl })),
+      { name: "Cash Collected", kind: "cash" as const, refId: null },
     ];
     const platformIndex = (pl: string) => top.length + platformNames.indexOf(pl);
     const cashNodeIndex = nodes.length - 1;
     const links = [
-      ...top.map((p, i) => ({
+      ...top.map((r, i) => ({
         source: i,
-        target: platformIndex(normalizeSocialPlatform(p.platform)),
-        value: Math.max(1, Math.round(p.cash / 100)),
+        target: platformIndex(platformFor2(r.contentId)),
+        // Real cents, no dollar rounding and no artificial floor — Priority
+        // 5: only rows with cashCents > 0 ever reach this array
+        // (aggregateCashByContent already excludes zero/missing cash), so
+        // every link here is a genuinely nonzero, real value.
+        value: r.cashCents,
       })),
       ...platformNames.map((pl) => ({
         source: platformIndex(pl),
         target: cashNodeIndex,
-        value: Math.max(
-          1,
-          Math.round(
-            top
-              .filter((p) => normalizeSocialPlatform(p.platform) === pl)
-              .reduce((s, p) => s + p.cash, 0) / 100,
-          ),
-        ),
+        value: top
+          .filter((r) => platformFor2(r.contentId) === pl)
+          .reduce((s, r) => s + r.cashCents, 0),
       })),
     ];
     return { nodes, links, platformNames };
-  }, [attributionSummary?.paths]);
+  }, [cashRows, pieceById]);
+
+  const handleNodeSelect = (payload: MoneySankeyNodePayload) => {
+    if (payload.kind === "content" && payload.refId) onFilterContent(payload.refId);
+    else if (payload.kind === "platform" && payload.refId) onFilterPlatform(payload.refId);
+  };
+
+  const emptyDescription = !canonicalPaths.length
+    ? `No closed calls have a resolvable ${ATTRIBUTION_MODEL_LABELS[attributionModel].toLowerCase()} content attribution in this range.`
+    : `${attributedCallCount} attributed call${attributedCallCount === 1 ? "" : "s"} found for this model, but none have cash_collected_cents logged yet — log cash on the Closer call record to populate this.`;
 
   return (
-    <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr]">
-      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
-        <div className="mb-2">
-          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Unified money-origin attribution
-          </div>
-          <div className="mt-0.5 text-base font-semibold">Platform → content → cash collected</div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Top revenue-driving content, grouped by real platform — consolidated from the former
-            standalone Lead Attribution page.
-          </p>
+    <div className="space-y-3">
+      {attributionSummary && (
+        <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/70 bg-card/50 p-3 sm:grid-cols-3 lg:grid-cols-6">
+          {[
+            ["Touches", fmt(attributionSummary.touches)],
+            ["Leads", fmt(attributionSummary.leads)],
+            [
+              "Attributed",
+              attributionSummary.leads
+                ? `${Math.round((attributionSummary.attributed / attributionSummary.leads) * 100)}%`
+                : "—",
+            ],
+            ["Closes", fmt(attributionSummary.closes)],
+            ["Contract value", money(attributionSummary.contractValueCents)],
+            ["Cash collected", money(attributionSummary.cashCollectedCents)],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-lg border border-border/60 bg-background/40 p-2">
+              <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
+              <div className="mt-0.5 font-mono text-sm font-semibold">{value}</div>
+            </div>
+          ))}
         </div>
-        {sankeyData ? (
-          <>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <Sankey
-                  data={sankeyData}
-                  nodePadding={18}
-                  nodeWidth={10}
-                  linkCurvature={0.5}
-                  link={{ stroke: "var(--spectrum-hot)", strokeOpacity: 0.25 }}
-                  node={<MoneySankeyNode />}
-                >
-                  <Tooltip formatter={(v: number) => money(v * 100)} />
-                </Sankey>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-3xs text-muted-foreground">
-              {sankeyData.platformNames.map((pl) => (
-                <span key={pl} className="inline-flex items-center gap-1">
-                  <PlatformIcon platform={pl} className="h-3 w-3" /> {pl}
-                </span>
-              ))}
-            </div>
-          </>
-        ) : (
-          <EmptyState
-            icon={<ArrowUpRight className="h-4 w-4" />}
-            title="No attributed content yet"
-            description="Log content_metrics rows with leads_generated + cash_collected_cents to populate this."
-          />
-        )}
-      </div>
+      )}
 
-      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
-        <div className="mb-2">
-          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Traffic & channel performance
-          </div>
-          <div className="mt-0.5 text-base font-semibold">Revenue by traffic source</div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Consolidated from the standalone Traffic page — manage sources and tracking URLs there;
-            this is the performance read.
-          </p>
-        </div>
-        {traffic && traffic.channels.length ? (
-          <div className="space-y-2">
-            {traffic.channels.map((c) => (
-              <div key={c.id} className="rounded-lg border border-border/60 bg-muted/10 p-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-1.5 truncate text-xs font-medium">
-                    <PlatformIcon platform={normalizeSocialPlatform(c.category ?? c.name)} />
-                    {c.name}
-                  </span>
-                  <span className="font-mono text-xs text-spectrum-hot">
-                    ${c.revenue.toLocaleString()}
-                  </span>
-                </div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-3xs text-muted-foreground">
-                  <span>{c.leads} leads</span>
-                  <span>{c.clients} clients</span>
-                  <span>{c.closeRate.toFixed(0)}% close</span>
-                  <span>${c.revenuePerLead}/lead</span>
-                </div>
-              </div>
-            ))}
-            {traffic.noSource > 0 && (
-              <div className="text-3xs text-muted-foreground">
-                {traffic.noSource} lead{traffic.noSource === 1 ? "" : "s"} with no traffic source
-                attached — unattributed, not guessed.
-              </div>
+      <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr]">
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
+          <div className="mb-2">
+            <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Unified money-origin attribution — {ATTRIBUTION_MODEL_LABELS[attributionModel]} basis
+            </div>
+            <div className="mt-0.5 text-base font-semibold">
+              Content → platform → cash collected
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Reshapes with the attribution model selected below. Click a content or platform node
+              to filter the table.
+            </p>
+            {attributionModel === "assisted_touch" && (
+              <p className="mt-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 text-3xs text-amber-300">
+                Assisted credit is inferred, not direct: the same call's cash can be attributed to
+                more than one assisting piece here, so totals will legitimately exceed any single
+                call's real amount. Not an aggregate total.
+              </p>
             )}
           </div>
-        ) : (
-          <EmptyState
-            icon={<Radio className="h-4 w-4" />}
-            title="No traffic channels yet"
-            description="Add traffic sources on the Traffic page and tag leads with a source to populate this."
-            action={
-              <Link to="/traffic" className="text-xs text-primary hover:underline">
-                Open Traffic →
-              </Link>
-            }
-          />
-        )}
+          {sankeyData ? (
+            <>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <Sankey
+                    data={sankeyData}
+                    nodePadding={18}
+                    nodeWidth={10}
+                    linkCurvature={0.5}
+                    link={{ stroke: "var(--spectrum-hot)", strokeOpacity: 0.25 }}
+                    node={<MoneySankeyNode onSelect={handleNodeSelect} />}
+                  >
+                    <Tooltip formatter={(v: number) => money(v)} />
+                  </Sankey>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-3xs text-muted-foreground">
+                {sankeyData.platformNames.map((pl) => (
+                  <span key={pl} className="inline-flex items-center gap-1">
+                    <PlatformIcon platform={pl} className="h-3 w-3" /> {pl}
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : (
+            <EmptyState
+              icon={<ArrowUpRight className="h-4 w-4" />}
+              title="No attributed cash for this model"
+              description={emptyDescription}
+            />
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
+          <div className="mb-2">
+            <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Traffic & channel performance
+            </div>
+            <div className="mt-0.5 text-base font-semibold">Revenue by traffic source</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Consolidated from the standalone Traffic page — manage sources and tracking URLs
+              there. Rows aren't individually clickable: there's no per-channel filtered lead view
+              yet to send you to.
+            </p>
+          </div>
+          {traffic && traffic.channels.length ? (
+            <div className="space-y-2">
+              {traffic.channels.map((c) => (
+                <div key={c.id} className="rounded-lg border border-border/60 bg-muted/10 p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 truncate text-xs font-medium">
+                      <PlatformIcon platform={normalizeSocialPlatform(c.name)} />
+                      {c.name}
+                    </span>
+                    <span className="font-mono text-xs text-spectrum-hot">
+                      {money(c.contractedCents)}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-3xs text-muted-foreground">
+                    <span>{c.leads} leads</span>
+                    <span>{c.clients} clients</span>
+                    <span>{c.closeRate.toFixed(0)}% close</span>
+                    <span>{money(c.revenuePerLeadCents)}/lead</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-3xs text-muted-foreground">
+                    <span>Collected: {money(c.collectedCents)}</span>
+                    {c.clientContractedCents > 0 && (
+                      <span>Mentee contract LTV: {money(c.clientContractedCents)}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {traffic.noSource > 0 && (
+                <div className="text-3xs text-muted-foreground">
+                  {traffic.noSource} lead{traffic.noSource === 1 ? "" : "s"} with no traffic source
+                  attached — unattributed, not guessed.
+                </div>
+              )}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<Radio className="h-4 w-4" />}
+              title="No traffic channels yet"
+              description="Add traffic sources on the Traffic page and tag leads with a source to populate this."
+              action={
+                <Link to="/traffic" className="text-xs text-primary hover:underline">
+                  Open Traffic →
+                </Link>
+              }
+            />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -372,6 +482,7 @@ export function ContentCommandCenter({
   canonicalPathsByModel,
   traffic,
   attributionSummary,
+  callCashById = {},
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("views");
   const [selectedPath, setSelectedPath] = useState<CanonicalLifecycleAttributionPath | null>(null);
@@ -381,6 +492,14 @@ export function ContentCommandCenter({
   // wired the full per-model map — e.g. the devBypass mock path.
   const [attributionModel, setAttributionModel] = useState<AttributionModel>("first_touch");
   const activeCanonicalPaths = canonicalPathsByModel?.[attributionModel] ?? canonicalPaths;
+  // Canonical paths never carry a `platform` (buildAttributionPathsForModel
+  // has no platform source to set it from) — resolve it here from the real
+  // content piece instead, so the platform filter/drill-down works off an
+  // actual field rather than a permanently-null one.
+  const platformByContentId = useMemo(
+    () => new Map(pieces.map((p) => [p.id, pieceSocialPlatform(p)])),
+    [pieces],
+  );
   const [pathFilters, setPathFilters] = useState({
     platform: "all",
     campaign: "all",
@@ -392,14 +511,17 @@ export function ContentCommandCenter({
       activeCanonicalPaths.filter((path) => {
         const matches = (filter: string, value: string | null) =>
           filter === "all" || value === filter;
+        const platform = path.contentId
+          ? (platformByContentId.get(path.contentId) ?? path.platform)
+          : path.platform;
         return (
-          matches(pathFilters.platform, path.platform) &&
+          matches(pathFilters.platform, platform) &&
           matches(pathFilters.campaign, path.campaign) &&
           matches(pathFilters.source, path.source) &&
           matches(pathFilters.content, path.contentId)
         );
       }),
-    [activeCanonicalPaths, pathFilters],
+    [activeCanonicalPaths, pathFilters, platformByContentId],
   );
   const [taxonomyFilters, setTaxonomyFilters] = useState({
     funnelStage: "all",
@@ -748,9 +870,18 @@ export function ContentCommandCenter({
         <div className="mt-3 grid gap-2 sm:grid-cols-4">
           {(["platform", "campaign", "source", "content"] as const).map((key) => {
             const sourceKey = key === "content" ? "contentId" : key;
-            const values = Array.from(
-              new Set(activeCanonicalPaths.map((path) => path[sourceKey]).filter(Boolean)),
-            ) as string[];
+            const values =
+              key === "platform"
+                ? (Array.from(
+                    new Set(
+                      activeCanonicalPaths.map((path) =>
+                        path.contentId ? platformByContentId.get(path.contentId) : null,
+                      ),
+                    ),
+                  ).filter(Boolean) as string[])
+                : (Array.from(
+                    new Set(activeCanonicalPaths.map((path) => path[sourceKey]).filter(Boolean)),
+                  ) as string[]);
             return (
               <label key={key} className="text-3xs uppercase tracking-wider text-muted-foreground">
                 {key}
@@ -859,7 +990,16 @@ export function ContentCommandCenter({
         )}
       </section>
 
-      <MoneyOriginSection attributionSummary={attributionSummary} traffic={traffic} />
+      <MoneyOriginSection
+        attributionSummary={attributionSummary}
+        traffic={traffic}
+        canonicalPaths={activeCanonicalPaths}
+        callCashById={callCashById}
+        attributionModel={attributionModel}
+        pieces={pieces}
+        onFilterContent={(contentId) => setPathFilters((prev) => ({ ...prev, content: contentId }))}
+        onFilterPlatform={(platform) => setPathFilters((prev) => ({ ...prev, platform }))}
+      />
 
       <div className="grid gap-3 xl:grid-cols-[1.45fr_0.75fr]">
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
