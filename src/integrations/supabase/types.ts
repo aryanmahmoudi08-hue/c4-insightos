@@ -1098,6 +1098,7 @@ export type Database = {
           scheduled_date: string | null;
           scheduled_time: string | null;
           source_connector: string | null;
+          source_platform: string | null;
           thumbnail_url: string | null;
           title: string | null;
           topic: string | null;
@@ -1134,6 +1135,7 @@ export type Database = {
           scheduled_date?: string | null;
           scheduled_time?: string | null;
           source_connector?: string | null;
+          source_platform?: string | null;
           thumbnail_url?: string | null;
           title?: string | null;
           topic?: string | null;
@@ -1170,6 +1172,7 @@ export type Database = {
           scheduled_date?: string | null;
           scheduled_time?: string | null;
           source_connector?: string | null;
+          source_platform?: string | null;
           thumbnail_url?: string | null;
           title?: string | null;
           topic?: string | null;

@@ -163,6 +163,16 @@ function Attribution() {
     <>
       <TopBar title="Lead Attribution" subtitle="Content → lead → call → cash" showDateRange />
       <div className="p-6 space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-spectrum-mid/30 bg-spectrum-mid/5 px-3 py-2 text-xs">
+          <span className="text-muted-foreground">
+            This intelligence is now consolidated into Content Command Center's Unified money-origin
+            attribution section — with a selectable attribution model and platform icons. This page
+            stays available but won't gain new depth going forward.
+          </span>
+          <Link to="/content" className="shrink-0 font-medium text-primary hover:underline">
+            Open Content Command Center →
+          </Link>
+        </div>
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
           <StatCard
             label="Content touches"

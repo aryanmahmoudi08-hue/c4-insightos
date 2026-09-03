@@ -73,13 +73,14 @@ import {
   ContentCommandCenter,
   type ContentDemandSummary,
   type ContentWeeklySummary,
+  type ContentTrafficSummary,
+  type ContentAttributionSummary,
 } from "@/components/content-command-center";
 import { contentDemandFn, weeklyContentCheckFn } from "@/lib/content-signals.functions";
-import {
-  buildCanonicalLifecycleAttributionPath,
-  deduplicateCanonicalAttributionPaths,
-  type CanonicalLifecycleAttributionPath,
-} from "@/lib/acquisition";
+import type { AttributionModel, CanonicalLifecycleAttributionPath } from "@/lib/acquisition";
+import { buildAttributionPathsForModel, ATTRIBUTION_MODELS } from "@/lib/content-attribution";
+import { SOCIAL_PLATFORMS } from "@/lib/social-platform";
+import { PlatformIcon } from "@/components/platform-icon";
 
 type Platform = Database["public"]["Enums"]["content_platform"];
 type Angle = Database["public"]["Enums"]["content_angle"];
@@ -88,6 +89,8 @@ type PieceRow = {
   id: string;
   title: string | null;
   platform: Platform;
+  source_platform?: string | null;
+  cta?: string | null;
   hook: string | null;
   angle: Angle | null;
   posted_at: string | null;
@@ -151,24 +154,10 @@ const funnelChip = (stage: string | null) =>
     : CHIP_TONE_CLASSES.default;
 
 type ContentBusinessBridge = {
-  traffic: {
-    leads: number;
-    clients: number;
-    revenue: number;
-    revenuePerLead: number;
-    noSource: number;
-    channels: Array<Record<string, unknown>>;
-  };
-  attribution: {
-    touches: number;
-    leads: number;
-    attributed: number;
-    closes: number;
-    contractValue: number;
-    cashCollected: number;
-    paths: Array<Record<string, unknown>>;
-  };
+  traffic: ContentTrafficSummary;
+  attribution: ContentAttributionSummary;
   canonicalPaths: CanonicalLifecycleAttributionPath[];
+  canonicalPathsByModel?: Record<AttributionModel, CanonicalLifecycleAttributionPath[]>;
 };
 
 type Prefill = {
@@ -176,6 +165,7 @@ type Prefill = {
   title?: string;
   hook?: string;
   platform?: Platform;
+  source_platform?: string;
   angle?: Angle;
   url?: string;
   transcript?: string;
@@ -285,54 +275,54 @@ function ContentIntel() {
       }
       const fromISO = `${range.from}T00:00:00`;
       const toISO = `${range.to}T23:59:59`;
-      const [sources, leads, calls, clients, touches, attrLeads, closed, contentPaths] =
-        await Promise.all([
-          supabase
-            .from("traffic_sources")
-            .select("id, name, category, is_active")
-            .eq("org_id", orgId!),
-          supabase
-            .from("leads")
-            .select("id, traffic_source_id, status, created_at, first_touch_content_id")
-            .eq("org_id", orgId!)
-            .gte("created_at", fromISO)
-            .lte("created_at", toISO),
-          supabase
-            .from("calls")
-            .select("lead_id, closed, contract_value_cents, cash_collected_cents")
-            .eq("org_id", orgId!)
-            .gte("created_at", fromISO)
-            .lte("created_at", toISO),
-          supabase.from("clients").select("lead_id, contract_value_cents").eq("org_id", orgId!),
-          supabase
-            .from("lead_content_touches")
-            .select("id")
-            .eq("org_id", orgId!)
-            .gte("touched_at", fromISO)
-            .lte("touched_at", toISO),
-          supabase
-            .from("leads")
-            .select("id, first_touch_content_id")
-            .eq("org_id", orgId!)
-            .gte("created_at", fromISO)
-            .lte("created_at", toISO),
-          supabase
-            .from("calls")
-            .select("id, created_at, contract_value_cents, cash_collected_cents, lead_id")
-            .eq("org_id", orgId!)
-            .eq("closed", true)
-            .gte("created_at", fromISO)
-            .lte("created_at", toISO),
-          supabase
-            .from("content_pieces")
-            .select(
-              "id, title, platform, content_metrics!inner(views, leads_generated, closes, cash_collected_cents, captured_at)",
-            )
-            .eq("org_id", orgId!)
-            .gte("content_metrics.captured_at", fromISO)
-            .lte("content_metrics.captured_at", toISO)
-            .limit(100),
-        ]);
+      const [sources, leads, calls, clients, touches, closed, contentPaths] = await Promise.all([
+        supabase
+          .from("traffic_sources")
+          .select("id, name, category, is_active")
+          .eq("org_id", orgId!),
+        supabase
+          .from("leads")
+          .select(
+            "id, traffic_source_id, status, created_at, first_touch_content_id, source_content_id",
+          )
+          .eq("org_id", orgId!)
+          .gte("created_at", fromISO)
+          .lte("created_at", toISO),
+        supabase
+          .from("calls")
+          .select("lead_id, closed, contract_value_cents, cash_collected_cents")
+          .eq("org_id", orgId!)
+          .gte("created_at", fromISO)
+          .lte("created_at", toISO),
+        supabase.from("clients").select("lead_id, contract_value_cents").eq("org_id", orgId!),
+        // content_id + touched_at (not just a count) — feeds first_touch/
+        // last_touch/assisted_touch attribution models, which need the real
+        // per-lead touch sequence, not just a total.
+        supabase
+          .from("lead_content_touches")
+          .select("id, lead_id, content_id, touched_at")
+          .eq("org_id", orgId!)
+          .gte("touched_at", fromISO)
+          .lte("touched_at", toISO),
+        supabase
+          .from("calls")
+          .select(
+            "id, created_at, contract_value_cents, cash_collected_cents, lead_id, source_content_id",
+          )
+          .eq("org_id", orgId!)
+          .eq("closed", true)
+          .gte("created_at", fromISO)
+          .lte("created_at", toISO),
+        supabase
+          .from("content_pieces")
+          .select(
+            "id, title, platform, content_metrics!inner(views, leads_generated, closes, cash_collected_cents, captured_at)",
+          )
+          .eq("org_id", orgId!)
+          .gte("content_metrics.captured_at", fromISO)
+          .lte("content_metrics.captured_at", toISO)
+          .limit(100),
+      ]);
       const sourceRows = sources.data ?? [];
       const leadRows = leads.data ?? [];
       const callRows = calls.data ?? [];
@@ -394,32 +384,28 @@ function ContentIntel() {
         })
         .filter((row) => row.cash > 0 || row.leads > 0)
         .sort((a, b) => b.cash - a.cash);
-      const canonicalPaths = deduplicateCanonicalAttributionPaths(
-        (closed.data ?? [])
-          .map((call) => {
-            const lead = leadRows.find((row) => row.id === call.lead_id);
-            if (!lead?.first_touch_content_id || !call.id || !call.lead_id) return null;
-            return buildCanonicalLifecycleAttributionPath({
-              personKey: call.lead_id,
-              outcomeKey: call.id,
-              contentId: lead.first_touch_content_id,
-              callId: call.id,
-              events: [
-                { id: lead.id, type: "lead", at: lead.created_at },
-                { id: call.id, type: "call_closed", at: String(call.created_at ?? "") },
-              ],
-              evidence: {
-                model: "first_touch",
-                supportingEvents: ["lead", "content_touch", "call_closed"],
-                knownTouchpoints: 3,
-                sampleSize: closed.data?.length ?? 0,
-                directOutcomeLinked: true,
-                drilldownKey: `${lead.id}:${call.id}`,
-              },
-            });
-          })
-          .filter((path): path is CanonicalLifecycleAttributionPath => path !== null),
-      );
+      const modelInput = {
+        leads: leadRows.map((l) => ({
+          id: l.id,
+          created_at: l.created_at,
+          source_content_id: l.source_content_id,
+        })),
+        calls: (closed.data ?? []).map((c) => ({
+          id: c.id,
+          lead_id: c.lead_id,
+          created_at: c.created_at,
+          closed: true,
+          source_content_id: c.source_content_id,
+        })),
+        touches: touches.data ?? [],
+        sampleSize: closed.data?.length ?? 0,
+      };
+      const canonicalPathsByModel = Object.fromEntries(
+        ATTRIBUTION_MODELS.map((model) => [
+          model,
+          buildAttributionPathsForModel(model, modelInput),
+        ]),
+      ) as Record<AttributionModel, CanonicalLifecycleAttributionPath[]>;
       const totalLeads = leadRows.length;
       const totalRevenue = channels.reduce((sum, row) => sum + row.revenue, 0);
       return {
@@ -433,8 +419,8 @@ function ContentIntel() {
         },
         attribution: {
           touches: touches.data?.length ?? 0,
-          leads: attrLeads.data?.length ?? 0,
-          attributed: attrLeads.data?.filter((lead) => lead.first_touch_content_id).length ?? 0,
+          leads: leadRows.length,
+          attributed: leadRows.filter((lead) => lead.first_touch_content_id).length,
           closes: closed.data?.length ?? 0,
           contractValue: (closed.data ?? []).reduce(
             (sum, row) => sum + (row.contract_value_cents ?? 0),
@@ -446,7 +432,8 @@ function ContentIntel() {
           ),
           paths: pathRows.slice(0, 5),
         },
-        canonicalPaths,
+        canonicalPaths: canonicalPathsByModel.first_touch,
+        canonicalPathsByModel,
       } as ContentBusinessBridge;
     },
     retry: false,
@@ -459,7 +446,7 @@ function ContentIntel() {
       const { data, error } = await supabase
         .from("content_pieces")
         .select(
-          "id, title, platform, post_format, hook, angle, posted_at, url, funnel_stage, body, pipeline_status, mechanism, variation, variation_answers, content_metrics(captured_at, views, reach, likes, leads_generated, closes, cash_collected_cents, hook_retention_pct, avg_watch_pct, watch_time_seconds, three_sec_hold_pct, ten_sec_retention_pct, drop_off_seconds, comments, shares, saves, follower_views, non_follower_views, followers_gained, profile_visits, dms_generated, calls_booked, engagement_rate_pct, drop_off_rate_pct, cta_conversion_pct)",
+          "id, title, platform, source_platform, cta, post_format, hook, angle, posted_at, url, funnel_stage, body, pipeline_status, mechanism, variation, variation_answers, content_metrics(captured_at, views, reach, likes, leads_generated, closes, cash_collected_cents, hook_retention_pct, avg_watch_pct, watch_time_seconds, three_sec_hold_pct, ten_sec_retention_pct, drop_off_seconds, comments, shares, saves, follower_views, non_follower_views, followers_gained, profile_visits, dms_generated, calls_booked, engagement_rate_pct, drop_off_rate_pct, cta_conversion_pct)",
         )
         .eq("org_id", orgId!)
         .order("posted_at", { ascending: false, nullsFirst: false })
@@ -536,6 +523,7 @@ function ContentIntel() {
         title: String(form.get("title") || ""),
         hook: String(form.get("hook") || "") || null,
         platform: form.get("platform") as Platform,
+        source_platform: String(form.get("source_platform") || "") || null,
         angle: (form.get("angle") as Angle) || null,
         url: String(form.get("url") || "") || null,
         body: String(form.get("transcript") || "") || null,
@@ -842,6 +830,9 @@ function ContentIntel() {
           demand={commandDemand as ContentDemandSummary | undefined}
           weekly={commandWeekly as ContentWeeklySummary | undefined}
           canonicalPaths={businessBridge?.canonicalPaths}
+          canonicalPathsByModel={businessBridge?.canonicalPathsByModel}
+          traffic={businessBridge?.traffic}
+          attributionSummary={businessBridge?.attribution}
         />
 
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/70 pt-3">
@@ -1476,6 +1467,7 @@ function ContentForm({
   const [title, setTitle] = useState(prefill?.title ?? "");
   const [hook, setHook] = useState(prefill?.hook ?? "");
   const [platform, setPlatform] = useState<Platform>(prefill?.platform ?? "reel");
+  const [sourcePlatform, setSourcePlatform] = useState(prefill?.source_platform ?? "");
   const [angle, setAngle] = useState<Angle>(prefill?.angle ?? "authority");
   const [url, setUrl] = useState(prefill?.url ?? "");
   const [transcript, setTranscript] = useState(prefill?.transcript ?? "");
@@ -1524,6 +1516,7 @@ function ContentForm({
         e.preventDefault();
         const fd = new FormData(e.currentTarget);
         fd.set("platform", platform);
+        fd.set("source_platform", sourcePlatform);
         fd.set("angle", angle);
         fd.set("mechanism", mechanism);
         fd.set("variation", variation);
@@ -1573,9 +1566,9 @@ function ContentForm({
         <Label>Hook (first 3 sec)</Label>
         <Textarea name="hook" rows={2} value={hook} onChange={(e) => setHook(e.target.value)} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <div className="space-y-1.5">
-          <Label>Platform / format</Label>
+          <Label>Format</Label>
           <Select value={platform} onValueChange={(v) => setPlatform(v as Platform)}>
             <SelectTrigger>
               <SelectValue />
@@ -1597,6 +1590,23 @@ function ContentForm({
               ].map((p) => (
                 <SelectItem key={p} value={p}>
                   {p}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Platform</Label>
+          <Select value={sourcePlatform} onValueChange={setSourcePlatform}>
+            <SelectTrigger>
+              <SelectValue placeholder="Which network" />
+            </SelectTrigger>
+            <SelectContent>
+              {SOCIAL_PLATFORMS.filter((p) => p !== "Unknown / Unattributed").map((p) => (
+                <SelectItem key={p} value={p}>
+                  <span className="inline-flex items-center gap-1.5">
+                    <PlatformIcon platform={p} /> {p}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>

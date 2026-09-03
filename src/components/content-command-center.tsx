@@ -19,7 +19,10 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Layer,
+  Rectangle,
   ResponsiveContainer,
+  Sankey,
   Tooltip,
   XAxis,
   YAxis,
@@ -28,8 +31,11 @@ import { EmptyState } from "@/components/empty-state";
 import { MECHANISMS, MECHANISM_KEYS, type MechanismKey } from "@/lib/content-mechanisms";
 import { SPECTRUM_VAR, type SpectrumPosition } from "@/lib/spectrum";
 import { cn } from "@/lib/utils";
-import type { CanonicalLifecycleAttributionPath } from "@/lib/acquisition";
+import type { AttributionModel, CanonicalLifecycleAttributionPath } from "@/lib/acquisition";
 import { FUNNEL_STAGES, normalizeTaxonomy } from "@/lib/content-taxonomy";
+import { ATTRIBUTION_MODELS, ATTRIBUTION_MODEL_LABELS } from "@/lib/content-attribution";
+import { normalizeSocialPlatform } from "@/lib/social-platform";
+import { PlatformIcon } from "@/components/platform-icon";
 
 export type ContentCommandMetric = {
   captured_at?: string | null;
@@ -58,14 +64,29 @@ export type ContentCommandPiece = {
   title: string | null;
   hook?: string | null;
   platform: string;
+  /** True brand platform (Instagram/TikTok/YouTube/...), distinct from
+   * `platform` above (which is actually a format enum — reel/carousel/etc).
+   * Null on pieces logged before this field existed; never backfilled by
+   * guessing from the format. */
+  source_platform?: string | null;
   post_format?: string | null;
   funnel_stage?: string | null;
   posted_at?: string | null;
   mechanism?: string | null;
   variation?: string | null;
+  cta?: string | null;
   content_metrics?: ContentCommandMetric[] | null;
   url?: string | null;
 };
+
+/** Best-available real platform signal for a piece — prefers the explicit
+ * source_platform tag; falls back to normalizing the format enum (works for
+ * unambiguous values like "tiktok"/"youtube", honestly resolves to
+ * Unknown/Unattributed for ambiguous ones like "reel"/"carousel" rather than
+ * guessing which network). */
+function pieceSocialPlatform(piece: ContentCommandPiece) {
+  return normalizeSocialPlatform(piece.platform, piece.source_platform);
+}
 
 export type ContentDemandSummary = {
   mix: Record<string, number>;
@@ -86,11 +107,54 @@ export type ContentWeeklySummary = {
 
 type SortKey = "views" | "reach" | "engagement" | "cash";
 
+export type ContentTrafficChannel = {
+  id: string;
+  name: string;
+  category: string | null;
+  leads: number;
+  clients: number;
+  closeRate: number;
+  revenue: number;
+  revenuePerLead: number;
+};
+
+export type ContentTrafficSummary = {
+  leads: number;
+  clients: number;
+  revenue: number;
+  revenuePerLead: number;
+  noSource: number;
+  channels: ContentTrafficChannel[];
+};
+
+export type ContentAttributionPathRow = {
+  id: string;
+  title: string;
+  platform: string | null;
+  views: number;
+  leads: number;
+  closes: number;
+  cash: number;
+};
+
+export type ContentAttributionSummary = {
+  touches: number;
+  leads: number;
+  attributed: number;
+  closes: number;
+  contractValue: number;
+  cashCollected: number;
+  paths: ContentAttributionPathRow[];
+};
+
 type Props = {
   pieces: ContentCommandPiece[];
   demand?: ContentDemandSummary;
   weekly?: ContentWeeklySummary;
   canonicalPaths?: CanonicalLifecycleAttributionPath[];
+  canonicalPathsByModel?: Record<AttributionModel, CanonicalLifecycleAttributionPath[]>;
+  traffic?: ContentTrafficSummary;
+  attributionSummary?: ContentAttributionSummary;
 };
 
 const fmt = (value: number) =>
@@ -112,759 +176,211 @@ function interactionsOf(metric: ContentCommandMetric) {
   return (metric.likes ?? 0) + (metric.comments ?? 0) + (metric.saves ?? 0) + (metric.shares ?? 0);
 }
 
-type FlowNode = {
-  label: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  color: string;
-};
-
-type FlowLink = {
-  source: [number, number];
-  target: [number, number];
-  sourceWidth: number;
-  targetWidth: number;
-  color: string;
-  opacity?: number;
-  metadata?: {
-    pillar: string;
-    format: string;
-    conversionRate: string;
-    leads: string;
-    revenue: string;
-    attributionModel?: string;
-    coverage?: "direct" | "partial" | "inferred" | "unavailable";
-    strength?: "high" | "medium" | "low" | "unknown";
-    knownTouchpoints?: number;
-    sampleWarning?: string | null;
+/** Custom Sankey node — recharts' default renders a bare rectangle with no
+ * label. Mirrors the one already proven out on the old standalone Attribution
+ * page (same known recharts quirk: no containerWidth prop reaches a custom
+ * node renderer, so the terminal-node side is keyed off its name instead). */
+function MoneySankeyNode(props: unknown) {
+  const { x, y, width, height, payload } = props as {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    payload: { name: string };
   };
-};
-
-const pillars = [
-  {
-    name: "Educational",
-    color: "#38bdf8",
-    variations: [
-      { name: "Value", percentage: 35 },
-      { name: "Problem-Solution", percentage: 65 },
-    ],
-  },
-  {
-    name: "Credibility",
-    color: "#a855f7",
-    variations: [
-      { name: "Testimonial", percentage: 30 },
-      { name: "Case-Study", percentage: 70 },
-    ],
-  },
-  {
-    name: "Authoritative",
-    color: "#c084fc",
-    variations: [
-      { name: "Attention Driven (Lifestyle)", percentage: 42 },
-      { name: "Industry Leader", percentage: 58 },
-    ],
-  },
-  {
-    name: "Relatability",
-    color: "#ec4899",
-    variations: [
-      { name: "Storytelling", percentage: 55 },
-      { name: "Personality", percentage: 45 },
-    ],
-  },
-];
-
-const platforms = [
-  {
-    platform: "Instagram",
-    formats: ["Reels", "Carousels", "Story Sequences", "Static Posts"],
-  },
-  {
-    platform: "YouTube",
-    formats: ["Long Form", "Shorts", "Live / Streams"],
-  },
-  {
-    platform: "Twitter / X",
-    formats: ["Threads", "Long Form", "Media / Clips"],
-  },
-  {
-    platform: "LinkedIn",
-    formats: ["Carousels / PDFs", "Short Video", "Live"],
-  },
-  {
-    platform: "TikTok",
-    formats: ["Short Video", "Photo Mode", "Live"],
-  },
-];
-
-const hooks = [
-  { hook: "Client Win: 0 to $20K", retention: 71.0 },
-  { hook: "The $50K Month Breakdown", retention: 61.8 },
-  { hook: "Why Your Content Isn't Converting", retention: 58.4 },
-  { hook: "The Content Strategy We Used", retention: 54.7 },
-];
-
-const performance = [
-  { date: "Aug 1", views: 42, reach: 32, interactions: 12 },
-  { date: "Aug 4", views: 58, reach: 45, interactions: 17 },
-  { date: "Aug 7", views: 64, reach: 51, interactions: 21 },
-  { date: "Aug 10", views: 52, reach: 43, interactions: 19 },
-  { date: "Aug 13", views: 73, reach: 59, interactions: 28 },
-  { date: "Aug 16", views: 81, reach: 66, interactions: 31 },
-  { date: "Aug 19", views: 76, reach: 62, interactions: 29 },
-  { date: "Aug 22", views: 94, reach: 78, interactions: 38 },
-];
-
-const heatmap = [
-  { pillar: "Educational", variation: "Value", value: 35 },
-  { pillar: "Educational", variation: "Problem-Solution", value: 65 },
-  { pillar: "Credibility", variation: "Testimonial", value: 30 },
-  { pillar: "Credibility", variation: "Case-Study", value: 70 },
-  { pillar: "Authoritative", variation: "Attention Driven", value: 42 },
-  { pillar: "Authoritative", variation: "Industry Leader", value: 58 },
-  { pillar: "Relatability", variation: "Storytelling", value: 55 },
-  { pillar: "Relatability", variation: "Personality", value: 45 },
-];
-
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  const isOut = payload.name === "Cash Collected";
   return (
-    <div
-      className={[
-        "w-full rounded-xl border border-gray-800",
-        "bg-gray-900/50",
-        "shadow-[0_0_40px_rgba(0,0,0,0.18)]",
-        className,
-      ].join(" ")}
-    >
-      {children}
-    </div>
+    <Layer>
+      <Rectangle
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        fill="var(--spectrum-hot)"
+        fillOpacity={0.8}
+      />
+      <text
+        x={isOut ? x - 6 : x + width + 6}
+        y={y + height / 2}
+        textAnchor={isOut ? "end" : "start"}
+        dominantBaseline="middle"
+        className="fill-foreground text-[10px]"
+      >
+        {payload.name}
+      </text>
+    </Layer>
   );
 }
 
-function SankeyPath({
-  source,
-  target,
-  sourceWidth,
-  targetWidth,
-  color,
-  opacity = 0.42,
-  active = false,
-  onEnter,
-  onLeave,
-}: FlowLink & {
-  active?: boolean;
-  onEnter?: () => void;
-  onLeave?: () => void;
+/** Unified money-origin attribution (spec section 9): Platform → content →
+ * cash, as a real flow diagram, plus Traffic channel performance —
+ * consolidating what used to be two separate dashboards (standalone
+ * Attribution and Traffic pages) into Content Command Center. Every number
+ * here comes from `attributionSummary`/`traffic`, both computed in
+ * content.tsx from real content_metrics/traffic_sources/calls/payments
+ * rows — nothing in this section is decorative or hardcoded. */
+function MoneyOriginSection({
+  attributionSummary,
+  traffic,
+}: {
+  attributionSummary?: ContentAttributionSummary;
+  traffic?: ContentTrafficSummary;
 }) {
-  const [sx, sy] = source;
-  const [tx, ty] = target;
-
-  const curve = Math.max(90, (tx - sx) * 0.42);
-
-  const path = `
-    M ${sx} ${sy - sourceWidth / 2}
-    C ${sx + curve} ${sy - sourceWidth / 2},
-      ${tx - curve} ${ty - targetWidth / 2},
-      ${tx} ${ty - targetWidth / 2}
-    L ${tx} ${ty + targetWidth / 2}
-    C ${tx - curve} ${ty + targetWidth / 2},
-      ${sx + curve} ${sy + sourceWidth / 2},
-      ${sx} ${sy + sourceWidth / 2}
-    Z
-  `;
-
-  return (
-    <path
-      d={path}
-      fill={color}
-      fillOpacity={active ? Math.min(0.9, opacity + 0.34) : opacity}
-      stroke={color}
-      strokeOpacity={active ? 1 : opacity * 0.55}
-      strokeWidth={active ? "2.5" : "1"}
-      style={{ cursor: "pointer", filter: active ? `drop-shadow(0 0 8px ${color})` : undefined }}
-      onMouseEnter={onEnter}
-      onMouseLeave={onLeave}
-    />
-  );
-}
-
-function SankeyDiagram() {
-  const width = 1100;
-  const height = 600;
-
-  const columnX = {
-    pillar: 30,
-    variation: 240,
-    platform: 490,
-    leads: 805,
-    cash: 1015,
-  };
-
-  const pillarNodes: FlowNode[] = pillars.map((pillar, index) => ({
-    label: pillar.name,
-    x: columnX.pillar,
-    y: 90 + index * 120,
-    width: 112,
-    height: 42,
-    color: pillar.color,
-  }));
-
-  const variationNodes: FlowNode[] = pillars.flatMap((pillar, pillarIndex) =>
-    pillar.variations.map((variation, variationIndex) => ({
-      label: variation.name,
-      x: columnX.variation,
-      y: 55 + pillarIndex * 135 + variationIndex * 62,
-      width: 128,
-      height: 34,
-      color: pillar.color,
-    })),
-  );
-
-  const platformRows = platforms.flatMap((group) =>
-    group.formats.map((format) => ({
-      platform: group.platform,
-      format,
-    })),
-  );
-
-  const platformNodes: FlowNode[] = platformRows.map((item, index) => ({
-    label: `${item.platform} · ${item.format}`,
-    x: columnX.platform,
-    y: 25 + index * 39,
-    width: 195,
-    height: 27,
-    color:
-      item.platform === "Instagram"
-        ? "#38bdf8"
-        : item.platform === "YouTube"
-          ? "#a855f7"
-          : item.platform === "Twitter / X"
-            ? "#c084fc"
-            : item.platform === "LinkedIn"
-              ? "#60a5fa"
-              : "#ec4899",
-  }));
-
-  const links: FlowLink[] = [];
-
-  // Pillars -> variations
-  pillarNodes.forEach((pillarNode, pillarIndex) => {
-    const corresponding = variationNodes.slice(pillarIndex * 2, pillarIndex * 2 + 2);
-
-    corresponding.forEach((variationNode, variationIndex) => {
-      links.push({
-        source: [pillarNode.x + pillarNode.width, pillarNode.y + pillarNode.height / 2],
-        target: [variationNode.x, variationNode.y + variationNode.height / 2],
-        sourceWidth: 15,
-        targetWidth: 15,
-        color: pillarNode.color,
-        opacity: 0.46,
-      });
-    });
-  });
-
-  // Variations -> platform taxonomy
-  variationNodes.forEach((variationNode, index) => {
-    const targetStart = Math.floor((index / variationNodes.length) * platformNodes.length);
-
-    const firstTarget = platformNodes[targetStart % platformNodes.length];
-
-    links.push({
-      source: [variationNode.x + variationNode.width, variationNode.y + variationNode.height / 2],
-      target: [firstTarget.x, firstTarget.y + firstTarget.height / 2],
-      sourceWidth: 11,
-      targetWidth: 9,
-      color: variationNode.color,
-      opacity: 0.25,
-    });
-
-    const secondIndex = (targetStart + 1 + (index % 3)) % platformNodes.length;
-    const secondTarget = platformNodes[secondIndex];
-
-    links.push({
-      source: [variationNode.x + variationNode.width, variationNode.y + variationNode.height / 2],
-      target: [secondTarget.x, secondTarget.y + secondTarget.height / 2],
-      sourceWidth: 8,
-      targetWidth: 7,
-      color: variationNode.color,
-      opacity: 0.16,
-    });
-  });
-
-  const leadsNode = {
-    x: columnX.leads,
-    y: height / 2 - 42,
-    width: 110,
-    height: 84,
-  };
-
-  const cashNode = {
-    x: columnX.cash,
-    y: height / 2 - 48,
-    width: 72,
-    height: 96,
-  };
-
-  platformNodes.forEach((node, index) => {
-    links.push({
-      source: [node.x + node.width, node.y + node.height / 2],
-      target: [leadsNode.x, leadsNode.y + leadsNode.height / 2],
-      sourceWidth: index % 3 === 0 ? 11 : 8,
-      targetWidth: index % 3 === 0 ? 9 : 6,
-      color: node.color,
-      opacity: 0.18,
-    });
-  });
-
-  links.push({
-    source: [leadsNode.x + leadsNode.width, leadsNode.y + leadsNode.height / 2],
-    target: [cashNode.x, cashNode.y + cashNode.height / 2],
-    sourceWidth: 36,
-    targetWidth: 36,
-    color: "#ec4899",
-    opacity: 0.56,
-    metadata: {
-      pillar: "All content",
-      format: "Leads → Cash",
-      conversionRate: "17.4%",
-      leads: "46",
-      revenue: "$42,500",
-    },
-  });
-
-  const interactiveLinks = links.map((link, index) => ({
-    ...link,
-    metadata: link.metadata ?? {
-      pillar:
-        index < 8
-          ? (pillars[Math.floor(index / 2)]?.name ?? "Content")
-          : index < 24
-            ? (pillars[Math.floor((index - 8) / 4)]?.name ?? "Content")
-            : "Distribution",
-      format:
-        index < 8
-          ? (variationNodes[Math.floor(index / 2)]?.label ?? "Variation")
-          : index < 24
-            ? (platformNodes[Math.floor((index - 8) / 2)]?.label ?? "Platform")
-            : "Platform → Leads",
-      conversionRate: index < 24 ? "65.0%" : index < links.length - 1 ? "2.8%" : "17.4%",
-      leads: index >= 24 ? "46" : "—",
-      revenue: index === links.length - 1 ? "$42,500" : "—",
-    },
-  }));
-
-  const [hoveredLink, setHoveredLink] = useState<number | null>(null);
-  const hovered = hoveredLink == null ? null : interactiveLinks[hoveredLink];
+  const sankeyData = useMemo(() => {
+    const paths = attributionSummary?.paths ?? [];
+    const top = [...paths].sort((a, b) => b.cash - a.cash).slice(0, 8);
+    if (top.length === 0) return null;
+    const platformNames: string[] = Array.from(
+      new Set(top.map((p) => normalizeSocialPlatform(p.platform) as string)),
+    );
+    const nodes = [
+      ...top.map((p) => ({ name: p.title.length > 24 ? p.title.slice(0, 24) + "…" : p.title })),
+      ...platformNames.map((pl) => ({ name: pl })),
+      { name: "Cash Collected" },
+    ];
+    const platformIndex = (pl: string) => top.length + platformNames.indexOf(pl);
+    const cashNodeIndex = nodes.length - 1;
+    const links = [
+      ...top.map((p, i) => ({
+        source: i,
+        target: platformIndex(normalizeSocialPlatform(p.platform)),
+        value: Math.max(1, Math.round(p.cash / 100)),
+      })),
+      ...platformNames.map((pl) => ({
+        source: platformIndex(pl),
+        target: cashNodeIndex,
+        value: Math.max(
+          1,
+          Math.round(
+            top
+              .filter((p) => normalizeSocialPlatform(p.platform) === pl)
+              .reduce((s, p) => s + p.cash, 0) / 100,
+          ),
+        ),
+      })),
+    ];
+    return { nodes, links, platformNames };
+  }, [attributionSummary?.paths]);
 
   return (
-    <div className="w-full overflow-hidden rounded-xl border border-gray-800 bg-[#08090d]">
-      <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
-        <div>
-          <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-100">
-            Content → Platform → Cash Flow
-          </h3>
-          <p className="mt-1 text-xs text-slate-500">
-            Five-stage content attribution and conversion architecture
+    <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr]">
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
+        <div className="mb-2">
+          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Unified money-origin attribution
+          </div>
+          <div className="mt-0.5 text-base font-semibold">Platform → content → cash collected</div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Top revenue-driving content, grouped by real platform — consolidated from the former
+            standalone Lead Attribution page.
           </p>
         </div>
-
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500">
-          <span className="h-2 w-2 rounded-full bg-cyan-400" />
-          Reach
-          <span className="h-2 w-2 rounded-full bg-purple-500" />
-          Conversion
-          <span className="h-2 w-2 rounded-full bg-pink-500" />
-          Revenue
-        </div>
+        {sankeyData ? (
+          <>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <Sankey
+                  data={sankeyData}
+                  nodePadding={18}
+                  nodeWidth={10}
+                  linkCurvature={0.5}
+                  link={{ stroke: "var(--spectrum-hot)", strokeOpacity: 0.25 }}
+                  node={<MoneySankeyNode />}
+                >
+                  <Tooltip formatter={(v: number) => money(v * 100)} />
+                </Sankey>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-3xs text-muted-foreground">
+              {sankeyData.platformNames.map((pl) => (
+                <span key={pl} className="inline-flex items-center gap-1">
+                  <PlatformIcon platform={pl} className="h-3 w-3" /> {pl}
+                </span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <EmptyState
+            icon={<ArrowUpRight className="h-4 w-4" />}
+            title="No attributed content yet"
+            description="Log content_metrics rows with leads_generated + cash_collected_cents to populate this."
+          />
+        )}
       </div>
 
-      <div className="relative w-full overflow-x-auto">
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          className="h-[600px] min-w-[1050px] w-full"
-          preserveAspectRatio="xMidYMid meet"
-        >
-          <defs>
-            <filter id="neonGlow">
-              <feGaussianBlur stdDeviation="4" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-
-            <linearGradient id="cashGradient" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0%" stopColor="#8b5cf6" />
-              <stop offset="100%" stopColor="#ec4899" />
-            </linearGradient>
-          </defs>
-
-          {interactiveLinks.map((link, index) => (
-            <SankeyPath
-              key={index}
-              {...link}
-              active={hoveredLink === index}
-              onEnter={() => setHoveredLink(index)}
-              onLeave={() => setHoveredLink(null)}
-            />
-          ))}
-
-          {/* Pillar nodes */}
-          {pillarNodes.map((node) => (
-            <g key={node.label}>
-              <rect
-                x={node.x}
-                y={node.y}
-                width={node.width}
-                height={node.height}
-                rx="10"
-                fill="#10131a"
-                stroke={node.color}
-                strokeOpacity="0.45"
-              />
-              <circle
-                cx={node.x + 14}
-                cy={node.y + node.height / 2}
-                r="3"
-                fill={node.color}
-                filter="url(#neonGlow)"
-              />
-              <text x={node.x + 25} y={node.y + 26} fill="#f8fafc" fontSize="12" fontWeight="600">
-                {node.label}
-              </text>
-            </g>
-          ))}
-
-          {/* Variation nodes */}
-          {variationNodes.map((node) => (
-            <g key={node.label}>
-              <rect
-                x={node.x}
-                y={node.y}
-                width={node.width}
-                height={node.height}
-                rx="8"
-                fill="#0d1017"
-                stroke={node.color}
-                strokeOpacity="0.3"
-              />
-              <text x={node.x + 12} y={node.y + 21} fill="#cbd5e1" fontSize="10" fontWeight="500">
-                {node.label.length > 21 ? `${node.label.slice(0, 20)}…` : node.label}
-              </text>
-            </g>
-          ))}
-
-          {/* Platform / format nodes */}
-          {platformNodes.map((node) => (
-            <g key={node.label}>
-              <rect
-                x={node.x}
-                y={node.y}
-                width={node.width}
-                height={node.height}
-                rx="7"
-                fill="#0a0d13"
-                stroke={node.color}
-                strokeOpacity="0.2"
-              />
-              <circle cx={node.x + 10} cy={node.y + node.height / 2} r="2.5" fill={node.color} />
-              <text x={node.x + 19} y={node.y + 17} fill="#94a3b8" fontSize="9">
-                {node.label}
-              </text>
-            </g>
-          ))}
-
-          {/* Leads node */}
-          <g>
-            <rect
-              x={leadsNode.x}
-              y={leadsNode.y}
-              width={leadsNode.width}
-              height={leadsNode.height}
-              rx="14"
-              fill="#13111b"
-              stroke="#a855f7"
-              strokeWidth="1.5"
-              filter="url(#neonGlow)"
-            />
-            <text
-              x={leadsNode.x + leadsNode.width / 2}
-              y={leadsNode.y + 36}
-              textAnchor="middle"
-              fill="#c084fc"
-              fontSize="10"
-              fontWeight="700"
-              letterSpacing="2"
-            >
-              LEADS
-            </text>
-            <text
-              x={leadsNode.x + leadsNode.width / 2}
-              y={leadsNode.y + 57}
-              textAnchor="middle"
-              fill="#f8fafc"
-              fontSize="18"
-              fontWeight="700"
-            >
-              FLOW
-            </text>
-          </g>
-
-          {/* Cash node */}
-          <g>
-            <rect
-              x={cashNode.x}
-              y={cashNode.y}
-              width={cashNode.width}
-              height={cashNode.height}
-              rx="14"
-              fill="url(#cashGradient)"
-              fillOpacity="0.16"
-              stroke="#ec4899"
-              strokeWidth="1.5"
-              filter="url(#neonGlow)"
-            />
-            <text
-              x={cashNode.x + cashNode.width / 2}
-              y={cashNode.y + 42}
-              textAnchor="middle"
-              fill="#f9a8d4"
-              fontSize="9"
-              fontWeight="700"
-              letterSpacing="1.4"
-            >
-              CASH
-            </text>
-            <text
-              x={cashNode.x + cashNode.width / 2}
-              y={cashNode.y + 58}
-              textAnchor="middle"
-              fill="#ffffff"
-              fontSize="9"
-              fontWeight="700"
-              letterSpacing="1.4"
-            >
-              COLLECTED
-            </text>
-          </g>
-        </svg>
-        {hovered?.metadata && (
-          <div
-            className="pointer-events-none absolute z-10 w-56 rounded-xl border border-slate-700/80 bg-slate-950/95 p-3 text-xs text-slate-100 shadow-2xl shadow-black/50 backdrop-blur"
-            style={{
-              left: `${Math.min(78, Math.max(2, (hovered.target[0] / width) * 100 - 7))}%`,
-              top: `${Math.min(78, Math.max(3, (hovered.target[1] / height) * 100 - 8))}%`,
-            }}
-          >
-            <div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
-              <span className="font-semibold uppercase tracking-[0.12em] text-slate-400">
-                Attribution path
-              </span>
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: hovered.color }} />
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex justify-between gap-3">
-                <span className="text-slate-500">Pillar</span>
-                <span className="text-right font-medium">{hovered.metadata.pillar}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-slate-500">Platform / format</span>
-                <span className="max-w-[125px] text-right font-medium">
-                  {hovered.metadata.format}
-                </span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-slate-500">Conversion</span>
-                <span className="font-mono text-cyan-300">{hovered.metadata.conversionRate}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-slate-500">Leads</span>
-                <span className="font-mono text-purple-300">{hovered.metadata.leads}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-slate-500">Revenue</span>
-                <span className="font-mono text-pink-300">{hovered.metadata.revenue}</span>
-                {hovered.metadata.coverage && (
-                  <>
-                    <span className="text-slate-500">Attribution</span>
-                    <span className="font-mono text-cyan-300">
-                      {hovered.metadata.coverage} · {hovered.metadata.strength ?? "unknown"}
-                    </span>
-                  </>
-                )}
-                {hovered.metadata.knownTouchpoints != null && (
-                  <>
-                    <span className="text-slate-500">Touchpoints</span>
-                    <span className="font-mono text-slate-200">
-                      {hovered.metadata.knownTouchpoints}
-                    </span>
-                  </>
-                )}
-                {hovered.metadata.sampleWarning && (
-                  <div className="col-span-2 mt-1 text-amber-300">
-                    {hovered.metadata.sampleWarning}
-                  </div>
-                )}
-              </div>
-            </div>
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
+        <div className="mb-2">
+          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Traffic & channel performance
           </div>
+          <div className="mt-0.5 text-base font-semibold">Revenue by traffic source</div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Consolidated from the standalone Traffic page — manage sources and tracking URLs there;
+            this is the performance read.
+          </p>
+        </div>
+        {traffic && traffic.channels.length ? (
+          <div className="space-y-2">
+            {traffic.channels.map((c) => (
+              <div key={c.id} className="rounded-lg border border-border/60 bg-muted/10 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 truncate text-xs font-medium">
+                    <PlatformIcon platform={normalizeSocialPlatform(c.category ?? c.name)} />
+                    {c.name}
+                  </span>
+                  <span className="font-mono text-xs text-spectrum-hot">
+                    ${c.revenue.toLocaleString()}
+                  </span>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-3xs text-muted-foreground">
+                  <span>{c.leads} leads</span>
+                  <span>{c.clients} clients</span>
+                  <span>{c.closeRate.toFixed(0)}% close</span>
+                  <span>${c.revenuePerLead}/lead</span>
+                </div>
+              </div>
+            ))}
+            {traffic.noSource > 0 && (
+              <div className="text-3xs text-muted-foreground">
+                {traffic.noSource} lead{traffic.noSource === 1 ? "" : "s"} with no traffic source
+                attached — unattributed, not guessed.
+              </div>
+            )}
+          </div>
+        ) : (
+          <EmptyState
+            icon={<Radio className="h-4 w-4" />}
+            title="No traffic channels yet"
+            description="Add traffic sources on the Traffic page and tag leads with a source to populate this."
+            action={
+              <Link to="/traffic" className="text-xs text-primary hover:underline">
+                Open Traffic →
+              </Link>
+            }
+          />
         )}
       </div>
     </div>
   );
 }
 
-function MechanismTaxonomy() {
-  return (
-    <Card className="p-5">
-      <div className="mb-5 flex items-start justify-between">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Intelligence
-          </div>
-          <h3 className="mt-1 text-sm font-semibold text-slate-100">
-            Mechanism & Variation Taxonomy
-          </h3>
-        </div>
-
-        <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-purple-300">
-          4 pillars
-        </span>
-      </div>
-
-      <div className="space-y-5">
-        {pillars.map((pillar) => (
-          <div key={pillar.name}>
-            <div className="mb-2 flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: pillar.color }} />
-              <span className="text-xs font-semibold text-slate-200">{pillar.name}</span>
-            </div>
-
-            <div className="space-y-2 pl-4">
-              {pillar.variations.map((variation) => (
-                <div key={variation.name} className="flex items-center justify-between">
-                  <span className="text-[11px] text-slate-500">{variation.name}</span>
-                  <span className="text-[11px] font-semibold" style={{ color: pillar.color }}>
-                    {variation.percentage}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function TopHooks() {
-  return (
-    <Card className="p-5">
-      <div className="mb-5">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-          Creative Quality
-        </div>
-        <h3 className="mt-1 text-sm font-semibold text-slate-100">Top Hooks by Retention</h3>
-      </div>
-
-      <div className="space-y-4">
-        {hooks.map((item, index) => (
-          <div
-            key={item.hook}
-            className="flex items-center gap-3 border-b border-gray-800/70 pb-3 last:border-0 last:pb-0"
-          >
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.03] text-[10px] font-semibold text-slate-500">
-              0{index + 1}
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-xs font-medium text-slate-200">{item.hook}</div>
-
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-800">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500"
-                  style={{ width: `${item.retention}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="shrink-0 text-sm font-semibold text-pink-400">
-              {item.retention.toFixed(1)}%
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function MechanismVariationHeatmap() {
-  const intensity = (value: number) => {
-    if (value >= 65) return "bg-fuchsia-500";
-    if (value >= 55) return "bg-purple-500";
-    if (value >= 45) return "bg-purple-700";
-    if (value >= 35) return "bg-purple-900";
-    return "bg-slate-800";
-  };
-
-  return (
-    <Card className="p-5">
-      <div className="mb-5">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-          Creative Intelligence
-        </div>
-        <h3 className="mt-1 text-sm font-semibold text-slate-100">Mechanism × Variation Heatmap</h3>
-      </div>
-
-      <div className="grid grid-cols-[1.1fr_1fr_1fr] gap-2 text-[10px]">
-        <div />
-        <div className="text-center text-slate-500">Variation A</div>
-        <div className="text-center text-slate-500">Variation B</div>
-
-        {pillars.map((pillar) => {
-          const rows = heatmap.filter((item) => item.pillar === pillar.name);
-
-          return (
-            <React.Fragment key={pillar.name}>
-              <div className="flex items-center text-xs text-slate-300">{pillar.name}</div>
-
-              {rows.map((item) => (
-                <div
-                  key={`${item.pillar}-${item.variation}`}
-                  className={`group relative flex min-h-[62px] items-center justify-center rounded-lg border border-white/5 ${intensity(
-                    item.value,
-                  )}`}
-                >
-                  <div className="text-center text-sm font-bold text-white">{item.value}</div>
-
-                  <div className="absolute inset-x-2 bottom-1 hidden truncate text-center text-[8px] text-white/65 group-hover:block">
-                    {item.variation}
-                  </div>
-                </div>
-              ))}
-            </React.Fragment>
-          );
-        })}
-      </div>
-
-      <div className="mt-5">
-        <div className="mb-2 flex justify-between text-[9px] uppercase tracking-wider text-slate-600">
-          <span>Low</span>
-          <span>High performance</span>
-        </div>
-
-        <div className="h-2 rounded-full bg-gradient-to-r from-slate-800 via-purple-700 to-fuchsia-500" />
-      </div>
-    </Card>
-  );
-}
-
-export function ContentCommandCenter({ pieces, demand, weekly, canonicalPaths = [] }: Props) {
+export function ContentCommandCenter({
+  pieces,
+  demand,
+  weekly,
+  canonicalPaths = [],
+  canonicalPathsByModel,
+  traffic,
+  attributionSummary,
+}: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("views");
   const [selectedPath, setSelectedPath] = useState<CanonicalLifecycleAttributionPath | null>(null);
+  // Transparent attribution model (spec: "show the strength and quality of
+  // every attribution path" across a selectable model). Falls back to the
+  // single `canonicalPaths` prop (always first-touch) when the caller hasn't
+  // wired the full per-model map — e.g. the devBypass mock path.
+  const [attributionModel, setAttributionModel] = useState<AttributionModel>("first_touch");
+  const activeCanonicalPaths = canonicalPathsByModel?.[attributionModel] ?? canonicalPaths;
   const [pathFilters, setPathFilters] = useState({
     platform: "all",
     campaign: "all",
@@ -873,7 +389,7 @@ export function ContentCommandCenter({ pieces, demand, weekly, canonicalPaths = 
   });
   const filteredCanonicalPaths = useMemo(
     () =>
-      canonicalPaths.filter((path) => {
+      activeCanonicalPaths.filter((path) => {
         const matches = (filter: string, value: string | null) =>
           filter === "all" || value === filter;
         return (
@@ -883,7 +399,7 @@ export function ContentCommandCenter({ pieces, demand, weekly, canonicalPaths = 
           matches(pathFilters.content, path.contentId)
         );
       }),
-    [canonicalPaths, pathFilters],
+    [activeCanonicalPaths, pathFilters],
   );
   const [taxonomyFilters, setTaxonomyFilters] = useState({
     funnelStage: "all",
@@ -1206,16 +722,34 @@ export function ContentCommandCenter({ pieces, demand, weekly, canonicalPaths = 
             </div>
             <div className="mt-0.5 text-base font-semibold">Verified lifecycle paths</div>
           </div>
-          <div className="text-3xs text-muted-foreground">
-            {filteredCanonicalPaths.length} path{filteredCanonicalPaths.length === 1 ? "" : "s"} ·
-            no inferred revenue
+          <div className="flex flex-col items-end gap-1">
+            <label className="flex items-center gap-1.5 text-3xs uppercase tracking-wider text-muted-foreground">
+              Attribution model
+              <select
+                value={attributionModel}
+                onChange={(e) => setAttributionModel(e.target.value as AttributionModel)}
+                className="h-7 rounded-md border border-border bg-background px-2 text-2xs normal-case tracking-normal text-foreground"
+              >
+                {ATTRIBUTION_MODELS.map((m) => (
+                  <option key={m} value={m}>
+                    {ATTRIBUTION_MODEL_LABELS[m]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="text-3xs text-muted-foreground">
+              {filteredCanonicalPaths.length} path{filteredCanonicalPaths.length === 1 ? "" : "s"} ·{" "}
+              {attributionModel === "assisted_touch"
+                ? "assisted credit — always inferred, never direct"
+                : "no inferred revenue"}
+            </div>
           </div>
         </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-4">
           {(["platform", "campaign", "source", "content"] as const).map((key) => {
             const sourceKey = key === "content" ? "contentId" : key;
             const values = Array.from(
-              new Set(canonicalPaths.map((path) => path[sourceKey]).filter(Boolean)),
+              new Set(activeCanonicalPaths.map((path) => path[sourceKey]).filter(Boolean)),
             ) as string[];
             return (
               <label key={key} className="text-3xs uppercase tracking-wider text-muted-foreground">
@@ -1324,6 +858,8 @@ export function ContentCommandCenter({ pieces, demand, weekly, canonicalPaths = 
           </div>
         )}
       </section>
+
+      <MoneyOriginSection attributionSummary={attributionSummary} traffic={traffic} />
 
       <div className="grid gap-3 xl:grid-cols-[1.45fr_0.75fr]">
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
@@ -1554,7 +1090,10 @@ export function ContentCommandCenter({ pieces, demand, weekly, canonicalPaths = 
                                 {titleFor(piece)}
                               </div>
                               <div className="mt-1 flex items-center gap-2 text-3xs capitalize text-muted-foreground">
-                                <span>{platformFor(piece.platform)}</span>
+                                <span className="inline-flex items-center gap-1">
+                                  <PlatformIcon platform={pieceSocialPlatform(piece)} />
+                                  {platformFor(piece.platform)}
+                                </span>
                                 {piece.mechanism && <span>· {piece.mechanism}</span>}
                                 <span>· open post ↗</span>
                               </div>
@@ -1565,7 +1104,10 @@ export function ContentCommandCenter({ pieces, demand, weekly, canonicalPaths = 
                                 {titleFor(piece)}
                               </div>
                               <div className="mt-1 flex items-center gap-2 text-3xs capitalize text-muted-foreground">
-                                <span>{platformFor(piece.platform)}</span>
+                                <span className="inline-flex items-center gap-1">
+                                  <PlatformIcon platform={pieceSocialPlatform(piece)} />
+                                  {platformFor(piece.platform)}
+                                </span>
                                 {piece.mechanism && <span>· {piece.mechanism}</span>}
                               </div>
                             </div>
@@ -1603,24 +1145,6 @@ export function ContentCommandCenter({ pieces, demand, weekly, canonicalPaths = 
         </div>
 
         <SignalLayer demand={demand} weekly={weekly} mix={mix} />
-      </div>
-
-      <div className="border-t border-border/70 pt-5">
-        <div className="mb-4 mt-8 text-sm font-bold uppercase tracking-[0.16em] text-foreground first:mt-0">
-          Level 3 · Content-to-cash attribution
-        </div>
-        <div className="grid w-full grid-cols-12 items-start gap-6">
-          <div className="col-span-12 min-w-0 xl:col-span-8">
-            <SankeyDiagram />
-          </div>
-          <div className="col-span-12 min-w-0 xl:col-span-4">
-            <div className="flex w-full flex-col gap-6">
-              <MechanismTaxonomy />
-              <TopHooks />
-              <MechanismVariationHeatmap />
-            </div>
-          </div>
-        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

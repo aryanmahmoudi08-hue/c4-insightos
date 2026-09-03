@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
@@ -317,6 +317,16 @@ function Traffic() {
         showDateRange
       />
       <div className="p-4 md:p-6 space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-spectrum-mid/30 bg-spectrum-mid/5 px-3 py-2 text-xs">
+          <span className="text-muted-foreground">
+            Manage sources and tracking URLs here. The revenue/close-rate performance read on these
+            same channels is also consolidated into Content Command Center, alongside content
+            performance, so they're not two disconnected dashboards.
+          </span>
+          <Link to="/content" className="shrink-0 font-medium text-primary hover:underline">
+            Open Content Command Center →
+          </Link>
+        </div>
         {/* Plain-language headline numbers */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard
