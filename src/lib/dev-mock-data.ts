@@ -1200,6 +1200,8 @@ export function mockVslInsights() {
         title: "Drop-off before the price reveal",
         body: "Roughly a third of viewers exit in the 60 seconds before price is shown.",
         recommendation: "Move a proof stack earlier to sustain intent through the price reveal.",
+        evidence: "pct_75_reached vs pct_90_reached across the last 4 snapshots",
+        confidence: 0.6,
       },
     ],
     double_down: [
@@ -1207,14 +1209,23 @@ export function mockVslInsights() {
         title: "Hook retention above account average",
         body: "First 15 seconds hold significantly better than your other VSLs.",
         recommendation: "Reuse this exact opening structure on the next VSL.",
+        evidence: "pct_25_reached trend across snapshots",
+        confidence: 0.55,
       },
     ],
     drop_off_moments: [
       {
         timestamp: "2:14",
         why: "Transition into mechanism explanation runs long without a pattern interrupt.",
+        confidence: 0.5,
       },
     ],
+    largest_leak: {
+      stage: "75% -> 90% watched",
+      why: "The steepest proportional drop across the last 4 snapshots.",
+      recommendation: "Test moving the proof stack earlier, ahead of the price reveal.",
+      confidence: 0.6,
+    },
     snapshotCount: 4,
   };
 }
@@ -1412,7 +1423,53 @@ export function mockVslSnapshots(vslId: string) {
     avg_percent_watched: 34 + (variant % 20) + i * 2,
     page_loads: 1200 + variant * 2 + i * 150,
     engagement_json: null,
+    pct_25_reached: 380 + variant + i * 60,
+    pct_50_reached: 300 + Math.round(variant * 0.8) + i * 45,
+    pct_75_reached: 220 + Math.round(variant * 0.6) + i * 30,
+    pct_90_reached: 170 + Math.round(variant * 0.4) + i * 20,
+    pct_100_reached: 120 + Math.round(variant * 0.3) + i * 15,
+    cta_clicks: 60 + Math.round(variant * 0.2) + i * 8,
+    cta_click_rate: null,
   }));
+}
+
+export function mockVslFunnel(vslId: string) {
+  const variant = [...vslId].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 140;
+  return {
+    pageLoads: 1900 + variant * 2,
+    totalPlays: 1160 + variant,
+    pct25Reached: 860 + variant,
+    pct50Reached: 645 + Math.round(variant * 0.8),
+    pct75Reached: 460 + Math.round(variant * 0.6),
+    pct90Reached: 350 + Math.round(variant * 0.4),
+    pct100Reached: 245 + Math.round(variant * 0.3),
+    ctaClicks: 108 + Math.round(variant * 0.2),
+    applicationCount: 22 + (variant % 12),
+    showCount: 14 + (variant % 8),
+    closeCount: 4 + (variant % 4),
+    cashCents: 320000 + variant * 900,
+  };
+}
+
+export function mockVslActionQueue() {
+  return [
+    {
+      vsl_id: "mock-vsl-2",
+      vsl_name: "Webinar Replay",
+      action: "review_retention",
+      reason: "Completion rate is below the 25% review threshold.",
+      status: "queued" as const,
+      recommendation_id: null,
+    },
+    {
+      vsl_id: "mock-testimonial-2",
+      vsl_name: "Casey — First qualified calls in 30 days",
+      action: "review_conversion",
+      reason: "Viewer-to-lifecycle joins are unavailable without verified IDs.",
+      status: "running" as const,
+      recommendation_id: "mock-rec-1",
+    },
+  ];
 }
 
 export function mockSearchLeads() {

@@ -60,8 +60,13 @@ import {
   importCsvRows,
   analyzeVsl,
   transcribeAudio,
+  listVslActionQueue,
+  upsertVslRecommendation,
+  setVslRecommendationStatus,
+  getVslFunnelData,
   type VslKind,
 } from "@/lib/vsl.functions";
+import { buildVslFunnel, deriveLargestLeak } from "@/lib/media-intelligence";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -70,13 +75,15 @@ import {
   mockVslInsights,
   mockTranscriptLines,
   mockFaqVideos,
+  mockVslActionQueue,
+  mockVslFunnel,
   withMockDelay,
 } from "@/lib/dev-mock-data";
 import { MECHANISM_KEYS, MECHANISMS, type MechanismKey } from "@/lib/content-mechanisms";
 import { cn } from "@/lib/utils";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { VideoEmbed } from "@/components/video-embed";
-import { VideoActionQueue } from "@/components/video-action-queue";
+import { VideoActionQueue, type VideoActionQueueItem } from "@/components/video-action-queue";
 import { AttributionPathPanel, type AttributionPath } from "@/components/attribution-path-panel";
 
 export const Route = createFileRoute("/_authenticated/vsl")({ component: VslPage });
@@ -114,47 +121,53 @@ function mmss(sec: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function VslAttributionPanel({
-  vsls,
-  providerAvailable,
-}: {
-  vsls: any[];
-  providerAvailable: boolean;
-}) {
-  const stages = [
-    ["landing", "Landing / player impressions"],
-    ["plays", "Unique plays"],
-    ["25", "25% watched"],
-    ["50", "50% watched"],
-    ["75", "75% watched"],
-    ["90", "90% watched"],
-    ["completed", "Completed"],
-    ["cta-shown", "CTA shown"],
-    ["cta-clicked", "CTA clicked"],
-    ["application", "Application / booking"],
-    ["show", "Show"],
-    ["close", "Close"],
-    ["cash", "Cash"],
-  ] as const;
+/**
+ * Per-VSL funnel built from real snapshot data (Wistia-native), and real
+ * leads/calls tagged to this VSL via source_vsl_id (CRM/cash) — no stage is
+ * ever populated from an inferred or estimated figure. A stage with no
+ * connected data renders "Unavailable" rather than a zero.
+ */
+function VslFunnelPanel({ vsl }: { vsl: any }) {
+  const { devBypass } = useAuth();
+  const loadFunnel = useServerFn(getVslFunnelData);
+  const { data: funnelInput } = useQuery({
+    queryKey: ["vsl_funnel", vsl.id, devBypass],
+    queryFn: () =>
+      devBypass ? Promise.resolve(mockVslFunnel(vsl.id)) : loadFunnel({ data: { vsl_id: vsl.id } }),
+  });
+  if (!funnelInput) return null;
+  const stages = buildVslFunnel(funnelInput);
+  const leak = deriveLargestLeak(stages);
   const path: AttributionPath = {
-    id: "vsl-full-funnel",
-    label: "VSL Video → Post-Booking → Testimonial → FAQ / Objection → Close → Cash",
-    stages: stages.map(([key, label], index) => ({
-      key,
-      label,
-      value: index === 0 && providerAvailable ? vsls.length : null,
-      detail:
-        index === 0 && providerAvailable
-          ? "VSL media records"
-          : "Not Connected — requires verified Wistia/lifecycle events",
+    id: `vsl-funnel-${vsl.id}`,
+    label: "Landing → play → milestones → completion → CTA → booking → show → close → cash",
+    stages: stages.map((s) => ({
+      key: s.key,
+      label: s.label,
+      value: s.value,
+      detail: `${s.source === "unavailable" ? "Unavailable" : s.source.replace("_", "-")} · ${s.detail}`,
     })),
   };
   return (
-    <AttributionPathPanel
-      title="VSL attribution & full funnel"
-      subtitle="Each stage supports drill-down when verified IDs and video events are available"
-      paths={[path]}
-    />
+    <div className="border-t border-border p-4 space-y-3">
+      <AttributionPathPanel
+        title="Full funnel"
+        subtitle="Wistia-native, page-event, CRM, and cash data are labeled separately at each stage"
+        paths={[path]}
+      />
+      {leak && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs">
+          <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-2xs text-destructive">
+            <TrendingDown className="h-3 w-3" /> Largest leak
+          </div>
+          <div className="mt-1 text-foreground">
+            {leak.fromLabel} → {leak.toLabel}:{" "}
+            <span className="font-mono">{leak.dropRatePct.toFixed(1)}%</span> drop
+          </div>
+          <div className="mt-1 text-muted-foreground">→ {leak.recommendedTest}</div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -162,9 +175,37 @@ function VslPage() {
   const load = useServerFn(listVsls);
   const { devBypass } = useAuth();
   const { range } = useDateRange();
+  const qc = useQueryClient();
   const { data: vsls = [], isLoading } = useQuery({
     queryKey: ["vsls", devBypass],
     queryFn: (): Promise<any[]> => (devBypass ? Promise.resolve(mockVsls()) : load()),
+  });
+  const loadActionQueue = useServerFn(listVslActionQueue);
+  const { data: actionQueueItems = [] } = useQuery({
+    queryKey: ["vsl_action_queue", devBypass],
+    queryFn: (): Promise<VideoActionQueueItem[]> =>
+      devBypass ? Promise.resolve(mockVslActionQueue()) : loadActionQueue(),
+  });
+  const upsertRec = useServerFn(upsertVslRecommendation);
+  const setRecStatus = useServerFn(setVslRecommendationStatus);
+  const statusMutation = useMutation({
+    mutationFn: async ({
+      item,
+      status,
+    }: {
+      item: VideoActionQueueItem;
+      status: VideoActionQueueItem["status"];
+    }) => {
+      if (devBypass) return;
+      if (item.recommendation_id) {
+        return setRecStatus({ data: { id: item.recommendation_id, status } });
+      }
+      return upsertRec({
+        data: { vsl_id: item.vsl_id, action: item.action, reason: item.reason, status },
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vsl_action_queue"] }),
+    onError: (e: any) => toast.error(e.message || "Failed to update action status"),
   });
   const [kind, setKind] = useState<VslKind | "faq">("main");
 
@@ -188,12 +229,10 @@ function VslPage() {
       />
       <div className="p-4 md:p-6 space-y-5">
         <VideoActionQueue
+          items={actionQueueItems}
           providerAvailable={vsls.some((v: any) => Boolean(v.wistia_video_id))}
           mediaCount={vsls.length}
-        />
-        <VslAttributionPanel
-          vsls={vsls}
-          providerAvailable={vsls.some((v: any) => Boolean(v.wistia_video_id))}
+          onStatusChange={(item, status) => statusMutation.mutate({ item, status })}
         />
         <Tabs value={kind} onValueChange={(v) => setKind(v as VslKind | "faq")}>
           <TabsList className="w-full justify-start">
@@ -460,8 +499,19 @@ function VslCard({ vsl, range }: { vsl: any; range: { from: string; to: string }
 
       {insights && <InsightsBlock insights={insights} />}
 
+      <VslFunnelPanel vsl={vsl} />
+
       <ScriptTranscriptEditor vsl={vsl} />
     </div>
+  );
+}
+
+function ConfidenceBadge({ confidence }: { confidence: number | null | undefined }) {
+  if (typeof confidence !== "number") return null;
+  return (
+    <span className="ml-1.5 rounded bg-background/60 px-1 py-0.5 font-mono text-3xs text-muted-foreground">
+      {Math.round(confidence * 100)}% confidence
+    </span>
   );
 }
 
@@ -469,6 +519,19 @@ function InsightsBlock({ insights }: { insights: any }) {
   return (
     <div className="border-t border-border p-4 space-y-3 bg-muted/20 animate-in fade-in-0 slide-in-from-top-1 duration-300">
       {insights.headline && <div className="text-sm font-medium">{insights.headline}</div>}
+      {insights.largest_leak && (
+        <div className="rounded border border-destructive/30 bg-destructive/10 p-2.5 text-xs">
+          <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-destructive">
+            <TrendingDown className="h-3 w-3" /> Largest leak
+            <ConfidenceBadge confidence={insights.largest_leak.confidence} />
+          </div>
+          <div className="mt-1 font-semibold">{insights.largest_leak.stage}</div>
+          <div className="mt-0.5 text-muted-foreground">{insights.largest_leak.why}</div>
+          {insights.largest_leak.recommendation && (
+            <div className="mt-1 text-foreground">→ {insights.largest_leak.recommendation}</div>
+          )}
+        </div>
+      )}
       <div className="grid gap-3 md:grid-cols-2">
         <div>
           <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-destructive mb-1.5">
@@ -480,8 +543,16 @@ function InsightsBlock({ insights }: { insights: any }) {
                 key={i}
                 className="rounded border border-destructive/20 bg-destructive/5 p-2 text-xs"
               >
-                <div className="font-semibold">{b.title}</div>
+                <div className="flex items-center font-semibold">
+                  {b.title}
+                  <ConfidenceBadge confidence={b.confidence} />
+                </div>
                 <div className="text-muted-foreground mt-0.5">{b.body}</div>
+                {b.evidence && (
+                  <div className="mt-1 text-3xs italic text-muted-foreground">
+                    Evidence: {b.evidence}
+                  </div>
+                )}
                 {b.recommendation && (
                   <div className="mt-1 text-foreground">→ {b.recommendation}</div>
                 )}
@@ -499,8 +570,16 @@ function InsightsBlock({ insights }: { insights: any }) {
                 key={i}
                 className="rounded border border-[color:var(--color-success)]/20 bg-[color:var(--color-success)]/5 p-2 text-xs"
               >
-                <div className="font-semibold">{b.title}</div>
+                <div className="flex items-center font-semibold">
+                  {b.title}
+                  <ConfidenceBadge confidence={b.confidence} />
+                </div>
                 <div className="text-muted-foreground mt-0.5">{b.body}</div>
+                {b.evidence && (
+                  <div className="mt-1 text-3xs italic text-muted-foreground">
+                    Evidence: {b.evidence}
+                  </div>
+                )}
                 {b.recommendation && (
                   <div className="mt-1 text-foreground">→ {b.recommendation}</div>
                 )}
@@ -521,6 +600,7 @@ function InsightsBlock({ insights }: { insights: any }) {
                 className="rounded bg-background border border-border px-2 py-1 text-2xs"
               >
                 <span className="font-mono text-destructive">{d.timestamp}</span> · {d.why}
+                <ConfidenceBadge confidence={d.confidence} />
               </span>
             ))}
           </div>
@@ -607,6 +687,14 @@ function ImportDialog({ vslId }: { vslId: string }) {
                 last_updated
               </span>
               . Include the header row.
+              <br />
+              Optional (only if your export carries them):{" "}
+              <span className="font-mono">
+                pct_25_reached, pct_50_reached, pct_75_reached, pct_90_reached, pct_100_reached,
+                cta_clicks, cta_click_rate, rewatches, skips, referrer, utm_source, utm_medium,
+                utm_campaign, device, embed_location, new_vs_returning, identified_viewer_id
+              </span>
+              . Missing columns stay "Unavailable" rather than being estimated.
             </div>
             <Textarea
               rows={10}

@@ -35,7 +35,7 @@ import {
   type WebinarEvent,
   type WebinarMetricRow,
 } from "@/lib/webinar-analytics";
-import type { WebinarEventRow } from "@/lib/webinar-events";
+import { splitPitchOutcomes, type WebinarEventRow } from "@/lib/webinar-events";
 import { calculateAcquisitionMetrics, type AcquisitionSpendRecord } from "@/lib/acquisition";
 import { createMockWebinarFixture } from "@/lib/webinar-mock-data";
 import { webinarProfit } from "@/lib/operating-workflows";
@@ -219,11 +219,17 @@ function WebinarAnalyticsPage() {
       summary.revenue.totalRevenueCents,
     ],
   );
+  const pitchSplit = useMemo(() => splitPitchOutcomes(webinarEvents), [webinarEvents]);
   const profit = useMemo(
     () =>
       webinarProfit({
         contractedRevenueCents: summary.revenue.totalRevenueCents,
-        cashCollectedCents: summary.revenue.totalRevenueCents,
+        // No column on webinar_metrics or the event pipeline guarantees a
+        // distinct "cash collected" figure separate from contracted revenue
+        // — unlike calls.cash_collected_cents. Rather than duplicate
+        // totalRevenueCents under a different label, this stays null/
+        // "Unavailable" until that data genuinely exists.
+        cashCollectedCents: null,
         realizedRevenueCents: summary.closing.coreRevenueCents,
         attributableCostsCents: acquisition.spendCents,
       }),
@@ -355,7 +361,7 @@ function WebinarAnalyticsPage() {
                   title="Acquisition efficiency"
                   subtitle="Provider-reported spend and delivery facts; unavailable until a legitimate acquisition source is connected."
                 />
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <ExecutiveKpiCard
                     label="Lead capture investment"
                     value={acquisition.hasSpend ? currency(acquisition.spendCents) : "Unavailable"}
@@ -393,13 +399,25 @@ function WebinarAnalyticsPage() {
                     trend="Calculated"
                   />
                   <ExecutiveKpiCard
-                    label="CPL · CPA · ROAS"
+                    label="CPL"
                     value={
-                      acquisition.cplCents == null &&
-                      acquisition.cpaCents == null &&
-                      acquisition.roas == null
-                        ? "Unavailable"
-                        : `${acquisition.cplCents == null ? "—" : currency(acquisition.cplCents)} · ${acquisition.cpaCents == null ? "—" : currency(acquisition.cpaCents)} · ${acquisition.roas == null ? "—" : `${acquisition.roas.toFixed(2)}x`}`
+                      acquisition.cplCents == null ? "Unavailable" : currency(acquisition.cplCents)
+                    }
+                    icon={<CircleDollarSign className="h-4 w-4" />}
+                    trend="Calculated"
+                  />
+                  <ExecutiveKpiCard
+                    label="CPA"
+                    value={
+                      acquisition.cpaCents == null ? "Unavailable" : currency(acquisition.cpaCents)
+                    }
+                    icon={<CircleDollarSign className="h-4 w-4" />}
+                    trend="Calculated"
+                  />
+                  <ExecutiveKpiCard
+                    label="ROAS (acquisition)"
+                    value={
+                      acquisition.roas == null ? "Unavailable" : `${acquisition.roas.toFixed(2)}x`
                     }
                     icon={<CircleDollarSign className="h-4 w-4" />}
                     trend="Calculated"
@@ -453,7 +471,11 @@ function WebinarAnalyticsPage() {
                 values={[
                   ["Deposits", number(summary.salesSetting.deposits)],
                   ["Sales", number(summary.revenue.totalSales)],
-                  ["Core revenue", currency(summary.closing.coreRevenueCents)],
+                  ["Contracted revenue", currency(summary.revenue.totalRevenueCents)],
+                  ["Core offer revenue", currency(summary.closing.coreRevenueCents)],
+                  ["Refunds", currency(summary.closing.refundsCents)],
+                  ["Order bump revenue", currency(summary.closing.orderBumpRevenueCents)],
+                  ["Upsell revenue", currency(summary.closing.upsellRevenueCents)],
                   [
                     "ROAS",
                     summary.revenue.roas == null
@@ -465,6 +487,32 @@ function WebinarAnalyticsPage() {
                     profit.netProfitCents == null
                       ? "Unavailable — cost data not connected"
                       : currency(profit.netProfitCents),
+                  ],
+                ]}
+              />
+              <AnalyticsPanel
+                title="During-pitch vs. after-pitch"
+                description="Direct in-webinar checkouts vs. sales-team call outcomes, from the real event stream"
+                values={[
+                  ["During-pitch sales", number(pitchSplit.duringPitchSales)],
+                  [
+                    "During-pitch revenue",
+                    pitchSplit.duringPitchRevenueCents == null
+                      ? `Unavailable — 0 of ${pitchSplit.duringPitchSales} sale event(s) carry an amount`
+                      : currency(pitchSplit.duringPitchRevenueCents),
+                  ],
+                  ["After-pitch sales (booked calls)", number(pitchSplit.afterPitchSales)],
+                  [
+                    "After-pitch revenue",
+                    pitchSplit.afterPitchRevenueCents == null
+                      ? `Unavailable — 0 of ${pitchSplit.afterPitchSales} sale event(s) carry an amount`
+                      : currency(pitchSplit.afterPitchRevenueCents),
+                  ],
+                  [
+                    "After-pitch conversion",
+                    pitchSplit.afterPitchSales + pitchSplit.duringPitchSales > 0
+                      ? `${((pitchSplit.afterPitchSales / (pitchSplit.afterPitchSales + pitchSplit.duringPitchSales)) * 100).toFixed(1)}% of tracked sales`
+                      : "Unavailable",
                   ],
                 ]}
               />
@@ -721,7 +769,7 @@ function ExecutiveKpiCard({
           {trend}
         </span>
       </div>
-      <div className="mt-6 min-h-[3.75rem] text-4xl font-bold tracking-tight text-white sm:text-5xl">
+      <div className="mt-6 min-h-[3.75rem] break-words text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
         {value}
       </div>
     </article>

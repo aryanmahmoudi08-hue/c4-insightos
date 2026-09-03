@@ -161,8 +161,8 @@ export function paymentQuality(input: PaymentQualityInput) {
 }
 
 export type WebinarProfitInput = {
-  contractedRevenueCents: number;
-  cashCollectedCents: number;
+  contractedRevenueCents: number | null;
+  cashCollectedCents: number | null;
   realizedRevenueCents: number;
   attributableCostsCents: number | null;
 };

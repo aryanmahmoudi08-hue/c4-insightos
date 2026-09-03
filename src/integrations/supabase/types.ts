@@ -236,6 +236,7 @@ export type Database = {
           source_platform: string | null;
           source_format: string | null;
           source_content_id: string | null;
+          source_vsl_id: string | null;
           source_campaign: string | null;
           cancelled: boolean;
           closed: boolean | null;
@@ -272,6 +273,7 @@ export type Database = {
           source_platform?: string | null;
           source_format?: string | null;
           source_content_id?: string | null;
+          source_vsl_id?: string | null;
           source_campaign?: string | null;
           cancelled?: boolean;
           closed?: boolean | null;
@@ -308,6 +310,7 @@ export type Database = {
           source_platform?: string | null;
           source_format?: string | null;
           source_content_id?: string | null;
+          source_vsl_id?: string | null;
           source_campaign?: string | null;
           cancelled?: boolean;
           closed?: boolean | null;
@@ -2100,6 +2103,7 @@ export type Database = {
           source_content_id: string | null;
           source_campaign: string | null;
           source_webinar_id: string | null;
+          source_vsl_id: string | null;
           beliefs: string | null;
           created_at: string;
           email: string | null;
@@ -2136,6 +2140,7 @@ export type Database = {
           source_content_id?: string | null;
           source_campaign?: string | null;
           source_webinar_id?: string | null;
+          source_vsl_id?: string | null;
           beliefs?: string | null;
           created_at?: string;
           email?: string | null;
@@ -2172,6 +2177,7 @@ export type Database = {
           source_content_id?: string | null;
           source_campaign?: string | null;
           source_webinar_id?: string | null;
+          source_vsl_id?: string | null;
           beliefs?: string | null;
           created_at?: string;
           email?: string | null;
@@ -3442,42 +3448,93 @@ export type Database = {
         Row: {
           avg_percent_watched: number;
           captured_at: string;
+          cta_click_rate: number | null;
+          cta_clicks: number | null;
+          device: string | null;
+          embed_location: string | null;
           engagement_json: Json | null;
           id: string;
+          identified_viewer_id: string | null;
+          new_vs_returning: string | null;
           org_id: string;
           page_loads: number;
+          pct_100_reached: number | null;
+          pct_25_reached: number | null;
+          pct_50_reached: number | null;
+          pct_75_reached: number | null;
+          pct_90_reached: number | null;
           play_rate: number;
+          referrer: string | null;
+          rewatches: number | null;
+          skips: number | null;
           source: string;
           total_plays: number;
           unique_viewers: number;
+          utm_campaign: string | null;
+          utm_medium: string | null;
+          utm_source: string | null;
           video_name: string | null;
           vsl_id: string;
         };
         Insert: {
           avg_percent_watched?: number;
           captured_at?: string;
+          cta_click_rate?: number | null;
+          cta_clicks?: number | null;
+          device?: string | null;
+          embed_location?: string | null;
           engagement_json?: Json | null;
           id?: string;
+          identified_viewer_id?: string | null;
+          new_vs_returning?: string | null;
           org_id: string;
           page_loads?: number;
+          pct_100_reached?: number | null;
+          pct_25_reached?: number | null;
+          pct_50_reached?: number | null;
+          pct_75_reached?: number | null;
+          pct_90_reached?: number | null;
           play_rate?: number;
+          referrer?: string | null;
+          rewatches?: number | null;
+          skips?: number | null;
           source?: string;
           total_plays?: number;
           unique_viewers?: number;
+          utm_campaign?: string | null;
+          utm_medium?: string | null;
+          utm_source?: string | null;
           video_name?: string | null;
           vsl_id: string;
         };
         Update: {
           avg_percent_watched?: number;
           captured_at?: string;
+          cta_click_rate?: number | null;
+          cta_clicks?: number | null;
+          device?: string | null;
+          embed_location?: string | null;
           engagement_json?: Json | null;
           id?: string;
+          identified_viewer_id?: string | null;
+          new_vs_returning?: string | null;
           org_id?: string;
           page_loads?: number;
+          pct_100_reached?: number | null;
+          pct_25_reached?: number | null;
+          pct_50_reached?: number | null;
+          pct_75_reached?: number | null;
+          pct_90_reached?: number | null;
           play_rate?: number;
+          referrer?: string | null;
+          rewatches?: number | null;
+          skips?: number | null;
           source?: string;
           total_plays?: number;
           unique_viewers?: number;
+          utm_campaign?: string | null;
+          utm_medium?: string | null;
+          utm_source?: string | null;
           video_name?: string | null;
           vsl_id?: string;
         };
@@ -3491,6 +3548,60 @@ export type Database = {
           },
           {
             foreignKeyName: "vsl_metric_snapshots_vsl_id_fkey";
+            columns: ["vsl_id"];
+            isOneToOne: false;
+            referencedRelation: "vsls";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      vsl_recommendations: {
+        Row: {
+          action: string;
+          confidence: number | null;
+          created_at: string;
+          evidence_json: Json;
+          id: string;
+          org_id: string;
+          reason: string;
+          status: string;
+          updated_at: string;
+          vsl_id: string;
+        };
+        Insert: {
+          action: string;
+          confidence?: number | null;
+          created_at?: string;
+          evidence_json?: Json;
+          id?: string;
+          org_id: string;
+          reason: string;
+          status?: string;
+          updated_at?: string;
+          vsl_id: string;
+        };
+        Update: {
+          action?: string;
+          confidence?: number | null;
+          created_at?: string;
+          evidence_json?: Json;
+          id?: string;
+          org_id?: string;
+          reason?: string;
+          status?: string;
+          updated_at?: string;
+          vsl_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "vsl_recommendations_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "vsl_recommendations_vsl_id_fkey";
             columns: ["vsl_id"];
             isOneToOne: false;
             referencedRelation: "vsls";
@@ -3864,7 +3975,7 @@ export type Database = {
         | "traffic_source"
         | "client";
       payment_status: "paid" | "pending" | "failed" | "refunded" | "partial";
-      vsl_kind: "main" | "webinar" | "post_booking";
+      vsl_kind: "main" | "webinar" | "post_booking" | "testimonial";
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -4066,7 +4177,7 @@ export const Constants = {
         "client",
       ],
       payment_status: ["paid", "pending", "failed", "refunded", "partial"],
-      vsl_kind: ["main", "webinar", "post_booking"],
+      vsl_kind: ["main", "webinar", "post_booking", "testimonial"],
     },
   },
 } as const;

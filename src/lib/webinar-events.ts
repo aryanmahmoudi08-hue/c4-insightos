@@ -130,6 +130,72 @@ export function eventAtOrBefore(events: WebinarEventRow[], type: WebinarEventTyp
     .sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at));
 }
 
+export type PitchOutcomeSplit = {
+  /** Count of close/sale events for a lead with no prior booked_call — a
+   * direct, in-webinar checkout. */
+  duringPitchSales: number;
+  /** Count of close/sale events for a lead who has an earlier booked_call
+   * event — went through the sales team's follow-up call. */
+  afterPitchSales: number;
+  /** Only summed from events whose metadata carries a numeric amount_cents;
+   * null (not zero) when no counted event has that field, since the event
+   * pipeline does not guarantee per-event dollar amounts. */
+  duringPitchRevenueCents: number | null;
+  afterPitchRevenueCents: number | null;
+  /** How many of the counted sales actually had an amount, for an honest
+   * "N of M sales have revenue data" disclosure in the UI. */
+  duringPitchRevenueEventCount: number;
+  afterPitchRevenueEventCount: number;
+};
+
+/**
+ * Distinguishes direct, during-pitch checkouts from after-pitch sales-team
+ * call outcomes using the real webinar event stream — a "close"/"sale" event
+ * for a lead who has an earlier "booked_call" event went through the sales
+ * team; one with no prior booked_call was a direct in-webinar purchase.
+ */
+export function splitPitchOutcomes(events: WebinarEventRow[]): PitchOutcomeSplit {
+  const ordered = [...events].sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at));
+  const bookedAtByLead = new Map<string, number>();
+  for (const event of ordered) {
+    if (event.event_type !== "booked_call" || !event.lead_id) continue;
+    const occurredAt = Date.parse(event.occurred_at);
+    const existing = bookedAtByLead.get(event.lead_id);
+    if (existing == null || occurredAt < existing) bookedAtByLead.set(event.lead_id, occurredAt);
+  }
+  const result: PitchOutcomeSplit = {
+    duringPitchSales: 0,
+    afterPitchSales: 0,
+    duringPitchRevenueCents: null,
+    afterPitchRevenueCents: null,
+    duringPitchRevenueEventCount: 0,
+    afterPitchRevenueEventCount: 0,
+  };
+  let duringCents = 0;
+  let afterCents = 0;
+  for (const event of ordered) {
+    if (event.event_type !== "close" && event.event_type !== "sale") continue;
+    const bookedAt = event.lead_id ? bookedAtByLead.get(event.lead_id) : undefined;
+    const isAfterPitch = bookedAt != null && bookedAt <= Date.parse(event.occurred_at);
+    if (isAfterPitch) result.afterPitchSales++;
+    else result.duringPitchSales++;
+
+    const amount = event.metadata?.amount_cents;
+    if (typeof amount === "number" && Number.isFinite(amount)) {
+      if (isAfterPitch) {
+        afterCents += amount;
+        result.afterPitchRevenueEventCount++;
+      } else {
+        duringCents += amount;
+        result.duringPitchRevenueEventCount++;
+      }
+    }
+  }
+  result.duringPitchRevenueCents = result.duringPitchRevenueEventCount > 0 ? duringCents : null;
+  result.afterPitchRevenueCents = result.afterPitchRevenueEventCount > 0 ? afterCents : null;
+  return result;
+}
+
 export function retentionFromEvents(events: WebinarEventRow[]) {
   const ordered = [...events].sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at));
   const registrations = ordered.filter((event) => event.event_type === "registered");
