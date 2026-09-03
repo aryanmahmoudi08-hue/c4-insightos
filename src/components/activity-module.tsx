@@ -358,7 +358,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       const { data, error } = await supabase
         .from("calls")
         .select(
-          "id, status, cancelled, no_show_recovered, scheduled_for, duration_seconds, talk_seconds",
+          "id, status, cancelled, no_show_recovered, recovered_from_call_id, scheduled_for, duration_seconds, talk_seconds",
         )
         .eq("org_id", orgId!)
         .gte("scheduled_for", `${range.from}T00:00:00`)
@@ -372,7 +372,11 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     const cancelled = rangeCalls.filter((c) => c.cancelled).length;
     const rescheduled = rangeCalls.filter((c) => c.status === "rescheduled").length;
     const noShows = rangeCalls.filter((c) => c.status === "no_show");
-    const recovered = noShows.filter((c) => c.no_show_recovered).length;
+    // Recovered = either explicitly flagged, or a later call links back to it
+    // via recovered_from_call_id (set when the closer logs the follow-up call).
+    const recovered = noShows.filter(
+      (c) => c.no_show_recovered || rangeCalls.some((c2) => c2.recovered_from_call_id === c.id),
+    ).length;
     const durations = rangeCalls
       .map((c) => c.duration_seconds)
       .filter((v): v is number => v != null);

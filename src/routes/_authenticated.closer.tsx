@@ -33,6 +33,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plus, Trophy, Activity as ActivityIcon, PhoneCall } from "lucide-react";
 import { toast } from "sonner";
 import { TeamMemberPicker } from "@/components/team-member-picker";
+import { AttributionPathPanel, type AttributionPath } from "@/components/attribution-path-panel";
 import { TeamMemberFilter, ALL_MEMBERS } from "@/components/team-member-filter";
 import {
   BarChart,
@@ -175,6 +176,54 @@ const STATUS_OPTIONS = [
   { value: "rescheduled", label: "Rescheduled" },
 ] as const;
 
+// Spec section 5's exact multiple-choice disposition list — the closer's own
+// reason for the outcome, distinct from `status` (call lifecycle state).
+const DISPOSITION_OPTIONS = [
+  { value: "closed", label: "Closed" },
+  { value: "follow_up", label: "Follow-up" },
+  { value: "nurture", label: "Nurture" },
+  { value: "no_decision", label: "No Decision" },
+  { value: "price", label: "Price" },
+  { value: "timing", label: "Timing" },
+  { value: "partner_spouse", label: "Partner / Spouse" },
+  { value: "upsell", label: "Upsell" },
+  { value: "unqualified", label: "Unqualified" },
+  { value: "competitor", label: "Competitor" },
+  { value: "other", label: "Other" },
+] as const;
+
+const OBJECTION_STAGE_OPTIONS = [
+  { value: "rapport", label: "Rapport" },
+  { value: "discovery", label: "Discovery" },
+  { value: "presentation", label: "Presentation" },
+  { value: "offer", label: "Offer" },
+  { value: "close", label: "Close" },
+  { value: "follow_up", label: "Follow-up" },
+  { value: "unspecified", label: "Unspecified" },
+] as const;
+
+const OBJECTION_CATEGORY_OPTIONS = [
+  { value: "price", label: "Price" },
+  { value: "timing", label: "Timing" },
+  { value: "trust", label: "Trust" },
+  { value: "partner_spouse", label: "Partner / Spouse" },
+  { value: "competitor", label: "Competitor" },
+  { value: "product_fit", label: "Product Fit" },
+  { value: "no_need", label: "No Need" },
+  { value: "unqualified", label: "Unqualified" },
+  { value: "other", label: "Other" },
+] as const;
+
+const GAP_CATEGORY_OPTIONS = [
+  { value: "discovery", label: "Discovery" },
+  { value: "objection_handling", label: "Objection Handling" },
+  { value: "closing", label: "Closing" },
+  { value: "follow_up", label: "Follow-up" },
+  { value: "rapport", label: "Rapport" },
+  { value: "offer_framing", label: "Offer Framing" },
+  { value: "other", label: "Other" },
+] as const;
+
 const STATUS_LABEL: Record<string, string> = {
   booked: "Booked",
   showed: "Showed",
@@ -257,12 +306,17 @@ function Closer() {
           lead_email: string | null;
           time_to_close_seconds: number | null;
           key_moment: string | null;
+          disposition: string | null;
+          duration_seconds: number | null;
+          talk_seconds: number | null;
+          recovered_from_call_id: string | null;
+          setter_id: string | null;
           leads: { full_name: string | null; handle: string | null; email: string | null } | null;
         }[];
       const { data, error } = await supabase
         .from("calls")
         .select(
-          "id, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, payment_plan, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, source_platform, source_format, source_content_id, source_campaign, leads(full_name, handle, email)",
+          "id, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, payment_plan, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, disposition, duration_seconds, talk_seconds, recovered_from_call_id, setter_id, source_platform, source_format, source_content_id, source_campaign, leads(full_name, handle, email)",
         )
         .eq("org_id", orgId!)
         .gte("scheduled_for", `${range.from}T00:00:00`)
@@ -420,7 +474,7 @@ function Closer() {
     queryFn: async () => {
       const { data } = await supabase
         .from("call_objections")
-        .select("objection, resolved, created_at")
+        .select("objection, resolved, created_at, call_stage, category, call_id")
         .eq("org_id", orgId!)
         .gte("created_at", `${range.from}T00:00:00`)
         .lte("created_at", `${range.to}T23:59:59`);
@@ -533,6 +587,186 @@ function Closer() {
       count: counts.get(item.value) ?? 0,
     })).filter((item) => item.count > 0 || list.length === 0);
   }, [list]);
+  // Closer-logged disposition mix (spec section 5's exact taxonomy) — the
+  // closer's own reason for the outcome, separate from the verified
+  // status-derived dispositionMix above. "Not logged" covers calls entered
+  // before this field existed, or where the closer skipped it.
+  const manualDispositionMix = useMemo(() => {
+    const counts = new Map<string, number>();
+    let notLogged = 0;
+    for (const call of list) {
+      if (!call.disposition) {
+        notLogged += 1;
+        continue;
+      }
+      counts.set(call.disposition, (counts.get(call.disposition) ?? 0) + 1);
+    }
+    const rows: { value: string; label: string; count: number }[] = DISPOSITION_OPTIONS.map(
+      (item) => ({ ...item, count: counts.get(item.value) ?? 0 }),
+    ).filter((item) => item.count > 0);
+    if (notLogged) rows.push({ value: "not_logged", label: "Not logged", count: notLogged });
+    return rows;
+  }, [list]);
+  const callDurations = list.map((c) => c.duration_seconds).filter((v): v is number => v != null);
+  const callTalkSeconds = list.map((c) => c.talk_seconds).filter((v): v is number => v != null);
+  const avgCallDurationSeconds = callDurations.length
+    ? callDurations.reduce((s, v) => s + v, 0) / callDurations.length
+    : null;
+  const avgTalkSeconds = callTalkSeconds.length
+    ? callTalkSeconds.reduce((s, v) => s + v, 0) / callTalkSeconds.length
+    : null;
+  // Talk/listen ratio needs both talk time AND total duration on the same
+  // call to be meaningful (listen time = duration - talk time).
+  const talkListenPairs = list.filter(
+    (c) => c.duration_seconds != null && c.talk_seconds != null && c.duration_seconds > 0,
+  );
+  const avgTalkListenRatioPct = talkListenPairs.length
+    ? (talkListenPairs.reduce((s, c) => s + c.talk_seconds! / c.duration_seconds!, 0) /
+        talkListenPairs.length) *
+      100
+    : null;
+  // Payment-plan quality (spec section 5) — real payments ledger, joined by
+  // call_id, scoped to this range's calls. Was previously hardcoded
+  // "Unavailable"; the payments table exists and is queryable, so this is
+  // wired for real instead of left as a permanent placeholder.
+  const listCallIds = useMemo(() => list.map((c) => c.id), [list]);
+  const { data: callPayments = [] } = useQuery({
+    queryKey: ["closer-call-payments", orgId, listCallIds.join(",")],
+    enabled: !!orgId && listCallIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("payments")
+        .select("call_id, amount_cents, status, collected_at")
+        .eq("org_id", orgId!)
+        .in("call_id", listCallIds);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const paymentQualityStats = useMemo(() => {
+    const total = callPayments.length;
+    const failed = callPayments.filter((p) => p.status === "failed").length;
+    const onTime = callPayments.filter((p) => p.status === "paid").length;
+    const collectedByCall = new Map<string, number>();
+    for (const p of callPayments) {
+      if (p.status !== "paid" || !p.call_id) continue;
+      collectedByCall.set(p.call_id, (collectedByCall.get(p.call_id) ?? 0) + p.amount_cents);
+    }
+    const paymentPlanCalls = list.filter(
+      (c) => c.payment_plan && (c.contract_value_cents ?? 0) > 0,
+    );
+    const depositedCalls = paymentPlanCalls.filter((c) => (c.deposit_cents ?? 0) > 0);
+    const fullyPaid = depositedCalls.filter(
+      (c) => (collectedByCall.get(c.id) ?? 0) >= (c.contract_value_cents ?? 0),
+    );
+    const futureScheduledCents = paymentPlanCalls.reduce((sum, c) => {
+      const remaining = (c.contract_value_cents ?? 0) - (collectedByCall.get(c.id) ?? 0);
+      return sum + Math.max(0, remaining);
+    }, 0);
+    return {
+      total,
+      onTimeRatePct: total ? (onTime / total) * 100 : null,
+      failedRatePct: total ? (failed / total) * 100 : null,
+      depositToFullPaymentPct: depositedCalls.length
+        ? (fullyPaid.length / depositedCalls.length) * 100
+        : null,
+      futureScheduledCents,
+    };
+  }, [callPayments, list]);
+
+  const { data: coachingReviewCount = 0 } = useQuery({
+    queryKey: ["coaching-review-count", orgId, range.from, range.to],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("call_coaching_reviews")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId!)
+        .gte("created_at", `${range.from}T00:00:00`)
+        .lte("created_at", `${range.to}T23:59:59`);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+  // Closer lifecycle attribution (spec section 5) — one linear read of this
+  // same `list`, so it complements (doesn't add to) the other attribution
+  // views: it's the same calls counted along a different axis, not a second
+  // revenue source layered on top.
+  const closerLifecyclePath: AttributionPath[] = useMemo(
+    () => [
+      {
+        id: "closer-lifecycle",
+        label:
+          "Channel → campaign/content → capture mechanism → setter/dialer → booked → offer → payment plan → cash",
+        stages: [
+          {
+            key: "channel",
+            label: "Original Channel",
+            value:
+              new Set(
+                list.map((c) => (c as Record<string, unknown>).source_platform).filter(Boolean),
+              ).size || null,
+            detail: "Distinct source platforms on these calls",
+          },
+          {
+            key: "campaign",
+            label: "Campaign / Content",
+            value:
+              new Set(
+                list
+                  .map(
+                    (c) =>
+                      (c as Record<string, unknown>).source_campaign ??
+                      (c as Record<string, unknown>).source_content_id,
+                  )
+                  .filter(Boolean),
+              ).size || null,
+            detail: "Distinct campaigns / content pieces",
+          },
+          {
+            key: "capture",
+            label: "Capture Mechanism",
+            value:
+              new Set(list.map((c) => (c as Record<string, unknown>).source_format).filter(Boolean))
+                .size || null,
+            detail: "Distinct capture formats",
+          },
+          {
+            key: "setter",
+            label: "Setter / Dialer",
+            value: list.filter((c) => c.setter_id).length,
+            detail: "Calls with a setter/dialer attached",
+          },
+          { key: "booked", label: "Booked Call", value: list.length, detail: "Calls in range" },
+          {
+            key: "offer",
+            label: "Offer / Product",
+            value: list.filter((c) => c.offer_made).length,
+            detail: "Offer made",
+          },
+          {
+            key: "payment",
+            label: "Payment Plan",
+            value: paymentPlanCount,
+            detail: "Payment-plan calls",
+          },
+          {
+            key: "cash",
+            label: "Cash Collected",
+            value: cashCents ? Math.round(cashCents / 100) : 0,
+            detail: fmtMoney(cashCents),
+          },
+          {
+            key: "retention",
+            label: "Retention / Refund",
+            value: null,
+            detail: "Lives on Mentees & Renewals, not on calls — not connected here",
+          },
+        ],
+      },
+    ],
+    [list, paymentPlanCount, cashCents],
+  );
   const avgCashPerBooked = onCalendar ? cashCents / onCalendar : 0;
   const avgCashPerShowed = showed ? cashCents / showed : 0;
   const avgCashPerClosed = closes ? cashCents / closes : 0;
@@ -762,6 +996,47 @@ function Closer() {
 
   // Follow-up pipeline (calls flagged as follow_up across whole range)
   const followUps = useMemo(() => list.filter((c) => c.status === "follow_up"), [list]);
+  // Active vs overdue split (spec section 5) — overdue = the follow-up's last
+  // touch was more than 7 days ago, matching the existing red/default chip
+  // threshold already used in the follow-up pipeline table below.
+  const overdueFollowUps = useMemo(
+    () =>
+      followUps.filter(
+        (c) => c.scheduled_for && Date.now() - new Date(c.scheduled_for).getTime() > 7 * 86400e3,
+      ),
+    [followUps],
+  );
+  const activeFollowUpsCount = followUps.length - overdueFollowUps.length;
+  // Deals expected to close this week — offer made or in follow-up, with a
+  // real scheduled date landing in the next 7 days. Not a fabricated
+  // forecast: only counts calls with an actual scheduled_for timestamp.
+  const dealsExpectedThisWeek = useMemo(() => {
+    const now = Date.now();
+    const weekOut = now + 7 * 86400e3;
+    return list.filter((c) => {
+      if (!["offer_made", "follow_up", "booked"].includes(c.status)) return false;
+      if (!c.scheduled_for) return false;
+      const t = new Date(c.scheduled_for).getTime();
+      return t >= now && t <= weekOut;
+    });
+  }, [list]);
+  // No-show recovery (mirrors the Dialer appointment-quality logic) — scoped
+  // to this closer's own calls.
+  const noShowRecovery = useMemo(() => {
+    const noShows = list.filter((c) => c.status === "no_show");
+    const recovered = noShows.filter((c) => list.some((c2) => c2.recovered_from_call_id === c.id));
+    const recoveredClosed = recovered.filter((c) => {
+      const followUp = list.find((c2) => c2.recovered_from_call_id === c.id);
+      return followUp?.closed;
+    });
+    return {
+      noShowCount: noShows.length,
+      recoveredShowRate: noShows.length ? (recovered.length / noShows.length) * 100 : null,
+      recoveredCloseRate: recovered.length
+        ? (recoveredClosed.length / recovered.length) * 100
+        : null,
+    };
+  }, [list]);
 
   const autoIngest = useServerFn(autoIngestCallSignalFn);
   const captureCallLifecycle = useServerFn(captureCallLifecycleEventsFn);
@@ -800,6 +1075,14 @@ function Closer() {
         time_to_close_seconds:
           Number(f.get("ttc_min") || 0) > 0 ? Math.round(Number(f.get("ttc_min")) * 60) : null,
         key_moment: String(f.get("key_moment") || "") || null,
+        disposition: (f.get("disposition") as string) || null,
+        duration_seconds:
+          Number(f.get("duration_min") || 0) > 0
+            ? Math.round(Number(f.get("duration_min")) * 60)
+            : null,
+        talk_seconds:
+          Number(f.get("talk_min") || 0) > 0 ? Math.round(Number(f.get("talk_min")) * 60) : null,
+        cancelled: f.get("cancelled") === "on",
       };
       const { data: callRow, error } = await supabase
         .from("calls")
@@ -810,19 +1093,49 @@ function Closer() {
       if (callRow?.id) {
         await captureCallLifecycle({ data: { callId: callRow.id } });
       }
-      // Objections — comma-separated, written to call_objections table
+      // No-show recovery — this call recovers an earlier no-show for the same
+      // lead. Back-links the new call to the most recent no_show call for
+      // that lead rather than requiring the closer to hunt down and re-open
+      // the old row themselves.
+      if (f.get("recovered_no_show") === "on" && payload.lead_id && callRow?.id) {
+        const { data: priorNoShow } = await supabase
+          .from("calls")
+          .select("id")
+          .eq("org_id", orgId!)
+          .eq("lead_id", payload.lead_id)
+          .eq("status", "no_show")
+          .neq("id", callRow.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (priorNoShow?.id) {
+          await supabase
+            .from("calls")
+            .update({ recovered_from_call_id: priorNoShow.id })
+            .eq("id", callRow.id);
+        }
+      }
+      // Objections — comma-separated, written to call_objections table.
+      // call_stage/category apply to the whole batch logged with this call —
+      // per-objection stage/category would need a multi-row sub-form, out of
+      // scope here; one call almost always centers on one main objection
+      // moment anyway.
       const objRaw = String(f.get("objections") || "");
       const parts = objRaw
         .split(/[,;\n|]+/)
         .map((s) => s.trim())
         .filter(Boolean);
       if (parts.length && callRow) {
+        const objectionStage = (f.get("objection_stage") as string) || null;
+        const objectionCategory = (f.get("objection_category") as string) || null;
         await supabase.from("call_objections").insert(
           parts.map((p) => ({
             org_id: orgId!,
             call_id: callRow.id,
             objection: p,
             resolved: closed,
+            call_stage: objectionStage,
+            category: objectionCategory,
           })),
         );
       }
@@ -998,12 +1311,34 @@ function Closer() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Disposition</Label>
+                  <Select name="disposition">
+                    <SelectTrigger>
+                      <SelectValue placeholder="Why did the call end this way?" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DISPOSITION_OPTIONS.map((d) => (
+                        <SelectItem key={d.value} value={d.value}>
+                          {d.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <label className="flex items-center gap-2">
                     <input type="checkbox" name="showed" defaultChecked /> Showed
                   </label>
                   <label className="flex items-center gap-2">
                     <input type="checkbox" name="offer_made" defaultChecked /> Offer made (True)
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" name="cancelled" /> Cancelled (not just no-show)
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" name="recovered_no_show" /> Recovers a prior no-show for
+                    this lead
                   </label>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
@@ -1042,6 +1377,16 @@ function Closer() {
                     <Input name="key_moment" placeholder="What unlocked the close?" />
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Call length (min)</Label>
+                    <Input name="duration_min" type="number" step="1" placeholder="e.g. 52" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Rep talk time (min)</Label>
+                    <Input name="talk_min" type="number" step="1" placeholder="e.g. 31" />
+                  </div>
+                </div>
                 <div className="space-y-1.5">
                   <Label>Objections (comma-separated)</Label>
                   <Textarea
@@ -1049,6 +1394,38 @@ function Closer() {
                     rows={2}
                     placeholder="price, timing, spouse, need to think…"
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Where in the call</Label>
+                    <Select name="objection_stage">
+                      <SelectTrigger>
+                        <SelectValue placeholder="Call stage" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {OBJECTION_STAGE_OPTIONS.map((s) => (
+                          <SelectItem key={s.value} value={s.value}>
+                            {s.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Objection category</Label>
+                    <Select name="objection_category">
+                      <SelectTrigger>
+                        <SelectValue placeholder="Category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {OBJECTION_CATEGORY_OPTIONS.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>
+                            {c.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Call recording URL</Label>
@@ -1454,20 +1831,45 @@ function Closer() {
                     emptyHint: "No calls in this date range.",
                   },
                   {
-                    key: "paymentQuality",
-                    label: "On-Time / Failed Payments",
-                    value: "Unavailable",
+                    key: "onTimeRate",
+                    label: "On-Time Payment Rate",
+                    value:
+                      paymentQualityStats.onTimeRatePct == null
+                        ? "Unavailable"
+                        : `${paymentQualityStats.onTimeRatePct.toFixed(1)}%`,
                     spectrum: "mid",
-                    empty: true,
-                    emptyHint: "Requires connected payment-provider ledger data.",
+                    empty: paymentQualityStats.onTimeRatePct == null,
+                    emptyHint: "No payment records for these calls yet.",
+                  },
+                  {
+                    key: "failedPaymentRate",
+                    label: "Failed / Default Rate",
+                    value:
+                      paymentQualityStats.failedRatePct == null
+                        ? "Unavailable"
+                        : `${paymentQualityStats.failedRatePct.toFixed(1)}%`,
+                    spectrum: "hot",
+                    empty: paymentQualityStats.failedRatePct == null,
+                    emptyHint: "No payment records for these calls yet.",
+                  },
+                  {
+                    key: "depositToFullPayment",
+                    label: "Deposit → Full Payment",
+                    value:
+                      paymentQualityStats.depositToFullPaymentPct == null
+                        ? "Unavailable"
+                        : `${paymentQualityStats.depositToFullPaymentPct.toFixed(1)}%`,
+                    spectrum: "hot",
+                    empty: paymentQualityStats.depositToFullPaymentPct == null,
+                    emptyHint: "Requires a deposit and payment records for these calls.",
                   },
                   {
                     key: "futureScheduledCash",
                     label: "Future Scheduled Cash",
-                    value: "Unavailable",
+                    value: fmtMoney(paymentQualityStats.futureScheduledCents),
                     spectrum: "mid",
-                    empty: true,
-                    emptyHint: "Requires connected payment-plan schedule data.",
+                    empty: paymentQualityStats.futureScheduledCents === 0,
+                    emptyHint: "No outstanding payment-plan balance in this range.",
                   },
                   {
                     key: "downsells",
@@ -1514,6 +1916,88 @@ function Closer() {
                   </div>
                 )}
               </div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">Closer-logged disposition mix</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      The closer's own reason for the outcome — not inferred from status
+                    </div>
+                  </div>
+                </div>
+                {manualDispositionMix.length ? (
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {manualDispositionMix.map((item) => (
+                      <div
+                        key={item.value}
+                        className={`rounded-lg border p-3 ${item.value === "not_logged" ? "border-dashed border-border/50 bg-background/20" : "border-border/70 bg-background/40"}`}
+                      >
+                        <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                          {item.label}
+                        </div>
+                        <div className="mt-1 font-mono text-xl font-semibold">{item.count}</div>
+                        <div className="mt-1 text-3xs text-muted-foreground">
+                          {pct(item.count, list.length)} of calls
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
+                    No calls in this date range.
+                  </div>
+                )}
+              </div>
+              <KpiBand
+                title="Sales activity quality"
+                items={[
+                  {
+                    key: "avgCallDuration",
+                    label: "Average Call Duration",
+                    value:
+                      avgCallDurationSeconds == null
+                        ? "Not logged"
+                        : `${Math.round(avgCallDurationSeconds / 60)}m`,
+                    spectrum: "cold",
+                    empty: avgCallDurationSeconds == null,
+                    emptyHint: "No call-length data logged in this range.",
+                  },
+                  {
+                    key: "avgTalkTime",
+                    label: "Average Talk Time",
+                    value:
+                      avgTalkSeconds == null ? "Not logged" : `${Math.round(avgTalkSeconds / 60)}m`,
+                    spectrum: "cold",
+                    empty: avgTalkSeconds == null,
+                    emptyHint: "No talk-time data logged in this range.",
+                  },
+                  {
+                    key: "talkListenRatio",
+                    label: "Talk / Listen Ratio",
+                    value:
+                      avgTalkListenRatioPct == null
+                        ? "Not logged"
+                        : `${Math.round(avgTalkListenRatioPct)}% talk`,
+                    spectrum: "mid",
+                    empty: avgTalkListenRatioPct == null,
+                    emptyHint: "Needs both call length and talk time on the same call.",
+                  },
+                  {
+                    key: "callsReviewed",
+                    label: "Calls Reviewed",
+                    value: coachingReviewCount.toLocaleString(),
+                    spectrum: "hot",
+                    empty: coachingReviewCount === 0,
+                    emptyHint: "No coaching reviews logged in this range.",
+                  },
+                ]}
+              />
+              <AttributionPathPanel
+                title="Closer lifecycle attribution"
+                subtitle="Same calls as everywhere else on this page, read along one lifecycle axis — not an additional revenue source"
+                paths={closerLifecyclePath}
+              />
+              <CoachingPanel orgId={orgId} range={range} />
               {panel && (
                 <MetricDetailPanel
                   open={!!selected}
@@ -1554,6 +2038,54 @@ function Closer() {
               faqVideos={faqVideos}
               emptyLabel="No objections logged yet. Add them when logging calls (comma-separated) to feed content + script strategy."
             />
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="text-sm font-semibold">By call stage</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Where in the call the objection came up
+                </div>
+                <div className="mt-3 space-y-1.5">
+                  {OBJECTION_STAGE_OPTIONS.map((s) => {
+                    const count = (objections ?? []).filter((o) => o.call_stage === s.value).length;
+                    if (!count) return null;
+                    return (
+                      <div key={s.value} className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">{s.label}</span>
+                        <span className="font-mono">{count}</span>
+                      </div>
+                    );
+                  })}
+                  {(objections ?? []).every((o) => !o.call_stage) && (
+                    <div className="text-xs text-muted-foreground">
+                      No call-stage data logged yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="text-sm font-semibold">By category</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Multi-choice objection type
+                </div>
+                <div className="mt-3 space-y-1.5">
+                  {OBJECTION_CATEGORY_OPTIONS.map((c) => {
+                    const count = (objections ?? []).filter((o) => o.category === c.value).length;
+                    if (!count) return null;
+                    return (
+                      <div key={c.value} className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">{c.label}</span>
+                        <span className="font-mono">{count}</span>
+                      </div>
+                    );
+                  })}
+                  {(objections ?? []).every((o) => !o.category) && (
+                    <div className="text-xs text-muted-foreground">
+                      No category data logged yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="scorecard">
@@ -1650,6 +2182,53 @@ function Closer() {
           </TabsContent>
 
           <TabsContent value="followups">
+            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="rounded-lg border border-border/70 bg-card p-3">
+                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                  Active Follow-ups
+                </div>
+                <div className="mt-1 font-mono text-lg font-semibold">{activeFollowUpsCount}</div>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-card p-3">
+                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                  Overdue Follow-ups
+                </div>
+                <div className="mt-1 font-mono text-lg font-semibold text-destructive">
+                  {overdueFollowUps.length}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-card p-3">
+                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                  Expected to Close This Week
+                </div>
+                <div className="mt-1 font-mono text-lg font-semibold">
+                  {dealsExpectedThisWeek.length}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-card p-3">
+                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                  Recovered Show Rate
+                </div>
+                <div className="mt-1 font-mono text-lg font-semibold">
+                  {noShowRecovery.recoveredShowRate == null
+                    ? "—"
+                    : `${noShowRecovery.recoveredShowRate.toFixed(0)}%`}
+                </div>
+                <div className="mt-1 text-3xs text-muted-foreground">
+                  {noShowRecovery.noShowCount} no-shows in range
+                </div>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-card p-3">
+                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                  Recovered Close Rate
+                </div>
+                <div className="mt-1 font-mono text-lg font-semibold">
+                  {noShowRecovery.recoveredCloseRate == null
+                    ? "—"
+                    : `${noShowRecovery.recoveredCloseRate.toFixed(0)}%`}
+                </div>
+              </div>
+            </div>
             <GlassTableShell
               toolbar={
                 <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
@@ -1810,5 +2389,181 @@ function Closer() {
         </GlassTableShell>
       </div>
     </>
+  );
+}
+
+/** Sales activity coaching (spec section 5) — real coaching-review records
+ * tied to a rep/call, plus recurring-gap counts aggregated honestly from the
+ * gap_category the reviewer actually picked (never inferred from free text). */
+function CoachingPanel({ orgId, range }: { orgId: string | undefined; range: DateRange }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+
+  const { data: reviews = [] } = useQuery({
+    queryKey: ["coaching-reviews", orgId, range.from, range.to],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("call_coaching_reviews")
+        .select(
+          "id, rep_name, reviewer_name, what_learned, what_went_wrong, behavior_change, gap_category, created_at",
+        )
+        .eq("org_id", orgId!)
+        .gte("created_at", `${range.from}T00:00:00`)
+        .lte("created_at", `${range.to}T23:59:59`)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const recurringGaps = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of reviews) {
+      if (!r.gap_category) continue;
+      counts.set(r.gap_category, (counts.get(r.gap_category) ?? 0) + 1);
+    }
+    return GAP_CATEGORY_OPTIONS.map((g) => ({ ...g, count: counts.get(g.value) ?? 0 }))
+      .filter((g) => g.count > 0)
+      .sort((a, b) => b.count - a.count);
+  }, [reviews]);
+
+  const create = useMutation({
+    mutationFn: async (f: FormData) => {
+      const { error } = await supabase.from("call_coaching_reviews").insert({
+        org_id: orgId!,
+        rep_name: String(f.get("rep_name") || ""),
+        reviewer_name: String(f.get("reviewer_name") || "") || null,
+        what_learned: String(f.get("what_learned") || "") || null,
+        what_went_wrong: String(f.get("what_went_wrong") || "") || null,
+        behavior_change: String(f.get("behavior_change") || ""),
+        gap_category: (f.get("gap_category") as string) || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Coaching review logged");
+      qc.invalidateQueries({ queryKey: ["coaching-reviews", orgId] });
+      qc.invalidateQueries({ queryKey: ["coaching-review-count", orgId] });
+      setOpen(false);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">Coaching reviews</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            One record per reviewed call — what the rep learned, what to fix, the specific behavior
+            change
+          </div>
+        </div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" variant="outline">
+              <Plus className="h-3.5 w-3.5" /> Log review
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Log a coaching review</DialogTitle>
+            </DialogHeader>
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                create.mutate(new FormData(e.currentTarget));
+              }}
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Rep</Label>
+                  <TeamMemberPicker role="closer" name="rep_name" required />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Reviewer (optional)</Label>
+                  <Input name="reviewer_name" placeholder="Who reviewed this call" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Recurring gap category</Label>
+                <Select name="gap_category">
+                  <SelectTrigger>
+                    <SelectValue placeholder="What kind of gap is this?" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GAP_CATEGORY_OPTIONS.map((g) => (
+                      <SelectItem key={g.value} value={g.value}>
+                        {g.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>What the rep learned</Label>
+                <Textarea name="what_learned" rows={2} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>What went wrong / could improve</Label>
+                <Textarea name="what_went_wrong" rows={2} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Specific behavior they'll change going forward</Label>
+                <Textarea name="behavior_change" rows={2} required />
+              </div>
+              <Button type="submit" className="w-full" disabled={create.isPending}>
+                {create.isPending ? "…" : "Log review"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+      {recurringGaps.length > 0 && (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {recurringGaps.map((g) => (
+            <div key={g.value} className="rounded-lg border border-border/70 bg-background/40 p-3">
+              <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                {g.label}
+              </div>
+              <div className="mt-1 font-mono text-xl font-semibold">{g.count}</div>
+              <div className="mt-1 text-3xs text-muted-foreground">recurring gap · this range</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {reviews.length ? (
+        <div className="divide-y divide-border/60">
+          {reviews.slice(0, 10).map((r) => (
+            <div key={r.id} className="py-2.5 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold">{r.rep_name}</span>
+                <span className="text-3xs text-muted-foreground">
+                  {new Date(r.created_at).toLocaleDateString()}
+                  {r.reviewer_name ? ` · reviewed by ${r.reviewer_name}` : ""}
+                </span>
+              </div>
+              {r.gap_category && (
+                <span className="mt-1 inline-block rounded bg-muted px-1.5 py-0.5 text-3xs text-muted-foreground">
+                  {GAP_CATEGORY_OPTIONS.find((g) => g.value === r.gap_category)?.label ??
+                    r.gap_category}
+                </span>
+              )}
+              <p className="mt-1 text-muted-foreground">
+                <span className="font-medium text-foreground">Will change:</span>{" "}
+                {r.behavior_change}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
+          No coaching reviews logged in this range.
+        </div>
+      )}
+    </div>
   );
 }
