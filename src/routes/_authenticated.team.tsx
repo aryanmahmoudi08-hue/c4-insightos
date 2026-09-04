@@ -22,11 +22,13 @@ import {
   Check,
   X,
   UserPlus,
+  UserX,
   Shield,
   ChevronDown,
   Sparkles,
   Activity,
   Inbox,
+  History,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -112,7 +114,7 @@ const TEAM_SETTER_METRICS: RepMetricOption<HubSetterPerson>[] = [
 function Team() {
   const { data: org } = useCurrentOrg();
   const { isAdmin } = useRole();
-  const { devBypass } = useAuth();
+  const { devBypass, user } = useAuth();
   const orgId = org?.org_id;
   const { range } = useDateRange();
   const fromISO = `${range.from}T00:00:00`;
@@ -176,6 +178,38 @@ function Team() {
       qc.invalidateQueries({ queryKey: ["team_members"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  const revoke = useMutation({
+    mutationFn: async (targetUserId: string) => {
+      if (!orgId) throw new Error("No workspace");
+      const { error } = await supabase.rpc("revoke_membership_access", {
+        _org_id: orgId,
+        _target_user_id: targetUserId,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Access revoked");
+      qc.invalidateQueries({ queryKey: ["team"] });
+      qc.invalidateQueries({ queryKey: ["access-audit-log"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to revoke access"),
+  });
+
+  const { data: auditLog } = useQuery({
+    queryKey: ["access-audit-log", orgId, devBypass],
+    enabled: !!orgId && isAdmin && !devBypass,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("access_audit_log")
+        .select("id, action, target_email, actor_user_id, detail, created_at")
+        .eq("org_id", orgId!)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data;
+    },
   });
 
   const { data: members, isLoading: membersLoading } = useQuery({
@@ -773,7 +807,7 @@ function Team() {
                           {m.role}
                         </span>
                       </td>
-                      <td className="p-3 text-right">
+                      <td className="p-3 text-right space-x-1.5">
                         <Button
                           size="sm"
                           variant="outline"
@@ -787,12 +821,72 @@ function Team() {
                         >
                           <Shield className="h-3.5 w-3.5 mr-1.5" /> Access
                         </Button>
+                        {isAdmin && m.role !== "owner" && m.user_id !== user?.id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            disabled={revoke.isPending}
+                            onClick={() => {
+                              const name = m.profiles?.display_name ?? m.user_id.slice(0, 8);
+                              if (
+                                !confirm(
+                                  `Revoke ${name}'s access? They will immediately lose access to this workspace.`,
+                                )
+                              )
+                                return;
+                              revoke.mutate(m.user_id);
+                            }}
+                          >
+                            <UserX className="h-3.5 w-3.5 mr-1.5" /> Revoke
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </GlassTableShell>
+
+            {isAdmin && (
+              <div className="rounded-lg border border-border bg-card overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2 border-b border-border text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <History className="h-3.5 w-3.5" /> Recent access changes
+                </div>
+                {!auditLog || auditLog.length === 0 ? (
+                  <EmptyState
+                    icon={<History className="h-4 w-4" />}
+                    title="No access changes yet"
+                    description="Approvals, rejections, and revocations will appear here."
+                  />
+                ) : (
+                  <ul className="divide-y divide-border/70 text-xs">
+                    {auditLog.map((entry) => (
+                      <li
+                        key={entry.id}
+                        className="flex items-center justify-between gap-3 px-4 py-2"
+                      >
+                        <span className="text-muted-foreground">
+                          {entry.action === "membership_approved" && "Approved "}
+                          {entry.action === "membership_rejected" && "Rejected "}
+                          {entry.action === "access_revoked" && "Revoked "}
+                          <span className="font-medium text-foreground">
+                            {entry.target_email ?? "unknown"}
+                          </span>
+                          {entry.action === "membership_approved" &&
+                            typeof entry.detail === "object" &&
+                            entry.detail &&
+                            "role" in entry.detail && <> as {String(entry.detail.role)}</>}
+                        </span>
+                        <span className="shrink-0 font-mono text-3xs text-muted-foreground">
+                          {new Date(entry.created_at).toLocaleString()}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>

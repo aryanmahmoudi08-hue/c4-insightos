@@ -241,7 +241,17 @@ function Traffic() {
       }
       const closeRate = matched.length ? (won / matched.length) * 100 : 0;
       const avgDeal = dealCount ? totalDealCents / dealCount : 0;
-      const revenuePerLead = matched.length ? (totalDealCents + ltvCents) / matched.length : 0;
+      // Revenue double-count fix: totalDealCents (verified closed-call
+      // contract value) and ltvCents (the client/mentee record's own,
+      // independently-entered contract value for the same lead) are two
+      // unlinked records for the same real-world deal — summing them
+      // inflates revenue whenever both exist, exactly the bug Phase 4
+      // already fixed for Content Command Center via
+      // computeChannelRevenue/traffic-channel-revenue.ts. This page had its
+      // own separate computation that never got that fix. "Client LTV" is
+      // shown as its own stat right next to "Total revenue" below — it must
+      // not also be folded silently into that number.
+      const revenuePerLead = matched.length ? totalDealCents / matched.length : 0;
       // Score: close rate (%) × avg deal ($, in thousands) — surfaces revenue-efficient channels
       const score = closeRate * (avgDeal / 100000);
       return {
@@ -255,7 +265,7 @@ function Traffic() {
         closeRate: Number(closeRate.toFixed(1)),
         avgDeal: Math.round(avgDeal / 100),
         ltv: Math.round(ltvCents / 100),
-        revenue: Math.round((totalDealCents + ltvCents) / 100),
+        revenue: Math.round(totalDealCents / 100),
         revenuePerLead: Math.round(revenuePerLead / 100),
         score: Number(score.toFixed(2)),
       };
@@ -330,7 +340,7 @@ function Traffic() {
         {/* Plain-language headline numbers */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard
-            label="Revenue from tracked channels"
+            label="Contracted revenue from tracked channels"
             value={fmtMoney(totalRevenue * 100)}
             spectrum="hot"
             icon={<TrendingUp className="h-4 w-4" />}
@@ -563,8 +573,8 @@ function Traffic() {
                   <Stat label="Became clients" value={b.clients.toString()} />
                   <Stat label="Close rate" value={`${b.closeRate}%`} />
                   <Stat label="Avg deal" value={`$${b.avgDeal.toLocaleString()}`} />
-                  <Stat label="Total revenue" value={`$${b.revenue.toLocaleString()}`} />
-                  <Stat label="Client LTV" value={`$${b.ltv.toLocaleString()}`} />
+                  <Stat label="Contracted revenue" value={`$${b.revenue.toLocaleString()}`} />
+                  <Stat label="Client LTV (separate)" value={`$${b.ltv.toLocaleString()}`} />
                 </div>
               </div>
             );

@@ -8,6 +8,47 @@ export type Database = {
   };
   public: {
     Tables: {
+      access_audit_log: {
+        Row: {
+          action: string;
+          actor_user_id: string;
+          created_at: string;
+          detail: Json;
+          id: string;
+          org_id: string;
+          target_email: string | null;
+          target_user_id: string | null;
+        };
+        Insert: {
+          action: string;
+          actor_user_id: string;
+          created_at?: string;
+          detail?: Json;
+          id?: string;
+          org_id: string;
+          target_email?: string | null;
+          target_user_id?: string | null;
+        };
+        Update: {
+          action?: string;
+          actor_user_id?: string;
+          created_at?: string;
+          detail?: Json;
+          id?: string;
+          org_id?: string;
+          target_email?: string | null;
+          target_user_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "access_audit_log_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       ai_insights: {
         Row: {
           body: string;
@@ -3893,6 +3934,10 @@ export type Database = {
       };
       reject_membership_request: {
         Args: { _request_id: string };
+        Returns: undefined;
+      };
+      revoke_membership_access: {
+        Args: { _org_id: string; _target_user_id: string };
         Returns: undefined;
       };
       submit_membership_request: {
