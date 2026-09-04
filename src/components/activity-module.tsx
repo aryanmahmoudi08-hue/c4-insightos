@@ -114,6 +114,26 @@ const fmtMoney = (cents: number) =>
   `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%");
 
+// Callback scheduling timezone (spec: "Log a Call" timezone visibility).
+// Leads have no stored timezone anywhere in the schema — the `datetime-local`
+// input above this is filled in and read back in the browser's own local
+// time (`new Date(dueAt).toISOString()` at the mutation call site already
+// relies on that), so the honest thing to surface is which timezone that
+// browser-local value is actually being interpreted in, not a guessed lead
+// timezone. Never attribute this offset to the lead.
+const browserTzAbbrev = () =>
+  new Intl.DateTimeFormat(undefined, { timeZoneName: "short" })
+    .formatToParts(new Date())
+    .find((p) => p.type === "timeZoneName")?.value ?? "Local";
+const browserUtcOffset = () => {
+  const offsetMin = -new Date().getTimezoneOffset();
+  const sign = offsetMin >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMin);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  return `UTC${sign}${h}${m ? `:${String(m).padStart(2, "0")}` : ""}`;
+};
+
 const LEAD_SOURCES = ["Instagram Spiderweb", "Keyword", "Inbound", "Referral", "Ads", "Other"];
 
 interface ActivityLbPerson {
@@ -332,12 +352,35 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     "follow_up",
   ] as const;
   const { data: dialableLeads = [] } = useQuery({
-    queryKey: ["dialable-leads", orgId],
+    queryKey: ["dialable-leads", orgId, devBypass],
     enabled: isDialer && !!orgId,
     queryFn: async () => {
+      // Same reasoning as the callback lead search above: dev bypass has no
+      // real Supabase session, so this — now an interactive drilldown
+      // source, not just a passive count — needs a real filterable/openable
+      // fallback rather than silently coming back empty.
+      if (devBypass) {
+        const now = Date.now();
+        return mockLeads().map((lead, i) => ({
+          id: lead.id,
+          ticket_tier: i % 3 === 0 ? null : i % 2 === 0 ? "high" : "low",
+          status: OPEN_LEAD_STATUSES[i % OPEN_LEAD_STATUSES.length],
+          full_name: lead.full_name,
+          email: lead.email,
+          phone: lead.phone,
+          handle: lead.handle,
+          created_at: new Date(now - i * 36 * 3600 * 1000).toISOString(),
+          source_platform: (lead as { source_connector?: string }).source_connector ?? null,
+          source_campaign: null as string | null,
+          assigned_setter_id: null as string | null,
+          qualification_notes: null as string | null,
+        }));
+      }
       const { data, error } = await supabase
         .from("leads")
-        .select("id, ticket_tier, status")
+        .select(
+          "id, ticket_tier, status, full_name, email, phone, handle, created_at, source_platform, source_campaign, assigned_setter_id, qualification_notes",
+        )
         .eq("org_id", orgId!)
         .in("status", OPEN_LEAD_STATUSES);
       if (error) throw error;
@@ -350,6 +393,11 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     const unclassified = dialableLeads.length - high - low;
     return { high, low, unclassified, total: dialableLeads.length };
   }, [dialableLeads]);
+  const [activeLeadsTier, setActiveLeadsTier] = useState<"high" | "low" | null>(null);
+  const activeLeadsDrilldownRows = useMemo(
+    () => dialableLeads.filter((l) => l.ticket_tier === activeLeadsTier),
+    [dialableLeads, activeLeadsTier],
+  );
   // Appointment quality (spec section 4) — booking-outcome quality is org-wide
   // (calls have no "booking dialer" column, only closer/setter), scoped to
   // the page's date range via scheduled_for.
@@ -1473,22 +1521,32 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               Active leads available to dial
             </div>
             <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-xl border border-border/70 bg-background/40 p-3">
+              <button
+                type="button"
+                onClick={() => setActiveLeadsTier("high")}
+                disabled={ticketTierSplit.high === 0}
+                className="rounded-xl border border-border/70 bg-background/40 p-3 text-left transition hover:border-spectrum-hot/50 hover:bg-background/60 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-background/40"
+              >
                 <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                   High-ticket
                 </div>
                 <div className="mt-2 font-mono text-xl font-semibold text-spectrum-hot">
                   {ticketTierSplit.high}
                 </div>
-              </div>
-              <div className="rounded-xl border border-border/70 bg-background/40 p-3">
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveLeadsTier("low")}
+                disabled={ticketTierSplit.low === 0}
+                className="rounded-xl border border-border/70 bg-background/40 p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-background/60 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-background/40"
+              >
                 <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                   Low-ticket
                 </div>
                 <div className="mt-2 font-mono text-xl font-semibold text-spectrum-mid">
                   {ticketTierSplit.low}
                 </div>
-              </div>
+              </button>
               <div className="rounded-xl border border-border/70 bg-background/40 p-3">
                 <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                   Unclassified
@@ -1504,6 +1562,92 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 to move it into High or Low ticket.
               </div>
             )}
+            <MetricDetailPanel
+              open={activeLeadsTier != null}
+              onOpenChange={(v) => !v && setActiveLeadsTier(null)}
+              title={`${activeLeadsTier === "high" ? "High" : "Low"}-ticket leads available to dial`}
+              subtitle={`${activeLeadsDrilldownRows.length} active lead${activeLeadsDrilldownRows.length === 1 ? "" : "s"} · not yet closed, disqualified, or no-showed`}
+              columns={[
+                {
+                  key: "lead",
+                  label: "Lead",
+                  render: (l) => (
+                    <Link
+                      to="/leads"
+                      search={{ leadId: l.id }}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {l.full_name ?? l.handle ?? "Unnamed lead"}
+                    </Link>
+                  ),
+                },
+                {
+                  key: "contact",
+                  label: "Contact",
+                  render: (l) => l.phone ?? l.email ?? "—",
+                },
+                {
+                  key: "source",
+                  label: "Source",
+                  render: (l) => l.source_platform ?? l.source_campaign ?? "Unknown",
+                },
+                {
+                  key: "created",
+                  label: "Created",
+                  render: (l) => (l.created_at ? new Date(l.created_at).toLocaleDateString() : "—"),
+                },
+                {
+                  key: "age",
+                  label: "Age",
+                  render: (l) => {
+                    if (!l.created_at) return "—";
+                    const days = Math.floor(
+                      (Date.now() - new Date(l.created_at).getTime()) / 86_400_000,
+                    );
+                    return `${days}d`;
+                  },
+                },
+                {
+                  key: "status",
+                  label: "Status",
+                  render: (l) => l.status.replace(/_/g, " "),
+                },
+                {
+                  key: "assigned",
+                  label: "Assigned rep",
+                  render: (l) =>
+                    l.assigned_setter_id ? `Rep ${l.assigned_setter_id.slice(0, 8)}` : "Unassigned",
+                },
+                {
+                  key: "nextFollowUp",
+                  label: "Next follow-up",
+                  render: (l) => {
+                    const cb = callbacks.find(
+                      (c) => c.entity_id === l.id && c.state !== "completed",
+                    );
+                    return cb?.due_at ? new Date(cb.due_at).toLocaleString() : "Not scheduled";
+                  },
+                },
+                {
+                  key: "qualification",
+                  label: "Qualification notes",
+                  render: (l) => l.qualification_notes ?? "—",
+                },
+              ]}
+              rows={activeLeadsDrilldownRows}
+              rowKey={(l) => l.id}
+              cap={{
+                status: "insufficient_data",
+                sentence:
+                  "This is a live pipeline snapshot, not a funnel stage — no prior-stage constraint to derive.",
+              }}
+              working={{
+                status: "insufficient_data",
+                sentence:
+                  "Assigned-dialer and call-attempt tracking aren't connected on the lead record yet, so only what's actually stored (status, source, created date, next scheduled follow-up) is shown here.",
+              }}
+              emptyRowsLabel="No leads in this tier right now."
+            />
           </div>
         )}
         <PageHero
@@ -1912,6 +2056,23 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                         onChange={(e) => setCallbackDueAt(e.target.value)}
                         className="h-8 text-xs"
                       />
+                      <div className="text-3xs text-muted-foreground">
+                        {callbackDueAt ? (
+                          <>
+                            Scheduling for{" "}
+                            {new Date(callbackDueAt).toLocaleString(undefined, {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })}{" "}
+                            {browserTzAbbrev()} ({browserUtcOffset()})
+                          </>
+                        ) : (
+                          <>
+                            Your time zone: {browserTzAbbrev()} ({browserUtcOffset()})
+                          </>
+                        )}
+                        {" · Lead time zone: Unavailable"}
+                      </div>
                     </div>
                     <Button
                       size="sm"

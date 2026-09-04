@@ -31,14 +31,26 @@ test("webinar analytics: canonical KpiBand cards, full labels, real comparison n
   await expect(page.getByText("Webinar A", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Webinar B", { exact: true })).toHaveCount(0);
   await expect(
-    page.getByTitle("The $10K/Month Growth System · MOCK / DEMO", { exact: true }),
+    page.getByTitle("The $10K/Month Growth System · MOCK / DEMO", { exact: true }).last(),
   ).toBeVisible();
   await expect(
-    page.getByTitle("How We Generate Qualified Leads Every Week · MOCK / DEMO", { exact: true }),
+    page
+      .getByTitle("How We Generate Qualified Leads Every Week · MOCK / DEMO", { exact: true })
+      .last(),
   ).toBeVisible();
 
   // Exactly one retention chart (the duplicate was removed).
   await expect(page.locator("#retention-fill")).toHaveCount(1);
+
+  // Retention chart has a readable, permanent timeline strip (not hover-only)
+  // and its container never overflows horizontally.
+  await expect(page.getByText("Registered", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Live attendance", { exact: true })).toBeVisible();
+  await expect(page.getByText("At pitch", { exact: true }).first()).toBeVisible();
+  const chartBox = await page.locator('svg[aria-label="Audience retention curve"]').boundingBox();
+  const viewportWidth = page.viewportSize()?.width ?? 1280;
+  expect(chartBox?.x ?? 0).toBeGreaterThanOrEqual(0);
+  expect((chartBox?.x ?? 0) + (chartBox?.width ?? 0)).toBeLessThanOrEqual(viewportWidth);
 
   // No hardcoded fake rating anywhere on the page.
   await expect(page.getByText(/user rating/i)).toHaveCount(0);

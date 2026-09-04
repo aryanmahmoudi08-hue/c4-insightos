@@ -73,8 +73,25 @@ function WebinarAnalyticsPage() {
   const { devBypass } = useAuth();
   const { range } = useDateRange();
   const orgId = (org as { org_id?: string } | undefined)?.org_id;
-  const [selectedId, setSelectedId] = useState(devBypass ? "mock-webinar-a" : "all");
+  const [selectedId, setSelectedIdRaw] = useState(devBypass ? "mock-webinar-a" : "all");
   const [comparisonId, setComparisonId] = useState(devBypass ? "mock-webinar-b" : "none");
+  // A webinar can't be compared against itself — if the primary selection
+  // changes to match the current comparison choice, drop the comparison
+  // back to "none" rather than silently comparing a webinar with itself.
+  const setSelectedId = (id: string) => {
+    setSelectedIdRaw(id);
+    setComparisonId((prev) => (prev === id ? "none" : prev));
+  };
+  const webinarOptionLabel = (webinar: Webinar) => {
+    const date = webinar.starts_at
+      ? new Date(webinar.starts_at).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "No date";
+    return `${webinar.name} · ${date} · ${webinar.status}`;
+  };
   const mockFixture = useMemo(
     () => createMockWebinarFixture(new Date("2026-08-27T12:00:00.000Z")),
     [],
@@ -282,14 +299,19 @@ function WebinarAnalyticsPage() {
             </div>
           </div>
           <Select value={selectedId} onValueChange={setSelectedId}>
-            <SelectTrigger className="w-full border-white/10 bg-black/50 text-xs shadow-none backdrop-blur-xl sm:w-[280px]">
-              <SelectValue placeholder="Choose webinar command" />
+            <SelectTrigger
+              className="w-full border-white/10 bg-black/50 text-xs shadow-none backdrop-blur-xl sm:w-[280px]"
+              title={selected?.name}
+            >
+              <SelectValue placeholder="Choose webinar command" className="truncate" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All webinars</SelectItem>
               {(webinarsQuery.data ?? []).map((webinar) => (
-                <SelectItem key={webinar.id} value={webinar.id}>
-                  {webinar.name}
+                <SelectItem key={webinar.id} value={webinar.id} title={webinarOptionLabel(webinar)}>
+                  <span className="block max-w-[260px] truncate">
+                    {webinarOptionLabel(webinar)}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -313,21 +335,33 @@ function WebinarAnalyticsPage() {
                 <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/55">
                   Compare with
                 </span>
-                <Select value={comparisonId} onValueChange={setComparisonId}>
-                  <SelectTrigger className="w-[240px]">
-                    <SelectValue placeholder="Select webinar B" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No comparison</SelectItem>
-                    {(webinarsQuery.data ?? [])
-                      .filter((webinar) => webinar.id !== selectedId)
-                      .map((webinar) => (
-                        <SelectItem key={webinar.id} value={webinar.id}>
-                          {webinar.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                {(webinarsQuery.data?.length ?? 0) < 2 ? (
+                  <span className="text-xs text-white/45">
+                    Add another webinar to enable a comparison.
+                  </span>
+                ) : (
+                  <Select value={comparisonId} onValueChange={setComparisonId}>
+                    <SelectTrigger className="w-full max-w-[280px]" title={comparisonWebinar?.name}>
+                      <SelectValue placeholder="Select a webinar to compare" className="truncate" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No comparison</SelectItem>
+                      {(webinarsQuery.data ?? [])
+                        .filter((webinar) => webinar.id !== selectedId)
+                        .map((webinar) => (
+                          <SelectItem
+                            key={webinar.id}
+                            value={webinar.id}
+                            title={webinarOptionLabel(webinar)}
+                          >
+                            <span className="block max-w-[260px] truncate">
+                              {webinarOptionLabel(webinar)}
+                            </span>
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <KpiBand
                 title="Executive KPIs"
@@ -845,6 +879,10 @@ function RetentionPanel({
                 <stop offset="1" stopColor="#22d3ee" stopOpacity="0" />
               </linearGradient>
             </defs>
+            {/* Reference gridlines, purely visual — no data changes. Faint
+                enough not to compete with the curve itself. */}
+            <path d="M8 26 H92" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />
+            <path d="M8 61 H92" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />
             <path d="M8 96 H92" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
             <path d={area} fill="url(#retention-fill)" />
             <path
@@ -890,6 +928,29 @@ function RetentionPanel({
               </div>
             </div>
           )}
+        </div>
+      ) : null}
+      {retention.length ? (
+        // Permanent timeline strip — the curve itself carries no on-chart
+        // text (SVG text would distort under preserveAspectRatio="none"),
+        // so without this the stage each point represents was only ever
+        // visible on hover. Safe to always render: retentionFromEvents()
+        // caps this at 3 points (Registered / Live attendance / At pitch).
+        <div className="relative mt-1 h-8">
+          {points.map((point, index) => (
+            <div
+              key={`label-${point.label}-${point.timestamp}`}
+              className="absolute top-0 flex -translate-x-1/2 flex-col items-center text-center"
+              style={{ left: `${point.x}%` }}
+            >
+              <div className="text-3xs whitespace-nowrap uppercase tracking-wider text-white/45">
+                {point.label}
+              </div>
+              <div className="font-mono text-2xs text-white/80">
+                {point.audience.toLocaleString()}
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <EmptyState

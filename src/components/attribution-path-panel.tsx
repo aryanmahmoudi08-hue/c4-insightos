@@ -7,6 +7,11 @@ export type AttributionPathStage = {
   label: string;
   value: number | null;
   detail: string;
+  // Opens a records drilldown for this node (real underlying rows, via the
+  // caller's own MetricDetailPanel state) — omitted when the stage has no
+  // row-level data behind it (e.g. an aggregate rollup with no per-record
+  // join), so it stays a plain non-interactive stat instead of a dead click.
+  onOpenRecords?: () => void;
 };
 
 export type AttributionPath = {
@@ -61,12 +66,23 @@ export function AttributionPathPanel({
                   <div key={stage.key} className="flex items-center gap-2 md:shrink-0">
                     <button
                       type="button"
-                      onClick={() => setSelected(stage)}
-                      title={stage.detail}
-                      className="w-full min-w-0 rounded-md border border-border/70 bg-muted/20 p-2 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/40 md:w-36"
+                      onClick={() =>
+                        stage.onOpenRecords ? stage.onOpenRecords() : setSelected(stage)
+                      }
+                      title={
+                        stage.onOpenRecords
+                          ? `${stage.detail} — click to see records`
+                          : stage.detail
+                      }
+                      className={`w-full min-w-0 rounded-md border border-border/70 bg-muted/20 p-2 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/40 md:w-36 ${stage.onOpenRecords ? "ring-1 ring-inset ring-spectrum-mid/20" : ""}`}
                     >
-                      <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">
-                        {stage.label}
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">
+                          {stage.label}
+                        </div>
+                        {stage.onOpenRecords && (
+                          <span className="shrink-0 text-[9px] text-spectrum-mid">▸</span>
+                        )}
                       </div>
                       <div className="mt-1 truncate font-mono text-lg font-semibold text-foreground">
                         {stage.value == null ? "—" : stage.value.toLocaleString()}

@@ -258,10 +258,12 @@ function Closer() {
   const { devBypass } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<{
-    kind: "close" | "money" | "pipeline";
-    index: number;
-  } | null>(null);
+  const [selected, setSelected] = useState<
+    | { kind: "close" | "money" | "pipeline"; index: number }
+    | { kind: "noshow"; index: 0 | 1 | 2 }
+    | { kind: "attribution"; stageKey: string }
+    | null
+  >(null);
 
   const settingsFn = useServerFn(getWorkspaceSettingsFn);
   const { data: workspaceSettings } = useQuery({
@@ -298,35 +300,239 @@ function Closer() {
     queryKey: ["calls", orgId, range.from, range.to, devBypass],
     enabled: !!orgId,
     queryFn: async () => {
-      if (devBypass)
-        return mockCalls() as unknown as {
+      type MockCallRow = {
+        id: string;
+        scheduled_for: string | null;
+        status: string;
+        showed: boolean;
+        offer_made: boolean;
+        closed: boolean;
+        contract_value_cents: number | null;
+        cash_collected_cents: number | null;
+        deposit_cents: number | null;
+        payment_plan: boolean | null;
+        call_summary: string | null;
+        recording_url: string | null;
+        closer_name: string | null;
+        lead_email: string | null;
+        time_to_close_seconds: number | null;
+        key_moment: string | null;
+        disposition: string | null;
+        duration_seconds: number | null;
+        talk_seconds: number | null;
+        recovered_from_call_id: string | null;
+        setter_id: string | null;
+        source_platform: string | null;
+        source_format: string | null;
+        source_content_id: string | null;
+        source_campaign: string | null;
+        leads: {
           id: string;
-          scheduled_for: string | null;
-          status: string;
-          showed: boolean;
-          offer_made: boolean;
-          closed: boolean;
-          contract_value_cents: number | null;
-          cash_collected_cents: number | null;
-          deposit_cents: number | null;
-          payment_plan: boolean | null;
-          call_summary: string | null;
-          recording_url: string | null;
-          closer_name: string | null;
-          lead_email: string | null;
-          time_to_close_seconds: number | null;
-          key_moment: string | null;
-          disposition: string | null;
-          duration_seconds: number | null;
-          talk_seconds: number | null;
-          recovered_from_call_id: string | null;
-          setter_id: string | null;
-          leads: { full_name: string | null; handle: string | null; email: string | null } | null;
-        }[];
+          full_name: string | null;
+          handle: string | null;
+          email: string | null;
+        } | null;
+      };
+      if (devBypass) {
+        // mockCalls() only fills the base scorecard fields — no lifecycle
+        // attribution columns, no payment-plan flag, and no no-show/recovery
+        // pairs — so under dev bypass (the only auth path available in this
+        // sandbox) the No-show Recovery section and the lifecycle
+        // attribution drilldowns added here would have nothing to show, not
+        // because the feature is broken but because the shared mock fixture
+        // never populates those columns. This enriches this page's own copy
+        // of the mock rows with the same kind of data the real columns hold
+        // (lifecycle tags, a payment-plan flag, a couple of no-show/recovery
+        // pairs) — additive to the existing dev-only fixture, doesn't touch
+        // dev-mock-data.ts (shared with hub-operating-metrics.tsx), and
+        // changes nothing about how real org data is queried or computed.
+        const platforms = ["instagram", "youtube", "referral"];
+        const formats = ["reel", "post", "story"];
+        const base: MockCallRow[] = (mockCalls() as MockCallRow[]).map((c, i) => ({
+          ...c,
+          payment_plan: i % 4 === 0,
+          duration_seconds: c.showed ? 1800 + (i % 5) * 120 : null,
+          talk_seconds: c.showed ? 1500 + (i % 5) * 90 : null,
+          setter_id: i % 3 === 0 ? null : `mock-setter-${i % 3}`,
+          source_platform: platforms[i % platforms.length],
+          source_format: formats[i % formats.length],
+          source_campaign: `Campaign ${String.fromCharCode(65 + (i % 3))}`,
+          leads: {
+            id: `mock-call-lead-${i}`,
+            full_name: `Lead ${i + 1}`,
+            handle: null,
+            email: null,
+          },
+        }));
+        const now = Date.now();
+        const noShowPairs: MockCallRow[] = [
+          {
+            id: "mock-noshow-1",
+            scheduled_for: new Date(now - 6 * 86400e3).toISOString(),
+            status: "no_show",
+            showed: false,
+            offer_made: false,
+            closed: false,
+            contract_value_cents: 0,
+            cash_collected_cents: 0,
+            deposit_cents: 0,
+            payment_plan: false,
+            call_summary: null,
+            recording_url: null,
+            closer_name: "Dev Closer",
+            lead_email: null,
+            time_to_close_seconds: null,
+            key_moment: null,
+            disposition: "no_show",
+            duration_seconds: null,
+            talk_seconds: null,
+            recovered_from_call_id: null,
+            setter_id: "mock-setter-1",
+            source_platform: "instagram",
+            source_format: "reel",
+            source_content_id: null,
+            source_campaign: "Campaign A",
+            leads: {
+              id: "mock-noshow-lead-1",
+              full_name: "Riley Sanders",
+              handle: null,
+              email: null,
+            },
+          },
+          {
+            id: "mock-recovered-1",
+            scheduled_for: new Date(now - 3 * 86400e3).toISOString(),
+            status: "closed",
+            showed: true,
+            offer_made: true,
+            closed: true,
+            contract_value_cents: 500_000,
+            cash_collected_cents: 500_000,
+            deposit_cents: 0,
+            payment_plan: false,
+            call_summary: null,
+            recording_url: null,
+            closer_name: "Dev Closer",
+            lead_email: null,
+            time_to_close_seconds: 1800,
+            key_moment: null,
+            disposition: "closed",
+            duration_seconds: 2100,
+            talk_seconds: 1800,
+            recovered_from_call_id: "mock-noshow-1",
+            setter_id: "mock-setter-1",
+            source_platform: "instagram",
+            source_format: "reel",
+            source_content_id: null,
+            source_campaign: "Campaign A",
+            leads: {
+              id: "mock-noshow-lead-1",
+              full_name: "Riley Sanders",
+              handle: null,
+              email: null,
+            },
+          },
+          {
+            id: "mock-noshow-2",
+            scheduled_for: new Date(now - 5 * 86400e3).toISOString(),
+            status: "no_show",
+            showed: false,
+            offer_made: false,
+            closed: false,
+            contract_value_cents: 0,
+            cash_collected_cents: 0,
+            deposit_cents: 0,
+            payment_plan: false,
+            call_summary: null,
+            recording_url: null,
+            closer_name: "Dev Closer",
+            lead_email: null,
+            time_to_close_seconds: null,
+            key_moment: null,
+            disposition: "no_show",
+            duration_seconds: null,
+            talk_seconds: null,
+            recovered_from_call_id: null,
+            setter_id: "mock-setter-2",
+            source_platform: "youtube",
+            source_format: "post",
+            source_content_id: null,
+            source_campaign: "Campaign B",
+            leads: {
+              id: "mock-noshow-lead-2",
+              full_name: "Drew Callahan",
+              handle: null,
+              email: null,
+            },
+          },
+          {
+            id: "mock-recovered-2",
+            scheduled_for: new Date(now - 2 * 86400e3).toISOString(),
+            status: "completed",
+            showed: true,
+            offer_made: true,
+            closed: false,
+            contract_value_cents: 0,
+            cash_collected_cents: 0,
+            deposit_cents: 0,
+            payment_plan: false,
+            call_summary: null,
+            recording_url: null,
+            closer_name: "Dev Closer",
+            lead_email: null,
+            time_to_close_seconds: null,
+            key_moment: null,
+            disposition: "no_close",
+            duration_seconds: 1500,
+            talk_seconds: 1200,
+            recovered_from_call_id: "mock-noshow-2",
+            setter_id: "mock-setter-2",
+            source_platform: "youtube",
+            source_format: "post",
+            source_content_id: null,
+            source_campaign: "Campaign B",
+            leads: {
+              id: "mock-noshow-lead-2",
+              full_name: "Drew Callahan",
+              handle: null,
+              email: null,
+            },
+          },
+          {
+            id: "mock-noshow-3",
+            scheduled_for: new Date(now - 4 * 86400e3).toISOString(),
+            status: "no_show",
+            showed: false,
+            offer_made: false,
+            closed: false,
+            contract_value_cents: 0,
+            cash_collected_cents: 0,
+            deposit_cents: 0,
+            payment_plan: false,
+            call_summary: null,
+            recording_url: null,
+            closer_name: "Dev Closer",
+            lead_email: null,
+            time_to_close_seconds: null,
+            key_moment: null,
+            disposition: "no_show",
+            duration_seconds: null,
+            talk_seconds: null,
+            recovered_from_call_id: null,
+            setter_id: "mock-setter-1",
+            source_platform: "referral",
+            source_format: "story",
+            source_content_id: null,
+            source_campaign: "Campaign C",
+            leads: { id: "mock-noshow-lead-3", full_name: "Avery Chen", handle: null, email: null },
+          },
+        ];
+        return [...base, ...noShowPairs];
+      }
       const { data, error } = await supabase
         .from("calls")
         .select(
-          "id, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, payment_plan, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, disposition, duration_seconds, talk_seconds, recovered_from_call_id, setter_id, source_platform, source_format, source_content_id, source_campaign, leads(full_name, handle, email)",
+          "id, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, payment_plan, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, disposition, duration_seconds, talk_seconds, recovered_from_call_id, setter_id, source_platform, source_format, source_content_id, source_campaign, leads(id, full_name, handle, email)",
         )
         .eq("org_id", orgId!)
         .gte("scheduled_for", `${range.from}T00:00:00`)
@@ -726,71 +932,92 @@ function Closer() {
         id: "closer-lifecycle",
         label:
           "Channel → campaign/content → capture mechanism → setter/dialer → booked → offer → payment plan → cash",
-        stages: [
-          {
-            key: "channel",
-            label: "Original Channel",
-            value:
-              new Set(
-                list.map((c) => (c as Record<string, unknown>).source_platform).filter(Boolean),
-              ).size || null,
-            detail: "Distinct source platforms on these calls",
-          },
-          {
-            key: "campaign",
-            label: "Campaign / Content",
-            value:
-              new Set(
-                list
-                  .map(
-                    (c) =>
-                      (c as Record<string, unknown>).source_campaign ??
-                      (c as Record<string, unknown>).source_content_id,
-                  )
-                  .filter(Boolean),
-              ).size || null,
-            detail: "Distinct campaigns / content pieces",
-          },
-          {
-            key: "capture",
-            label: "Capture Mechanism",
-            value:
-              new Set(list.map((c) => (c as Record<string, unknown>).source_format).filter(Boolean))
-                .size || null,
-            detail: "Distinct capture formats",
-          },
-          {
-            key: "setter",
-            label: "Setter / Dialer",
-            value: list.filter((c) => c.setter_id).length,
-            detail: "Calls with a setter/dialer attached",
-          },
-          { key: "booked", label: "Booked Call", value: list.length, detail: "Calls in range" },
-          {
-            key: "offer",
-            label: "Offer / Product",
-            value: list.filter((c) => c.offer_made).length,
-            detail: "Offer made",
-          },
-          {
-            key: "payment",
-            label: "Payment Plan",
-            value: paymentPlanCount,
-            detail: "Payment-plan calls",
-          },
-          {
-            key: "cash",
-            label: "Cash Collected",
-            value: cashCents ? Math.round(cashCents / 100) : 0,
-            detail: fmtMoney(cashCents),
-          },
-          {
-            key: "retention",
-            label: "Retention / Refund",
-            value: null,
-            detail: "Lives on Mentees & Renewals, not on calls — not connected here",
-          },
-        ],
+        stages: (() => {
+          const openStage = (key: string) => () =>
+            setSelected({ kind: "attribution", stageKey: key });
+          const channelCount =
+            new Set(list.map((c) => (c as Record<string, unknown>).source_platform).filter(Boolean))
+              .size || null;
+          const campaignCount =
+            new Set(
+              list
+                .map(
+                  (c) =>
+                    (c as Record<string, unknown>).source_campaign ??
+                    (c as Record<string, unknown>).source_content_id,
+                )
+                .filter(Boolean),
+            ).size || null;
+          const captureCount =
+            new Set(list.map((c) => (c as Record<string, unknown>).source_format).filter(Boolean))
+              .size || null;
+          const setterCount = list.filter((c) => c.setter_id).length;
+          const offerCount = list.filter((c) => c.offer_made).length;
+          return [
+            {
+              key: "channel",
+              label: "Original Channel",
+              value: channelCount,
+              detail: "Distinct source platforms on these calls",
+              onOpenRecords: channelCount ? openStage("channel") : undefined,
+            },
+            {
+              key: "campaign",
+              label: "Campaign / Content",
+              value: campaignCount,
+              detail: "Distinct campaigns / content pieces",
+              onOpenRecords: campaignCount ? openStage("campaign") : undefined,
+            },
+            {
+              key: "capture",
+              label: "Capture Mechanism",
+              value: captureCount,
+              detail: "Distinct capture formats",
+              onOpenRecords: captureCount ? openStage("capture") : undefined,
+            },
+            {
+              key: "setter",
+              label: "Setter / Dialer",
+              value: setterCount,
+              detail: "Calls with a setter/dialer attached",
+              onOpenRecords: setterCount ? openStage("setter") : undefined,
+            },
+            {
+              key: "booked",
+              label: "Booked Call",
+              value: list.length,
+              detail: "Calls in range",
+              onOpenRecords: list.length ? openStage("booked") : undefined,
+            },
+            {
+              key: "offer",
+              label: "Offer / Product",
+              value: offerCount,
+              detail: "Offer made",
+              onOpenRecords: offerCount ? openStage("offer") : undefined,
+            },
+            {
+              key: "payment",
+              label: "Payment Plan",
+              value: paymentPlanCount,
+              detail: "Payment-plan calls",
+              onOpenRecords: paymentPlanCount ? openStage("payment") : undefined,
+            },
+            {
+              key: "cash",
+              label: "Cash Collected",
+              value: cashCents ? Math.round(cashCents / 100) : 0,
+              detail: fmtMoney(cashCents),
+              onOpenRecords: cashCents ? openStage("cash") : undefined,
+            },
+            {
+              key: "retention",
+              label: "Retention / Refund",
+              value: null,
+              detail: "Lives on Mentees & Renewals, not on calls — not connected here",
+            },
+          ];
+        })(),
       },
     ],
     [list, paymentPlanCount, cashCents],
@@ -1080,6 +1307,11 @@ function Closer() {
       recoveredCloseRate: recovered.length
         ? (recoveredClosed.length / recovered.length) * 100
         : null,
+      // Row sets for the drilldowns below — same filters as the rates above,
+      // so the card and its drilldown can never disagree.
+      noShows,
+      recovered,
+      recoveredClosed,
     };
   }, [list]);
 
@@ -1591,6 +1823,200 @@ function Closer() {
                   "This is a pipeline snapshot, not a funnel stage — no prior-period comparison to derive.",
               },
             };
+          } else if (selected?.kind === "noshow") {
+            // Rate-based metrics show numerator AND denominator records
+            // together (a "Recovered" column on the full no-show set, or a
+            // "Closed" column on the recovered set) so the rate's arithmetic
+            // is visible, not just its result.
+            const followUpFor = (c: CallRow) =>
+              list.find((c2) => c2.recovered_from_call_id === c.id);
+            const leadOf = (c: CallRow) => c.lead_email ?? c.leads?.full_name ?? "—";
+            const dateOf = (c: CallRow) =>
+              c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—";
+            if (selected.index === 0) {
+              panel = {
+                title: "No-shows in range",
+                columns: [
+                  { key: "lead", label: "Lead", render: leadOf },
+                  { key: "date", label: "No-show date", render: dateOf },
+                  { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                  {
+                    key: "recovered",
+                    label: "Recovered",
+                    render: (c) => (followUpFor(c) ? "Yes" : "No"),
+                  },
+                ],
+                rows: noShowRecovery.noShows,
+                cap: {
+                  status: "insufficient_data",
+                  sentence:
+                    "A raw count, not a funnel stage — no prior-stage constraint to derive.",
+                },
+                working: {
+                  status: "insufficient_data",
+                  sentence:
+                    "A raw count, not a funnel stage — no prior-period comparison to derive.",
+                },
+              };
+            } else if (selected.index === 1) {
+              panel = {
+                title: `Recovered Show Rate (${noShowRecovery.recovered.length} of ${noShowRecovery.noShows.length})`,
+                columns: [
+                  { key: "lead", label: "Lead", render: leadOf },
+                  { key: "date", label: "Original no-show", render: dateOf },
+                  {
+                    key: "rescheduled",
+                    label: "Rescheduled to",
+                    render: (c) => {
+                      const f = followUpFor(c);
+                      return f?.scheduled_for
+                        ? new Date(f.scheduled_for).toLocaleDateString()
+                        : "—";
+                    },
+                  },
+                  {
+                    key: "showed",
+                    label: "Showed on reschedule",
+                    render: (c) => (followUpFor(c)?.showed ? "Yes" : followUpFor(c) ? "No" : "—"),
+                  },
+                  { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                  {
+                    key: "outcome",
+                    label: "Outcome",
+                    render: (c) => {
+                      const f = followUpFor(c);
+                      if (!f) return "Not recovered";
+                      return (
+                        STATUS_LABEL[f.status] ??
+                        normalizeCloserDisposition(f.status, f.closed, f.offer_made)
+                      );
+                    },
+                  },
+                ],
+                rows: noShowRecovery.noShows,
+                cap: {
+                  status: "insufficient_data",
+                  sentence:
+                    "A recovery rate, not a funnel stage — no prior-stage constraint to derive.",
+                },
+                working: {
+                  status: "insufficient_data",
+                  sentence:
+                    "A recovery rate, not a funnel stage — no prior-period comparison to derive.",
+                },
+              };
+            } else {
+              panel = {
+                title: `Recovered Close Rate (${noShowRecovery.recoveredClosed.length} of ${noShowRecovery.recovered.length})`,
+                columns: [
+                  { key: "lead", label: "Lead", render: leadOf },
+                  { key: "date", label: "Recovered appointment", render: dateOf },
+                  { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                  {
+                    key: "offer",
+                    label: "Offer made",
+                    render: (c) => (c.offer_made ? "Yes" : "No"),
+                  },
+                  { key: "closed", label: "Closed", render: (c) => (c.closed ? "Yes" : "No") },
+                  {
+                    key: "cash",
+                    label: "Cash",
+                    align: "right",
+                    render: (c) => fmtMoney(c.cash_collected_cents ?? 0),
+                  },
+                ],
+                rows: noShowRecovery.recovered,
+                cap: {
+                  status: "insufficient_data",
+                  sentence:
+                    "A recovery rate, not a funnel stage — no prior-stage constraint to derive.",
+                },
+                working: {
+                  status: "insufficient_data",
+                  sentence:
+                    "A recovery rate, not a funnel stage — no prior-period comparison to derive.",
+                },
+              };
+            }
+          } else if (selected?.kind === "attribution") {
+            const stageRowsFor = (key: string): CallRow[] => {
+              if (key === "channel") return list.filter((c) => c.source_platform);
+              if (key === "campaign")
+                return list.filter((c) => c.source_campaign || c.source_content_id);
+              if (key === "capture") return list.filter((c) => c.source_format);
+              if (key === "setter") return list.filter((c) => c.setter_id);
+              if (key === "booked") return list;
+              if (key === "offer") return list.filter((c) => c.offer_made);
+              if (key === "payment") return list.filter((c) => c.payment_plan === true);
+              if (key === "cash") return list.filter((c) => (c.cash_collected_cents ?? 0) > 0);
+              return [];
+            };
+            const attrColumnFor = (key: string): DetailColumn<CallRow> => {
+              if (key === "channel")
+                return { key: "value", label: "Channel", render: (c) => c.source_platform ?? "—" };
+              if (key === "campaign")
+                return {
+                  key: "value",
+                  label: "Campaign / content",
+                  render: (c) => c.source_campaign ?? c.source_content_id ?? "—",
+                };
+              if (key === "capture")
+                return {
+                  key: "value",
+                  label: "Capture format",
+                  render: (c) => c.source_format ?? "—",
+                };
+              if (key === "setter")
+                return {
+                  key: "value",
+                  label: "Setter / dialer",
+                  render: (c) => (c.setter_id ? `Rep ${c.setter_id.slice(0, 8)}` : "—"),
+                };
+              if (key === "offer") return { key: "value", label: "Offer made", render: () => "✓" };
+              if (key === "payment")
+                return { key: "value", label: "Payment plan", render: () => "✓" };
+              if (key === "cash")
+                return {
+                  key: "value",
+                  label: "Cash",
+                  align: "right",
+                  render: (c) => fmtMoney(c.cash_collected_cents ?? 0),
+                };
+              return { key: "value", label: "Booked", render: () => "✓" };
+            };
+            const stageMeta = closerLifecyclePath[0].stages.find(
+              (s) => s.key === selected.stageKey,
+            );
+            panel = stageMeta
+              ? {
+                  title: stageMeta.label,
+                  columns: [
+                    { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                    {
+                      key: "date",
+                      label: "Date",
+                      render: (c) =>
+                        c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—",
+                    },
+                    {
+                      key: "lead",
+                      label: "Lead",
+                      render: (c) => c.lead_email ?? c.leads?.full_name ?? "—",
+                    },
+                    attrColumnFor(selected.stageKey),
+                  ],
+                  rows: stageRowsFor(selected.stageKey).slice(0, 50),
+                  cap: {
+                    status: "insufficient_data",
+                    sentence: `Reads the same ${range.label.toLowerCase()} call set along the ${stageMeta.label.toLowerCase()} axis — not a funnel stage, so no prior-stage constraint to derive.`,
+                  },
+                  working: {
+                    status: "insufficient_data",
+                    sentence:
+                      "An attribution-lifecycle read of these calls, not a funnel stage — no prior-period comparison to derive.",
+                  },
+                }
+              : null;
           } else if (selected) {
             const stage = closeStages[selected.index];
             const kind = ["oncal", "showed", "offers", "closes"][selected.index];
@@ -2154,15 +2580,25 @@ function Closer() {
 
               {sectionHeader("D · No-show recovery")}
               <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-lg border border-border/70 bg-card p-3">
+                <button
+                  type="button"
+                  disabled={noShowRecovery.noShowCount === 0}
+                  onClick={() => setSelected({ kind: "noshow", index: 0 })}
+                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-card"
+                >
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                     No-shows in range
                   </div>
                   <div className="mt-1 font-mono text-lg font-semibold">
                     {noShowRecovery.noShowCount}
                   </div>
-                </div>
-                <div className="rounded-lg border border-border/70 bg-card p-3">
+                </button>
+                <button
+                  type="button"
+                  disabled={noShowRecovery.noShowCount === 0}
+                  onClick={() => setSelected({ kind: "noshow", index: 1 })}
+                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-card"
+                >
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                     Recovered Show Rate
                   </div>
@@ -2174,8 +2610,13 @@ function Closer() {
                   <div className="mt-1 text-3xs text-muted-foreground">
                     Rescheduled and re-attended after a no-show
                   </div>
-                </div>
-                <div className="rounded-lg border border-border/70 bg-card p-3">
+                </button>
+                <button
+                  type="button"
+                  disabled={noShowRecovery.recovered.length === 0}
+                  onClick={() => setSelected({ kind: "noshow", index: 2 })}
+                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-card"
+                >
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                     Recovered Close Rate
                   </div>
@@ -2184,7 +2625,7 @@ function Closer() {
                       ? "—"
                       : `${noShowRecovery.recoveredCloseRate.toFixed(0)}%`}
                   </div>
-                </div>
+                </button>
               </div>
 
               {sectionHeader("E · Team & coaching")}
