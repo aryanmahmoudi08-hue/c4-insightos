@@ -258,7 +258,10 @@ function Closer() {
   const { devBypass } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<{ kind: "close" | "money"; index: number } | null>(null);
+  const [selected, setSelected] = useState<{
+    kind: "close" | "money" | "pipeline";
+    index: number;
+  } | null>(null);
 
   const settingsFn = useServerFn(getWorkspaceSettingsFn);
   const { data: workspaceSettings } = useQuery({
@@ -1045,19 +1048,23 @@ function Closer() {
     [followUps],
   );
   const activeFollowUpsCount = followUps.length - overdueFollowUps.length;
-  // Deals expected to close this week — offer made or in follow-up, with a
-  // real scheduled date landing in the next 7 days. Not a fabricated
-  // forecast: only counts calls with an actual scheduled_for timestamp.
-  const dealsExpectedThisWeek = useMemo(() => {
-    const now = Date.now();
-    const weekOut = now + 7 * 86400e3;
+  // Deals expected to close — offer made or in follow-up, with a real
+  // scheduled date landing inside the page's selected date range. Not a
+  // fabricated forecast: only counts calls with an actual scheduled_for
+  // timestamp. Was hardcoded to "now + 7 days" regardless of the selected
+  // range (label always said "This Week" even when the range changed) —
+  // now genuinely scoped to range.from/range.to, matching every other
+  // metric on this page.
+  const dealsExpectedToClose = useMemo(() => {
+    const from = new Date(`${range.from}T00:00:00`).getTime();
+    const to = new Date(`${range.to}T23:59:59`).getTime();
     return list.filter((c) => {
       if (!["offer_made", "follow_up", "booked"].includes(c.status)) return false;
       if (!c.scheduled_for) return false;
       const t = new Date(c.scheduled_for).getTime();
-      return t >= now && t <= weekOut;
+      return t >= from && t <= to;
     });
-  }, [list]);
+  }, [list, range.from, range.to]);
   // No-show recovery (mirrors the Dialer appointment-quality logic) — scoped
   // to this closer's own calls.
   const noShowRecovery = useMemo(() => {
@@ -1224,35 +1231,10 @@ function Closer() {
           ]}
         />
 
-        {/* Leaderboard with metric selector + independent date range (Part C3) + spectrum activity heatmap (Part C4) */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          <RepLeaderboard
-            titlePrefix="Closer leaderboard"
-            metrics={CLOSER_METRICS}
-            metricKey={lbMetric}
-            onMetricChange={setLbMetric}
-            people={lbPeople}
-            emptyLabel="No closers in range."
-            dateRange={lbRange}
-            onDateRangeChange={setLbOverride}
-            overridden={!!lbOverride}
-            onResetRange={() => setLbOverride(null)}
-          />
-
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-3">
-              <ActivityIcon className="h-3.5 w-3.5 text-accent" /> Rep activity heatmap · calls by
-              weekday
-            </div>
-            <HeatmapGrid
-              rowLabels={activityHeatmap.rows}
-              colLabels={activityHeatmap.cols}
-              data={activityHeatmap.data}
-              valueFmt={(v) => `${v} calls`}
-              variant="spectrum"
-            />
-          </div>
-        </div>
+        {/* Leaderboard + activity heatmap moved into "E · Team & coaching"
+            below, alongside the scorecard/calls-reviewed/coaching-review
+            metrics they belong with — no longer stranded above the closer's
+            own primary performance metrics. */}
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
@@ -1587,6 +1569,28 @@ function Closer() {
                 fmtMoney,
               ),
             };
+          } else if (selected?.kind === "pipeline") {
+            // A pipeline snapshot, not a funnel conversion stage — there's no
+            // adjacent-stage constraint to derive "what's capping it" from,
+            // so both come back honestly "insufficient_data" rather than
+            // forcing a funnel-shaped narrative onto a metric that isn't one.
+            panel = {
+              title: `Deals Expected to Close (${range.label})`,
+              columns: callColumns("Scheduled for", (c) =>
+                c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—",
+              ),
+              rows: dealsExpectedToClose,
+              cap: {
+                status: "insufficient_data",
+                sentence:
+                  "This is a pipeline snapshot, not a funnel stage — no prior-stage constraint to derive.",
+              },
+              working: {
+                status: "insufficient_data",
+                sentence:
+                  "This is a pipeline snapshot, not a funnel stage — no prior-period comparison to derive.",
+              },
+            };
           } else if (selected) {
             const stage = closeStages[selected.index];
             const kind = ["oncal", "showed", "offers", "closes"][selected.index];
@@ -1780,28 +1784,243 @@ function Closer() {
             },
           ];
 
+          // Split the one combined "Key Metrics" band into activity counts
+          // (A · Primary closing performance) and dollar figures (C ·
+          // Payment performance) — same data/sparklines, no duplication,
+          // just grouped where the reorganized IA (below) puts each one.
+          const activityKpiItems = chartedKpiItems.filter((item) =>
+            ["oncal", "showed", "offers", "closes"].includes(item.key),
+          );
+          const moneyKpiItems = chartedKpiItems.filter((item) =>
+            ["cash", "revenue"].includes(item.key),
+          );
+          const sectionHeader = (label: string) => (
+            <div className="mt-6 mb-1 text-sm font-bold uppercase tracking-[0.16em] text-foreground first:mt-0">
+              {label}
+            </div>
+          );
+
           return (
             <>
-              <KpiBand items={chartedKpiItems} title="Closer · Key Metrics" />
-              <div className="grid gap-4 lg:grid-cols-2">
-                <FunnelInstrument
-                  title="Close"
-                  subtitle="Booked → Closed"
-                  stages={closeStages}
-                  onStageClick={(i) => setSelected({ kind: "close", index: i })}
-                />
-                <MoneyInstrument
-                  series={moneySeries}
-                  payoutPct={10}
-                  payoutCents={payoutCents}
-                  cashRatePct={cashRatePct}
-                  onCashClick={() => setSelected({ kind: "money", index: 0 })}
-                  fmtMoney={fmtMoney}
-                />
-              </div>
+              {sectionHeader("A · Primary closing performance")}
+              <KpiBand items={activityKpiItems} title="Closer · Key Metrics" />
+              <FunnelInstrument
+                title="Close"
+                subtitle="Booked → Closed"
+                stages={closeStages}
+                onStageClick={(i) => setSelected({ kind: "close", index: i })}
+              />
               <RateSmallMultiples charts={rateCharts} />
               <KpiBand
-                title="Additional Stats"
+                title="Call quality"
+                items={[
+                  {
+                    key: "avgCallDuration",
+                    label: "Average Call Duration",
+                    value:
+                      avgCallDurationSeconds == null
+                        ? "Not logged"
+                        : `${Math.round(avgCallDurationSeconds / 60)}m`,
+                    spectrum: "cold",
+                    empty: avgCallDurationSeconds == null,
+                    emptyHint: "No call-length data logged in this range.",
+                  },
+                  {
+                    key: "avgTalkTime",
+                    label: "Average Talk Time",
+                    value:
+                      avgTalkSeconds == null ? "Not logged" : `${Math.round(avgTalkSeconds / 60)}m`,
+                    spectrum: "cold",
+                    empty: avgTalkSeconds == null,
+                    emptyHint: "No talk-time data logged in this range.",
+                  },
+                  {
+                    key: "talkListenRatio",
+                    label: "Talk / Listen Ratio",
+                    value:
+                      avgTalkListenRatioPct == null
+                        ? "Not logged"
+                        : `${Math.round(avgTalkListenRatioPct)}% talk`,
+                    spectrum: "mid",
+                    empty: avgTalkListenRatioPct == null,
+                    emptyHint: "Needs both call length and talk time on the same call.",
+                  },
+                ]}
+              />
+
+              {sectionHeader("B · Pipeline & outcome")}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => setSelected({ kind: "pipeline", index: 0 })}
+                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20"
+                >
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    Deals Expected to Close · {range.label}
+                  </div>
+                  <div className="mt-1 font-mono text-lg font-semibold">
+                    {dealsExpectedToClose.length}
+                  </div>
+                </button>
+                <div className="rounded-lg border border-border/70 bg-card p-3">
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    Active Follow-ups
+                  </div>
+                  <div className="mt-1 font-mono text-lg font-semibold">{activeFollowUpsCount}</div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-card p-3">
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    Overdue Follow-ups
+                  </div>
+                  <div className="mt-1 font-mono text-lg font-semibold text-destructive">
+                    {overdueFollowUps.length}
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">Post-call disposition mix</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Canonical taxonomy from recorded call status and offer fields
+                    </div>
+                  </div>
+                  <span className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    {list.length} calls
+                  </span>
+                </div>
+                {list.length ? (
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {dispositionMix.map((item) => (
+                      <div
+                        key={item.value}
+                        className="rounded-lg border border-border/70 bg-background/40 p-3"
+                      >
+                        <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                          {item.label}
+                        </div>
+                        <div className="mt-1 font-mono text-xl font-semibold">{item.count}</div>
+                        <div className="mt-1 text-3xs text-muted-foreground">
+                          {pct(item.count, list.length)} of calls
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
+                    No post-call dispositions in this date range.
+                  </div>
+                )}
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">Closer-logged disposition mix</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      The closer's own reason for the outcome — not inferred from status
+                    </div>
+                  </div>
+                </div>
+                {manualDispositionMix.length ? (
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {manualDispositionMix.map((item) => (
+                      <div
+                        key={item.value}
+                        className={`rounded-lg border p-3 ${item.value === "not_logged" ? "border-dashed border-border/50 bg-background/20" : "border-border/70 bg-background/40"}`}
+                      >
+                        <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                          {item.label}
+                        </div>
+                        <div className="mt-1 font-mono text-xl font-semibold">{item.count}</div>
+                        <div className="mt-1 text-3xs text-muted-foreground">
+                          {pct(item.count, list.length)} of calls
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
+                    No calls in this date range.
+                  </div>
+                )}
+              </div>
+              <GlassTableShell
+                toolbar={
+                  <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
+                    Follow-up pipeline · {followUps.length} calls awaiting next touch
+                  </div>
+                }
+                maxHeight="420px"
+              >
+                <table className="w-full text-sm">
+                  <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="text-left p-3">Closer</th>
+                      <th className="text-left p-3">Lead</th>
+                      <th className="text-left p-3">Last call</th>
+                      <th className="text-left p-3">Summary</th>
+                      <th className="text-right p-3 font-mono">Pending $</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {followUps.map((c) => {
+                      const daysAgo = c.scheduled_for
+                        ? Math.floor((Date.now() - new Date(c.scheduled_for).getTime()) / 86400e3)
+                        : null;
+                      return (
+                        <tr key={c.id} className="border-t border-border/70 hover:bg-muted/20">
+                          <td className="p-3 font-medium">{c.closer_name || "—"}</td>
+                          <td className="p-3 text-xs">
+                            {c.lead_email || c.leads?.full_name || "—"}
+                          </td>
+                          <td className="p-3 text-xs">
+                            {c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—"}
+                            {daysAgo !== null && (
+                              <span
+                                className={`ml-2 rounded px-1.5 py-0.5 text-3xs ${daysAgo > 7 ? CHIP_TONE_CLASSES.destructive : CHIP_TONE_CLASSES.default}`}
+                              >
+                                {daysAgo}d ago
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 text-xs text-muted-foreground max-w-[320px] truncate">
+                            {c.call_summary || "—"}
+                          </td>
+                          <td className="p-3 text-right font-mono">
+                            {c.contract_value_cents
+                              ? "$" + (c.contract_value_cents / 100).toLocaleString()
+                              : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {followUps.length === 0 && (
+                      <tr>
+                        <td colSpan={5}>
+                          <EmptyState
+                            icon={<Clock3 className="h-4 w-4" />}
+                            title="No follow-ups pending"
+                            description='Tag calls as "Follow Up" to surface them here.'
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </GlassTableShell>
+
+              {sectionHeader("C · Payment performance")}
+              <KpiBand items={moneyKpiItems} title="Cash & revenue" />
+              <MoneyInstrument
+                series={moneySeries}
+                payoutPct={10}
+                payoutCents={payoutCents}
+                cashRatePct={cashRatePct}
+                onCashClick={() => setSelected({ kind: "money", index: 0 })}
+                fmtMoney={fmtMoney}
+              />
+              <KpiBand
+                title="Payment quality"
                 items={[
                   {
                     key: "avgCashBooked",
@@ -1930,117 +2149,128 @@ function Closer() {
                     empty: paymentQualityStats.futureScheduledCents === 0,
                     emptyHint: "No outstanding payment-plan balance in this range.",
                   },
-                  {
-                    key: "downsells",
-                    label: "Downsells",
-                    value: downsells.toLocaleString(),
-                    spectrum: "mid",
-                    empty: !downsells,
-                    emptyHint: "No downsells logged in this range.",
-                  },
                 ]}
               />
-              <div className="rounded-xl border border-border bg-card p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold">Post-call disposition mix</div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      Canonical taxonomy from recorded call status and offer fields
-                    </div>
+
+              {sectionHeader("D · No-show recovery")}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-border/70 bg-card p-3">
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    No-shows in range
                   </div>
-                  <span className="text-3xs uppercase tracking-wider text-muted-foreground">
-                    {list.length} calls
-                  </span>
-                </div>
-                {list.length ? (
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                    {dispositionMix.map((item) => (
-                      <div
-                        key={item.value}
-                        className="rounded-lg border border-border/70 bg-background/40 p-3"
-                      >
-                        <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                          {item.label}
-                        </div>
-                        <div className="mt-1 font-mono text-xl font-semibold">{item.count}</div>
-                        <div className="mt-1 text-3xs text-muted-foreground">
-                          {pct(item.count, list.length)} of calls
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
-                    No post-call dispositions in this date range.
-                  </div>
-                )}
-              </div>
-              <div className="rounded-xl border border-border bg-card p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold">Closer-logged disposition mix</div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      The closer's own reason for the outcome — not inferred from status
-                    </div>
+                  <div className="mt-1 font-mono text-lg font-semibold">
+                    {noShowRecovery.noShowCount}
                   </div>
                 </div>
-                {manualDispositionMix.length ? (
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                    {manualDispositionMix.map((item) => (
-                      <div
-                        key={item.value}
-                        className={`rounded-lg border p-3 ${item.value === "not_logged" ? "border-dashed border-border/50 bg-background/20" : "border-border/70 bg-background/40"}`}
-                      >
-                        <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                          {item.label}
-                        </div>
-                        <div className="mt-1 font-mono text-xl font-semibold">{item.count}</div>
-                        <div className="mt-1 text-3xs text-muted-foreground">
-                          {pct(item.count, list.length)} of calls
-                        </div>
-                      </div>
-                    ))}
+                <div className="rounded-lg border border-border/70 bg-card p-3">
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    Recovered Show Rate
                   </div>
-                ) : (
-                  <div className="mt-4 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
-                    No calls in this date range.
+                  <div className="mt-1 font-mono text-lg font-semibold">
+                    {noShowRecovery.recoveredShowRate == null
+                      ? "—"
+                      : `${noShowRecovery.recoveredShowRate.toFixed(0)}%`}
                   </div>
-                )}
+                  <div className="mt-1 text-3xs text-muted-foreground">
+                    Rescheduled and re-attended after a no-show
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-card p-3">
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    Recovered Close Rate
+                  </div>
+                  <div className="mt-1 font-mono text-lg font-semibold">
+                    {noShowRecovery.recoveredCloseRate == null
+                      ? "—"
+                      : `${noShowRecovery.recoveredCloseRate.toFixed(0)}%`}
+                  </div>
+                </div>
               </div>
+
+              {sectionHeader("E · Team & coaching")}
+              <div className="grid gap-4 lg:grid-cols-2">
+                <RepLeaderboard
+                  titlePrefix="Closer leaderboard"
+                  metrics={CLOSER_METRICS}
+                  metricKey={lbMetric}
+                  onMetricChange={setLbMetric}
+                  people={lbPeople}
+                  emptyLabel="No closers in range."
+                  dateRange={lbRange}
+                  onDateRangeChange={setLbOverride}
+                  overridden={!!lbOverride}
+                  onResetRange={() => setLbOverride(null)}
+                />
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-3">
+                    <ActivityIcon className="h-3.5 w-3.5 text-accent" /> Rep activity heatmap ·
+                    calls by weekday
+                  </div>
+                  <HeatmapGrid
+                    rowLabels={activityHeatmap.rows}
+                    colLabels={activityHeatmap.cols}
+                    data={activityHeatmap.data}
+                    valueFmt={(v) => `${v} calls`}
+                    variant="spectrum"
+                  />
+                </div>
+              </div>
+              <GlassTableShell
+                toolbar={
+                  <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
+                    Closer scorecard
+                  </div>
+                }
+                maxHeight="420px"
+              >
+                <table className="w-full text-sm">
+                  <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="text-left p-3">Closer</th>
+                      <th className="text-right p-3 font-mono">Booked</th>
+                      <th className="text-right p-3 font-mono">Showed</th>
+                      <th className="text-right p-3 font-mono">Closes</th>
+                      <th className="text-right p-3 font-mono">Show %</th>
+                      <th className="text-right p-3 font-mono">Close %</th>
+                      <th className="text-right p-3 font-mono">Offer→Close</th>
+                      <th className="text-right p-3 font-mono">Avg deal</th>
+                      <th className="text-right p-3 font-mono">Cash</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scorecard.map((s) => (
+                      <tr key={s.name} className="border-t border-border/70 hover:bg-muted/20">
+                        <td className="p-3 font-medium">{s.name}</td>
+                        <td className="p-3 text-right font-mono">{s.booked}</td>
+                        <td className="p-3 text-right font-mono">{s.showed}</td>
+                        <td className="p-3 text-right font-mono">{s.closes}</td>
+                        <td className="p-3 text-right font-mono">{s.showRate.toFixed(1)}%</td>
+                        <td className="p-3 text-right font-mono">{s.closeRate.toFixed(1)}%</td>
+                        <td className="p-3 text-right font-mono">{s.offerToClose.toFixed(1)}%</td>
+                        <td className="p-3 text-right font-mono">
+                          {s.avgDeal ? fmtMoney(s.avgDeal) : "—"}
+                        </td>
+                        <td className="p-3 text-right font-mono text-[color:var(--color-success)]">
+                          {fmtMoney(s.cash)}
+                        </td>
+                      </tr>
+                    ))}
+                    {scorecard.length === 0 && (
+                      <tr>
+                        <td colSpan={9}>
+                          <EmptyState
+                            icon={<Trophy className="h-4 w-4" />}
+                            title="No closers in range"
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </GlassTableShell>
               <KpiBand
-                title="Sales activity quality"
+                title="Coaching"
                 items={[
-                  {
-                    key: "avgCallDuration",
-                    label: "Average Call Duration",
-                    value:
-                      avgCallDurationSeconds == null
-                        ? "Not logged"
-                        : `${Math.round(avgCallDurationSeconds / 60)}m`,
-                    spectrum: "cold",
-                    empty: avgCallDurationSeconds == null,
-                    emptyHint: "No call-length data logged in this range.",
-                  },
-                  {
-                    key: "avgTalkTime",
-                    label: "Average Talk Time",
-                    value:
-                      avgTalkSeconds == null ? "Not logged" : `${Math.round(avgTalkSeconds / 60)}m`,
-                    spectrum: "cold",
-                    empty: avgTalkSeconds == null,
-                    emptyHint: "No talk-time data logged in this range.",
-                  },
-                  {
-                    key: "talkListenRatio",
-                    label: "Talk / Listen Ratio",
-                    value:
-                      avgTalkListenRatioPct == null
-                        ? "Not logged"
-                        : `${Math.round(avgTalkListenRatioPct)}% talk`,
-                    spectrum: "mid",
-                    empty: avgTalkListenRatioPct == null,
-                    emptyHint: "Needs both call length and talk time on the same call.",
-                  },
                   {
                     key: "callsReviewed",
                     label: "Calls Reviewed",
@@ -2051,12 +2281,15 @@ function Closer() {
                   },
                 ]}
               />
+              <CoachingPanel orgId={orgId} range={range} />
+
+              {sectionHeader("F · Attribution")}
               <AttributionPathPanel
                 title="Closer lifecycle attribution"
                 subtitle="Same calls as everywhere else on this page, read along one lifecycle axis — not an additional revenue source"
                 paths={closerLifecyclePath}
               />
-              <CoachingPanel orgId={orgId} range={range} />
+
               {panel && (
                 <MetricDetailPanel
                   open={!!selected}
@@ -2075,13 +2308,23 @@ function Closer() {
           );
         })()}
 
-        {/* Insight tabs */}
+        {/* G · Secondary stats. Closer scorecard moved into "E · Team &
+            coaching" above; Follow-up pipeline (summary tiles + table)
+            moved into "B · Pipeline & outcome" above — neither is
+            duplicated here anymore. */}
+        <div className="mt-6 mb-1 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+          G · Secondary stats
+        </div>
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg border border-border/70 bg-card p-3">
+            <div className="text-3xs uppercase tracking-wider text-muted-foreground">Downsells</div>
+            <div className="mt-1 font-mono text-lg font-semibold">{downsells}</div>
+          </div>
+        </div>
         <Tabs defaultValue="objections">
           <TabsList>
             <TabsTrigger value="objections">Objection frequency</TabsTrigger>
-            <TabsTrigger value="scorecard">Closer scorecard</TabsTrigger>
             <TabsTrigger value="ttc">Time-to-close trend</TabsTrigger>
-            <TabsTrigger value="followups">Follow-up pipeline · {followUps.length}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="objections">
@@ -2147,55 +2390,6 @@ function Closer() {
             </div>
           </TabsContent>
 
-          <TabsContent value="scorecard">
-            <GlassTableShell maxHeight="420px">
-              <table className="w-full text-sm">
-                <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
-                  <tr>
-                    <th className="text-left p-3">Closer</th>
-                    <th className="text-right p-3 font-mono">Booked</th>
-                    <th className="text-right p-3 font-mono">Showed</th>
-                    <th className="text-right p-3 font-mono">Closes</th>
-                    <th className="text-right p-3 font-mono">Show %</th>
-                    <th className="text-right p-3 font-mono">Close %</th>
-                    <th className="text-right p-3 font-mono">Offer→Close</th>
-                    <th className="text-right p-3 font-mono">Avg deal</th>
-                    <th className="text-right p-3 font-mono">Cash</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scorecard.map((s) => (
-                    <tr key={s.name} className="border-t border-border/70 hover:bg-muted/20">
-                      <td className="p-3 font-medium">{s.name}</td>
-                      <td className="p-3 text-right font-mono">{s.booked}</td>
-                      <td className="p-3 text-right font-mono">{s.showed}</td>
-                      <td className="p-3 text-right font-mono">{s.closes}</td>
-                      <td className="p-3 text-right font-mono">{s.showRate.toFixed(1)}%</td>
-                      <td className="p-3 text-right font-mono">{s.closeRate.toFixed(1)}%</td>
-                      <td className="p-3 text-right font-mono">{s.offerToClose.toFixed(1)}%</td>
-                      <td className="p-3 text-right font-mono">
-                        {s.avgDeal ? fmtMoney(s.avgDeal) : "—"}
-                      </td>
-                      <td className="p-3 text-right font-mono text-[color:var(--color-success)]">
-                        {fmtMoney(s.cash)}
-                      </td>
-                    </tr>
-                  ))}
-                  {scorecard.length === 0 && (
-                    <tr>
-                      <td colSpan={9}>
-                        <EmptyState
-                          icon={<Trophy className="h-4 w-4" />}
-                          title="No closers in range"
-                        />
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </GlassTableShell>
-          </TabsContent>
-
           <TabsContent value="ttc">
             <div className="rounded-lg border border-border bg-card p-4">
               <div className="mb-2">
@@ -2238,118 +2432,6 @@ function Closer() {
                 </div>
               )}
             </div>
-          </TabsContent>
-
-          <TabsContent value="followups">
-            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <div className="rounded-lg border border-border/70 bg-card p-3">
-                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                  Active Follow-ups
-                </div>
-                <div className="mt-1 font-mono text-lg font-semibold">{activeFollowUpsCount}</div>
-              </div>
-              <div className="rounded-lg border border-border/70 bg-card p-3">
-                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                  Overdue Follow-ups
-                </div>
-                <div className="mt-1 font-mono text-lg font-semibold text-destructive">
-                  {overdueFollowUps.length}
-                </div>
-              </div>
-              <div className="rounded-lg border border-border/70 bg-card p-3">
-                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                  Expected to Close This Week
-                </div>
-                <div className="mt-1 font-mono text-lg font-semibold">
-                  {dealsExpectedThisWeek.length}
-                </div>
-              </div>
-              <div className="rounded-lg border border-border/70 bg-card p-3">
-                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                  Recovered Show Rate
-                </div>
-                <div className="mt-1 font-mono text-lg font-semibold">
-                  {noShowRecovery.recoveredShowRate == null
-                    ? "—"
-                    : `${noShowRecovery.recoveredShowRate.toFixed(0)}%`}
-                </div>
-                <div className="mt-1 text-3xs text-muted-foreground">
-                  {noShowRecovery.noShowCount} no-shows in range
-                </div>
-              </div>
-              <div className="rounded-lg border border-border/70 bg-card p-3">
-                <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                  Recovered Close Rate
-                </div>
-                <div className="mt-1 font-mono text-lg font-semibold">
-                  {noShowRecovery.recoveredCloseRate == null
-                    ? "—"
-                    : `${noShowRecovery.recoveredCloseRate.toFixed(0)}%`}
-                </div>
-              </div>
-            </div>
-            <GlassTableShell
-              toolbar={
-                <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
-                  Follow-up pipeline · {followUps.length} calls awaiting next touch
-                </div>
-              }
-              maxHeight="420px"
-            >
-              <table className="w-full text-sm">
-                <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
-                  <tr>
-                    <th className="text-left p-3">Closer</th>
-                    <th className="text-left p-3">Lead</th>
-                    <th className="text-left p-3">Last call</th>
-                    <th className="text-left p-3">Summary</th>
-                    <th className="text-right p-3 font-mono">Pending $</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {followUps.map((c) => {
-                    const daysAgo = c.scheduled_for
-                      ? Math.floor((Date.now() - new Date(c.scheduled_for).getTime()) / 86400e3)
-                      : null;
-                    return (
-                      <tr key={c.id} className="border-t border-border/70 hover:bg-muted/20">
-                        <td className="p-3 font-medium">{c.closer_name || "—"}</td>
-                        <td className="p-3 text-xs">{c.lead_email || c.leads?.full_name || "—"}</td>
-                        <td className="p-3 text-xs">
-                          {c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—"}
-                          {daysAgo !== null && (
-                            <span
-                              className={`ml-2 rounded px-1.5 py-0.5 text-3xs ${daysAgo > 7 ? CHIP_TONE_CLASSES.destructive : CHIP_TONE_CLASSES.default}`}
-                            >
-                              {daysAgo}d ago
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3 text-xs text-muted-foreground max-w-[320px] truncate">
-                          {c.call_summary || "—"}
-                        </td>
-                        <td className="p-3 text-right font-mono">
-                          {c.contract_value_cents
-                            ? "$" + (c.contract_value_cents / 100).toLocaleString()
-                            : "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {followUps.length === 0 && (
-                    <tr>
-                      <td colSpan={5}>
-                        <EmptyState
-                          icon={<Clock3 className="h-4 w-4" />}
-                          title="No follow-ups pending"
-                          description='Tag calls as "Follow Up" to surface them here.'
-                        />
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </GlassTableShell>
           </TabsContent>
         </Tabs>
 

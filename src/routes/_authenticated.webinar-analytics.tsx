@@ -16,6 +16,7 @@ import {
   Video,
 } from "lucide-react";
 import { TopBar } from "@/components/app-sidebar";
+import { KpiBand } from "@/components/kpi-band";
 import { EmptyState } from "@/components/empty-state";
 import {
   Select,
@@ -242,6 +243,10 @@ function WebinarAnalyticsPage() {
     () => webinarsQuery.data?.find((webinar) => webinar.id === selectedId),
     [webinarsQuery.data, selectedId],
   );
+  const comparisonWebinar = useMemo(
+    () => webinarsQuery.data?.find((webinar) => webinar.id === comparisonId),
+    [webinarsQuery.data, comparisonId],
+  );
   const hasData = !!latest || webinarEvents.length > 0;
 
   return (
@@ -324,117 +329,190 @@ function WebinarAnalyticsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <ExecutiveKpiCard
-                  label="Total leads"
-                  value={number(summary.capture.totalLeads)}
-                  icon={<UsersRound className="h-4 w-4" />}
-                  trend="Telemetry"
-                />
-                <ExecutiveKpiCard
-                  label="Show-up rate"
-                  value={
-                    summary.webinar.showUpRate == null
-                      ? "Unavailable"
-                      : `${(summary.webinar.showUpRate * 100).toFixed(1)}%`
-                  }
-                  icon={<Video className="h-4 w-4" />}
-                  trend="Live"
-                />
-                <ExecutiveKpiCard
-                  label="Live at pitch"
-                  value={number(summary.webinar.pitchAttendees)}
-                  icon={<BarChart3 className="h-4 w-4" />}
-                  trend="Event-backed"
-                />
-                <ExecutiveKpiCard
-                  label="Total revenue"
-                  value={currency(summary.revenue.totalRevenueCents)}
-                  icon={<CircleDollarSign className="h-4 w-4" />}
-                  trend="Ledger"
-                />
-                <ExecutiveKpiCard
-                  label="ROAS"
-                  value={
-                    summary.revenue.roas == null
-                      ? "Unavailable"
-                      : `${summary.revenue.roas.toFixed(2)}x`
-                  }
-                  icon={<CircleDollarSign className="h-4 w-4" />}
-                  trend={acquisition.hasSpend ? "Calculated" : "Unavailable"}
-                />
-              </div>
+              <KpiBand
+                title="Executive KPIs"
+                items={[
+                  {
+                    key: "totalLeads",
+                    label: "Total Leads",
+                    value: number(summary.capture.totalLeads),
+                    spectrum: "cold",
+                    icon: <UsersRound className="h-4 w-4" />,
+                  },
+                  {
+                    key: "showUpRate",
+                    label: "Show-up Rate",
+                    value:
+                      summary.webinar.showUpRate == null
+                        ? "Unavailable"
+                        : `${(summary.webinar.showUpRate * 100).toFixed(1)}%`,
+                    spectrum: "mid",
+                    icon: <Video className="h-4 w-4" />,
+                    empty: summary.webinar.showUpRate == null,
+                    emptyHint: "Requires event-backed live-attendance data.",
+                  },
+                  {
+                    key: "liveAtPitch",
+                    label: "Live at Pitch",
+                    value: number(summary.webinar.pitchAttendees),
+                    spectrum: "mid",
+                    icon: <BarChart3 className="h-4 w-4" />,
+                  },
+                  {
+                    key: "totalRevenue",
+                    label: "Total Revenue",
+                    value: currency(summary.revenue.totalRevenueCents),
+                    spectrum: "hot",
+                    icon: <CircleDollarSign className="h-4 w-4" />,
+                  },
+                  {
+                    key: "roas",
+                    label: "ROAS",
+                    value:
+                      summary.revenue.roas == null
+                        ? "Unavailable"
+                        : `${summary.revenue.roas.toFixed(2)}x`,
+                    spectrum: "hot",
+                    icon: <CircleDollarSign className="h-4 w-4" />,
+                    empty: summary.revenue.roas == null,
+                    emptyHint: acquisition.hasSpend
+                      ? "No attributable revenue yet."
+                      : "Requires connected acquisition spend.",
+                  },
+                ]}
+              />
               <section className="space-y-3">
                 <SectionTitle
                   title="Acquisition efficiency"
                   subtitle="Provider-reported spend and delivery facts; unavailable until a legitimate acquisition source is connected."
                 />
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <ExecutiveKpiCard
-                    label="Lead capture investment"
-                    value={acquisition.hasSpend ? currency(acquisition.spendCents) : "Unavailable"}
-                    icon={<CircleDollarSign className="h-4 w-4" />}
-                    trend={acquisition.hasSpend ? "Spend" : "Unavailable"}
-                  />
-                  <ExecutiveKpiCard
-                    label="Impressions"
-                    value={number(acquisition.impressions)}
-                    icon={<BarChart3 className="h-4 w-4" />}
-                    trend="Delivery"
-                  />
-                  <ExecutiveKpiCard
-                    label="Clicks"
-                    value={number(acquisition.clicks)}
-                    icon={<BarChart3 className="h-4 w-4" />}
-                    trend="Delivery"
-                  />
-                  <ExecutiveKpiCard
-                    label="CTR"
-                    value={
-                      acquisition.ctr == null
-                        ? "Unavailable"
-                        : `${(acquisition.ctr * 100).toFixed(2)}%`
-                    }
-                    icon={<BarChart3 className="h-4 w-4" />}
-                    trend="Calculated"
-                  />
-                  <ExecutiveKpiCard
-                    label="CPC"
-                    value={
-                      acquisition.cpcCents == null ? "Unavailable" : currency(acquisition.cpcCents)
-                    }
-                    icon={<CircleDollarSign className="h-4 w-4" />}
-                    trend="Calculated"
-                  />
-                  <ExecutiveKpiCard
-                    label="CPL"
-                    value={
-                      acquisition.cplCents == null ? "Unavailable" : currency(acquisition.cplCents)
-                    }
-                    icon={<CircleDollarSign className="h-4 w-4" />}
-                    trend="Calculated"
-                  />
-                  <ExecutiveKpiCard
-                    label="CPA"
-                    value={
-                      acquisition.cpaCents == null ? "Unavailable" : currency(acquisition.cpaCents)
-                    }
-                    icon={<CircleDollarSign className="h-4 w-4" />}
-                    trend="Calculated"
-                  />
-                  <ExecutiveKpiCard
-                    label="ROAS (acquisition)"
-                    value={
-                      acquisition.roas == null ? "Unavailable" : `${acquisition.roas.toFixed(2)}x`
-                    }
-                    icon={<CircleDollarSign className="h-4 w-4" />}
-                    trend="Calculated"
-                  />
-                </div>
+                <KpiBand
+                  title="Acquisition efficiency"
+                  items={[
+                    {
+                      key: "leadCaptureInvestment",
+                      label: "Lead Capture Investment",
+                      value: acquisition.hasSpend
+                        ? currency(acquisition.spendCents)
+                        : "Unavailable",
+                      spectrum: "hot",
+                      icon: <CircleDollarSign className="h-4 w-4" />,
+                      empty: !acquisition.hasSpend,
+                      emptyHint: "Requires connected acquisition spend.",
+                    },
+                    {
+                      key: "impressions",
+                      label: "Impressions",
+                      value: number(acquisition.impressions),
+                      spectrum: "cold",
+                      icon: <BarChart3 className="h-4 w-4" />,
+                    },
+                    {
+                      key: "clicks",
+                      label: "Clicks",
+                      value: number(acquisition.clicks),
+                      spectrum: "cold",
+                      icon: <BarChart3 className="h-4 w-4" />,
+                    },
+                    {
+                      key: "ctr",
+                      label: "CTR",
+                      value:
+                        acquisition.ctr == null
+                          ? "Unavailable"
+                          : `${(acquisition.ctr * 100).toFixed(2)}%`,
+                      spectrum: "mid",
+                      icon: <BarChart3 className="h-4 w-4" />,
+                      empty: acquisition.ctr == null,
+                    },
+                    {
+                      key: "cpc",
+                      label: "CPC",
+                      value:
+                        acquisition.cpcCents == null
+                          ? "Unavailable"
+                          : currency(acquisition.cpcCents),
+                      spectrum: "mid",
+                      icon: <CircleDollarSign className="h-4 w-4" />,
+                      empty: acquisition.cpcCents == null,
+                    },
+                    {
+                      key: "cpl",
+                      label: "CPL",
+                      value:
+                        acquisition.cplCents == null
+                          ? "Unavailable"
+                          : currency(acquisition.cplCents),
+                      spectrum: "mid",
+                      icon: <CircleDollarSign className="h-4 w-4" />,
+                      empty: acquisition.cplCents == null,
+                    },
+                    {
+                      key: "cpa",
+                      label: "CPA",
+                      value:
+                        acquisition.cpaCents == null
+                          ? "Unavailable"
+                          : currency(acquisition.cpaCents),
+                      spectrum: "hot",
+                      icon: <CircleDollarSign className="h-4 w-4" />,
+                      empty: acquisition.cpaCents == null,
+                    },
+                    {
+                      key: "roasAcquisition",
+                      label: "ROAS (Acquisition)",
+                      value:
+                        acquisition.roas == null
+                          ? "Unavailable"
+                          : `${acquisition.roas.toFixed(2)}x`,
+                      spectrum: "hot",
+                      icon: <CircleDollarSign className="h-4 w-4" />,
+                      empty: acquisition.roas == null,
+                    },
+                  ]}
+                />
                 <div className="text-xs text-muted-foreground">
                   Paid visits: {number(acquisition.paidVisits)} · Remarketing spend is kept separate
                   in the acquisition ledger. Currency: {acquisition.currency ?? "Unavailable"}
                 </div>
+              </section>
+              <section className="space-y-3">
+                <SectionTitle
+                  title="Paid vs. organic"
+                  subtitle="Real lead-capture split by source — same figures used in the webinar comparison table, promoted here for single-webinar view."
+                />
+                <KpiBand
+                  title="Paid vs. organic"
+                  items={[
+                    {
+                      key: "paidLeads",
+                      label: "Paid Leads",
+                      value: number(summary.capture.paidLeads),
+                      spectrum: "hot",
+                      empty: !summary.capture.paidLeads,
+                      emptyHint: "No paid-source leads captured in this range.",
+                    },
+                    {
+                      key: "organicLeads",
+                      label: "Organic Leads",
+                      value: number(summary.capture.organicLeads),
+                      spectrum: "cold",
+                      empty: !summary.capture.organicLeads,
+                      emptyHint: "No organic-source leads captured in this range.",
+                    },
+                    {
+                      key: "cpl",
+                      label: "Cost per Paid Lead",
+                      value:
+                        summary.capture.cplCents == null
+                          ? "Unavailable"
+                          : currency(summary.capture.cplCents),
+                      spectrum: "mid",
+                      empty: summary.capture.cplCents == null,
+                      emptyHint: "Requires connected acquisition spend and paid leads.",
+                    },
+                  ]}
+                />
               </section>
             </section>
             <section className="space-y-3">
@@ -540,9 +618,14 @@ function WebinarAnalyticsPage() {
               <section className="space-y-3">
                 <SectionTitle
                   title="Webinar comparison"
-                  subtitle="Webinar A vs Webinar B, aggregated from the selected metric rows."
+                  subtitle={`${selected?.name ?? "Selected webinar"} vs ${comparisonWebinar?.name ?? "Comparison webinar"}, aggregated from the selected metric rows.`}
                 />
-                <ComparisonPanel left={comparison.left} right={comparison.right} />
+                <ComparisonPanel
+                  left={comparison.left}
+                  right={comparison.right}
+                  leftName={selected?.name ?? "Selected webinar"}
+                  rightName={comparisonWebinar?.name ?? "Comparison webinar"}
+                />
               </section>
             )}
           </>
@@ -706,35 +789,6 @@ function WebinarAnalyticsOverview({
   );
 }
 
-function ExecutiveKpiCard({
-  label,
-  value,
-  icon,
-  trend,
-}: {
-  label: string;
-  value: string;
-  icon: ReactNode;
-  trend: string;
-}) {
-  return (
-    <article className="group relative min-h-[10rem] overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02] p-6 backdrop-blur transition duration-200 hover:-translate-y-1 hover:bg-white/[0.035] hover:shadow-[0_0_15px_rgba(0,255,255,0.1)]">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/55">
-          <span className="text-current">{icon}</span>
-          <span className="truncate">{label}</span>
-        </div>
-        <span className="shrink-0 rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-400">
-          {trend}
-        </span>
-      </div>
-      <div className="mt-6 min-h-[3.75rem] break-words text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
-        {value}
-      </div>
-    </article>
-  );
-}
-
 function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div>
@@ -869,9 +923,13 @@ function RetentionStat({ label, value }: { label: string; value: string }) {
 function ComparisonPanel({
   left,
   right,
+  leftName,
+  rightName,
 }: {
   left: ReturnType<typeof aggregateWebinarMetrics>;
   right: ReturnType<typeof aggregateWebinarMetrics>;
+  leftName: string;
+  rightName: string;
 }) {
   const rows: Array<[string, string, string, number | null, number | null]> = [
     [
@@ -964,8 +1022,12 @@ function ComparisonPanel({
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur">
       <div className="grid grid-cols-3 border-b border-white/10 bg-white/[0.02] px-4 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-white/55">
         <span>Metric</span>
-        <span>Webinar A</span>
-        <span>Webinar B</span>
+        <span className="truncate" title={leftName}>
+          {leftName}
+        </span>
+        <span className="truncate" title={rightName}>
+          {rightName}
+        </span>
       </div>
       {rows.map(([label, a, b, aNum, bNum]) => {
         const max = Math.max(aNum ?? 0, bNum ?? 0, 1);

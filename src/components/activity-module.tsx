@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { PlatformIcon } from "@/components/platform-icon";
+import { mockLeads } from "@/lib/dev-mock-data";
 import {
   Select,
   SelectContent,
@@ -404,9 +405,28 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   // Callback attribution workflow (spec section 4) — real operational_work_items
   // rows, not simulated. Requested/Due Today/Completed Today are computed from
   // actual logged callbacks; empty until a dialer logs the first one.
-  const { data: callbacks = [] } = useQuery({
+  type CallbackRow = {
+    id: string;
+    entity_id: string | null;
+    state: string;
+    owner_id: string | null;
+    due_at: string | null;
+    next_action: string | null;
+    created_at: string;
+    updated_at: string;
+    payload: { lead_name?: string } | null;
+  };
+  // Dev bypass has no real Supabase session, so the real query/mutations
+  // below would come back RLS-empty / fail outright — same reasoning as the
+  // lead search above. This is a genuine read+write workflow (log a
+  // callback, see it in the list, complete it), not a passive KPI tile, so
+  // it gets a real local-state mock store under dev bypass rather than
+  // silently looking broken, matching the pattern _authenticated.permissions.tsx
+  // already uses (mockPerms) for the same reason.
+  const [devBypassCallbacks, setDevBypassCallbacks] = useState<CallbackRow[]>([]);
+  const { data: realCallbacks } = useQuery({
     queryKey: ["dialer-callbacks", orgId, range.from, range.to],
-    enabled: isDialer && !!orgId,
+    enabled: isDialer && !!orgId && !devBypass,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("operational_work_items")
@@ -419,19 +439,13 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         .lte("created_at", `${range.to}T23:59:59`)
         .order("due_at", { ascending: true });
       if (error) throw error;
-      return (data ?? []) as Array<{
-        id: string;
-        entity_id: string | null;
-        state: string;
-        owner_id: string | null;
-        due_at: string | null;
-        next_action: string | null;
-        created_at: string;
-        updated_at: string;
-        payload: { lead_name?: string } | null;
-      }>;
+      return (data ?? []) as CallbackRow[];
     },
   });
+  const callbacks = useMemo(
+    () => (devBypass ? devBypassCallbacks : (realCallbacks ?? [])),
+    [devBypass, devBypassCallbacks, realCallbacks],
+  );
   const todayStr = new Date().toISOString().slice(0, 10);
   const callbackFunnel = useMemo(
     () => ({
@@ -455,10 +469,33 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     email: string | null;
   } | null>(null);
   const { data: callbackLeadResults = [] } = useQuery({
-    queryKey: ["dialer-callback-lead-search", orgId, callbackLeadQuery],
+    queryKey: ["dialer-callback-lead-search", orgId, callbackLeadQuery, devBypass],
     enabled: isDialer && !!orgId && callbackLeadQuery.trim().length >= 2 && !callbackSelectedLead,
     queryFn: async () => {
       const q = callbackLeadQuery.trim();
+      // Dev bypass never has a real Supabase session, so a real leads query
+      // comes back RLS-empty (same reasoning as every other devBypass branch
+      // in this codebase) — a search-and-select workflow with nothing to
+      // select isn't a degraded-but-honest empty state like a zeroed KPI
+      // tile, it's an unusable interaction, so it gets a real mock fallback
+      // like VslPage/closer.tsx/leads.tsx/team.tsx already do for theirs.
+      if (devBypass) {
+        const needle = q.toLowerCase();
+        return mockLeads()
+          .filter(
+            (lead) =>
+              lead.full_name.toLowerCase().includes(needle) ||
+              lead.handle.toLowerCase().includes(needle) ||
+              lead.email.toLowerCase().includes(needle),
+          )
+          .slice(0, 8)
+          .map((lead) => ({
+            id: lead.id,
+            full_name: lead.full_name,
+            handle: lead.handle,
+            email: lead.email,
+          }));
+      }
       const { data, error } = await supabase
         .from("leads")
         .select("id, full_name, handle, email")
@@ -479,15 +516,40 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       leadName: string;
       dueAt: string;
     }) => {
+      const dueIso = dueAt ? new Date(dueAt).toISOString() : null;
+      if (devBypass) {
+        const now = new Date().toISOString();
+        setDevBypassCallbacks((prev) => {
+          const existingIdx = prev.findIndex((c) => c.entity_id === leadId);
+          const row: CallbackRow = {
+            id: existingIdx >= 0 ? prev[existingIdx].id : `dev-callback-${leadId}-${Date.now()}`,
+            entity_id: leadId,
+            state: "requested",
+            owner_id: null,
+            due_at: dueIso,
+            next_action: "Call back",
+            created_at: existingIdx >= 0 ? prev[existingIdx].created_at : now,
+            updated_at: now,
+            payload: { lead_name: leadName },
+          };
+          if (existingIdx >= 0) {
+            const next = [...prev];
+            next[existingIdx] = row;
+            return next;
+          }
+          return [...prev, row];
+        });
+        return;
+      }
       const { error } = await (supabase as any).from("operational_work_items").upsert(
         {
           org_id: orgId!,
           entity_type: "dialer_callback",
           entity_id: leadId,
           state: "requested",
-          due_at: dueAt ? new Date(dueAt).toISOString() : null,
+          due_at: dueIso,
           next_action: "Call back",
-          next_action_at: dueAt ? new Date(dueAt).toISOString() : null,
+          next_action_at: dueIso,
           payload: { lead_name: leadName },
         },
         { onConflict: "org_id,entity_type,entity_id" },
@@ -496,19 +558,29 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     },
     onSuccess: () => {
       toast.success("Callback logged");
-      qc.invalidateQueries({ queryKey: ["dialer-callbacks", orgId] });
+      if (!devBypass) qc.invalidateQueries({ queryKey: ["dialer-callbacks", orgId] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
   const completeCallback = useMutation({
     mutationFn: async (id: string) => {
+      if (devBypass) {
+        setDevBypassCallbacks((prev) =>
+          prev.map((c) =>
+            c.id === id ? { ...c, state: "completed", updated_at: new Date().toISOString() } : c,
+          ),
+        );
+        return;
+      }
       const { error } = await (supabase as any)
         .from("operational_work_items")
         .update({ state: "completed", updated_at: new Date().toISOString() })
         .eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["dialer-callbacks", orgId] }),
+    onSuccess: () => {
+      if (!devBypass) qc.invalidateQueries({ queryKey: ["dialer-callbacks", orgId] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const [callbackDueAt, setCallbackDueAt] = useState("");
@@ -2487,6 +2559,26 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               emptyHint: "Total contract value shows up once a deal closes.",
               onClick: () => setSelected({ kind: "money", index: 0 }),
             },
+            ...(isDialer
+              ? [
+                  {
+                    key: "averageCallLength",
+                    label: "Average Call Length",
+                    value: fmtDuration(appointmentQuality.avgDurationSeconds),
+                    spectrum: "cold" as const,
+                    empty: appointmentQuality.avgDurationSeconds == null,
+                    emptyHint: "Requires duration_seconds logged on calls.",
+                  },
+                  {
+                    key: "averageTalkTime",
+                    label: "Average Talk Time",
+                    value: fmtDuration(appointmentQuality.avgTalkSeconds),
+                    spectrum: "cold" as const,
+                    empty: appointmentQuality.avgTalkSeconds == null,
+                    emptyHint: "Requires talk_seconds logged on calls.",
+                  },
+                ]
+              : []),
           ];
 
           const pickupPct = dials ? (conns / dials) * 100 : 0;
@@ -2631,18 +2723,12 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 title="Additional Stats"
                 items={
                   [
-                    !isDialer
-                      ? {
-                          key: "linksSent",
-                          label: "Links Sent",
-                          value: linksSent.toLocaleString(),
-                          spectrum: "cold",
-                          deltaPct: pctDelta(linksSent, prevLinksSent),
-                          priorValue: prevLinksSent.toLocaleString(),
-                          empty: !linksSent,
-                          emptyHint: "No links sent logged in this range.",
-                        }
-                      : null,
+                    // Links Sent, Inbound/Outbound DMs, Follow-ups, Links
+                    // Clicked, Post-booking Visits, and Pre-call Watches all
+                    // used to be duplicated here AND in "DM Setter · Primary
+                    // Activity" above — same metric, same value, two cards.
+                    // Primary Activity is the single home for all of them now;
+                    // Additional Stats keeps only what's genuinely secondary.
                     {
                       key: "downsells",
                       label: "Downsells",
@@ -2653,65 +2739,6 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                       empty: !downsells,
                       emptyHint: "No downsells logged in this range.",
                     },
-                    ...(!isDialer
-                      ? [
-                          {
-                            key: "inboundDmsSent",
-                            label: "Inbound DMs Sent",
-                            value: inboundDms == null ? "Not connected" : fmtN0(inboundDms),
-                            spectrum: "cold" as const,
-                          },
-                          {
-                            key: "outboundDmsSent",
-                            label: "Outbound DMs Sent",
-                            value: outboundDms == null ? "Not connected" : fmtN0(outboundDms),
-                            spectrum: "cold" as const,
-                          },
-                          {
-                            key: "followUpsSent",
-                            label: "Follow-ups Sent",
-                            value: followupsSent == null ? "Not connected" : fmtN0(followupsSent),
-                            spectrum: "mid" as const,
-                          },
-                          {
-                            key: "linksClicked",
-                            label: "Links Clicked",
-                            value: linksClicked == null ? "Not connected" : fmtN0(linksClicked),
-                            spectrum: "cold" as const,
-                          },
-                          {
-                            key: "postBookingVisits",
-                            label: "Post-booking Page Visits",
-                            value:
-                              postBookingVisits == null
-                                ? "Not connected"
-                                : fmtN0(postBookingVisits),
-                            spectrum: "mid" as const,
-                          },
-                          {
-                            key: "preCallWatches",
-                            label: "Pre-call Video Watches",
-                            value: preCallWatches == null ? "Not connected" : fmtN0(preCallWatches),
-                            spectrum: "mid" as const,
-                          },
-                        ]
-                      : []),
-                    ...(isDialer
-                      ? [
-                          {
-                            key: "averageCallLength",
-                            label: "Average Call Length",
-                            value: fmtDuration(appointmentQuality.avgDurationSeconds),
-                            spectrum: "cold" as const,
-                          },
-                          {
-                            key: "averageTalkTime",
-                            label: "Average Talk Time",
-                            value: fmtDuration(appointmentQuality.avgTalkSeconds),
-                            spectrum: "cold" as const,
-                          },
-                        ]
-                      : []),
                   ].filter(Boolean) as KpiBandItem[]
                 }
               />
