@@ -104,6 +104,29 @@ export const VIDEO_ACTION_STATUSES: readonly VideoActionStatus[] = [
 ] as const;
 
 /**
+ * Builds the evidence/confidence payload persisted with a vsl_recommendations
+ * row. deriveVideoActionQueue's items are deterministic threshold checks
+ * (e.g. "completion rate below 25%"), not a probabilistic model — there is
+ * no legitimate confidence score to attach, so confidence always stays
+ * null here rather than a fabricated number. The reason string itself is
+ * carried into evidence_json so the persisted record stays traceable to
+ * the finding that generated it, instead of being lost the moment the
+ * live action-queue view recomputes.
+ */
+export function buildRecommendationEvidence(item: { reason: string }): {
+  evidence_json: { reason: string; basis: string };
+  confidence: number | null;
+} {
+  return {
+    evidence_json: {
+      reason: item.reason,
+      basis: "deterministic threshold check (deriveVideoActionQueue)",
+    },
+    confidence: null,
+  };
+}
+
+/**
  * Builds a VslMetricSnapshot from real, joinable data only. viewerTo* fields
  * require leads/calls rows tagged with this VSL's id (source_vsl_id) — until
  * a booking page or intake form is wired to tag it, these stay null rather
@@ -127,11 +150,25 @@ export function buildVslMetricSnapshot(input: {
   const viewers = input.uniqueViewers ?? null;
   const pctOfViewers = (n: number | null) =>
     n == null || viewers == null || viewers <= 0 ? null : (n / viewers) * 100;
+  // pct_100_reached (and the other pct_X_reached snapshot columns) are a raw
+  // headcount of viewers who reached that milestone — matching how they're
+  // used as funnel-stage counts in buildVslFunnel, and how a Wistia
+  // dashboard export typically reports them. completionRate is a
+  // percentage, so it must be derived by dividing that count by the
+  // strongest available viewer denominator, never assigned directly.
+  // Falls back to totalPlays when uniqueViewers isn't in the snapshot,
+  // since a milestone-reach count is still a fraction of *someone* who
+  // watched.
+  const completionDenominator = input.uniqueViewers ?? input.totalPlays ?? null;
+  const completionRate =
+    input.pct100Reached == null || completionDenominator == null || completionDenominator <= 0
+      ? null
+      : (input.pct100Reached / completionDenominator) * 100;
   return {
     mediaId: input.mediaId,
     category: input.category,
     playRate: input.playRate,
-    completionRate: input.pct100Reached,
+    completionRate,
     ctaRate: input.ctaClickRate ?? pctOfViewers(input.ctaClicks),
     viewerToLead: pctOfViewers(input.taggedLeads),
     viewerToBooking: pctOfViewers(input.taggedBookings),
@@ -157,11 +194,25 @@ export type VslFunnelStageKey =
 
 export type VslFunnelDataSource = "wistia_native" | "page_event" | "crm" | "cash" | "unavailable";
 
+/**
+ * How the Wistia-native numbers in a snapshot actually got there. There is
+ * no live Wistia Stats API connection in this app — "manual"/"csv" are the
+ * only ingestion sources that exist today. "live_api" is reserved for if a
+ * real live connection is ever built, so the UI can distinguish it from a
+ * human-entered figure without a code change to the funnel itself.
+ */
+export type VslMetricIngestionSource = "manual" | "csv" | "live_api";
+
 export type VslFunnelStage = {
   key: VslFunnelStageKey;
   label: string;
   value: number | null;
+  /** What kind of metric this is (Wistia-native, page-event, CRM, cash). */
   source: VslFunnelDataSource;
+  /** How a wistia_native stage's value was actually ingested — null for
+   * non-wistia_native stages, or when the stage has no value. Never implies
+   * "live" unless metricIngestionSource is genuinely "live_api". */
+  ingestionSource: VslMetricIngestionSource | null;
   detail: string;
 };
 
@@ -183,9 +234,29 @@ export type VslFunnelInput = {
   closeCount: number | null;
   /** Cash ledger: collected cash on closed, tagged calls. */
   cashCents: number | null;
+  /** Whether this VSL has a Wistia video ID set at all — distinct from
+   * whether a metric snapshot has been imported for it. */
+  wistiaConfigured: boolean;
+  /** How the latest snapshot's numbers were ingested; null when there is no
+   * snapshot at all. */
+  metricIngestionSource: VslMetricIngestionSource | null;
 };
 
 export function buildVslFunnel(input: VslFunnelInput): VslFunnelStage[] {
+  const ingestionLabel =
+    input.metricIngestionSource === "csv"
+      ? "Wistia metric · CSV import"
+      : input.metricIngestionSource === "live_api"
+        ? "Wistia metric · Live API"
+        : "Wistia metric · Manual entry";
+  // Distinguishes "the embed/video isn't even configured" from "it's
+  // configured but nobody has imported a metric snapshot yet" — these are
+  // different problems with different fixes, and collapsing them into one
+  // "Wistia is not connected" message hides which one is true.
+  const wistiaDisconnectedDetail = input.wistiaConfigured
+    ? "No metric snapshot available. Import a Wistia dashboard export to populate this stage."
+    : "Wistia is not connected — no video ID set for this VSL.";
+
   const stage = (
     key: VslFunnelStageKey,
     label: string,
@@ -198,6 +269,8 @@ export function buildVslFunnel(input: VslFunnelInput): VslFunnelStage[] {
     label,
     value,
     source: value == null ? "unavailable" : source,
+    ingestionSource:
+      value != null && source === "wistia_native" ? input.metricIngestionSource : null,
     detail: value == null ? disconnectedDetail : connectedDetail,
   });
   return [
@@ -214,56 +287,56 @@ export function buildVslFunnel(input: VslFunnelInput): VslFunnelStage[] {
       "Play",
       input.totalPlays,
       "wistia_native",
-      "Wistia-native play count.",
-      "Wistia is not connected.",
+      `${ingestionLabel} — play count.`,
+      wistiaDisconnectedDetail,
     ),
     stage(
       "milestone_25",
       "25% watched",
       input.pct25Reached,
       "wistia_native",
-      "Wistia-native milestone reach.",
-      "Milestone data not in the imported sheet.",
+      `${ingestionLabel} — milestone reach count.`,
+      wistiaDisconnectedDetail,
     ),
     stage(
       "milestone_50",
       "50% watched",
       input.pct50Reached,
       "wistia_native",
-      "Wistia-native milestone reach.",
-      "Milestone data not in the imported sheet.",
+      `${ingestionLabel} — milestone reach count.`,
+      wistiaDisconnectedDetail,
     ),
     stage(
       "milestone_75",
       "75% watched",
       input.pct75Reached,
       "wistia_native",
-      "Wistia-native milestone reach.",
-      "Milestone data not in the imported sheet.",
+      `${ingestionLabel} — milestone reach count.`,
+      wistiaDisconnectedDetail,
     ),
     stage(
       "milestone_90",
       "90% watched",
       input.pct90Reached,
       "wistia_native",
-      "Wistia-native milestone reach.",
-      "Milestone data not in the imported sheet.",
+      `${ingestionLabel} — milestone reach count.`,
+      wistiaDisconnectedDetail,
     ),
     stage(
       "completion",
       "Completed (100%)",
       input.pct100Reached,
       "wistia_native",
-      "Wistia-native milestone reach.",
-      "Milestone data not in the imported sheet.",
+      `${ingestionLabel} — milestone reach count.`,
+      wistiaDisconnectedDetail,
     ),
     stage(
       "cta",
       "CTA clicked",
       input.ctaClicks,
       "wistia_native",
-      "Wistia-native/page CTA click count.",
-      "CTA click telemetry not connected.",
+      `${ingestionLabel} — CTA click count.`,
+      wistiaDisconnectedDetail,
     ),
     stage(
       "application",
@@ -328,6 +401,11 @@ export function deriveLargestLeak(stages: VslFunnelStage[]): VslLargestLeak | nu
   for (let i = 0; i < stages.length - 1; i++) {
     const from = stages[i];
     const to = stages[i + 1];
+    // "cash" is a currency amount (cents), every other stage is a head
+    // count. A "drop rate" computed between a count and a cents figure is a
+    // unit mismatch, not a real funnel leak — the cash stage stays visible
+    // in the funnel itself, just excluded from this percentage math.
+    if (to.key === "cash") continue;
     if (from.value == null || to.value == null || from.value <= 0) continue;
     const dropRatePct = ((from.value - to.value) / from.value) * 100;
     if (dropRatePct <= 0) continue;

@@ -1416,6 +1416,7 @@ export function mockVslSnapshots(vslId: string) {
   return Array.from({ length: 6 }, (_, i) => ({
     id: `mock-snap-${vslId}-${i}`,
     vsl_id: vslId,
+    org_id: "mock-org",
     captured_at: new Date(now - (5 - i) * 86400e3).toISOString(),
     total_plays: 680 + variant + i * 120,
     unique_viewers: 480 + Math.round(variant * 0.7) + i * 90,
@@ -1423,6 +1424,8 @@ export function mockVslSnapshots(vslId: string) {
     avg_percent_watched: 34 + (variant % 20) + i * 2,
     page_loads: 1200 + variant * 2 + i * 150,
     engagement_json: null,
+    video_name: null,
+    source: "csv",
     pct_25_reached: 380 + variant + i * 60,
     pct_50_reached: 300 + Math.round(variant * 0.8) + i * 45,
     pct_75_reached: 220 + Math.round(variant * 0.6) + i * 30,
@@ -1430,6 +1433,16 @@ export function mockVslSnapshots(vslId: string) {
     pct_100_reached: 120 + Math.round(variant * 0.3) + i * 15,
     cta_clicks: 60 + Math.round(variant * 0.2) + i * 8,
     cta_click_rate: null,
+    rewatches: null,
+    skips: null,
+    referrer: null,
+    utm_source: null,
+    utm_medium: null,
+    utm_campaign: null,
+    device: null,
+    embed_location: null,
+    new_vs_returning: null,
+    identified_viewer_id: null,
   }));
 }
 
@@ -1448,6 +1461,8 @@ export function mockVslFunnel(vslId: string) {
     showCount: 14 + (variant % 8),
     closeCount: 4 + (variant % 4),
     cashCents: 320000 + variant * 900,
+    wistiaConfigured: true,
+    metricIngestionSource: "csv" as const,
   };
 }
 

@@ -137,22 +137,33 @@ export type PitchOutcomeSplit = {
   /** Count of close/sale events for a lead who has an earlier booked_call
    * event — went through the sales team's follow-up call. */
   afterPitchSales: number;
+  /** Close/sale events with no lead_id at all — there is no way to check
+   * for a prior booked_call, so these are neither during- nor after-pitch;
+   * assigning them to either would be a guess presented as a fact. Counted
+   * and reported separately instead. */
+  unclassifiedSales: number;
   /** Only summed from events whose metadata carries a numeric amount_cents;
    * null (not zero) when no counted event has that field, since the event
    * pipeline does not guarantee per-event dollar amounts. */
   duringPitchRevenueCents: number | null;
   afterPitchRevenueCents: number | null;
+  /** Revenue from unclassified sales — kept visible rather than silently
+   * dropped, but never folded into the during/after totals above. */
+  unclassifiedRevenueCents: number | null;
   /** How many of the counted sales actually had an amount, for an honest
    * "N of M sales have revenue data" disclosure in the UI. */
   duringPitchRevenueEventCount: number;
   afterPitchRevenueEventCount: number;
+  unclassifiedRevenueEventCount: number;
 };
 
 /**
  * Distinguishes direct, during-pitch checkouts from after-pitch sales-team
  * call outcomes using the real webinar event stream — a "close"/"sale" event
  * for a lead who has an earlier "booked_call" event went through the sales
- * team; one with no prior booked_call was a direct in-webinar purchase.
+ * team; one with no prior booked_call was a direct in-webinar purchase. A
+ * close/sale event with no lead_id at all cannot be checked either way, so
+ * it is reported as unclassified rather than defaulted to during-pitch.
  */
 export function splitPitchOutcomes(events: WebinarEventRow[]): PitchOutcomeSplit {
   const ordered = [...events].sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at));
@@ -166,33 +177,50 @@ export function splitPitchOutcomes(events: WebinarEventRow[]): PitchOutcomeSplit
   const result: PitchOutcomeSplit = {
     duringPitchSales: 0,
     afterPitchSales: 0,
+    unclassifiedSales: 0,
     duringPitchRevenueCents: null,
     afterPitchRevenueCents: null,
+    unclassifiedRevenueCents: null,
     duringPitchRevenueEventCount: 0,
     afterPitchRevenueEventCount: 0,
+    unclassifiedRevenueEventCount: 0,
   };
   let duringCents = 0;
   let afterCents = 0;
+  let unclassifiedCents = 0;
   for (const event of ordered) {
     if (event.event_type !== "close" && event.event_type !== "sale") continue;
-    const bookedAt = event.lead_id ? bookedAtByLead.get(event.lead_id) : undefined;
+    const amount = event.metadata?.amount_cents;
+    const hasAmount = typeof amount === "number" && Number.isFinite(amount);
+
+    if (!event.lead_id) {
+      result.unclassifiedSales++;
+      if (hasAmount) {
+        unclassifiedCents += amount as number;
+        result.unclassifiedRevenueEventCount++;
+      }
+      continue;
+    }
+
+    const bookedAt = bookedAtByLead.get(event.lead_id);
     const isAfterPitch = bookedAt != null && bookedAt <= Date.parse(event.occurred_at);
     if (isAfterPitch) result.afterPitchSales++;
     else result.duringPitchSales++;
 
-    const amount = event.metadata?.amount_cents;
-    if (typeof amount === "number" && Number.isFinite(amount)) {
+    if (hasAmount) {
       if (isAfterPitch) {
-        afterCents += amount;
+        afterCents += amount as number;
         result.afterPitchRevenueEventCount++;
       } else {
-        duringCents += amount;
+        duringCents += amount as number;
         result.duringPitchRevenueEventCount++;
       }
     }
   }
   result.duringPitchRevenueCents = result.duringPitchRevenueEventCount > 0 ? duringCents : null;
   result.afterPitchRevenueCents = result.afterPitchRevenueEventCount > 0 ? afterCents : null;
+  result.unclassifiedRevenueCents =
+    result.unclassifiedRevenueEventCount > 0 ? unclassifiedCents : null;
   return result;
 }
 

@@ -1,12 +1,21 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { Database, Json } from "@/integrations/supabase/types";
 import {
   VIDEO_ACTION_STATUSES,
+  buildRecommendationEvidence,
   buildVslMetricSnapshot,
   deriveVideoActionQueue,
   type VideoActionStatus,
   type VslCategory,
 } from "@/lib/media-intelligence";
+
+type VslMetricSnapshotRow = Database["public"]["Tables"]["vsl_metric_snapshots"]["Row"];
+type VslMetricSnapshotInsert = Database["public"]["Tables"]["vsl_metric_snapshots"]["Insert"];
+type VslRow = Database["public"]["Tables"]["vsls"]["Row"];
+type VslInsert = Database["public"]["Tables"]["vsls"]["Insert"];
+type VslRecommendationRow = Database["public"]["Tables"]["vsl_recommendations"]["Row"];
 
 export type VslKind = "main" | "webinar" | "post_booking" | "testimonial";
 
@@ -17,7 +26,7 @@ const KIND_TO_CATEGORY: Record<VslKind, VslCategory> = {
   testimonial: "Testimonial Videos",
 };
 
-async function getOrgId(supabase: any, userId: string): Promise<string> {
+async function getOrgId(supabase: SupabaseClient<Database>, userId: string): Promise<string> {
   const { data } = await supabase
     .from("memberships")
     .select("org_id")
@@ -59,7 +68,7 @@ export const upsertVsl = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const org_id = await getOrgId(supabase, userId);
-    const row: any = {
+    const row: VslInsert = {
       org_id,
       kind: data.kind,
       name: data.name,
@@ -79,7 +88,7 @@ export const deleteVsl = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string }) => input)
   .handler(async ({ data, context }) => {
-    const { error } = await (context.supabase as any).from("vsls").delete().eq("id", data.id);
+    const { error } = await context.supabase.from("vsls").delete().eq("id", data.id);
     if (error) throw error;
     return { ok: true };
   });
@@ -88,7 +97,7 @@ export const listSnapshots = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { vsl_id: string; limit?: number; from?: string; to?: string }) => input)
   .handler(async ({ data, context }) => {
-    let q = (context.supabase as any)
+    let q = context.supabase
       .from("vsl_metric_snapshots")
       .select("*")
       .eq("vsl_id", data.vsl_id)
@@ -136,7 +145,7 @@ export const addSnapshot = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const org_id = await getOrgId(supabase, userId);
-    const { data: saved, error } = await (supabase as any)
+    const { data: saved, error } = await supabase
       .from("vsl_metric_snapshots")
       .insert({
         vsl_id: data.vsl_id,
@@ -244,7 +253,7 @@ export const importCsvRows = createServerFn({ method: "POST" })
     const optionalStr = (rowCells: string[], colIndex: number) =>
       colIndex >= 0 && rowCells[colIndex] ? rowCells[colIndex] : null;
 
-    const rows: any[] = [];
+    const rows: VslMetricSnapshotInsert[] = [];
     for (let i = 1; i < lines.length; i++) {
       const c = parseCSVLine(lines[i]);
       if (!c.length || !c.some((x) => x)) continue;
@@ -280,7 +289,7 @@ export const importCsvRows = createServerFn({ method: "POST" })
       });
     }
     if (!rows.length) throw new Error("No rows parsed");
-    const { error } = await (supabase as any).from("vsl_metric_snapshots").insert(rows);
+    const { error } = await supabase.from("vsl_metric_snapshots").insert(rows);
     if (error) throw error;
     return { inserted: rows.length };
   });
@@ -314,18 +323,21 @@ async function callGemini(sys: string, userMsg: string) {
   }
 }
 
+type TranscriptLine = { t: number; text: string };
+type EngagementPoint = { sec: number; pct: number };
+
 export const analyzeVsl = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { vsl_id: string }) => input)
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    const { data: vsl } = await (supabase as any)
+    const { data: vsl } = await supabase
       .from("vsls")
       .select("*")
       .eq("id", data.vsl_id)
       .maybeSingle();
     if (!vsl) throw new Error("VSL not found");
-    const { data: snaps } = await (supabase as any)
+    const { data: snaps } = await supabase
       .from("vsl_metric_snapshots")
       .select("*")
       .eq("vsl_id", data.vsl_id)
@@ -335,34 +347,42 @@ export const analyzeVsl = createServerFn({ method: "POST" })
 
     const latest = snaps[0];
     const first = snaps[snaps.length - 1];
-    const trend = (k: string) => {
-      const a = Number((first as any)[k] ?? 0),
-        b = Number((latest as any)[k] ?? 0);
+    const trend = (k: keyof VslMetricSnapshotRow) => {
+      const a = Number(first[k] ?? 0),
+        b = Number(latest[k] ?? 0);
       if (!a) return b > 0 ? "+new" : "flat";
       const pct = ((b - a) / a) * 100;
       return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
     };
-    const transcript = Array.isArray(vsl.transcript_json) ? vsl.transcript_json : [];
+    const transcript = (Array.isArray(vsl.transcript_json)
+      ? vsl.transcript_json
+      : []) as unknown as TranscriptLine[];
     const transcriptBlock = transcript.length
       ? transcript
           .map(
-            (l: any) =>
+            (l) =>
               `[${Math.floor(l.t / 60)}:${String(Math.floor(l.t % 60)).padStart(2, "0")}] ${l.text}`,
           )
           .join("\n")
       : vsl.script || "(no script provided)";
-    const engagement = Array.isArray(latest.engagement_json) ? latest.engagement_json : null;
+    const engagement = Array.isArray(latest.engagement_json)
+      ? (latest.engagement_json as unknown as EngagementPoint[])
+      : null;
     const engagementBlock = engagement
-      ? engagement.map((e: any) => `${e.sec}s: ${e.pct}%`).join(", ")
+      ? engagement.map((e) => `${e.sec}s: ${e.pct}%`).join(", ")
       : "(no per-second retention available)";
 
+    // pct_X_reached columns are raw viewer headcounts (matching the VSL
+    // funnel's semantics — see buildVslMetricSnapshot), not percentages.
+    // "N viewers reached the 25% mark" avoids implying the number itself is
+    // a rate.
     const milestoneBlock =
       [
-        latest.pct_25_reached != null && `25%: ${latest.pct_25_reached}`,
-        latest.pct_50_reached != null && `50%: ${latest.pct_50_reached}`,
-        latest.pct_75_reached != null && `75%: ${latest.pct_75_reached}`,
-        latest.pct_90_reached != null && `90%: ${latest.pct_90_reached}`,
-        latest.pct_100_reached != null && `100%: ${latest.pct_100_reached}`,
+        latest.pct_25_reached != null && `${latest.pct_25_reached} viewers reached the 25% mark`,
+        latest.pct_50_reached != null && `${latest.pct_50_reached} viewers reached the 50% mark`,
+        latest.pct_75_reached != null && `${latest.pct_75_reached} viewers reached the 75% mark`,
+        latest.pct_90_reached != null && `${latest.pct_90_reached} viewers reached the 90% mark`,
+        latest.pct_100_reached != null && `${latest.pct_100_reached} viewers completed (100%)`,
       ]
         .filter(Boolean)
         .join(", ") || "(no milestone data in the imported sheet)";
@@ -414,27 +434,33 @@ export const getVslFunnelData = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const org_id = await getOrgId(supabase, userId);
-    const db = supabase as any;
-    const [{ data: latestSnap }, { data: leads }, { data: calls }] = await Promise.all([
-      db
-        .from("vsl_metric_snapshots")
-        .select("*")
-        .eq("vsl_id", data.vsl_id)
-        .order("captured_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      db.from("leads").select("id").eq("org_id", org_id).eq("source_vsl_id", data.vsl_id),
-      db
-        .from("calls")
-        .select("id, showed, closed, cash_collected_cents")
-        .eq("org_id", org_id)
-        .eq("source_vsl_id", data.vsl_id),
-    ]);
-    const callRows: Array<{
-      showed: boolean | null;
-      closed: boolean | null;
-      cash_collected_cents: number | null;
-    }> = calls ?? [];
+    const [{ data: vsl }, { data: latestSnap }, { data: leads }, { data: calls }] =
+      await Promise.all([
+        supabase.from("vsls").select("wistia_video_id").eq("id", data.vsl_id).maybeSingle(),
+        supabase
+          .from("vsl_metric_snapshots")
+          .select("*")
+          .eq("vsl_id", data.vsl_id)
+          .order("captured_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase.from("leads").select("id").eq("org_id", org_id).eq("source_vsl_id", data.vsl_id),
+        supabase
+          .from("calls")
+          .select("id, showed, closed, cash_collected_cents")
+          .eq("org_id", org_id)
+          .eq("source_vsl_id", data.vsl_id),
+      ]);
+    const callRows = calls ?? [];
+    // A resolved query — even one that matches zero rows — is a confirmed
+    // real count, not "unavailable." Only the Wistia-snapshot fields below
+    // stay nullable, since those genuinely don't exist without a snapshot.
+    const applicationCount = (leads ?? []).length;
+    const showCount = callRows.filter((c) => c.showed).length;
+    const closeCount = callRows.filter((c) => c.closed).length;
+    const cashCents = callRows
+      .filter((c) => c.closed)
+      .reduce((sum, c) => sum + (c.cash_collected_cents ?? 0), 0);
     return {
       pageLoads: latestSnap?.page_loads ?? null,
       totalPlays: latestSnap?.total_plays ?? null,
@@ -444,62 +470,81 @@ export const getVslFunnelData = createServerFn({ method: "POST" })
       pct90Reached: latestSnap?.pct_90_reached ?? null,
       pct100Reached: latestSnap?.pct_100_reached ?? null,
       ctaClicks: latestSnap?.cta_clicks ?? null,
-      applicationCount: (leads ?? []).length || null,
-      showCount: callRows.filter((c) => c.showed).length || null,
-      closeCount: callRows.filter((c) => c.closed).length || null,
-      cashCents:
-        callRows
-          .filter((c) => c.closed)
-          .reduce((sum, c) => sum + (c.cash_collected_cents ?? 0), 0) || null,
+      applicationCount,
+      showCount,
+      closeCount,
+      cashCents,
+      wistiaConfigured: Boolean(vsl?.wistia_video_id),
+      metricIngestionSource: latestSnap
+        ? latestSnap.source === "csv"
+          ? ("csv" as const)
+          : ("manual" as const)
+        : null,
     };
   });
 
 // ------ VSL Action Queue: real per-video actions from deriveVideoActionQueue ------
+type TaggedCallRow = {
+  id: string;
+  source_vsl_id: string | null;
+  showed: boolean | null;
+  closed: boolean | null;
+  cash_collected_cents: number | null;
+};
+
 export const listVslActionQueue = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const org_id = await getOrgId(supabase, userId);
-    const db = supabase as any;
-    const { data: vsls, error: vslError } = await db
+    const { data: vsls, error: vslError } = await supabase
       .from("vsls")
       .select("id, name, kind, wistia_video_id")
       .eq("org_id", org_id);
     if (vslError) throw vslError;
     if (!vsls?.length) return [];
-    const vslIds = vsls.map((v: any) => v.id);
+    const vslIds = vsls.map((v) => v.id);
     const [{ data: snaps }, { data: leads }, { data: calls }, { data: recs }] = await Promise.all([
-      db
+      supabase
         .from("vsl_metric_snapshots")
         .select("*")
         .in("vsl_id", vslIds)
         .order("captured_at", { ascending: false }),
-      db.from("leads").select("id, source_vsl_id").eq("org_id", org_id).in("source_vsl_id", vslIds),
-      db
+      supabase
+        .from("leads")
+        .select("id, source_vsl_id")
+        .eq("org_id", org_id)
+        .in("source_vsl_id", vslIds),
+      supabase
         .from("calls")
         .select("id, source_vsl_id, showed, closed, cash_collected_cents")
         .eq("org_id", org_id)
         .in("source_vsl_id", vslIds),
-      db.from("vsl_recommendations").select("*").eq("org_id", org_id).in("vsl_id", vslIds),
+      supabase.from("vsl_recommendations").select("*").eq("org_id", org_id).in("vsl_id", vslIds),
     ]);
 
-    const latestByVsl = new Map<string, any>();
+    const latestByVsl = new Map<string, VslMetricSnapshotRow>();
     for (const snap of snaps ?? []) {
       if (!latestByVsl.has(snap.vsl_id)) latestByVsl.set(snap.vsl_id, snap);
     }
+    // Every VSL in vslIds was included in the leads/calls IN() query, so a
+    // VSL absent from these maps was checked and confirmed to have zero
+    // tagged rows — a real 0, not "we don't know." Only Wistia-snapshot
+    // fields (from latestByVsl) stay nullable, since those genuinely don't
+    // exist without an imported snapshot.
     const leadCountByVsl = new Map<string, number>();
     for (const lead of leads ?? []) {
       if (!lead.source_vsl_id) continue;
       leadCountByVsl.set(lead.source_vsl_id, (leadCountByVsl.get(lead.source_vsl_id) ?? 0) + 1);
     }
-    const callsByVsl = new Map<string, any[]>();
+    const callsByVsl = new Map<string, TaggedCallRow[]>();
     for (const call of calls ?? []) {
       if (!call.source_vsl_id) continue;
       const arr = callsByVsl.get(call.source_vsl_id) ?? [];
       arr.push(call);
       callsByVsl.set(call.source_vsl_id, arr);
     }
-    const recByKey = new Map<string, any>();
+    const recByKey = new Map<string, VslRecommendationRow>();
     for (const rec of recs ?? []) recByKey.set(`${rec.vsl_id}:${rec.action}`, rec);
 
     const out: Array<{
@@ -524,11 +569,10 @@ export const listVslActionQueue = createServerFn({ method: "GET" })
         pct100Reached: snap?.pct_100_reached ?? null,
         ctaClicks: snap?.cta_clicks ?? null,
         ctaClickRate: snap?.cta_click_rate ?? null,
-        taggedLeads: leadCountByVsl.get(vsl.id) ?? null,
-        taggedBookings: callRows.length || null,
-        taggedCloses: closedCalls.length || null,
-        taggedCashCents:
-          closedCalls.reduce((sum, c) => sum + (c.cash_collected_cents ?? 0), 0) || null,
+        taggedLeads: leadCountByVsl.get(vsl.id) ?? 0,
+        taggedBookings: callRows.length,
+        taggedCloses: closedCalls.length,
+        taggedCashCents: closedCalls.reduce((sum, c) => sum + (c.cash_collected_cents ?? 0), 0),
       });
       for (const item of deriveVideoActionQueue(snapshot)) {
         const rec = recByKey.get(`${vsl.id}:${item.action}`);
@@ -551,7 +595,7 @@ export const listVslRecommendations = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const org_id = await getOrgId(supabase, userId);
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("vsl_recommendations")
       .select("*")
       .eq("org_id", org_id)
@@ -569,7 +613,7 @@ export const upsertVslRecommendation = createServerFn({ method: "POST" })
       reason: string;
       status?: VideoActionStatus;
       confidence?: number | null;
-      evidence_json?: Record<string, unknown>;
+      evidence_json?: Record<string, Json>;
     }) => input,
   )
   .handler(async ({ data, context }) => {
@@ -578,7 +622,10 @@ export const upsertVslRecommendation = createServerFn({ method: "POST" })
     if (data.status && !VIDEO_ACTION_STATUSES.includes(data.status)) {
       throw new Error(`Invalid status: ${data.status}`);
     }
-    const { data: saved, error } = await (supabase as any)
+    if (data.confidence != null && (data.confidence < 0 || data.confidence > 1)) {
+      throw new Error("confidence must be between 0 and 1");
+    }
+    const { data: saved, error } = await supabase
       .from("vsl_recommendations")
       .upsert(
         {
@@ -601,14 +648,37 @@ export const upsertVslRecommendation = createServerFn({ method: "POST" })
 
 export const setVslRecommendationStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { id: string; status: VideoActionStatus }) => input)
+  .inputValidator(
+    (input: {
+      id: string;
+      status: VideoActionStatus;
+      // Optional: refresh the persisted evidence/reason alongside a status
+      // change so the record stays traceable to the finding that generated
+      // it, rather than going stale from creation time. confidence is
+      // passed through as-is (never invented here) — see
+      // buildRecommendationEvidence.
+      reason?: string;
+      evidence_json?: Record<string, Json>;
+      confidence?: number | null;
+    }) => input,
+  )
   .handler(async ({ data, context }) => {
     if (!VIDEO_ACTION_STATUSES.includes(data.status)) {
       throw new Error(`Invalid status: ${data.status}`);
     }
-    const { data: saved, error } = await (context.supabase as any)
+    if (data.confidence != null && (data.confidence < 0 || data.confidence > 1)) {
+      throw new Error("confidence must be between 0 and 1");
+    }
+    const update: Database["public"]["Tables"]["vsl_recommendations"]["Update"] = {
+      status: data.status,
+      updated_at: new Date().toISOString(),
+    };
+    if (data.reason != null) update.reason = data.reason;
+    if (data.evidence_json != null) update.evidence_json = data.evidence_json;
+    if (data.confidence !== undefined) update.confidence = data.confidence;
+    const { data: saved, error } = await context.supabase
       .from("vsl_recommendations")
-      .update({ status: data.status, updated_at: new Date().toISOString() })
+      .update(update)
       .eq("id", data.id)
       .select()
       .single();
@@ -637,12 +707,15 @@ export const transcribeAudio = createServerFn({ method: "POST" })
       body: form,
     });
     if (!res.ok) throw new Error(`Transcription failed [${res.status}]`);
-    const j = await res.json();
+    const j = (await res.json()) as {
+      segments?: Array<{ start?: number; text?: string }>;
+      text?: string;
+    };
     const segs = Array.isArray(j.segments) ? j.segments : null;
     const transcript = segs
-      ? segs.map((s: any) => ({ t: Number(s.start) || 0, text: String(s.text || "").trim() }))
+      ? segs.map((s) => ({ t: Number(s.start) || 0, text: String(s.text || "").trim() }))
       : [{ t: 0, text: String(j.text || "") }];
-    const { error } = await (context.supabase as any)
+    const { error } = await context.supabase
       .from("vsls")
       .update({ transcript_json: transcript })
       .eq("id", data.vsl_id);

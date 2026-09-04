@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRecommendationEvidence,
   buildVslFunnel,
   buildVslMetricSnapshot,
   contentCashPathStrength,
@@ -125,6 +126,68 @@ describe("media intelligence", () => {
   });
 
   describe("buildVslMetricSnapshot", () => {
+    it("derives completionRate as a percentage of viewers, not the raw milestone count (B1)", () => {
+      const snapshot = buildVslMetricSnapshot({
+        mediaId: "vsl-1",
+        category: "Main VSL",
+        wistiaConnected: true,
+        totalPlays: 1200,
+        uniqueViewers: 1000,
+        playRate: 60,
+        pct100Reached: 200, // a raw headcount, not a percentage
+        ctaClicks: null,
+        ctaClickRate: null,
+        taggedLeads: null,
+        taggedBookings: null,
+        taggedCloses: null,
+        taggedCashCents: null,
+      });
+      // 200 / 1000 viewers = 20%, not the raw 200.
+      expect(snapshot.completionRate).toBe(20);
+      // And that 20% correctly trips the < 25 review_retention threshold —
+      // the raw count (200) never would have.
+      const actions = deriveVideoActionQueue(snapshot);
+      expect(actions.map((a) => a.action)).toContain("review_retention");
+    });
+
+    it("falls back to totalPlays as the denominator when uniqueViewers is unavailable", () => {
+      const snapshot = buildVslMetricSnapshot({
+        mediaId: "vsl-1",
+        category: "Main VSL",
+        wistiaConnected: true,
+        totalPlays: 500,
+        uniqueViewers: null,
+        playRate: null,
+        pct100Reached: 250,
+        ctaClicks: null,
+        ctaClickRate: null,
+        taggedLeads: null,
+        taggedBookings: null,
+        taggedCloses: null,
+        taggedCashCents: null,
+      });
+      expect(snapshot.completionRate).toBe(50); // 250 / 500 plays
+    });
+
+    it("leaves completionRate null with no valid denominator, rather than dividing by zero", () => {
+      const snapshot = buildVslMetricSnapshot({
+        mediaId: "vsl-1",
+        category: "Main VSL",
+        wistiaConnected: true,
+        totalPlays: null,
+        uniqueViewers: null,
+        playRate: null,
+        pct100Reached: 250,
+        ctaClicks: null,
+        ctaClickRate: null,
+        taggedLeads: null,
+        taggedBookings: null,
+        taggedCloses: null,
+        taggedCashCents: null,
+      });
+      expect(snapshot.completionRate).toBeNull();
+    });
+
     it("only computes viewer-to-lifecycle rates when leads/calls are tagged to this VSL", () => {
       const snapshot = buildVslMetricSnapshot({
         mediaId: "vsl-1",
@@ -185,6 +248,8 @@ describe("media intelligence", () => {
         showCount: 10,
         closeCount: 2,
         cashCents: 100000,
+        wistiaConfigured: true,
+        metricIngestionSource: "csv",
       });
 
     it("marks each stage's real data source, and unavailable when a value is null", () => {
@@ -201,11 +266,120 @@ describe("media intelligence", () => {
         showCount: null,
         closeCount: null,
         cashCents: null,
+        wistiaConfigured: true,
+        metricIngestionSource: "csv",
       });
       expect(funnel.find((s) => s.key === "landing")?.source).toBe("page_event");
       expect(funnel.find((s) => s.key === "play")?.source).toBe("wistia_native");
       expect(funnel.find((s) => s.key === "milestone_25")?.source).toBe("unavailable");
       expect(funnel.find((s) => s.key === "application")?.source).toBe("unavailable");
+    });
+
+    it("confirms a real zero (a resolved join with no matches) is a connected value, not unavailable", () => {
+      const funnel = buildVslFunnel({
+        pageLoads: 1000,
+        totalPlays: 700,
+        pct25Reached: 500,
+        pct50Reached: 400,
+        pct75Reached: 300,
+        pct90Reached: 250,
+        pct100Reached: 200,
+        ctaClicks: 150,
+        applicationCount: 0,
+        showCount: 0,
+        closeCount: 0,
+        cashCents: 0,
+        wistiaConfigured: true,
+        metricIngestionSource: "csv",
+      });
+      const application = funnel.find((s) => s.key === "application");
+      expect(application?.source).toBe("crm");
+      expect(application?.value).toBe(0);
+    });
+
+    it("labels a wistia_native stage's ingestion source, never implying a live API sync", () => {
+      const csvFunnel = buildVslFunnel({
+        pageLoads: 1000,
+        totalPlays: 700,
+        pct25Reached: null,
+        pct50Reached: null,
+        pct75Reached: null,
+        pct90Reached: null,
+        pct100Reached: null,
+        ctaClicks: null,
+        applicationCount: null,
+        showCount: null,
+        closeCount: null,
+        cashCents: null,
+        wistiaConfigured: true,
+        metricIngestionSource: "csv",
+      });
+      const play = csvFunnel.find((s) => s.key === "play");
+      expect(play?.ingestionSource).toBe("csv");
+      expect(play?.detail).toContain("CSV import");
+      expect(play?.detail.toLowerCase()).not.toContain("live");
+
+      const manualFunnel = buildVslFunnel({
+        pageLoads: null,
+        totalPlays: 700,
+        pct25Reached: null,
+        pct50Reached: null,
+        pct75Reached: null,
+        pct90Reached: null,
+        pct100Reached: null,
+        ctaClicks: null,
+        applicationCount: null,
+        showCount: null,
+        closeCount: null,
+        cashCents: null,
+        wistiaConfigured: true,
+        metricIngestionSource: "manual",
+      });
+      // The "landing" stage is page_event, not wistia_native — it must not
+      // carry an ingestionSource label even though a metricIngestionSource
+      // is set for the snapshot.
+      expect(manualFunnel.find((s) => s.key === "landing")?.ingestionSource).toBeNull();
+      expect(manualFunnel.find((s) => s.key === "play")?.ingestionSource).toBe("manual");
+    });
+
+    it("distinguishes a not-configured VSL from one configured with no snapshot yet", () => {
+      const notConfigured = buildVslFunnel({
+        pageLoads: null,
+        totalPlays: null,
+        pct25Reached: null,
+        pct50Reached: null,
+        pct75Reached: null,
+        pct90Reached: null,
+        pct100Reached: null,
+        ctaClicks: null,
+        applicationCount: 0,
+        showCount: 0,
+        closeCount: 0,
+        cashCents: 0,
+        wistiaConfigured: false,
+        metricIngestionSource: null,
+      });
+      expect(notConfigured.find((s) => s.key === "play")?.detail).toContain("not connected");
+
+      const configuredNoSnapshot = buildVslFunnel({
+        pageLoads: null,
+        totalPlays: null,
+        pct25Reached: null,
+        pct50Reached: null,
+        pct75Reached: null,
+        pct90Reached: null,
+        pct100Reached: null,
+        ctaClicks: null,
+        applicationCount: 0,
+        showCount: 0,
+        closeCount: 0,
+        cashCents: 0,
+        wistiaConfigured: true,
+        metricIngestionSource: null,
+      });
+      expect(configuredNoSnapshot.find((s) => s.key === "play")?.detail).toContain(
+        "No metric snapshot",
+      );
     });
 
     it("finds the largest proportional drop between consecutive connected stages", () => {
@@ -216,6 +390,30 @@ describe("media intelligence", () => {
       expect(leak?.toKey).toBe("application");
       expect(leak?.dropRatePct).toBeCloseTo((130 / 150) * 100, 5);
       expect(leak?.recommendedTest).toContain("booking form");
+    });
+
+    it("never proposes close -> cash as the largest leak, even when cents < close count", () => {
+      // Regression for B6: close(count) and cash(cents) are different units.
+      // A tiny cash amount relative to the close count would otherwise look
+      // like a huge, spurious "drop."
+      const funnel = buildVslFunnel({
+        pageLoads: 1000,
+        totalPlays: 700,
+        pct25Reached: 690,
+        pct50Reached: 680,
+        pct75Reached: 670,
+        pct90Reached: 660,
+        pct100Reached: 650,
+        ctaClicks: 640,
+        applicationCount: 600,
+        showCount: 500,
+        closeCount: 400,
+        cashCents: 3, // absurdly small vs. closeCount — would fake a ~99% "drop"
+        wistiaConfigured: true,
+        metricIngestionSource: "csv",
+      });
+      const leak = deriveLargestLeak(funnel);
+      expect(leak?.toKey).not.toBe("cash");
     });
 
     it("returns null when fewer than two consecutive stages have real data", () => {
@@ -232,8 +430,18 @@ describe("media intelligence", () => {
         showCount: null,
         closeCount: null,
         cashCents: null,
+        wistiaConfigured: false,
+        metricIngestionSource: null,
       });
       expect(deriveLargestLeak(funnel)).toBeNull();
+    });
+  });
+
+  describe("buildRecommendationEvidence (B8)", () => {
+    it("carries the reason into evidence_json and never invents a confidence score", () => {
+      const result = buildRecommendationEvidence({ reason: "Completion rate is below 25%." });
+      expect(result.evidence_json.reason).toBe("Completion rate is below 25%.");
+      expect(result.confidence).toBeNull();
     });
   });
 });

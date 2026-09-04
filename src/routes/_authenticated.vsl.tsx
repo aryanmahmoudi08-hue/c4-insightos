@@ -66,7 +66,11 @@ import {
   getVslFunnelData,
   type VslKind,
 } from "@/lib/vsl.functions";
-import { buildVslFunnel, deriveLargestLeak } from "@/lib/media-intelligence";
+import {
+  buildRecommendationEvidence,
+  buildVslFunnel,
+  deriveLargestLeak,
+} from "@/lib/media-intelligence";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -145,16 +149,21 @@ function VslFunnelPanel({ vsl }: { vsl: any }) {
       key: s.key,
       label: s.label,
       value: s.value,
-      detail: `${s.source === "unavailable" ? "Unavailable" : s.source.replace("_", "-")} · ${s.detail}`,
+      detail: s.detail,
     })),
   };
   return (
     <div className="border-t border-border p-4 space-y-3">
       <AttributionPathPanel
         title="Full funnel"
-        subtitle="Wistia-native, page-event, CRM, and cash data are labeled separately at each stage"
+        subtitle="Wistia metric, page-event, CRM, and cash data are labeled separately at each stage — none of it is a live Wistia API sync"
         paths={[path]}
       />
+      <p className="text-3xs text-muted-foreground">
+        Application/booking, show, close, and cash stages reflect leads and calls tagged to this VSL
+        (source_vsl_id). No booking flow currently writes that tag automatically — a real 0 here
+        means "checked, none tagged yet," not that the funnel is broken.
+      </p>
       {leak && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs">
           <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-2xs text-destructive">
@@ -197,11 +206,27 @@ function VslPage() {
       status: VideoActionQueueItem["status"];
     }) => {
       if (devBypass) return;
+      const { evidence_json, confidence } = buildRecommendationEvidence({ reason: item.reason });
       if (item.recommendation_id) {
-        return setRecStatus({ data: { id: item.recommendation_id, status } });
+        return setRecStatus({
+          data: {
+            id: item.recommendation_id,
+            status,
+            reason: item.reason,
+            evidence_json,
+            confidence,
+          },
+        });
       }
       return upsertRec({
-        data: { vsl_id: item.vsl_id, action: item.action, reason: item.reason, status },
+        data: {
+          vsl_id: item.vsl_id,
+          action: item.action,
+          reason: item.reason,
+          status,
+          evidence_json,
+          confidence,
+        },
       });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["vsl_action_queue"] }),
@@ -457,6 +482,13 @@ function VslCard({ vsl, range }: { vsl: any; range: { from: string; to: string }
       <div className="p-4 pb-0">
         <VideoEmbed wistiaId={vsl.wistia_video_id} title={vsl.name} className="mx-auto max-w-2xl" />
       </div>
+
+      {latest && (
+        <div className="px-4 pt-3 text-3xs text-muted-foreground">
+          Wistia metric · {latest.source === "csv" ? "CSV import" : "Manual entry"} · captured{" "}
+          {new Date(latest.captured_at).toLocaleDateString()} — never a live API sync.
+        </div>
+      )}
 
       {/* Unique viewers (reach) and play rate (a conversion, not a fixed-green
           decoration) now take their funnel position. Avg % watched keeps its

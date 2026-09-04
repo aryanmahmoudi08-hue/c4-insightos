@@ -125,5 +125,41 @@ describe("webinar event pipeline", () => {
       expect(split.duringPitchRevenueCents).toBeNull();
       expect(split.afterPitchRevenueCents).toBeNull();
     });
+
+    it("puts a lead-less close/sale event in unclassifiedSales, not during-pitch (B7)", () => {
+      const split = splitPitchOutcomes([
+        event("close", "2026-08-27T10:50:00Z", { lead_id: null }),
+        event("sale", "2026-08-27T10:55:00Z"),
+      ]);
+      expect(split.unclassifiedSales).toBe(2);
+      expect(split.duringPitchSales).toBe(0);
+      expect(split.afterPitchSales).toBe(0);
+    });
+
+    it("counts a lead-less event's revenue separately, never folded into during/after totals", () => {
+      const split = splitPitchOutcomes([
+        event("close", "2026-08-27T10:50:00Z", { lead_id: null, metadata: { amount_cents: 7500 } }),
+        event("close", "2026-08-27T10:55:00Z", {
+          lead_id: "lead-1",
+          metadata: { amount_cents: 20000 },
+        }),
+      ]);
+      expect(split.unclassifiedRevenueCents).toBe(7500);
+      expect(split.unclassifiedRevenueEventCount).toBe(1);
+      expect(split.duringPitchRevenueCents).toBe(20000);
+      expect(split.duringPitchRevenueEventCount).toBe(1);
+    });
+
+    it("mixes classified and unclassified events correctly in the same batch", () => {
+      const split = splitPitchOutcomes([
+        event("booked_call", "2026-08-27T09:00:00Z", { lead_id: "lead-1" }),
+        event("close", "2026-08-27T10:00:00Z", { lead_id: "lead-1" }), // after-pitch
+        event("close", "2026-08-27T10:05:00Z", { lead_id: "lead-2" }), // during-pitch
+        event("sale", "2026-08-27T10:10:00Z", { lead_id: null }), // unclassified
+      ]);
+      expect(split.afterPitchSales).toBe(1);
+      expect(split.duringPitchSales).toBe(1);
+      expect(split.unclassifiedSales).toBe(1);
+    });
   });
 });

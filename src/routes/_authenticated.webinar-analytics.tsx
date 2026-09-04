@@ -260,8 +260,17 @@ function WebinarAnalyticsPage() {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.9)]" />{" "}
-                Live Telemetry Active
+                {webinarEvents.length > 0 ? (
+                  <>
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.9)]" />
+                    Telemetry connected · {webinarEvents.length} events
+                  </>
+                ) : (
+                  <>
+                    <span className="h-2 w-2 rounded-full bg-white/25" />
+                    Telemetry not connected
+                  </>
+                )}
               </div>
               <div className="mt-1 truncate text-base font-semibold tracking-tight text-white">
                 {selected?.name ?? "Webinar workspace"}
@@ -477,13 +486,13 @@ function WebinarAnalyticsPage() {
                   ["Order bump revenue", currency(summary.closing.orderBumpRevenueCents)],
                   ["Upsell revenue", currency(summary.closing.upsellRevenueCents)],
                   [
-                    "ROAS",
+                    "ROAS (core + bump + upsell revenue)",
                     summary.revenue.roas == null
                       ? "Unavailable without legitimate spend"
                       : `${summary.revenue.roas.toFixed(2)}x`,
                   ],
                   [
-                    "Net profit",
+                    "Net profit (core offer revenue basis)",
                     profit.netProfitCents == null
                       ? "Unavailable — cost data not connected"
                       : currency(profit.netProfitCents),
@@ -509,10 +518,22 @@ function WebinarAnalyticsPage() {
                       : currency(pitchSplit.afterPitchRevenueCents),
                   ],
                   [
-                    "After-pitch conversion",
+                    "After-pitch conversion (of classified sales)",
                     pitchSplit.afterPitchSales + pitchSplit.duringPitchSales > 0
-                      ? `${((pitchSplit.afterPitchSales / (pitchSplit.afterPitchSales + pitchSplit.duringPitchSales)) * 100).toFixed(1)}% of tracked sales`
+                      ? `${((pitchSplit.afterPitchSales / (pitchSplit.afterPitchSales + pitchSplit.duringPitchSales)) * 100).toFixed(1)}%`
                       : "Unavailable",
+                  ],
+                  [
+                    "Unclassified sales (no lead ID)",
+                    pitchSplit.unclassifiedSales > 0
+                      ? `${number(pitchSplit.unclassifiedSales)} — can't tell during vs. after-pitch without a lead ID`
+                      : number(pitchSplit.unclassifiedSales),
+                  ],
+                  [
+                    "Unclassified revenue",
+                    pitchSplit.unclassifiedRevenueCents == null
+                      ? "Unavailable"
+                      : currency(pitchSplit.unclassifiedRevenueCents),
                   ],
                 ]}
               />
