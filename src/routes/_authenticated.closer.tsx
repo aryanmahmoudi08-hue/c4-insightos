@@ -58,7 +58,13 @@ import {
   type FaqVideoLite,
 } from "@/components/objection-instrument";
 import { scoreText, pickTop, type MechanismKey } from "@/lib/content-mechanisms";
-import { dailySeries, seriesRatePoints, mergeMax, priorPeriod, pctDelta } from "@/lib/trend";
+import {
+  dailySeries,
+  seriesRatePoints,
+  mergeBySourceTotal,
+  priorPeriod,
+  pctDelta,
+} from "@/lib/trend";
 import { clusterObjectionsFn } from "@/lib/objection-clustering.functions";
 import { applyObjectionClusters } from "@/lib/objection-clustering";
 import {
@@ -79,6 +85,7 @@ import { mockCalls, mockCallObjectionStats } from "@/lib/dev-mock-data";
 import { normalizeSocialPlatform, SOCIAL_PLATFORMS, platformMatches } from "@/lib/social-platform";
 import { GlassTableShell, Pagination, usePagination } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
+import { PlatformIcon } from "@/components/platform-icon";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 import { Clock3 } from "lucide-react";
 
@@ -645,7 +652,8 @@ function Closer() {
   });
   const paymentQualityStats = useMemo(() => {
     const total = callPayments.length;
-    const failed = callPayments.filter((p) => p.status === "failed").length;
+    const failedPayments = callPayments.filter((p) => p.status === "failed");
+    const failed = failedPayments.length;
     const onTime = callPayments.filter((p) => p.status === "paid").length;
     const collectedByCall = new Map<string, number>();
     for (const p of callPayments) {
@@ -663,10 +671,27 @@ function Closer() {
       const remaining = (c.contract_value_cents ?? 0) - (collectedByCall.get(c.id) ?? 0);
       return sum + Math.max(0, remaining);
     }, 0);
+    // Recovered failed payments: schema has no explicit retry/recovery link
+    // between payment rows, so this is inferred — real evidence (a later
+    // "paid" payment on the same call as a real "failed" one), not a direct
+    // recovery record. Labeled as inferred wherever it's shown.
+    const recoveredCalls = new Set<string>();
+    for (const failedPayment of failedPayments) {
+      if (!failedPayment.call_id) continue;
+      const recoveredLater = callPayments.some(
+        (p) =>
+          p.call_id === failedPayment.call_id &&
+          p.status === "paid" &&
+          new Date(p.collected_at).getTime() > new Date(failedPayment.collected_at).getTime(),
+      );
+      if (recoveredLater) recoveredCalls.add(failedPayment.call_id);
+    }
     return {
       total,
+      failedCount: failed,
       onTimeRatePct: total ? (onTime / total) * 100 : null,
       failedRatePct: total ? (failed / total) * 100 : null,
+      recoveredFailedCount: recoveredCalls.size,
       depositToFullPaymentPct: depositedCalls.length
         ? (fullyPaid.length / depositedCalls.length) * 100
         : null,
@@ -831,8 +856,21 @@ function Closer() {
       }),
     [setterAgg, range.from, range.to],
   );
+  // mergeBySourceTotal (not mergeMax): picks one winning source per metric
+  // for the whole range, matching how the headline KPI totals above
+  // (onCalendar/showed/closes/cashCents/revCents) are computed — each is
+  // Math.max(callsTotal, setterTotal). A per-day max (mergeMax) can pick a
+  // different "winning" source on different days within the same range,
+  // which makes the chart's implied sum disagree with that headline number
+  // even though both claim to represent the same metric.
   const heroSeries = useDayLogs
-    ? mergeMax(callsSeries, setterSeries, ["booked", "showed", "closed", "cash", "revenue"])
+    ? mergeBySourceTotal(callsSeries, setterSeries, [
+        "booked",
+        "showed",
+        "closed",
+        "cash",
+        "revenue",
+      ])
     : callsSeries;
 
   // Objection frequency (org-wide in range, ignores member filter). Mechanism
@@ -1227,7 +1265,9 @@ function Closer() {
                 <SelectItem value="all">Platform: All</SelectItem>
                 {SOCIAL_PLATFORMS.map((platform) => (
                   <SelectItem key={platform} value={platform}>
-                    {platform}
+                    <span className="flex items-center gap-1.5">
+                      <PlatformIcon platform={platform} /> {platform}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1851,6 +1891,25 @@ function Closer() {
                     spectrum: "hot",
                     empty: paymentQualityStats.failedRatePct == null,
                     emptyHint: "No payment records for these calls yet.",
+                  },
+                  {
+                    key: "failedPaymentCount",
+                    label: "Failed Payments",
+                    value: fmtN0(paymentQualityStats.failedCount),
+                    spectrum: "hot",
+                    empty: paymentQualityStats.total === 0,
+                    emptyHint: "No payment records for these calls yet.",
+                  },
+                  {
+                    key: "recoveredFailedPayments",
+                    label: "Recovered Failed Payments (inferred)",
+                    value: fmtN0(paymentQualityStats.recoveredFailedCount),
+                    spectrum: "mid",
+                    empty: paymentQualityStats.failedCount === 0,
+                    emptyHint:
+                      paymentQualityStats.failedCount === 0
+                        ? "No failed payments in this range."
+                        : "Inferred from a later successful payment on the same call — not a direct retry record.",
                   },
                   {
                     key: "depositToFullPayment",

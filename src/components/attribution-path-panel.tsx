@@ -50,22 +50,28 @@ export function AttributionPathPanel({
                 description={path.unavailable}
               />
             ) : (
-              <div className="flex flex-col gap-2 md:flex-row md:items-stretch">
+              // Fixed comfortable min-width per stage + horizontal scroll,
+              // not flex-1 shrink-to-fit — a long funnel (VSL's 12 stages,
+              // DM Setter's 8-stage path) was squeezing every stage down to
+              // ~70-90px on a normal viewport, truncating labels/details to
+              // near-illegibility. Short paths still render naturally; long
+              // ones scroll instead of cramming.
+              <div className="flex flex-col gap-2 md:flex-row md:items-stretch md:overflow-x-auto md:pb-1">
                 {path.stages.map((stage, index) => (
-                  <div key={stage.key} className="flex min-w-0 flex-1 items-center gap-2">
+                  <div key={stage.key} className="flex items-center gap-2 md:shrink-0">
                     <button
                       type="button"
                       onClick={() => setSelected(stage)}
                       title={stage.detail}
-                      className="min-w-0 flex-1 rounded-md border border-border/70 bg-muted/20 p-2 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/40"
+                      className="w-full min-w-0 rounded-md border border-border/70 bg-muted/20 p-2 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/40 md:w-36"
                     >
                       <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">
                         {stage.label}
                       </div>
-                      <div className="mt-1 font-mono text-lg font-semibold text-foreground">
+                      <div className="mt-1 truncate font-mono text-lg font-semibold text-foreground">
                         {stage.value == null ? "—" : stage.value.toLocaleString()}
                       </div>
-                      <div className="mt-1 truncate text-[10px] text-muted-foreground">
+                      <div className="mt-1 line-clamp-2 text-[10px] text-muted-foreground">
                         {stage.detail}
                       </div>
                     </button>

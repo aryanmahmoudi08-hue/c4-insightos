@@ -53,7 +53,11 @@ export function seriesRate(points: SeriesPoint[], numKey: string, denKey: string
 }
 
 /** Same as seriesRate but keeps the date on each point — for axis-labeled rate charts (RateSmallMultiples). */
-export function seriesRatePoints(points: SeriesPoint[], numKey: string, denKey: string): { d: string; pct: number }[] {
+export function seriesRatePoints(
+  points: SeriesPoint[],
+  numKey: string,
+  denKey: string,
+): { d: string; pct: number }[] {
   return points
     .filter((p) => Number(p[denKey] ?? 0) > 0)
     .map((p) => ({ d: p.d, pct: (Number(p[numKey]) / Number(p[denKey])) * 100 }));
@@ -65,6 +69,35 @@ export function mergeMax(a: SeriesPoint[], b: SeriesPoint[], keys: string[]): Se
     const out: SeriesPoint = { ...pt };
     const bp = b[i];
     for (const key of keys) out[key] = Math.max(Number(pt[key] ?? 0), Number(bp?.[key] ?? 0));
+    return out;
+  });
+}
+
+/**
+ * Like mergeMax, but picks ONE winning source per metric key for the whole
+ * series — whichever source's range total is larger — instead of picking
+ * day-by-day. Day-by-day picking (mergeMax) can silently disagree with a
+ * headline total computed as Math.max(totalA, totalB) over the same two
+ * sources: whenever the larger source flips between days within the range,
+ * summing the per-day max no longer equals the max of the two range totals.
+ * Use this when a chart needs to visually reconcile with a Math.max(...)
+ * headline number built from the same two source series.
+ */
+export function mergeBySourceTotal(
+  a: SeriesPoint[],
+  b: SeriesPoint[],
+  keys: string[],
+): SeriesPoint[] {
+  const preferA: Record<string, boolean> = {};
+  for (const key of keys) {
+    const totalA = a.reduce((s, p) => s + Number(p[key] ?? 0), 0);
+    const totalB = b.reduce((s, p) => s + Number(p[key] ?? 0), 0);
+    preferA[key] = totalA >= totalB;
+  }
+  return a.map((pt, i) => {
+    const out: SeriesPoint = { ...pt };
+    const bp = b[i];
+    for (const key of keys) out[key] = Number((preferA[key] ? pt : bp)?.[key] ?? 0);
     return out;
   });
 }

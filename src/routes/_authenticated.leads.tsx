@@ -313,9 +313,7 @@ function Leads() {
   const [entryTo, setEntryTo] = useState("");
   const [setterFilter, setSetterFilter] = useState("all");
   const [closerFilter, setCloserFilter] = useState("all");
-  const [sourceFilter, setSourceFilter] = useState("all");
   const [platformFilter, setPlatformFilter] = useState("all");
-  const [campaignFilter, setCampaignFilter] = useState("all");
   const [offerFilter, setOfferFilter] = useState("all");
 
   const { data: leads, isLoading: leadsLoading } = useQuery({
@@ -390,11 +388,7 @@ function Leads() {
       if (setterFilter !== "all" && (l.assigned_setter_id ?? "unassigned") !== setterFilter)
         return false;
       if (closerFilter !== "all" && (l.closer_id ?? "unassigned") !== closerFilter) return false;
-      if (sourceFilter !== "all" && (l.source_connector ?? "unavailable") !== sourceFilter)
-        return false;
       if (platformFilter !== "all" && (l.source_platform ?? "unavailable") !== platformFilter)
-        return false;
-      if (campaignFilter !== "all" && (l.source_campaign ?? "unavailable") !== campaignFilter)
         return false;
       if (offerFilter !== "all" && (offer ?? "unavailable") !== offerFilter) return false;
       if (!q) return true;
@@ -420,9 +414,7 @@ function Leads() {
     entryTo,
     setterFilter,
     closerFilter,
-    sourceFilter,
     platformFilter,
-    campaignFilter,
     offerFilter,
   ]);
 
@@ -432,9 +424,7 @@ function Leads() {
     return {
       setters: values((lead) => lead.assigned_setter_id),
       closers: values((lead) => lead.closer_id ?? null),
-      sources: values((lead) => lead.source_connector),
       platforms: values((lead) => lead.source_platform),
-      campaigns: values((lead) => lead.source_campaign),
       offers: Array.from(
         new Set(
           (leads ?? [])
@@ -638,9 +628,7 @@ function Leads() {
               {[
                 ["Setter", setterFilter, setSetterFilter, filterOptions.setters],
                 ["Closer", closerFilter, setCloserFilter, filterOptions.closers],
-                ["Source", sourceFilter, setSourceFilter, filterOptions.sources],
                 ["Platform", platformFilter, setPlatformFilter, filterOptions.platforms],
-                ["Campaign", campaignFilter, setCampaignFilter, filterOptions.campaigns],
                 ["Offer", offerFilter, setOfferFilter, filterOptions.offers],
               ].map(([label, value, setter, options]) => (
                 <select

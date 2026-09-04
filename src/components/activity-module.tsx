@@ -7,7 +7,7 @@ import { TopBar } from "@/components/app-sidebar";
 import type { DateRange } from "@/components/date-range-picker";
 import { useDateRange } from "@/hooks/use-date-range";
 import { useMemo, useState, useEffect } from "react";
-import { useSearch, useNavigate } from "@tanstack/react-router";
+import { useSearch, useNavigate, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { PlatformIcon } from "@/components/platform-icon";
 import {
   Select,
   SelectContent,
@@ -409,7 +410,9 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("operational_work_items")
-        .select("id, state, owner_id, due_at, next_action, created_at, updated_at, payload")
+        .select(
+          "id, entity_id, state, owner_id, due_at, next_action, created_at, updated_at, payload",
+        )
         .eq("org_id", orgId!)
         .eq("entity_type", "dialer_callback")
         .gte("created_at", `${range.from}T00:00:00`)
@@ -418,6 +421,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       if (error) throw error;
       return (data ?? []) as Array<{
         id: string;
+        entity_id: string | null;
         state: string;
         owner_id: string | null;
         due_at: string | null;
@@ -439,17 +443,55 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     }),
     [callbacks, todayStr],
   );
+  // Real Legacy Lead selector — was previously a free-text "lead name" field
+  // with no link back to the actual lead record. operational_work_items
+  // already had an entity_id column for exactly this (unique per
+  // org+entity_type+entity_id) but nothing populated it.
+  const [callbackLeadQuery, setCallbackLeadQuery] = useState("");
+  const [callbackSelectedLead, setCallbackSelectedLead] = useState<{
+    id: string;
+    full_name: string | null;
+    handle: string | null;
+    email: string | null;
+  } | null>(null);
+  const { data: callbackLeadResults = [] } = useQuery({
+    queryKey: ["dialer-callback-lead-search", orgId, callbackLeadQuery],
+    enabled: isDialer && !!orgId && callbackLeadQuery.trim().length >= 2 && !callbackSelectedLead,
+    queryFn: async () => {
+      const q = callbackLeadQuery.trim();
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, full_name, handle, email")
+        .eq("org_id", orgId!)
+        .or(`full_name.ilike.%${q}%,handle.ilike.%${q}%,email.ilike.%${q}%`)
+        .limit(8);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
   const logCallback = useMutation({
-    mutationFn: async ({ leadName, dueAt }: { leadName: string; dueAt: string }) => {
-      const { error } = await (supabase as any).from("operational_work_items").insert({
-        org_id: orgId!,
-        entity_type: "dialer_callback",
-        state: "requested",
-        due_at: dueAt ? new Date(dueAt).toISOString() : null,
-        next_action: "Call back",
-        next_action_at: dueAt ? new Date(dueAt).toISOString() : null,
-        payload: { lead_name: leadName },
-      });
+    mutationFn: async ({
+      leadId,
+      leadName,
+      dueAt,
+    }: {
+      leadId: string;
+      leadName: string;
+      dueAt: string;
+    }) => {
+      const { error } = await (supabase as any).from("operational_work_items").upsert(
+        {
+          org_id: orgId!,
+          entity_type: "dialer_callback",
+          entity_id: leadId,
+          state: "requested",
+          due_at: dueAt ? new Date(dueAt).toISOString() : null,
+          next_action: "Call back",
+          next_action_at: dueAt ? new Date(dueAt).toISOString() : null,
+          payload: { lead_name: leadName },
+        },
+        { onConflict: "org_id,entity_type,entity_id" },
+      );
       if (error) throw error;
     },
     onSuccess: () => {
@@ -469,7 +511,6 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dialer-callbacks", orgId] }),
     onError: (e: Error) => toast.error(e.message),
   });
-  const [callbackLeadName, setCallbackLeadName] = useState("");
   const [callbackDueAt, setCallbackDueAt] = useState("");
 
   // Persisted hot-lead alerts (spec section 4: "Create an InsightOS
@@ -1445,6 +1486,17 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 emptyHint: "Requires connected message events.",
               },
               {
+                key: "reply-rate",
+                label: "Reply Rate",
+                value:
+                  replies == null || !outboundDms
+                    ? "Unavailable"
+                    : `${((replies / outboundDms) * 100).toFixed(1)}%`,
+                spectrum: "hot",
+                empty: replies == null || !outboundDms,
+                emptyHint: "Log Outbound DMs Sent and Replies to see reply rate.",
+              },
+              {
                 key: "followups",
                 label: "Follow-ups Sent",
                 value: followupsSent == null ? "Unavailable" : fmtN0(followupsSent),
@@ -1744,14 +1796,41 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                     </div>
                   </div>
                   <div className="flex flex-wrap items-end gap-2">
-                    <div className="space-y-1">
+                    <div className="relative space-y-1">
                       <Label className="text-2xs">Lead</Label>
                       <Input
-                        value={callbackLeadName}
-                        onChange={(e) => setCallbackLeadName(e.target.value)}
-                        placeholder="Lead name or email"
-                        className="h-8 w-48 text-xs"
+                        value={
+                          callbackSelectedLead
+                            ? (callbackSelectedLead.full_name ?? callbackSelectedLead.email ?? "")
+                            : callbackLeadQuery
+                        }
+                        onChange={(e) => {
+                          setCallbackSelectedLead(null);
+                          setCallbackLeadQuery(e.target.value);
+                        }}
+                        placeholder="Search a Legacy Lead by name, handle, or email"
+                        className="h-8 w-64 text-xs"
                       />
+                      {!callbackSelectedLead && callbackLeadResults.length > 0 && (
+                        <div className="absolute top-full left-0 z-20 mt-1 w-72 rounded-md border border-border bg-popover shadow-md">
+                          {callbackLeadResults.map((lead) => (
+                            <button
+                              key={lead.id}
+                              type="button"
+                              className="block w-full truncate px-3 py-1.5 text-left text-xs hover:bg-muted"
+                              onClick={() => {
+                                setCallbackSelectedLead(lead);
+                                setCallbackLeadQuery("");
+                              }}
+                            >
+                              {lead.full_name ?? lead.handle ?? lead.email ?? "Unnamed lead"}
+                              {lead.email && (
+                                <span className="ml-1.5 text-muted-foreground">{lead.email}</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-1">
                       <Label className="text-2xs">Due</Label>
@@ -1764,13 +1843,23 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                     </div>
                     <Button
                       size="sm"
-                      disabled={!callbackLeadName.trim() || logCallback.isPending}
+                      disabled={!callbackSelectedLead || logCallback.isPending}
                       onClick={() => {
+                        if (!callbackSelectedLead) return;
                         logCallback.mutate(
-                          { leadName: callbackLeadName.trim(), dueAt: callbackDueAt },
+                          {
+                            leadId: callbackSelectedLead.id,
+                            leadName:
+                              callbackSelectedLead.full_name ??
+                              callbackSelectedLead.handle ??
+                              callbackSelectedLead.email ??
+                              "Unnamed lead",
+                            dueAt: callbackDueAt,
+                          },
                           {
                             onSuccess: () => {
-                              setCallbackLeadName("");
+                              setCallbackSelectedLead(null);
+                              setCallbackLeadQuery("");
                               setCallbackDueAt("");
                             },
                           },
@@ -1796,7 +1885,19 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                             .filter((c) => c.state !== "completed")
                             .map((c) => (
                               <tr key={c.id} className="border-b border-border/40 last:border-0">
-                                <td className="py-2 pr-3">{c.payload?.lead_name ?? "—"}</td>
+                                <td className="py-2 pr-3">
+                                  {c.entity_id ? (
+                                    <Link
+                                      to="/leads"
+                                      search={{ leadId: c.entity_id }}
+                                      className="text-primary hover:underline"
+                                    >
+                                      {c.payload?.lead_name ?? "Open lead"}
+                                    </Link>
+                                  ) : (
+                                    (c.payload?.lead_name ?? "—")
+                                  )}
+                                </td>
                                 <td className="py-2 pr-3 font-mono">
                                   {c.due_at ? new Date(c.due_at).toLocaleString() : "—"}
                                 </td>
@@ -1872,7 +1973,9 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 <SelectItem value="all">Platform: All</SelectItem>
                 {SOCIAL_PLATFORMS.map((platform) => (
                   <SelectItem key={platform} value={platform}>
-                    {platform}
+                    <span className="flex items-center gap-1.5">
+                      <PlatformIcon platform={platform} /> {platform}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>

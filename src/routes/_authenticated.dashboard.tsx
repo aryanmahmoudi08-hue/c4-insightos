@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
-import { mockDashboardStats, mockHubMetrics } from "@/lib/dev-mock-data";
+import { mockDashboardStats } from "@/lib/dev-mock-data";
+import { PlatformIcon } from "@/components/platform-icon";
 import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
 import { Link } from "@tanstack/react-router";
@@ -154,7 +155,7 @@ async function fetchPeriod(
 ) {
   const fromISO = `${from}T00:00:00`;
   const toISO = `${to}T23:59:59`;
-  const [pays, leads, calls, content, setters, clients] = await Promise.all([
+  const [pays, leads, calls, content, setters] = await Promise.all([
     supabase
       .from("payments")
       .select("amount_cents, collected_at")
@@ -189,7 +190,6 @@ async function fetchPeriod(
       .eq("org_id", orgId)
       .gte("activity_date", from)
       .lte("activity_date", to),
-    supabase.from("clients").select("id, status").eq("org_id", orgId),
   ]);
   const payList = pays.data ?? [];
   const matches = (row: {
@@ -211,7 +211,6 @@ async function fetchPeriod(
     filters.socialPlatform === "all" && filters.acquisitionSource === "all"
       ? (setters.data ?? [])
       : [];
-  const activeClients = (clients.data ?? []).filter((client) => client.status === "active").length;
   const paymentsCash =
     filters.socialPlatform === "all" && filters.acquisitionSource === "all"
       ? payList.reduce((s, p) => s + (p.amount_cents ?? 0), 0)
@@ -243,7 +242,6 @@ async function fetchPeriod(
     contractValue: callList.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0),
     views: contentList.reduce((s, m) => s + (m.views ?? 0), 0),
     contentLeads: contentList.reduce((s, m) => s + (m.leads_generated ?? 0), 0),
-    activeClients,
   };
 }
 
@@ -677,7 +675,9 @@ function Dashboard() {
                 <SelectItem value="all">All Platforms</SelectItem>
                 {SOCIAL_PLATFORMS.map((platform) => (
                   <SelectItem key={platform} value={platform}>
-                    {platform}
+                    <span className="flex items-center gap-1.5">
+                      <PlatformIcon platform={platform} /> {platform}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -808,16 +808,6 @@ function Dashboard() {
                 priorValue: fmt(p?.views ?? 0),
                 empty: !c?.views,
                 emptyHint: "Log content metrics to see views here.",
-              },
-              {
-                key: "activeClients",
-                label: "Active Clients",
-                value: fmt(devBypass ? mockHubMetrics().activeClients : (c?.activeClients ?? 0)),
-                spectrum: "mid",
-                spark: [],
-                sparkLabels: [],
-                empty: !(devBypass ? mockHubMetrics().activeClients : (c?.activeClients ?? 0)),
-                emptyHint: "No active clients found.",
               },
             ]}
           />

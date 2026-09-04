@@ -11,7 +11,6 @@ import {
   ClipboardCheck,
   Radio,
   RefreshCw,
-  Star,
   UsersRound,
   UserRound,
   Video,
@@ -305,8 +304,8 @@ function WebinarAnalyticsPage() {
                 title={selected?.name ?? "Webinar detail"}
                 subtitle="Executive KPI layer · metrics remain unavailable until a legitimate source is connected."
               />
-              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/50 p-3">
-                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-black/30 p-3 backdrop-blur">
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/55">
                   Compare with
                 </span>
                 <Select value={comparisonId} onValueChange={setComparisonId}>
@@ -456,10 +455,9 @@ function WebinarAnalyticsPage() {
             <section className="space-y-3">
               <SectionTitle
                 title="Webinar analytics"
-                subtitle="Attendee curve and key session metrics from the selected webinar event stream."
+                subtitle="Key session metrics from the selected webinar event stream. The attendee retention curve is charted once, below, in Audience retention."
               />
               <WebinarAnalyticsOverview
-                retention={retention}
                 liveAttendees={summary.webinar.liveAttendees}
                 totalSales={summary.revenue.totalSales}
                 revenueCents={summary.revenue.totalRevenueCents}
@@ -658,27 +656,23 @@ function TrafficConnector({ label, value }: { label: string; value: string }) {
   );
 }
 
+// The attendee retention curve used to be charted here AND, redundantly,
+// again in RetentionPanel below (identical `retention` data, two separate
+// hand-rolled SVG implementations). RetentionPanel's version is the more
+// complete one (interactive hover, drop-off %), so it's now the single
+// canonical retention chart — this component keeps only the metrics list,
+// which RetentionPanel doesn't duplicate.
 function WebinarAnalyticsOverview({
-  retention,
   liveAttendees,
   totalSales,
   revenueCents,
   retentionRate,
 }: {
-  retention: Array<{ label: string; timestamp: string; audience: number; dropOff: number | null }>;
   liveAttendees: number;
   totalSales: number;
   revenueCents: number | null;
   retentionRate: number | null;
 }) {
-  const max = Math.max(...retention.map((point) => point.audience), 1);
-  const points = retention.map((point, index) => ({
-    ...point,
-    x: retention.length === 1 ? 50 : 8 + (index / Math.max(1, retention.length - 1)) * 84,
-    y: 92 - (point.audience / max) * 72,
-  }));
-  const line = points.map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`).join(" ");
-  const area = `${line} L ${points.at(-1)?.x ?? 92} 96 L ${points[0]?.x ?? 8} 96 Z`;
   const metrics: Array<[ReactNode, string, string]> = [
     [<Radio className="h-4 w-4" />, "Live attendees", number(liveAttendees)],
     [<Clock3 className="h-4 w-4" />, "Session length", "Unavailable"],
@@ -688,81 +682,25 @@ function WebinarAnalyticsOverview({
       "Saw the full webinar",
       retentionRate == null ? "Unavailable" : `${(retentionRate * 100).toFixed(1)}%`,
     ],
-    [<Star className="h-4 w-4" />, "User rating", "★★★★☆"],
     [<BarChart3 className="h-4 w-4" />, "Sales", number(totalSales)],
     [<CircleDollarSign className="h-4 w-4" />, "Revenue", currency(revenueCents)],
   ];
   return (
-    <div className="grid overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02] lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.8fr)]">
-      <div className="border-b border-white/5 p-6 lg:border-b-0 lg:border-r">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/55">
-            Attendee curve
-          </div>
-          <div className="text-[10px] text-white/35">No. of attendees · time duration</div>
-        </div>
-        {points.length ? (
-          <svg
-            viewBox="0 0 100 100"
-            className="h-64 w-full overflow-visible"
-            preserveAspectRatio="none"
-            aria-label="Attendee curve"
-          >
-            <defs>
-              <linearGradient id="attendee-fill" x1="0" x2="0" y1="0" y2="1">
-                <stop stopColor="#22d3ee" stopOpacity="0.25" />
-                <stop offset="1" stopColor="#22d3ee" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <path d="M8 96 H92" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
-            <path d={area} fill="url(#attendee-fill)" />
-            <path
-              d={line}
-              fill="none"
-              stroke="#22d3ee"
-              strokeWidth="1.8"
-              vectorEffect="non-scaling-stroke"
-            />
-            {points.map((point) => (
-              <circle
-                key={`${point.label}-${point.timestamp}`}
-                cx={point.x}
-                cy={point.y}
-                r="2.5"
-                fill="white"
-                stroke="#22d3ee"
-                strokeWidth="1.5"
-                vectorEffect="non-scaling-stroke"
-              >
-                <title>{`${point.label}: ${point.audience.toLocaleString()}`}</title>
-              </circle>
-            ))}
-          </svg>
-        ) : (
-          <EmptyState
-            icon={<Video className="h-5 w-5" />}
-            title="Attendance curve unavailable"
-            description="No event-backed attendance points are connected."
-          />
-        )}
+    <div className="overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02] p-6">
+      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">
+        Key metrics
       </div>
-      <div className="p-6">
-        <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">
-          Key metrics
-        </div>
-        <div className="divide-y divide-white/5">
-          {metrics.map(([icon, label, value]) => (
-            <div key={label} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-              <span className="text-cyan-300">{icon}</span>
-              <span className="min-w-0 flex-1 text-xs text-white/55">{label}</span>
-              <span
-                className={`font-mono text-sm ${label === "User rating" ? "tracking-[0.14em] text-amber-300" : "text-white"}`}
-              >
-                {value}
-              </span>
-            </div>
-          ))}
-        </div>
+      <div className="grid gap-x-8 divide-y divide-white/5 sm:grid-cols-2 sm:divide-y-0">
+        {metrics.map(([icon, label, value]) => (
+          <div
+            key={label}
+            className="flex items-center gap-3 border-white/5 py-3 first:pt-0 sm:border-b sm:py-2.5"
+          >
+            <span className="text-cyan-300">{icon}</span>
+            <span className="min-w-0 flex-1 text-xs text-white/55">{label}</span>
+            <span className="font-mono text-sm text-white">{value}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1023,8 +961,8 @@ function ComparisonPanel({
     ],
   ];
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card">
-      <div className="grid grid-cols-3 border-b border-border bg-background/40 px-4 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur">
+      <div className="grid grid-cols-3 border-b border-white/10 bg-white/[0.02] px-4 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-white/55">
         <span>Metric</span>
         <span>Webinar A</span>
         <span>Webinar B</span>
@@ -1069,17 +1007,17 @@ function AnalyticsPanel({
   values: [string, string][];
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-5">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+    <div className="rounded-2xl border border-white/10 bg-black/30 p-5 backdrop-blur">
+      <h3 className="text-sm font-semibold text-white">{title}</h3>
+      <p className="mt-1 text-xs text-white/45">{description}</p>
       <div className="mt-4 space-y-2">
         {values.map(([label, value]) => (
           <div
             key={label}
-            className="flex items-center justify-between rounded-lg border border-border/70 bg-background/40 px-3 py-2 text-sm"
+            className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm"
           >
-            <span className="text-muted-foreground">{label}</span>
-            <span className="font-mono text-foreground">{value}</span>
+            <span className="text-white/55">{label}</span>
+            <span className="font-mono text-white">{value}</span>
           </div>
         ))}
       </div>
