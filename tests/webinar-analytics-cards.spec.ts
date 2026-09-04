@@ -42,12 +42,14 @@ test("webinar analytics: canonical KpiBand cards, full labels, real comparison n
   // Exactly one retention chart (the duplicate was removed).
   await expect(page.locator("#retention-fill")).toHaveCount(1);
 
-  // Retention chart has a readable, permanent timeline strip (not hover-only)
-  // and its container never overflows horizontally.
+  // Retention chart has readable X-axis stage labels (recharts renders these
+  // as real SVG tick text, not hover-only) and a percentage Y-axis, and its
+  // container never overflows horizontally.
   await expect(page.getByText("Registered", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Live attendance", { exact: true })).toBeVisible();
+  await expect(page.getByText("Live attendance", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("At pitch", { exact: true }).first()).toBeVisible();
-  const chartBox = await page.locator('svg[aria-label="Audience retention curve"]').boundingBox();
+  await expect(page.getByText("100%")).toBeVisible();
+  const chartBox = await page.locator(".recharts-surface").first().boundingBox();
   const viewportWidth = page.viewportSize()?.width ?? 1280;
   expect(chartBox?.x ?? 0).toBeGreaterThanOrEqual(0);
   expect((chartBox?.x ?? 0) + (chartBox?.width ?? 0)).toBeLessThanOrEqual(viewportWidth);

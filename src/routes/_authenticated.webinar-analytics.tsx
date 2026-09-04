@@ -2,6 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+} from "recharts";
+import {
   Activity,
   BarChart3,
   CalendarDays,
@@ -331,38 +340,6 @@ function WebinarAnalyticsPage() {
                 title={selected?.name ?? "Webinar detail"}
                 subtitle="Executive KPI layer · metrics remain unavailable until a legitimate source is connected."
               />
-              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-black/30 p-3 backdrop-blur">
-                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/55">
-                  Compare with
-                </span>
-                {(webinarsQuery.data?.length ?? 0) < 2 ? (
-                  <span className="text-xs text-white/45">
-                    Add another webinar to enable a comparison.
-                  </span>
-                ) : (
-                  <Select value={comparisonId} onValueChange={setComparisonId}>
-                    <SelectTrigger className="w-full max-w-[280px]" title={comparisonWebinar?.name}>
-                      <SelectValue placeholder="Select a webinar to compare" className="truncate" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No comparison</SelectItem>
-                      {(webinarsQuery.data ?? [])
-                        .filter((webinar) => webinar.id !== selectedId)
-                        .map((webinar) => (
-                          <SelectItem
-                            key={webinar.id}
-                            value={webinar.id}
-                            title={webinarOptionLabel(webinar)}
-                          >
-                            <span className="block max-w-[260px] truncate">
-                              {webinarOptionLabel(webinar)}
-                            </span>
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
               <KpiBand
                 title="Executive KPIs"
                 items={[
@@ -648,6 +625,44 @@ function WebinarAnalyticsPage() {
                 ]}
               />
             </section>
+            <section className="space-y-3">
+              <SectionTitle
+                title="Compare webinars"
+                subtitle="Pick a second real webinar from the pipeline to compare against the one selected above."
+              />
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-black/30 p-3 backdrop-blur">
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/55">
+                  Compare with
+                </span>
+                {(webinarsQuery.data?.length ?? 0) < 2 ? (
+                  <span className="text-xs text-white/45">
+                    Add another webinar to enable a comparison.
+                  </span>
+                ) : (
+                  <Select value={comparisonId} onValueChange={setComparisonId}>
+                    <SelectTrigger className="w-full max-w-[280px]" title={comparisonWebinar?.name}>
+                      <SelectValue placeholder="Select a webinar to compare" className="truncate" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No comparison</SelectItem>
+                      {(webinarsQuery.data ?? [])
+                        .filter((webinar) => webinar.id !== selectedId)
+                        .map((webinar) => (
+                          <SelectItem
+                            key={webinar.id}
+                            value={webinar.id}
+                            title={webinarOptionLabel(webinar)}
+                          >
+                            <span className="block max-w-[260px] truncate">
+                              {webinarOptionLabel(webinar)}
+                            </span>
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            </section>
             {comparisonId !== "none" && comparisonId !== "all" && comparisonQuery.data && (
               <section className="space-y-3">
                 <SectionTitle
@@ -844,15 +859,14 @@ function RetentionPanel({
   pitchAttendees: number;
   retentionRate: number | null;
 }) {
-  const [hovered, setHovered] = useState<number | null>(null);
-  const max = Math.max(...retention.map((point) => point.audience), 1);
-  const points = retention.map((point, index) => ({
+  // Percentage-of-registered is computed here purely for the chart's Y-axis
+  // and tooltip — a presentation choice, not a data change. The underlying
+  // `retention` array (from retentionFromEvents()) and its audience counts
+  // are untouched; dropOff already implies this same ratio.
+  const chartData = retention.map((point) => ({
     ...point,
-    x: retention.length === 1 ? 50 : 8 + (index / (retention.length - 1)) * 84,
-    y: 92 - (point.audience / max) * 72,
+    pct: registered ? (point.audience / registered) * 100 : null,
   }));
-  const line = points.map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`).join(" ");
-  const area = `${line} L ${points.at(-1)?.x ?? 92} 96 L ${points[0]?.x ?? 8} 96 Z`;
   return (
     <div className="rounded-2xl border border-white/10 bg-black/30 p-5 backdrop-blur">
       <div className="flex items-start justify-between gap-3">
@@ -865,92 +879,70 @@ function RetentionPanel({
         <Activity className="h-4 w-4 text-cyan-300" />
       </div>
       {retention.length ? (
-        <div className="relative mt-5 h-56 overflow-visible">
-          <svg
-            viewBox="0 0 100 100"
-            className="h-full w-full overflow-visible"
-            preserveAspectRatio="none"
-            role="img"
-            aria-label="Audience retention curve"
-          >
-            <defs>
-              <linearGradient id="retention-fill" x1="0" x2="0" y1="0" y2="1">
-                <stop stopColor="#22d3ee" stopOpacity="0.28" />
-                <stop offset="1" stopColor="#22d3ee" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            {/* Reference gridlines, purely visual — no data changes. Faint
-                enough not to compete with the curve itself. */}
-            <path d="M8 26 H92" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />
-            <path d="M8 61 H92" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />
-            <path d="M8 96 H92" stroke="rgba(255,255,255,0.1)" strokeWidth="0.5" />
-            <path d={area} fill="url(#retention-fill)" />
-            <path
-              d={line}
-              fill="none"
-              stroke="#22d3ee"
-              strokeWidth="1.8"
-              vectorEffect="non-scaling-stroke"
-            />
-            {points.map((point, index) => (
-              <circle
-                key={`${point.label}-${point.timestamp}`}
-                cx={point.x}
-                cy={point.y}
-                r={hovered === index ? 3.5 : 2.6}
-                fill="white"
+        <div className="mt-4 h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
+              <defs>
+                <linearGradient id="retention-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#22d3ee" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid
+                strokeDasharray="2 4"
+                stroke="rgba(255,255,255,0.08)"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="label"
+                stroke="rgba(255,255,255,0.45)"
+                fontSize={10}
+                tickLine={false}
+                axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
+              />
+              <YAxis
+                stroke="rgba(255,255,255,0.45)"
+                fontSize={10}
+                tickLine={false}
+                axisLine={false}
+                width={44}
+                domain={[0, 100]}
+                tickFormatter={(v: number) => `${v}%`}
+              />
+              <RechartsTooltip
+                contentStyle={{
+                  background: "rgba(2,6,23,0.95)",
+                  border: "1px solid rgba(34,211,238,0.3)",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  padding: "8px 12px",
+                  boxShadow: "0 0 18px rgba(34,211,238,0.18)",
+                }}
+                labelStyle={{ color: "#67e8f9", fontWeight: 600, marginBottom: 4 }}
+                formatter={(_value: number, _name: string, item) => {
+                  const point = item.payload as (typeof chartData)[number];
+                  return [
+                    `${point.audience.toLocaleString()} audience${
+                      point.pct == null ? "" : ` · ${point.pct.toFixed(1)}% of registered`
+                    }`,
+                    point.dropOff == null
+                      ? "Baseline"
+                      : `${(point.dropOff * 100).toFixed(1)}% drop-off`,
+                  ];
+                }}
+              />
+              <Area
+                type="monotone"
+                dataKey="pct"
                 stroke="#22d3ee"
-                strokeWidth="1.5"
-                vectorEffect="non-scaling-stroke"
-                onMouseEnter={() => setHovered(index)}
-                onMouseLeave={() => setHovered(null)}
-              >
-                <title>{`${point.label}: ${point.audience.toLocaleString()} audience${point.dropOff == null ? "" : ` · ${((point.dropOff ?? 0) * 100).toFixed(1)}% drop-off`}`}</title>
-              </circle>
-            ))}
-          </svg>
-          {hovered != null && points[hovered] && (
-            <div
-              className="pointer-events-none absolute z-20 -translate-x-1/2 rounded-lg border border-cyan-400/30 bg-slate-950/95 px-3 py-2 text-[11px] shadow-[0_0_18px_rgba(34,211,238,0.18)]"
-              style={{
-                left: `${points[hovered].x}%`,
-                top: `${Math.max(0, points[hovered].y - 20)}%`,
-              }}
-            >
-              <div className="font-semibold text-cyan-200">{points[hovered].label}</div>
-              <div className="mt-1 text-white">
-                {points[hovered].audience.toLocaleString()} audience
-              </div>
-              <div className="text-white/55">
-                {points[hovered].dropOff == null
-                  ? "Baseline"
-                  : `${((points[hovered].dropOff ?? 0) * 100).toFixed(1)}% drop-off`}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : null}
-      {retention.length ? (
-        // Permanent timeline strip — the curve itself carries no on-chart
-        // text (SVG text would distort under preserveAspectRatio="none"),
-        // so without this the stage each point represents was only ever
-        // visible on hover. Safe to always render: retentionFromEvents()
-        // caps this at 3 points (Registered / Live attendance / At pitch).
-        <div className="relative mt-1 h-8">
-          {points.map((point, index) => (
-            <div
-              key={`label-${point.label}-${point.timestamp}`}
-              className="absolute top-0 flex -translate-x-1/2 flex-col items-center text-center"
-              style={{ left: `${point.x}%` }}
-            >
-              <div className="text-3xs whitespace-nowrap uppercase tracking-wider text-white/45">
-                {point.label}
-              </div>
-              <div className="font-mono text-2xs text-white/80">
-                {point.audience.toLocaleString()}
-              </div>
-            </div>
-          ))}
+                strokeWidth={2}
+                fill="url(#retention-fill)"
+                dot={{ r: 4, fill: "white", stroke: "#22d3ee", strokeWidth: 1.5 }}
+                activeDot={{ r: 5.5, fill: "white", stroke: "#22d3ee", strokeWidth: 2 }}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       ) : (
         <EmptyState

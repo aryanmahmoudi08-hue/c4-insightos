@@ -14,6 +14,15 @@ test("webinar analytics: comparison dropdowns are real, mutually exclusive, and 
   await page.goto("/webinar-analytics", { waitUntil: "load" });
   await expect(page.getByText("Compare with")).toBeVisible({ timeout: 10_000 });
 
+  // Positioned at the bottom of the page, immediately above the comparison
+  // results section — not up near the Executive KPIs anymore.
+  const compareWithY = (await page.getByText("Compare with").boundingBox())?.y ?? 0;
+  const comparisonHeadingY =
+    (await page.getByRole("heading", { name: "Webinar comparison" }).boundingBox())?.y ?? 0;
+  const executiveKpiY = (await page.getByText("Executive KPIs").first().boundingBox())?.y ?? 0;
+  expect(compareWithY).toBeGreaterThan(executiveKpiY);
+  expect(compareWithY).toBeLessThan(comparisonHeadingY);
+
   const compareTrigger = page.getByText("Compare with").locator("..").getByRole("combobox");
   await expect(compareTrigger).toBeVisible();
   await compareTrigger.click();

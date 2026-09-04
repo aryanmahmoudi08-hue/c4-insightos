@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
@@ -9,13 +9,22 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { extractFingerprintFn } from "@/lib/copy-os.functions";
-import { ImagePlus } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
+import { ImagePlus, Plus, Trash2 } from "lucide-react";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { mockClientDNA, mockVoiceFingerprint, withMockDelay } from "@/lib/dev-mock-data";
 import { GaugeChart } from "@/components/gauge-chart";
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar } from "recharts";
+import { parseCurrencyToCents } from "@/lib/lead-classification";
 
 export const Route = createFileRoute("/_authenticated/copy")({
   component: CopyOSPage,
@@ -44,9 +53,918 @@ function CopyOSPage() {
         title="Client DNA"
         subtitle="C4's client voice, positioning and persuasion profile — used across the org."
       />
-      <div className="p-4 md:p-6">
+      <div className="space-y-6 p-4 md:p-6">
+        <OfferConfigSection />
         <ClientsTab />
       </div>
+    </div>
+  );
+}
+
+const CADENCE_LABEL: Record<string, string> = {
+  single: "Single payment",
+  weekly: "Weekly",
+  biweekly: "Biweekly",
+  monthly: "Monthly",
+  mrr: "MRR",
+  custom: "Custom",
+};
+const OPERATOR_LABEL: Record<string, string> = {
+  lt: "is under",
+  lte: "is at or under",
+  gt: "is over",
+  gte: "is at or over",
+  eq: "equals",
+};
+
+type OfferTier = { id: string; key: string; label: string; sort_order: number };
+type Offer = {
+  id: string;
+  name: string;
+  tier_key: string;
+  price_cents: number | null;
+  pricing_type: "single" | "mrr";
+  currency: string;
+  is_active: boolean;
+  description: string | null;
+};
+type PaymentPlan = {
+  id: string;
+  offer_id: string;
+  label: string;
+  cadence: string;
+  installment_amount_cents: number | null;
+  installment_count: number | null;
+  total_contracted_value_cents: number | null;
+  deposit_cents: number | null;
+  is_active: boolean;
+};
+type ClassificationRule = {
+  id: string;
+  priority: number;
+  typeform_field_key: string;
+  operator: "lt" | "lte" | "gt" | "gte" | "eq";
+  threshold_cents: number;
+  tier_key: string;
+  is_active: boolean;
+};
+
+const DEV_TIERS: OfferTier[] = [
+  { id: "dev-tier-low", key: "low", label: "Low Ticket", sort_order: 1 },
+  { id: "dev-tier-high", key: "high", label: "High Ticket", sort_order: 2 },
+];
+const DEV_OFFERS: Offer[] = [
+  {
+    id: "dev-offer-low",
+    name: "Starter Program",
+    tier_key: "low",
+    price_cents: 100_000,
+    pricing_type: "single",
+    currency: "USD",
+    is_active: true,
+    description: "Self-liquidating entry offer.",
+  },
+  {
+    id: "dev-offer-high",
+    name: "1:1 Coaching",
+    tier_key: "high",
+    price_cents: 500_000,
+    pricing_type: "single",
+    currency: "USD",
+    is_active: true,
+    description: "Flagship high-ticket offer.",
+  },
+];
+const DEV_PLANS: PaymentPlan[] = [
+  {
+    id: "dev-plan-1",
+    offer_id: "dev-offer-high",
+    label: "4-pay plan",
+    cadence: "monthly",
+    installment_amount_cents: 100_000,
+    installment_count: 4,
+    total_contracted_value_cents: 500_000,
+    deposit_cents: 100_000,
+    is_active: true,
+  },
+];
+const DEV_RULES: ClassificationRule[] = [
+  {
+    id: "dev-rule-low",
+    priority: 1,
+    typeform_field_key: "investment_budget",
+    operator: "lt",
+    threshold_cents: 300_000,
+    tier_key: "low",
+    is_active: true,
+  },
+  {
+    id: "dev-rule-high",
+    priority: 2,
+    typeform_field_key: "investment_budget",
+    operator: "gte",
+    threshold_cents: 300_000,
+    tier_key: "high",
+    is_active: true,
+  },
+];
+
+function dollars(cents: number | null): string {
+  return cents == null ? "" : String(cents / 100);
+}
+function toCents(input: string): number | null {
+  const n = parseCurrencyToCents(input);
+  return n;
+}
+
+/**
+ * Offer / Ticket / Payment configuration — the source of truth for how
+ * leads/mentees are classified into ticket tiers and how their payment
+ * journey is structured, read by the Dialer's Active Leads tiers and (via
+ * lead_classification_rules) the Typeform ingest handler. Dev bypass has no
+ * real Supabase session, so every list gets a real, editable local-state
+ * fallback here rather than an empty/broken form — same convention as every
+ * other interactive workflow in this app.
+ */
+function OfferConfigSection() {
+  const { devBypass } = useAuth();
+  const { data: org } = useCurrentOrg();
+  const orgId = (org as { org_id?: string } | undefined)?.org_id;
+  const qc = useQueryClient();
+  const db = supabase as unknown as {
+    from: (t: string) => {
+      select: (s: string) => {
+        eq: (
+          k: string,
+          v: string,
+        ) => { order: (k: string, o?: unknown) => Promise<{ data: unknown; error: unknown }> };
+      };
+      upsert: (p: unknown) => Promise<{ error: unknown }>;
+      delete: () => { eq: (k: string, v: string) => Promise<{ error: unknown }> };
+    };
+  };
+
+  const [devTiers, setDevTiers] = useState<OfferTier[]>(DEV_TIERS);
+  const [devOffers, setDevOffers] = useState<Offer[]>(DEV_OFFERS);
+  const [devPlans, setDevPlans] = useState<PaymentPlan[]>(DEV_PLANS);
+  const [devRules, setDevRules] = useState<ClassificationRule[]>(DEV_RULES);
+
+  const tiersQuery = useQuery({
+    queryKey: ["offer-tiers", orgId, devBypass],
+    enabled: !!orgId && !devBypass,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("offer_tiers")
+        .select("*")
+        .eq("org_id", orgId!)
+        .order("sort_order");
+      if (error) throw error;
+      return (data ?? []) as OfferTier[];
+    },
+  });
+  const offersQuery = useQuery({
+    queryKey: ["offers", orgId, devBypass],
+    enabled: !!orgId && !devBypass,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("offers")
+        .select("*")
+        .eq("org_id", orgId!)
+        .order("created_at");
+      if (error) throw error;
+      return (data ?? []) as Offer[];
+    },
+  });
+  const plansQuery = useQuery({
+    queryKey: ["offer-payment-plans", orgId, devBypass],
+    enabled: !!orgId && !devBypass,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("offer_payment_plans")
+        .select("*")
+        .eq("org_id", orgId!)
+        .order("created_at");
+      if (error) throw error;
+      return (data ?? []) as PaymentPlan[];
+    },
+  });
+  const rulesQuery = useQuery({
+    queryKey: ["lead-classification-rules", orgId, devBypass],
+    enabled: !!orgId && !devBypass,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("lead_classification_rules")
+        .select("*")
+        .eq("org_id", orgId!)
+        .order("priority");
+      if (error) throw error;
+      return (data ?? []) as ClassificationRule[];
+    },
+  });
+
+  const tiers = devBypass ? devTiers : (tiersQuery.data ?? []);
+  const offers = devBypass ? devOffers : (offersQuery.data ?? []);
+  const plans = devBypass ? devPlans : (plansQuery.data ?? []);
+  const rules = devBypass ? devRules : (rulesQuery.data ?? []);
+
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ["offer-tiers", orgId] });
+    qc.invalidateQueries({ queryKey: ["offers", orgId] });
+    qc.invalidateQueries({ queryKey: ["offer-payment-plans", orgId] });
+    qc.invalidateQueries({ queryKey: ["lead-classification-rules", orgId] });
+  };
+
+  const saveTier = useMutation({
+    mutationFn: async (row: OfferTier) => {
+      if (devBypass) {
+        setDevTiers((prev) => {
+          const idx = prev.findIndex((t) => t.id === row.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = row;
+            return next;
+          }
+          return [...prev, row];
+        });
+        return;
+      }
+      const { error } = await db.from("offer_tiers").upsert({ ...row, org_id: orgId });
+      if (error) throw error as Error;
+    },
+    onSuccess: () => !devBypass && invalidateAll(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const saveOffer = useMutation({
+    mutationFn: async (row: Offer) => {
+      if (devBypass) {
+        setDevOffers((prev) => {
+          const idx = prev.findIndex((o) => o.id === row.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = row;
+            return next;
+          }
+          return [...prev, row];
+        });
+        return;
+      }
+      const { error } = await db.from("offers").upsert({ ...row, org_id: orgId });
+      if (error) throw error as Error;
+    },
+    onSuccess: () => !devBypass && invalidateAll(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const deleteOffer = useMutation({
+    mutationFn: async (id: string) => {
+      if (devBypass) {
+        setDevOffers((prev) => prev.filter((o) => o.id !== id));
+        setDevPlans((prev) => prev.filter((p) => p.offer_id !== id));
+        return;
+      }
+      const { error } = await db.from("offers").delete().eq("id", id);
+      if (error) throw error as Error;
+    },
+    onSuccess: () => !devBypass && invalidateAll(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const savePlan = useMutation({
+    mutationFn: async (row: PaymentPlan) => {
+      if (devBypass) {
+        setDevPlans((prev) => {
+          const idx = prev.findIndex((p) => p.id === row.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = row;
+            return next;
+          }
+          return [...prev, row];
+        });
+        return;
+      }
+      const { error } = await db.from("offer_payment_plans").upsert({ ...row, org_id: orgId });
+      if (error) throw error as Error;
+    },
+    onSuccess: () => !devBypass && invalidateAll(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const deletePlan = useMutation({
+    mutationFn: async (id: string) => {
+      if (devBypass) {
+        setDevPlans((prev) => prev.filter((p) => p.id !== id));
+        return;
+      }
+      const { error } = await db.from("offer_payment_plans").delete().eq("id", id);
+      if (error) throw error as Error;
+    },
+    onSuccess: () => !devBypass && invalidateAll(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const saveRule = useMutation({
+    mutationFn: async (row: ClassificationRule) => {
+      if (devBypass) {
+        setDevRules((prev) => {
+          const idx = prev.findIndex((r) => r.id === row.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = row;
+            return next;
+          }
+          return [...prev, row];
+        });
+        return;
+      }
+      const { error } = await db
+        .from("lead_classification_rules")
+        .upsert({ ...row, org_id: orgId });
+      if (error) throw error as Error;
+    },
+    onSuccess: () => !devBypass && invalidateAll(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const deleteRule = useMutation({
+    mutationFn: async (id: string) => {
+      if (devBypass) {
+        setDevRules((prev) => prev.filter((r) => r.id !== id));
+        return;
+      }
+      const { error } = await db.from("lead_classification_rules").delete().eq("id", id);
+      if (error) throw error as Error;
+    },
+    onSuccess: () => !devBypass && invalidateAll(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Card className="space-y-5 p-5">
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Offer / Ticket / Payment Configuration
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          The source of truth for ticket tiers, offers, payment plans, and how new leads get
+          classified — used by Active Leads Available to Dial, Closer offer reporting, and the
+          Typeform intake pipeline. Changing this does not alter historical lead/deal records.
+        </p>
+      </div>
+
+      <TierEditor tiers={tiers} onSave={(t) => saveTier.mutate(t)} />
+      <OfferEditor
+        tiers={tiers}
+        offers={offers}
+        onSave={(o) => saveOffer.mutate(o)}
+        onDelete={(id) => deleteOffer.mutate(id)}
+      />
+      <PaymentPlanEditor
+        offers={offers}
+        plans={plans}
+        onSave={(p) => savePlan.mutate(p)}
+        onDelete={(id) => deletePlan.mutate(id)}
+      />
+      <ClassificationRuleEditor
+        tiers={tiers}
+        rules={rules}
+        onSave={(r) => saveRule.mutate(r)}
+        onDelete={(id) => deleteRule.mutate(id)}
+      />
+    </Card>
+  );
+}
+
+function TierEditor({ tiers, onSave }: { tiers: OfferTier[]; onSave: (t: OfferTier) => void }) {
+  const [draft, setDraft] = useState<Record<string, OfferTier>>({});
+  const [newLabel, setNewLabel] = useState("");
+  const rowFor = (t: OfferTier) => draft[t.id] ?? t;
+
+  return (
+    <div className="space-y-2">
+      <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Ticket tiers
+      </div>
+      <div className="space-y-1.5">
+        {tiers.map((t) => {
+          const row = rowFor(t);
+          return (
+            <div key={t.id} className="flex items-center gap-2">
+              <Input
+                value={row.label}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, [t.id]: { ...row, label: e.target.value } }))
+                }
+                onBlur={() => draft[t.id] && onSave(draft[t.id])}
+                className="h-8 w-56 text-xs"
+              />
+              <span className="font-mono text-3xs text-muted-foreground">key: {t.key}</span>
+            </div>
+          );
+        })}
+        {tiers.length === 0 && (
+          <p className="text-3xs text-muted-foreground">No tiers configured yet.</p>
+        )}
+      </div>
+      <div className="flex items-center gap-2 pt-1">
+        <Input
+          value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)}
+          placeholder="New tier name (e.g. VIP)"
+          className="h-8 w-56 text-xs"
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={!newLabel.trim()}
+          onClick={() => {
+            const key = newLabel
+              .trim()
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")
+              .replace(/^_+|_+$/g, "");
+            if (!key) return;
+            onSave({
+              id: crypto.randomUUID(),
+              key,
+              label: newLabel.trim(),
+              sort_order: tiers.length + 1,
+            });
+            setNewLabel("");
+          }}
+        >
+          <Plus className="mr-1 h-3 w-3" /> Add tier
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function OfferEditor({
+  tiers,
+  offers,
+  onSave,
+  onDelete,
+}: {
+  tiers: OfferTier[];
+  offers: Offer[];
+  onSave: (o: Offer) => void;
+  onDelete: (id: string) => void;
+}) {
+  const blank = (): Offer => ({
+    id: crypto.randomUUID(),
+    name: "",
+    tier_key: tiers[0]?.key ?? "",
+    price_cents: null,
+    pricing_type: "single",
+    currency: "USD",
+    is_active: true,
+    description: null,
+  });
+  const [adding, setAdding] = useState<Offer | null>(null);
+  const [draft, setDraft] = useState<Record<string, Offer>>({});
+  const rowFor = (o: Offer) => draft[o.id] ?? o;
+  const update = (o: Offer, patch: Partial<Offer>) =>
+    setDraft((d) => ({ ...d, [o.id]: { ...o, ...patch } }));
+
+  const OfferRow = ({ o, isNew }: { o: Offer; isNew?: boolean }) => {
+    const row = isNew ? o : rowFor(o);
+    const commit = (patch: Partial<Offer>) => {
+      const next = { ...row, ...patch };
+      if (isNew) setAdding(next);
+      else update(o, patch);
+    };
+    return (
+      <div className="grid grid-cols-1 gap-2 rounded-lg border border-border/70 p-3 sm:grid-cols-6">
+        <Input
+          value={row.name}
+          onChange={(e) => commit({ name: e.target.value })}
+          onBlur={() => !isNew && draft[o.id] && onSave(draft[o.id])}
+          placeholder="Offer name"
+          className="h-8 text-xs sm:col-span-2"
+        />
+        <Select value={row.tier_key} onValueChange={(v) => commit({ tier_key: v })}>
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue placeholder="Tier" />
+          </SelectTrigger>
+          <SelectContent>
+            {tiers.map((t) => (
+              <SelectItem key={t.key} value={t.key}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          value={dollars(row.price_cents)}
+          onChange={(e) => commit({ price_cents: toCents(e.target.value) })}
+          onBlur={() => !isNew && draft[o.id] && onSave(draft[o.id])}
+          placeholder="Price ($)"
+          className="h-8 text-xs"
+        />
+        <Select
+          value={row.pricing_type}
+          onValueChange={(v) => commit({ pricing_type: v as Offer["pricing_type"] })}
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="single">Single payment</SelectItem>
+            <SelectItem value="mrr">MRR / recurring</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={row.is_active}
+            onCheckedChange={(v) => {
+              commit({ is_active: v });
+              if (!isNew) onSave({ ...row, is_active: v });
+            }}
+          />
+          <span className="text-3xs text-muted-foreground">
+            {row.is_active ? "Active" : "Inactive"}
+          </span>
+        </div>
+        <Textarea
+          value={row.description ?? ""}
+          onChange={(e) => commit({ description: e.target.value || null })}
+          onBlur={() => !isNew && draft[o.id] && onSave(draft[o.id])}
+          placeholder="Description / notes"
+          rows={1}
+          className="text-xs sm:col-span-5"
+        />
+        {isNew ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled={!row.name.trim() || !row.tier_key}
+            onClick={() => {
+              onSave(row);
+              setAdding(null);
+            }}
+          >
+            <Plus className="mr-1 h-3 w-3" /> Add offer
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:text-destructive"
+            onClick={() => onDelete(o.id)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Offers
+      </div>
+      <div className="space-y-2">
+        {offers.map((o) => (
+          <OfferRow key={o.id} o={o} />
+        ))}
+        {offers.length === 0 && (
+          <p className="text-3xs text-muted-foreground">No offers configured yet.</p>
+        )}
+      </div>
+      {adding ? (
+        <OfferRow o={adding} isNew />
+      ) : (
+        <Button type="button" size="sm" variant="outline" onClick={() => setAdding(blank())}>
+          <Plus className="mr-1 h-3 w-3" /> New offer
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function PaymentPlanEditor({
+  offers,
+  plans,
+  onSave,
+  onDelete,
+}: {
+  offers: Offer[];
+  plans: PaymentPlan[];
+  onSave: (p: PaymentPlan) => void;
+  onDelete: (id: string) => void;
+}) {
+  const blank = (): PaymentPlan => ({
+    id: crypto.randomUUID(),
+    offer_id: offers[0]?.id ?? "",
+    label: "",
+    cadence: "single",
+    installment_amount_cents: null,
+    installment_count: null,
+    total_contracted_value_cents: null,
+    deposit_cents: null,
+    is_active: true,
+  });
+  const [adding, setAdding] = useState<PaymentPlan | null>(null);
+  const [draft, setDraft] = useState<Record<string, PaymentPlan>>({});
+  const rowFor = (p: PaymentPlan) => draft[p.id] ?? p;
+  const update = (p: PaymentPlan, patch: Partial<PaymentPlan>) =>
+    setDraft((d) => ({ ...d, [p.id]: { ...p, ...patch } }));
+  const offerName = (id: string) => offers.find((o) => o.id === id)?.name ?? "Unknown offer";
+
+  const PlanRow = ({ p, isNew }: { p: PaymentPlan; isNew?: boolean }) => {
+    const row = isNew ? p : rowFor(p);
+    const commit = (patch: Partial<PaymentPlan>) => {
+      const next = { ...row, ...patch };
+      if (isNew) setAdding(next);
+      else update(p, patch);
+    };
+    return (
+      <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/70 p-3 sm:grid-cols-7">
+        <Select value={row.offer_id} onValueChange={(v) => commit({ offer_id: v })}>
+          <SelectTrigger className="h-8 text-xs sm:col-span-2">
+            <SelectValue placeholder="Offer" />
+          </SelectTrigger>
+          <SelectContent>
+            {offers.map((o) => (
+              <SelectItem key={o.id} value={o.id}>
+                {o.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          value={row.label}
+          onChange={(e) => commit({ label: e.target.value })}
+          onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
+          placeholder="Plan label"
+          className="h-8 text-xs"
+        />
+        <Select value={row.cadence} onValueChange={(v) => commit({ cadence: v })}>
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(CADENCE_LABEL).map(([k, label]) => (
+              <SelectItem key={k} value={k}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          value={dollars(row.deposit_cents)}
+          onChange={(e) => commit({ deposit_cents: toCents(e.target.value) })}
+          onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
+          placeholder="Deposit ($)"
+          className="h-8 text-xs"
+        />
+        <Input
+          value={dollars(row.installment_amount_cents)}
+          onChange={(e) => commit({ installment_amount_cents: toCents(e.target.value) })}
+          onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
+          placeholder="Installment ($)"
+          className="h-8 text-xs"
+        />
+        <Input
+          value={row.installment_count == null ? "" : String(row.installment_count)}
+          onChange={(e) =>
+            commit({ installment_count: e.target.value ? Number(e.target.value) || null : null })
+          }
+          onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
+          placeholder="# installments"
+          className="h-8 text-xs"
+        />
+        <Input
+          value={dollars(row.total_contracted_value_cents)}
+          onChange={(e) => commit({ total_contracted_value_cents: toCents(e.target.value) })}
+          onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
+          placeholder="Total contracted value ($)"
+          className="h-8 text-xs sm:col-span-2"
+        />
+        {isNew ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled={!row.label.trim() || !row.offer_id}
+            onClick={() => {
+              onSave(row);
+              setAdding(null);
+            }}
+          >
+            <Plus className="mr-1 h-3 w-3" /> Add plan
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:text-destructive"
+            onClick={() => onDelete(p.id)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Payment plans
+      </div>
+      <p className="text-3xs text-muted-foreground">
+        Each offer can support more than one plan — e.g. paid-in-full and a 4-pay plan on the same
+        offer.
+      </p>
+      <div className="space-y-2">
+        {plans.map((p) => (
+          <div key={p.id}>
+            <div className="mb-1 text-3xs text-muted-foreground">{offerName(p.offer_id)}</div>
+            <PlanRow p={p} />
+          </div>
+        ))}
+        {plans.length === 0 && (
+          <p className="text-3xs text-muted-foreground">No payment plans configured yet.</p>
+        )}
+      </div>
+      {adding ? (
+        <PlanRow p={adding} isNew />
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={offers.length === 0}
+          onClick={() => setAdding(blank())}
+        >
+          <Plus className="mr-1 h-3 w-3" /> New payment plan
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function ClassificationRuleEditor({
+  tiers,
+  rules,
+  onSave,
+  onDelete,
+}: {
+  tiers: OfferTier[];
+  rules: ClassificationRule[];
+  onSave: (r: ClassificationRule) => void;
+  onDelete: (id: string) => void;
+}) {
+  const blank = (): ClassificationRule => ({
+    id: crypto.randomUUID(),
+    priority: (Math.max(0, ...rules.map((r) => r.priority)) || 0) + 1,
+    typeform_field_key: "",
+    operator: "lt",
+    threshold_cents: 0,
+    tier_key: tiers[0]?.key ?? "",
+    is_active: true,
+  });
+  const [adding, setAdding] = useState<ClassificationRule | null>(null);
+  const [draft, setDraft] = useState<Record<string, ClassificationRule>>({});
+  const rowFor = (r: ClassificationRule) => draft[r.id] ?? r;
+  const update = (r: ClassificationRule, patch: Partial<ClassificationRule>) =>
+    setDraft((d) => ({ ...d, [r.id]: { ...r, ...patch } }));
+  const sorted = useMemo(() => [...rules].sort((a, b) => a.priority - b.priority), [rules]);
+
+  const RuleRow = ({ r, isNew }: { r: ClassificationRule; isNew?: boolean }) => {
+    const row = isNew ? r : rowFor(r);
+    const commit = (patch: Partial<ClassificationRule>) => {
+      const next = { ...row, ...patch };
+      if (isNew) setAdding(next);
+      else update(r, patch);
+    };
+    return (
+      <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/70 p-3 sm:grid-cols-6">
+        <Input
+          value={String(row.priority)}
+          onChange={(e) => commit({ priority: Number(e.target.value) || 0 })}
+          onBlur={() => !isNew && draft[r.id] && onSave(draft[r.id])}
+          placeholder="Priority"
+          className="h-8 text-xs"
+        />
+        <Input
+          value={row.typeform_field_key}
+          onChange={(e) => commit({ typeform_field_key: e.target.value })}
+          onBlur={() => !isNew && draft[r.id] && onSave(draft[r.id])}
+          placeholder="Typeform field key (e.g. investment_budget)"
+          className="h-8 text-xs sm:col-span-2"
+        />
+        <Select
+          value={row.operator}
+          onValueChange={(v) => commit({ operator: v as ClassificationRule["operator"] })}
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(OPERATOR_LABEL).map(([k, label]) => (
+              <SelectItem key={k} value={k}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          value={dollars(row.threshold_cents)}
+          onChange={(e) => commit({ threshold_cents: toCents(e.target.value) ?? 0 })}
+          onBlur={() => !isNew && draft[r.id] && onSave(draft[r.id])}
+          placeholder="Threshold ($)"
+          className="h-8 text-xs"
+        />
+        <Select value={row.tier_key} onValueChange={(v) => commit({ tier_key: v })}>
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue placeholder="→ tier" />
+          </SelectTrigger>
+          <SelectContent>
+            {tiers.map((t) => (
+              <SelectItem key={t.key} value={t.key}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center justify-between gap-2 sm:col-span-6">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={row.is_active}
+              onCheckedChange={(v) => {
+                commit({ is_active: v });
+                if (!isNew) onSave({ ...row, is_active: v });
+              }}
+            />
+            <span className="text-3xs text-muted-foreground">
+              {row.is_active ? "Active" : "Inactive"}
+            </span>
+          </div>
+          {isNew ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={!row.typeform_field_key.trim() || !row.tier_key}
+              onClick={() => {
+                onSave(row);
+                setAdding(null);
+              }}
+            >
+              <Plus className="mr-1 h-3 w-3" /> Add rule
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              onClick={() => onDelete(r.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Low / High ticket classification rules
+      </div>
+      <p className="text-3xs text-muted-foreground">
+        Evaluated in priority order (lowest first) against the raw Typeform response for the field
+        key below. The first rule whose field is present and matches wins. If no rule matches — the
+        field is missing, or its answer can't be read as a dollar amount — the lead is left Unknown
+        / Unclassified rather than guessed. Example: priority 1 "investment_budget is under $3,000 →
+        Low Ticket", priority 2 "investment_budget is at or over $3,000 → High Ticket".
+      </p>
+      <div className="space-y-2">
+        {sorted.map((r) => (
+          <RuleRow key={r.id} r={r} />
+        ))}
+        {rules.length === 0 && (
+          <p className="text-3xs text-muted-foreground">No classification rules configured yet.</p>
+        )}
+      </div>
+      {adding ? (
+        <RuleRow r={adding} isNew />
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={tiers.length === 0}
+          onClick={() => setAdding(blank())}
+        >
+          <Plus className="mr-1 h-3 w-3" /> New rule
+        </Button>
+      )}
     </div>
   );
 }

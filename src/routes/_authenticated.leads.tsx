@@ -965,9 +965,29 @@ function LeadsFunnelHero({
 
 function LeadDetail({ lead }: { lead: LeadRow }) {
   const { data: org } = useCurrentOrg();
-  const { user } = useAuth();
+  const { user, devBypass } = useAuth();
   const orgId = org?.org_id;
   const qc = useQueryClient();
+  // Ticket tiers are configured in Client DNA (offer_tiers), not hardcoded
+  // to high/low — same source of truth the Dialer's Active Leads tiers read.
+  const { data: ticketTiers = [] } = useQuery({
+    queryKey: ["offer-tiers-lead-detail", orgId, devBypass],
+    enabled: !!orgId,
+    queryFn: async () => {
+      if (devBypass)
+        return [
+          { key: "low", label: "Low Ticket" },
+          { key: "high", label: "High Ticket" },
+        ];
+      const { data, error } = await (supabase as any)
+        .from("offer_tiers")
+        .select("key, label")
+        .eq("org_id", orgId!)
+        .order("sort_order");
+      if (error) throw error;
+      return (data ?? []) as { key: string; label: string }[];
+    },
+  });
   const [noteDraft, setNoteDraft] = useState("");
   const [tags, setTags] = useState<string[]>(lead.tags ?? []);
   const [tagDraft, setTagDraft] = useState("");
@@ -1152,8 +1172,11 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
               className="h-6 rounded border border-border bg-background px-1 text-2xs"
             >
               <option value="">Unclassified</option>
-              <option value="high">High-ticket</option>
-              <option value="low">Low-ticket</option>
+              {ticketTiers.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>

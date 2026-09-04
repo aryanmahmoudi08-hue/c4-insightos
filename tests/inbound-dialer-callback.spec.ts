@@ -26,9 +26,12 @@ test("inbound-dialer: callback lead search finds, selects, and logs a real Legac
   await expect(result).toBeVisible({ timeout: 10_000 });
   await result.click();
 
-  // Selecting it must visibly populate the field with the real lead's name
-  // (not leave the raw search text, and not silently clear).
-  await expect(leadInput).toHaveValue("Jordan Ellis");
+  // Selecting it must visibly populate a distinct "selected lead" chip (not
+  // leave the raw search text, and not silently clear) — the search input
+  // itself is replaced by the chip once a lead is selected, making the
+  // selection unambiguous at a glance.
+  await expect(leadInput).toHaveCount(0);
+  await expect(page.getByText("Jordan Ellis", { exact: true })).toBeVisible();
 
   // The result dropdown must close after selection.
   await expect(page.getByRole("button", { name: /Jordan Ellis/ })).toHaveCount(0);

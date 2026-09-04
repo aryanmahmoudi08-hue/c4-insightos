@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { dispatchEvent } from "@/lib/dispatch.server";
+import { classifyLead, type ClassificationRule } from "@/lib/lead-classification";
 
 function answerValue(answer: any) {
   if (answer == null || typeof answer !== "object") return "";
@@ -31,7 +32,8 @@ export const Route = createFileRoute("/api/public/typeform")({
       POST: async ({ request }) => {
         const url = new URL(request.url);
         const connectionId = url.searchParams.get("connection_id");
-        if (!connectionId) return Response.json({ error: "Missing connection_id" }, { status: 400 });
+        if (!connectionId)
+          return Response.json({ error: "Missing connection_id" }, { status: 400 });
 
         const { data: connection, error: connectionError } = await supabaseAdmin
           .from("connector_connections")
@@ -40,8 +42,12 @@ export const Route = createFileRoute("/api/public/typeform")({
           .eq("connector_id", "typeform")
           .eq("state", "connected")
           .maybeSingle();
-        if (connectionError) { console.error("[typeform] connection lookup", connectionError); return Response.json({ error: "Lookup failed" }, { status: 500 }); }
-        if (!connection) return Response.json({ error: "Unknown Typeform connection" }, { status: 404 });
+        if (connectionError) {
+          console.error("[typeform] connection lookup", connectionError);
+          return Response.json({ error: "Lookup failed" }, { status: 500 });
+        }
+        if (!connection)
+          return Response.json({ error: "Unknown Typeform connection" }, { status: 404 });
 
         const body = await request.text();
         const config = (connection.config ?? {}) as Record<string, unknown>;
@@ -58,7 +64,12 @@ export const Route = createFileRoute("/api/public/typeform")({
           if (key) answers[String(key)] = answerValue(answer);
         }
 
-        const pick = (...keys: string[]) => { for (const k of keys) { if (answers[k]) return answers[k]; } return ""; };
+        const pick = (...keys: string[]) => {
+          for (const k of keys) {
+            if (answers[k]) return answers[k];
+          }
+          return "";
+        };
         const application_data = {
           experience: pick("experience"),
           work_school: pick("work_school", "work", "school"),
@@ -71,12 +82,22 @@ export const Route = createFileRoute("/api/public/typeform")({
           capital: pick("capital"),
           credit: pick("credit"),
           commitment: pick("commitment"),
+          // Every raw field ref -> answer, alongside the narrowed fields
+          // above — preserves the original Typeform response on the lead
+          // itself so a ticket-tier classification can be audited later,
+          // not just inferred from the (lossy) narrowed shape.
+          raw_answers: answers,
         };
-        const full_name = [pick("first_name"), pick("last_name")].filter(Boolean).join(" ").trim() || pick("name", "full_name") || null;
+        const full_name =
+          [pick("first_name"), pick("last_name")].filter(Boolean).join(" ").trim() ||
+          pick("name", "full_name") ||
+          null;
         const email = pick("email") || null;
         const phone = pick("phone") || null;
         const handle = pick("handle", "instagram", "ig") || null;
-        const isApplication = Object.values(application_data).some(Boolean) || (connection.config as any)?.kind === "application";
+        const isApplication =
+          Object.values(application_data).some(Boolean) ||
+          (connection.config as any)?.kind === "application";
 
         let leadId: string | null = null;
         let intakeId: string | null = null;
@@ -85,7 +106,10 @@ export const Route = createFileRoute("/api/public/typeform")({
             .from("leads")
             .insert({
               org_id: connection.org_id,
-              full_name, email, phone, handle,
+              full_name,
+              email,
+              phone,
+              handle,
               status: "dm_received" as any,
               source_connector: "typeform",
               application_data,
@@ -93,17 +117,61 @@ export const Route = createFileRoute("/api/public/typeform")({
             } as any)
             .select("id")
             .maybeSingle();
-          if (leadErr) { console.error("[typeform] lead insert", leadErr); return Response.json({ error: "Could not save application" }, { status: 500 }); }
+          if (leadErr) {
+            console.error("[typeform] lead insert", leadErr);
+            return Response.json({ error: "Could not save application" }, { status: 500 });
+          }
           leadId = lead?.id ?? null;
           // Default status to opt_in (text) since enum may not include it yet
-          if (leadId) await (supabaseAdmin as any).from("leads").update({ status: "opt_in" }).eq("id", leadId);
+          if (leadId)
+            await (supabaseAdmin as any)
+              .from("leads")
+              .update({ status: "opt_in" })
+              .eq("id", leadId);
+
+          // Ticket-tier classification (Client DNA source of truth). Never
+          // guessed: if no active rule's field is present/parseable, the
+          // lead simply stays unclassified — the same as if this block
+          // didn't run at all.
+          if (leadId) {
+            const { data: rules, error: rulesError } = await (supabaseAdmin as any)
+              .from("lead_classification_rules")
+              .select(
+                "id, priority, typeform_field_key, operator, threshold_cents, tier_key, is_active",
+              )
+              .eq("org_id", connection.org_id)
+              .eq("is_active", true);
+            if (rulesError) {
+              console.error("[typeform] classification rules lookup", rulesError);
+            } else if (rules && rules.length > 0) {
+              const result = classifyLead(answers, rules as ClassificationRule[]);
+              if (result.tierKey) {
+                await (supabaseAdmin as any)
+                  .from("leads")
+                  .update({
+                    ticket_tier: result.tierKey,
+                    ticket_tier_raw_value: result.rawValue,
+                    ticket_tier_rule_id: result.ruleId,
+                    ticket_tier_classified_at: new Date().toISOString(),
+                  })
+                  .eq("id", leadId);
+              }
+            }
+          }
         } else {
           const { data: intake, error: intakeError } = await supabaseAdmin
             .from("onboarding_responses")
-            .insert({ org_id: connection.org_id, responses: answers, submitted_at: new Date().toISOString() })
+            .insert({
+              org_id: connection.org_id,
+              responses: answers,
+              submitted_at: new Date().toISOString(),
+            })
             .select("id")
             .maybeSingle();
-          if (intakeError) { console.error("[typeform] intake insert", intakeError); return Response.json({ error: "Request could not be processed" }, { status: 500 }); }
+          if (intakeError) {
+            console.error("[typeform] intake insert", intakeError);
+            return Response.json({ error: "Request could not be processed" }, { status: 500 });
+          }
           intakeId = intake?.id ?? null;
         }
 
@@ -126,7 +194,9 @@ export const Route = createFileRoute("/api/public/typeform")({
         });
 
         await dispatchEvent(connection.org_id, eventType, {
-          answers, application_data, source: "typeform",
+          answers,
+          application_data,
+          source: "typeform",
           lead_id: leadId,
           response_id: formResponse.token ?? formResponse.response_id ?? null,
           submitted_at: new Date().toISOString(),

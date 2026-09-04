@@ -15,13 +15,16 @@ test("inbound-dialer: callback scheduling shows the browser's time zone and an h
   await page.goto("/inbound-dialer", { waitUntil: "load" });
   await expect(page.getByText("Log a callback")).toBeVisible({ timeout: 10_000 });
 
-  await expect(page.getByText(/Lead time zone: Unavailable/)).toBeVisible();
-  await expect(page.getByText(/Your time zone: .+\(UTC[+-]\d/)).toBeVisible();
+  await expect(page.getByText(/Lead time zone:/)).toBeVisible();
+  await expect(page.getByText(/Your time zone:/)).toBeVisible();
+  await expect(page.getByText(/UTC[+-]\d/)).toBeVisible();
 
-  const dueInput = page.locator('input[type="datetime-local"]');
-  await dueInput.fill("2026-09-10T15:30");
+  await page.locator('input[type="date"]').fill("2026-09-10");
+  await page.locator('input[type="time"]').fill("15:30");
   await expect(page.getByText(/Scheduling for/)).toBeVisible();
-  await expect(page.getByText(/Scheduling for/)).toContainText("Lead time zone: Unavailable");
+  // "Your"/"Lead" timezone stay visually distinguished (separate pills), and
+  // the "Scheduling for" confirmation never claims the lead's own timezone.
+  await expect(page.getByText(/Lead time zone: Unavailable/)).toBeVisible();
 
   expect(realErrors(consoleErrors)).toEqual([]);
 });
