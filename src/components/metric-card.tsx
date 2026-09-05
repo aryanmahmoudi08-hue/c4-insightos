@@ -3,7 +3,7 @@ import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InteractiveSparkline } from "@/components/interactive-sparkline";
 import { useCountUp } from "@/hooks/use-count-up";
-import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, type SpectrumPosition } from "@/lib/spectrum";
+import { SPECTRUM_VAR, type SpectrumPosition } from "@/lib/spectrum";
 
 type Tone = "default" | "success" | "warning" | "destructive" | "accent";
 
@@ -13,13 +13,6 @@ const TONE_TEXT: Record<Tone, string> = {
   warning: "text-[color:var(--color-warning)]",
   destructive: "text-destructive",
   accent: "text-accent",
-};
-const TONE_GLOW: Record<Tone, string> = {
-  default: "from-foreground/10",
-  success: "from-[color:var(--color-success)]/15",
-  warning: "from-[color:var(--color-warning)]/15",
-  destructive: "from-destructive/15",
-  accent: "from-accent/15",
 };
 
 /**
@@ -109,9 +102,8 @@ export function MetricCard({
           <div
             className={cn(
               "mt-1.5 font-sans text-3xl font-bold tabular-nums tracking-tight md:text-[2.35rem]",
-              accent ? undefined : spectrum ? SPECTRUM_TEXT_CLASS[spectrum] : TONE_TEXT[tone],
+              tone === "default" ? "text-foreground" : TONE_TEXT[tone],
             )}
-            style={accent ? { color: accent } : undefined}
           >
             {display}
           </div>
@@ -152,31 +144,12 @@ export function MetricCard({
   );
   const surface = (
     <>
-      <div
-        className={cn(
-          "pointer-events-none absolute inset-0 bg-gradient-to-br to-transparent opacity-70 transition-opacity group-hover:opacity-100",
-          accent || spectrum ? undefined : TONE_GLOW[tone],
-        )}
-        style={
-          accent || spectrum
-            ? {
-                backgroundImage: `linear-gradient(to bottom right, color-mix(in oklch, ${accent ?? SPECTRUM_VAR[spectrum!]} 15%, transparent), transparent)`,
-              }
-            : undefined
-        }
-      />
-      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-xl" />
       <div className="relative">{content}</div>
-      {accent && (
-        <span
-          className="absolute inset-x-0 bottom-0 h-1"
-          style={{ background: accent, boxShadow: `0 0 18px ${accent}` }}
-        />
-      )}
     </>
   );
   const classes = cn(
-    "group relative w-full overflow-hidden rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-spectrum-mid/60",
+    "group relative w-full overflow-hidden rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-all duration-200 hover:border-foreground/20",
     onClick && "cursor-pointer",
     className,
   );

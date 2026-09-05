@@ -118,33 +118,34 @@
 .dark {
   --radius: 0.375rem;
 
-  /* Surfaces — L0 canvas / L1 surface / L2 raised (B2). Near-black with a
-     deliberate violet undertone (not neutral grey, not blue-black) — this is
-     what the depth model reads against. */
-  --background: oklch(0.14 0.018 300);
-  --foreground: oklch(0.98 0 0);
-  --card: oklch(0.18 0.02 300);
-  --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.22 0.022 300);
-  --popover-foreground: oklch(0.98 0 0);
+  /* Surfaces — L0 canvas / L1 surface / L2 raised (B2). Near-neutral gray
+     (~#0A0A0B/#111113/#151517) — a bare whisper of cool cast (chroma ≤0.006),
+     not the violet-tinted "Spectrum Terminal" surfaces this replaces. Restraint
+     over identity: the accent below still carries the brand hue, the chrome
+     around it doesn't need to. */
+  --background: oklch(0.08 0.003 300);
+  --foreground: oklch(0.97 0 0);
+  --card: oklch(0.11 0.004 300);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.135 0.004 300);
+  --popover-foreground: oklch(0.97 0 0);
 
   /* Brand — white on black. White is the primary ACTION color (B4 rule #1). */
   --primary: oklch(0.97 0 0);
   --primary-foreground: oklch(0.16 0 0);
   --primary-glow: oklch(1 0 0);
 
-  --secondary: oklch(0.245 0 0);
+  --secondary: oklch(0.17 0 0);
   --secondary-foreground: oklch(0.97 0 0);
-  --muted: oklch(0.225 0 0);
-  /* A whisper of violet cast so secondary text never looks muddy against the
-     violet-undertoned canvas above. */
-  --muted-foreground: oklch(0.72 0.01 300);
+  --muted: oklch(0.15 0 0);
+  --muted-foreground: oklch(0.58 0.004 300);
 
-  /* Accent = spectrum-mid, doing double duty as the active-nav/focus-ring
-     color (the one sanctioned chrome exception) AND the color every existing
-     "info"-toned chip/status already renders through — no separate blue
-     info accent exists anymore, this IS what covers it now. */
-  --accent: oklch(0.62 0.24 295);
+  /* Accent — the one sanctioned chrome color (active-nav/focus-ring/primary
+     buttons/links/selected states). Same hue as spectrum-mid below, but
+     deliberately lower chroma than it: chrome stays restrained, the spectrum
+     data-language can stay more saturated where it's actually carrying
+     meaning. Never a card background or full-bleed fill. */
+  --accent: oklch(0.62 0.16 295);
   --accent-foreground: oklch(0.15 0 0);
 
   /* Danger red — pushed toward crimson (lower chroma + lightness than
@@ -154,15 +155,15 @@
   --success: oklch(0.7 0.13 152);
   --warning: oklch(0.78 0.12 78);
 
-  /* Spectrum — the funnel-position data language. Cold → mid → hot. */
+  /* Spectrum — the funnel-position data language (chart series, heatmaps,
+     rank ladders, status dots) — never chrome. */
   --spectrum-cold: oklch(0.78 0.14 230);
   --spectrum-mid: oklch(0.62 0.24 295);
   --spectrum-hot: oklch(0.68 0.26 350);
 
-  --border: oklch(1 0 0 / 11%);
-  --input: oklch(0.25 0 0);
-  /* Ring = spectrum-mid tinted (the other sanctioned chrome exception). */
-  --ring: oklch(0.62 0.24 295 / 55%);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(0.19 0 0);
+  --ring: oklch(0.62 0.16 295 / 55%);
 
   /* Charts — a monochrome ramp, with two semantic outliers at the end */
   --chart-1: oklch(0.95 0 0);
@@ -171,38 +172,40 @@
   --chart-4: oklch(0.7 0.13 152);
   --chart-5: oklch(0.56 0.17 22);
 
-  --sidebar: oklch(0.105 0.016 300);
-  --sidebar-foreground: oklch(0.9 0 0);
+  --sidebar: oklch(0.07 0.002 300);
+  --sidebar-foreground: oklch(0.88 0 0);
   --sidebar-primary: oklch(0.97 0 0);
   --sidebar-primary-foreground: oklch(0.16 0 0);
-  --sidebar-accent: oklch(0.215 0.018 300);
+  --sidebar-accent: oklch(0.16 0.004 300);
   --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(1 0 0 / 9%);
-  --sidebar-ring: oklch(0.62 0.24 295 / 55%);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.62 0.16 295 / 55%);
 
   /* Editorial flourishes — kept, now neutral */
   --gradient-gold: linear-gradient(135deg, oklch(1 0 0), oklch(0.72 0 0));
   --gradient-noir: linear-gradient(180deg, oklch(0.16 0 0), oklch(0.12 0 0));
   --shadow-elegant: 0 1px 0 oklch(1 0 0 / 6%) inset, 0 24px 48px -24px oklch(0 0 0 / 70%);
   --shadow-gold: 0 0 0 1px oklch(1 0 0 / 12%), 0 18px 36px -20px oklch(0 0 0 / 60%);
-  --hairline: oklch(1 0 0 / 16%);
+  --hairline: oklch(1 0 0 / 14%);
 
   /* Elevation scale — soft ambient shadows, layered for depth without color */
   --shadow-xs: 0 1px 2px oklch(0 0 0 / 40%);
-  --shadow-sm: 0 1px 0 oklch(1 0 0 / 5%) inset, 0 2px 6px oklch(0 0 0 / 35%);
-  --shadow-md: 0 1px 0 oklch(1 0 0 / 6%) inset, 0 8px 20px -6px oklch(0 0 0 / 50%);
-  --shadow-lg: 0 1px 0 oklch(1 0 0 / 7%) inset, 0 20px 44px -16px oklch(0 0 0 / 65%);
-  --shadow-glow: 0 0 0 1px oklch(1 0 0 / 10%), 0 0 32px -4px oklch(1 0 0 / 12%);
+  --shadow-sm: 0 1px 0 oklch(1 0 0 / 4%) inset, 0 2px 6px oklch(0 0 0 / 35%);
+  --shadow-md: 0 1px 0 oklch(1 0 0 / 5%) inset, 0 8px 20px -6px oklch(0 0 0 / 50%);
+  --shadow-lg: 0 1px 0 oklch(1 0 0 / 6%) inset, 0 20px 44px -16px oklch(0 0 0 / 65%);
+  /* Restrained — a hint of lift, not a halo. Reserve for genuinely "live/
+     active" indicators, never decorative card chrome. */
+  --shadow-glow: 0 0 0 1px oklch(1 0 0 / 8%), 0 0 14px -6px oklch(1 0 0 / 10%);
 
   /* Glass surfaces — translucent + blurred, for chrome (sidebar/topbar/modals), not content */
-  --glass-bg: oklch(0.2 0 0 / 55%);
-  --glass-bg-strong: oklch(0.15 0 0 / 78%);
+  --glass-bg: oklch(0.13 0 0 / 55%);
+  --glass-bg-strong: oklch(0.1 0 0 / 78%);
   /* Near-opaque — the two stacked sticky headers (LiveTicker + TopBar) need
      to stay fully legible no matter what scrolls behind them; glass-strong's
      78% still let bright/bold page content bleed through visibly. */
-  --glass-bg-header: oklch(0.13 0 0 / 96%);
-  --glass-border: oklch(1 0 0 / 10%);
-  --glass-highlight: oklch(1 0 0 / 7%);
+  --glass-bg-header: oklch(0.08 0 0 / 96%);
+  --glass-border: oklch(1 0 0 / 9%);
+  --glass-highlight: oklch(1 0 0 / 6%);
 }
 
 .light {
@@ -224,7 +227,10 @@
   --muted: oklch(0.965 0 0);
   --muted-foreground: oklch(0.46 0.01 300);
 
-  --accent: oklch(0.48 0.22 295);
+  /* Accent — restrained relative to spectrum-mid below (same reasoning as
+     dark mode): chrome (active nav, primary buttons, links, selected
+     states, focus rings) stays quieter than the data-language spectrum. */
+  --accent: oklch(0.48 0.14 295);
   --accent-foreground: oklch(0.99 0 0);
 
   --destructive: oklch(0.44 0.18 20);
@@ -240,7 +246,7 @@
 
   --border: oklch(0.16 0 0 / 12%);
   --input: oklch(0.97 0 0);
-  --ring: oklch(0.48 0.22 295 / 45%);
+  --ring: oklch(0.48 0.14 295 / 45%);
 
   --chart-1: oklch(0.22 0 0);
   --chart-2: oklch(0.45 0 0);
@@ -255,7 +261,7 @@
   --sidebar-accent: oklch(0.93 0.006 300);
   --sidebar-accent-foreground: oklch(0.16 0 0);
   --sidebar-border: oklch(0.16 0 0 / 10%);
-  --sidebar-ring: oklch(0.48 0.22 295 / 45%);
+  --sidebar-ring: oklch(0.48 0.14 295 / 45%);
 
   --gradient-gold: linear-gradient(135deg, oklch(0.2 0 0), oklch(0.5 0 0));
   --gradient-noir: linear-gradient(180deg, oklch(1 0 0), oklch(0.96 0 0));
@@ -267,7 +273,7 @@
   --shadow-sm: 0 1px 0 oklch(1 0 0 / 70%) inset, 0 2px 6px oklch(0 0 0 / 6%);
   --shadow-md: 0 1px 0 oklch(1 0 0 / 70%) inset, 0 8px 20px -6px oklch(0 0 0 / 10%);
   --shadow-lg: 0 1px 0 oklch(1 0 0 / 70%) inset, 0 20px 44px -16px oklch(0 0 0 / 14%);
-  --shadow-glow: 0 0 0 1px oklch(0.16 0 0 / 8%), 0 0 32px -6px oklch(0.16 0 0 / 10%);
+  --shadow-glow: 0 0 0 1px oklch(0.16 0 0 / 6%), 0 0 14px -6px oklch(0.16 0 0 / 8%);
 
   --glass-bg: oklch(1 0 0 / 65%);
   --glass-bg-strong: oklch(1 0 0 / 82%);

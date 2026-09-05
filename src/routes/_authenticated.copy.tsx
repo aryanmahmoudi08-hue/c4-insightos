@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -8,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -18,10 +16,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { extractFingerprintFn } from "@/lib/copy-os.functions";
 import { ImagePlus, Plus, Trash2 } from "lucide-react";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
-import { mockClientDNA, mockVoiceFingerprint, withMockDelay } from "@/lib/dev-mock-data";
+import { mockClientDNA } from "@/lib/dev-mock-data";
 import { GaugeChart } from "@/components/gauge-chart";
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar } from "recharts";
 import { parseCurrencyToCents } from "@/lib/lead-classification";
@@ -51,11 +48,11 @@ function CopyOSPage() {
     <div className="flex-1 min-w-0">
       <TopBar
         title="Client DNA"
-        subtitle="C4's client voice, positioning and persuasion profile — used across the org."
+        subtitle="Client profile, positioning, and offer/ticket configuration — used across the org."
       />
       <div className="space-y-6 p-4 md:p-6">
-        <OfferConfigSection />
         <ClientsTab />
+        <OfferConfigSection />
       </div>
     </div>
   );
@@ -77,7 +74,13 @@ const OPERATOR_LABEL: Record<string, string> = {
   eq: "equals",
 };
 
-type OfferTier = { id: string; key: string; label: string; sort_order: number };
+type OfferTier = {
+  id: string;
+  key: string;
+  label: string;
+  sort_order: number;
+  is_active: boolean;
+};
 type Offer = {
   id: string;
   name: string;
@@ -110,8 +113,8 @@ type ClassificationRule = {
 };
 
 const DEV_TIERS: OfferTier[] = [
-  { id: "dev-tier-low", key: "low", label: "Low Ticket", sort_order: 1 },
-  { id: "dev-tier-high", key: "high", label: "High Ticket", sort_order: 2 },
+  { id: "dev-tier-low", key: "low", label: "Low Ticket", sort_order: 1, is_active: true },
+  { id: "dev-tier-high", key: "high", label: "High Ticket", sort_order: 2, is_active: true },
 ];
 const DEV_OFFERS: Offer[] = [
   {
@@ -262,7 +265,11 @@ function OfferConfigSection() {
     },
   });
 
-  const tiers = devBypass ? devTiers : (tiersQuery.data ?? []);
+  const tiers = useMemo(
+    () => (devBypass ? devTiers : (tiersQuery.data ?? [])),
+    [devBypass, devTiers, tiersQuery.data],
+  );
+  const activeTiers = useMemo(() => tiers.filter((t) => t.is_active), [tiers]);
   const offers = devBypass ? devOffers : (offersQuery.data ?? []);
   const plans = devBypass ? devPlans : (plansQuery.data ?? []);
   const rules = devBypass ? devRules : (rulesQuery.data ?? []);
@@ -290,6 +297,77 @@ function OfferConfigSection() {
       }
       const { error } = await db.from("offer_tiers").upsert({ ...row, org_id: orgId });
       if (error) throw error as Error;
+    },
+    onSuccess: () => !devBypass && invalidateAll(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Deleting a tier must never silently orphan historical records. If
+  // anything still references the tier key (an offer, a classification
+  // rule, or a lead's recorded ticket_tier), archive it (is_active=false —
+  // hidden from new selections, existing records keep resolving to a real
+  // configured label) instead of hard-deleting.
+  const resolveTier = useMutation({
+    mutationFn: async (tier: OfferTier) => {
+      if (devBypass) {
+        const referenced =
+          devOffers.some((o) => o.tier_key === tier.key) ||
+          devRules.some((r) => r.tier_key === tier.key);
+        if (
+          !window.confirm(
+            referenced
+              ? `"${tier.label}" is used by existing offers/rules. It will be archived (hidden from new selections) rather than deleted, so historical records keep resolving correctly. Continue?`
+              : `Delete "${tier.label}"? This cannot be undone.`,
+          )
+        )
+          return;
+        if (referenced) {
+          setDevTiers((prev) =>
+            prev.map((t) => (t.id === tier.id ? { ...t, is_active: false } : t)),
+          );
+        } else {
+          setDevTiers((prev) => prev.filter((t) => t.id !== tier.id));
+        }
+        return;
+      }
+      const countDb = supabase as any;
+      const [{ count: offerCount }, { count: ruleCount }, { count: leadCount }] = await Promise.all(
+        [
+          countDb
+            .from("offers")
+            .select("id", { count: "exact", head: true })
+            .eq("org_id", orgId!)
+            .eq("tier_key", tier.key),
+          countDb
+            .from("lead_classification_rules")
+            .select("id", { count: "exact", head: true })
+            .eq("org_id", orgId!)
+            .eq("tier_key", tier.key),
+          countDb
+            .from("leads")
+            .select("id", { count: "exact", head: true })
+            .eq("org_id", orgId!)
+            .eq("ticket_tier", tier.key),
+        ],
+      );
+      const referenced = (offerCount ?? 0) + (ruleCount ?? 0) + (leadCount ?? 0) > 0;
+      if (
+        !window.confirm(
+          referenced
+            ? `"${tier.label}" is used by ${offerCount ?? 0} offer(s), ${ruleCount ?? 0} rule(s), and ${leadCount ?? 0} lead(s). It will be archived (hidden from new selections) rather than deleted, so those historical records keep resolving correctly. Continue?`
+            : `Delete "${tier.label}"? This cannot be undone.`,
+        )
+      )
+        return;
+      if (referenced) {
+        const { error } = await db
+          .from("offer_tiers")
+          .upsert({ ...tier, org_id: orgId, is_active: false });
+        if (error) throw error as Error;
+      } else {
+        const { error } = await db.from("offer_tiers").delete().eq("id", tier.id);
+        if (error) throw error as Error;
+      }
     },
     onSuccess: () => !devBypass && invalidateAll(),
     onError: (e: Error) => toast.error(e.message),
@@ -410,9 +488,13 @@ function OfferConfigSection() {
         </p>
       </div>
 
-      <TierEditor tiers={tiers} onSave={(t) => saveTier.mutate(t)} />
-      <OfferEditor
+      <TierEditor
         tiers={tiers}
+        onSave={(t) => saveTier.mutate(t)}
+        onResolve={(t) => resolveTier.mutate(t)}
+      />
+      <OfferEditor
+        tiers={activeTiers}
         offers={offers}
         onSave={(o) => saveOffer.mutate(o)}
         onDelete={(id) => deleteOffer.mutate(id)}
@@ -424,7 +506,7 @@ function OfferConfigSection() {
         onDelete={(id) => deletePlan.mutate(id)}
       />
       <ClassificationRuleEditor
-        tiers={tiers}
+        tiers={activeTiers}
         rules={rules}
         onSave={(r) => saveRule.mutate(r)}
         onDelete={(id) => deleteRule.mutate(id)}
@@ -433,10 +515,19 @@ function OfferConfigSection() {
   );
 }
 
-function TierEditor({ tiers, onSave }: { tiers: OfferTier[]; onSave: (t: OfferTier) => void }) {
+function TierEditor({
+  tiers,
+  onSave,
+  onResolve,
+}: {
+  tiers: OfferTier[];
+  onSave: (t: OfferTier) => void;
+  onResolve: (t: OfferTier) => void;
+}) {
   const [draft, setDraft] = useState<Record<string, OfferTier>>({});
   const [newLabel, setNewLabel] = useState("");
   const rowFor = (t: OfferTier) => draft[t.id] ?? t;
+  const sorted = useMemo(() => [...tiers].sort((a, b) => a.sort_order - b.sort_order), [tiers]);
 
   return (
     <div className="space-y-2">
@@ -444,7 +535,7 @@ function TierEditor({ tiers, onSave }: { tiers: OfferTier[]; onSave: (t: OfferTi
         Ticket tiers
       </div>
       <div className="space-y-1.5">
-        {tiers.map((t) => {
+        {sorted.map((t) => {
           const row = rowFor(t);
           return (
             <div key={t.id} className="flex items-center gap-2">
@@ -454,9 +545,30 @@ function TierEditor({ tiers, onSave }: { tiers: OfferTier[]; onSave: (t: OfferTi
                   setDraft((d) => ({ ...d, [t.id]: { ...row, label: e.target.value } }))
                 }
                 onBlur={() => draft[t.id] && onSave(draft[t.id])}
+                disabled={!t.is_active}
                 className="h-8 w-56 text-xs"
               />
               <span className="font-mono text-3xs text-muted-foreground">key: {t.key}</span>
+              {!t.is_active && (
+                <span className="rounded-full border border-border/70 bg-muted/40 px-2 py-0.5 text-3xs uppercase tracking-wider text-muted-foreground">
+                  Archived
+                </span>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="ml-auto h-7 px-2 text-3xs text-muted-foreground hover:text-foreground"
+                onClick={() => (t.is_active ? onResolve(t) : onSave({ ...t, is_active: true }))}
+              >
+                {t.is_active ? (
+                  <>
+                    <Trash2 className="mr-1 h-3 w-3" /> Delete
+                  </>
+                ) : (
+                  "Reactivate"
+                )}
+              </Button>
             </div>
           );
         })}
@@ -488,6 +600,7 @@ function TierEditor({ tiers, onSave }: { tiers: OfferTier[]; onSave: (t: OfferTi
               key,
               label: newLabel.trim(),
               sort_order: tiers.length + 1,
+              is_active: true,
             });
             setNewLabel("");
           }}
@@ -1018,7 +1131,6 @@ function ClientsTab() {
   const qc = useQueryClient();
   const { devBypass } = useAuth();
   const { data: clients = [], isLoading } = useClients();
-  const fpFn = useServerFn(extractFingerprintFn);
   const [form, setForm] = useState<Record<string, unknown> | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -1201,12 +1313,6 @@ function ClientsTab() {
             </div>
           </div>
           <div className="col-span-2 flex flex-wrap gap-1.5">
-            {e.voice_fingerprint ? (
-              <span className="badge-glass normal-case tracking-normal text-[color:var(--color-success)]">
-                <span className="status-dot" />
-                Voice fingerprint
-              </span>
-            ) : null}
             {e.proof_assets ? (
               <span className="badge-glass normal-case tracking-normal">Proof assets logged</span>
             ) : null}
@@ -1369,122 +1475,10 @@ function ClientsTab() {
         </div>
       </Card>
 
-      {/* Persuasion DNA */}
-      <Card className="p-5 space-y-3">
-        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Persuasion DNA
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">
-            Offer details (promise, mechanism, price, objections)
-          </label>
-          <Textarea
-            rows={3}
-            value={e._offer_text ?? JSON.stringify(e.offer_details ?? {}, null, 2)}
-            onChange={(ev) => {
-              try {
-                setForm({
-                  ...e,
-                  offer_details: JSON.parse(ev.target.value),
-                  _offer_text: ev.target.value,
-                });
-              } catch {
-                setForm({ ...e, _offer_text: ev.target.value });
-              }
-            }}
-            placeholder='{"promise":"...","mechanism":"...","price":"...","objections":["..."]}'
-          />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">
-            Avatar — dreams, fears, suspicions, past failures, enemies
-          </label>
-          <Textarea
-            rows={3}
-            value={e._avatar_text ?? JSON.stringify(e.avatar_research ?? {}, null, 2)}
-            onChange={(ev) => {
-              try {
-                setForm({
-                  ...e,
-                  avatar_research: JSON.parse(ev.target.value),
-                  _avatar_text: ev.target.value,
-                });
-              } catch {
-                setForm({ ...e, _avatar_text: ev.target.value });
-              }
-            }}
-            placeholder='{"dreams":"...","fears":"...","suspicions":"...","past_failures":"...","enemies":"..."}'
-          />
-        </div>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-muted-foreground">Sacred cows he kills</label>
-            <Textarea
-              rows={2}
-              value={(e.sacred_cows as string) ?? ""}
-              onChange={(ev) => set("sacred_cows", ev.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground">Competitors / enemies</label>
-            <Textarea
-              rows={2}
-              value={(e.competitors as string) ?? ""}
-              onChange={(ev) => set("competitors", ev.target.value)}
-            />
-          </div>
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">
-            Voice transcripts (paste his existing video transcripts)
-          </label>
-          <Textarea
-            rows={6}
-            value={(e.voice_transcripts as string) ?? ""}
-            onChange={(ev) => set("voice_transcripts", ev.target.value)}
-          />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Notes</label>
-          <Textarea
-            rows={2}
-            value={(e.notes as string) ?? ""}
-            onChange={(ev) => set("notes", ev.target.value)}
-          />
-        </div>
-        {e.voice_fingerprint ? (
-          <div className="text-xs">
-            <Badge variant="outline">Voice fingerprint extracted</Badge>
-            <pre className="mt-1 max-h-32 overflow-auto rounded bg-muted/30 p-2 text-3xs text-muted-foreground">
-              {JSON.stringify(e.voice_fingerprint, null, 2)}
-            </pre>
-          </div>
-        ) : null}
-      </Card>
-
       <div className="sticky bottom-4 flex flex-wrap gap-2 rounded-lg border border-border bg-card/95 p-3 backdrop-blur">
         <Button onClick={save} disabled={saving}>
           {saving ? "Saving…" : "Save client DNA"}
         </Button>
-        {e.id && e.voice_transcripts ? (
-          <Button
-            variant="outline"
-            onClick={async () => {
-              try {
-                const fp = devBypass
-                  ? await withMockDelay(mockVoiceFingerprint())
-                  : await fpFn({ data: { client_id: e.id as string } });
-                setForm({ ...e, voice_fingerprint: fp });
-                toast.success("Voice fingerprint extracted");
-                if (!devBypass) qc.invalidateQueries({ queryKey: ["copy_clients"] });
-              } catch (err: unknown) {
-                toast.error((err as Error)?.message ?? "Failed");
-              }
-            }}
-          >
-            Extract voice fingerprint
-          </Button>
-        ) : null}
       </div>
     </div>
   );

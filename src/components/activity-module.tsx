@@ -1300,6 +1300,34 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     <>
       <TopBar title={title} subtitle={subtitle} showDateRange />
       <div className="p-6 space-y-4">
+        {/* Summary hero moved to the top of the page (was buried below Speed
+            to Lead / Active Leads for the Dialer role) so it appears first,
+            matching DM Setter/Closer's own placement. */}
+        <PageHero
+          icon={
+            isDialer ? <PhoneIncoming className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />
+          }
+          eyebrow="Rep Efficiency"
+          title={title}
+          subtitle={subtitle}
+          status={
+            isDialer
+              ? [
+                  { label: `${activeReps} active dialers`, tone: "default" },
+                  {
+                    label: `${pct(conns, dials)} pick-up rate`,
+                    tone: dials ? (conns / dials >= 0.3 ? "success" : "warning") : "default",
+                  },
+                ]
+              : [
+                  { label: `${activeReps} active setters`, tone: "default" },
+                  {
+                    label: `${pct(sets, qualified)} set rate`,
+                    tone: qualified ? (sets / qualified >= 0.3 ? "success" : "warning") : "default",
+                  },
+                ]
+          }
+        />
         {isDialer && (
           <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -1712,31 +1740,6 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             />
           </div>
         )}
-        <PageHero
-          icon={
-            isDialer ? <PhoneIncoming className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />
-          }
-          eyebrow="Rep Efficiency"
-          title={title}
-          subtitle={subtitle}
-          status={
-            isDialer
-              ? [
-                  { label: `${activeReps} active dialers`, tone: "default" },
-                  {
-                    label: `${pct(conns, dials)} pick-up rate`,
-                    tone: dials ? (conns / dials >= 0.3 ? "success" : "warning") : "default",
-                  },
-                ]
-              : [
-                  { label: `${activeReps} active setters`, tone: "default" },
-                  {
-                    label: `${pct(sets, qualified)} set rate`,
-                    tone: qualified ? (sets / qualified >= 0.3 ? "success" : "warning") : "default",
-                  },
-                ]
-          }
-        />
         {!isDialer && (
           <KpiBand
             title="DM Setter · Primary Activity"

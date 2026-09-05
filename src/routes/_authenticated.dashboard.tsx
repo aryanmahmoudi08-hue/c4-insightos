@@ -759,9 +759,6 @@ function Dashboard() {
                 <PaceTallCard pace={stats?.pace} />
               </BentoCell>
             </BentoGrid>
-
-            {/* Weekly digest */}
-            <WeeklyDigest pace={stats?.pace} curr={c} prev={p} />
           </>
         )}
 
@@ -1029,7 +1026,6 @@ function ReachSummaryCard({
           </ResponsiveContainer>
         </div>
       </div>
-      <span className="absolute inset-x-0 bottom-0 h-1 bg-spectrum-cold shadow-[0_0_18px_var(--color-cold)]" />
     </div>
   );
 }
@@ -1156,127 +1152,6 @@ function CloseSummaryCard({
           </ResponsiveContainer>
         </div>
       </div>
-      <span className="absolute inset-x-0 bottom-0 h-1 bg-spectrum-hot shadow-[0_0_18px_var(--color-hot)]" />
-    </div>
-  );
-}
-
-type DigestItem = { label: string; value: string; deltaPct: number };
-
-/** One row of the Period Digest — same value+delta-badge visual language
- * KpiBand already establishes (font-mono value, spectrum/trend-toned delta
- * chip with icon), replacing the old plain `↑ Cash $42,500 (+16%)` bullet. */
-function DigestRow({ item, positive }: { item: DigestItem; positive: boolean }) {
-  const Icon = positive ? TrendingUp : TrendingDown;
-  const tone = positive ? "text-[color:var(--color-success)]" : "text-destructive";
-  return (
-    <div className="rounded-lg border border-border/60 bg-background/45 px-2.5 py-1.5">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">{item.label}</span>
-        <span className="flex items-center gap-2 font-mono text-sm tabular-nums">
-          <span className="font-semibold text-foreground">{item.value}</span>
-          <span className={cn("flex items-center gap-0.5 whitespace-nowrap", tone)}>
-            <Icon className="h-3 w-3" />
-            {Math.abs(item.deltaPct).toFixed(0)}%
-          </span>
-        </span>
-      </div>
-      <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-muted/60">
-        <div
-          className={cn("h-full rounded-full shadow-[0_0_10px_currentColor]", tone)}
-          style={{ width: `${Math.min(100, Math.max(10, Math.abs(item.deltaPct)))}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function WeeklyDigest({
-  pace,
-  curr,
-  prev,
-}: {
-  pace?: { monthCash: number; projection: number; dailyPace: number };
-  curr?: { cash: number; newLeads: number; closed: number; views: number };
-  prev?: { cash: number; newLeads: number; closed: number; views: number };
-}) {
-  if (!curr) return null;
-  const winners: DigestItem[] = [];
-  const losers: DigestItem[] = [];
-  const cmp = (label: string, c: number, p: number, fmtFn: (n: number) => string) => {
-    if (p === 0 && c === 0) return;
-    const deltaPct = p > 0 ? ((c - p) / p) * 100 : 100;
-    const item: DigestItem = { label, value: fmtFn(c), deltaPct };
-    if (deltaPct >= 5) winners.push(item);
-    else if (deltaPct <= -5) losers.push(item);
-  };
-  cmp("Cash", curr.cash, prev?.cash ?? 0, money);
-  cmp("Leads", curr.newLeads, prev?.newLeads ?? 0, fmt);
-  cmp("Closes", curr.closed, prev?.closed ?? 0, fmt);
-  cmp("Views", curr.views, prev?.views ?? 0, fmt);
-  // Wins/Pressure keep green/red — this is a genuine state signal (trending up
-  // vs down), the same category as a delta badge's arrow, not a funnel-position
-  // volume metric. What was missing was the L1 depth/typography treatment every
-  // other card on this page now has.
-  return (
-    <div className="hover-lift relative overflow-hidden rounded-xl border border-border/80 bg-gradient-to-br from-card via-card to-background/70 p-2 shadow-[0_12px_34px_-30px_rgba(255,255,255,0.3)]">
-      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
-      <div className="relative flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-2">
-        <div className="flex items-center gap-2.5">
-          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-muted/60 text-foreground">
-            <Calendar className="h-4 w-4" />
-          </div>
-          <div>
-            <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              Period Digest
-            </div>
-            <div className="mt-0.5 text-sm leading-tight text-foreground/90 md:text-base">
-              Vs prior period of equal length
-            </div>
-          </div>
-        </div>
-        {pace && (
-          <div className="text-3xs font-mono text-muted-foreground">
-            Month pace ·{" "}
-            <span className="text-foreground font-semibold">{money(pace.projection)}</span>{" "}
-            projected · {money(pace.dailyPace)}/day
-          </div>
-        )}
-      </div>
-      <div className="relative mt-2 grid gap-2 lg:grid-cols-2">
-        <div className="rounded-xl border border-[color:var(--color-success)]/25 bg-[color:var(--color-success)]/[0.06] p-2 space-y-1.5">
-          <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-[color:var(--color-success)]">
-            <TrendingUp className="h-3 w-3" /> Wins
-          </div>
-          {winners.length === 0 ? (
-            <div className="text-2xs italic text-muted-foreground">
-              No metrics up &gt;5% vs prior.
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {winners.map((w) => (
-                <DigestRow key={w.label} item={w} positive />
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="rounded-xl border border-destructive/25 bg-destructive/[0.06] p-2 space-y-1.5">
-          <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-destructive">
-            <TrendingDown className="h-3 w-3" /> Pressure
-          </div>
-          {losers.length === 0 ? (
-            <div className="text-2xs italic text-muted-foreground">
-              Nothing falling &gt;5% vs prior.
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {losers.map((w) => (
-                <DigestRow key={w.label} item={w} positive={false} />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -1382,7 +1257,7 @@ function CashHero({
   const cashRate = revenue && revenue > 0 ? ((curr ?? 0) / revenue) * 100 : 0;
 
   return (
-    <div className="group relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-spectrum-hot/25 bg-gradient-to-br from-card via-card to-spectrum-hot/[0.08] p-4 shadow-[0_22px_68px_-42px_rgba(236,72,153,0.8)]">
+    <div className="group relative flex h-full flex-col justify-between overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
       <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
       <div className="relative flex items-center justify-between gap-3 border-b border-border/60 pb-2.5">
         <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -1423,7 +1298,7 @@ function CashHero({
       </div>
       <div className="relative mt-3 flex items-center justify-between text-3xs uppercase tracking-[0.12em] text-muted-foreground">
         <span className="flex items-center gap-2">
-          <span className="h-1.5 w-3 rounded-full bg-spectrum-hot shadow-[0_0_8px_var(--color-hot)]" />
+          <span className="h-1.5 w-3 rounded-full bg-spectrum-hot" />
           Cash
         </span>
         <span className="flex items-center gap-2">
@@ -1431,7 +1306,7 @@ function CashHero({
           Revenue
         </span>
       </div>
-      <div className="relative mt-3 flex h-full min-h-0 flex-1 flex-col rounded-lg border border-spectrum-hot/20 bg-background/20 px-1 py-1">
+      <div className="relative mt-3 flex h-full min-h-0 flex-1 flex-col rounded-lg border border-border/60 bg-background/20 px-1 py-1">
         <div className="min-h-0 flex-1">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={series} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
@@ -1496,7 +1371,6 @@ function CashHero({
           </span>
         )}
       </div>
-      <span className="absolute inset-x-0 bottom-0 h-1 bg-spectrum-hot shadow-[0_0_18px_var(--color-hot)]" />
     </div>
   );
 }
@@ -1509,15 +1383,15 @@ function PaceTallCard({ pace }: { pace?: PaceStats }) {
   const progress = Math.min(100, (pace.dayOfMonth / pace.daysInMonth) * 100);
   const remaining = Math.max(0, pace.daysInMonth - pace.dayOfMonth);
   return (
-    <div className="relative flex h-full flex-col gap-3 overflow-hidden rounded-2xl border border-spectrum-mid/35 bg-gradient-to-br from-spectrum-mid/[0.2] via-card to-card p-4 shadow-[0_22px_62px_-38px_rgba(139,92,246,0.82)]">
+    <div className="relative flex h-full flex-col gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-center gap-2">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-spectrum-mid/20 text-spectrum-mid ring-1 ring-spectrum-mid/30 shadow-[0_0_22px_-8px_rgba(168,85,247,0.9)]">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted/60 text-spectrum-mid">
           <Target className="h-4 w-4" />
         </div>
         <div className="flex-1 text-3xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           Month-end pace
         </div>
-        <span className="h-2 w-2 rounded-full bg-spectrum-mid shadow-[0_0_12px_rgba(168,85,247,0.9)]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-spectrum-mid" />
       </div>
 
       <div className="flex flex-1 flex-col justify-center gap-2">
@@ -1561,11 +1435,8 @@ function PaceTallCard({ pace }: { pace?: PaceStats }) {
             {remaining} left · {progress.toFixed(0)}%
           </span>
         </div>
-        <div className="h-2 rounded-full bg-background/60 p-0.5 ring-1 ring-spectrum-mid/15">
-          <div
-            className="h-full rounded-full bg-spectrum-mid shadow-[0_0_14px_rgba(139,92,246,0.8)]"
-            style={{ width: `${progress}%` }}
-          />
+        <div className="h-1.5 rounded-full bg-muted">
+          <div className="h-full rounded-full bg-spectrum-mid" style={{ width: `${progress}%` }} />
         </div>
       </div>
     </div>
@@ -1603,9 +1474,7 @@ function ContentToCashStrip({ rows }: { rows: ContentAttrRow[] }) {
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30">
-        <div className="text-xs font-semibold uppercase tracking-wider">
-          Content → Cash attribution
-        </div>
+        <div className="text-xs font-semibold uppercase tracking-wider">Content → Revenue</div>
         <Link
           to="/content"
           className="text-xs text-primary hover:underline flex items-center gap-1"
@@ -1619,35 +1488,42 @@ function ContentToCashStrip({ rows }: { rows: ContentAttrRow[] }) {
           performers here.
         </div>
       ) : (
-        <div className="divide-y divide-border">
-          {items.map((it, i) => {
-            const maxCash = items[0].cash || 1;
-            const w = Math.max(4, Math.round((it.cash / maxCash) * 100));
-            return (
-              <div key={it.id} className="px-4 py-2.5">
-                <div className="flex items-center gap-3">
-                  <div className="grid h-7 w-7 place-items-center rounded-md bg-muted text-2xs font-mono font-bold">
-                    {i + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{it.title}</div>
-                    <div className="text-2xs text-muted-foreground">
-                      {it.platform} · {fmt(it.views)} views · {it.leads} leads · {it.closes} closes
-                    </div>
-                  </div>
-                  <div className="text-sm font-mono font-semibold text-[color:var(--color-success)]">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/70 text-left text-2xs uppercase tracking-wider text-muted-foreground">
+                <th className="px-4 py-2 font-medium">Content</th>
+                <th className="px-3 py-2 text-right font-medium">Views</th>
+                <th className="px-3 py-2 text-right font-medium">Leads</th>
+                <th className="px-3 py-2 text-right font-medium">Closes</th>
+                <th className="px-4 py-2 text-right font-medium">Cash</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/70">
+              {items.map((it) => (
+                <tr key={it.id} className="hover:bg-muted/20">
+                  <td className="px-4 py-2.5">
+                    <Link to="/content" className="block min-w-0 hover:underline">
+                      <div className="truncate text-sm font-medium">{it.title}</div>
+                      <div className="text-3xs text-muted-foreground">{it.platform}</div>
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                    {fmt(it.views)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                    {it.leads}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                    {it.closes}
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-mono text-sm font-semibold text-foreground">
                     {money(it.cash)}
-                  </div>
-                </div>
-                <div className="h-1.5 rounded bg-muted/30 overflow-hidden mt-1.5">
-                  <div
-                    className="h-full rounded bg-[color:var(--color-success)]"
-                    style={{ width: `${w}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

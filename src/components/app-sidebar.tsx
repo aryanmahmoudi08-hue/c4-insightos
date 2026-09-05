@@ -1,4 +1,5 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import {
   LayoutDashboard,
@@ -35,9 +36,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { useRole } from "@/hooks/use-role";
+import { ROLE_LABELS, type ManagedRole } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
+import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { useState } from "react";
 import c4Logo from "@/assets/c4-logo.png";
 import { DateRangePicker } from "@/components/date-range-picker";
@@ -131,9 +134,47 @@ export function AppSidebar() {
   const loc = useLocation();
   const nav = useNavigate();
   const { data: org } = useCurrentOrg();
-  const { canManage, isAdmin } = useRole();
+  const { canManage, isAdmin, role } = useRole();
   const { theme, toggle } = useTheme();
   const { collapsed, setCollapsed, toggle: toggleCollapsed } = useSidebarCollapsed();
+  const { user, devBypass } = useAuth();
+  const orgId = (org as { org_id?: string } | undefined)?.org_id;
+
+  // Sidebar footer identity (spec: full name, role, and the workspace's
+  // active offer). Dev bypass has no real Supabase session, so it gets an
+  // honest local placeholder rather than a broken query — same convention
+  // as every other interactive/identity surface in this app.
+  const { data: identity } = useQuery({
+    queryKey: ["sidebar-identity", user?.id, orgId, devBypass],
+    enabled: !!user,
+    queryFn: async () => {
+      if (devBypass) return { displayName: "Dev User", offerName: null as string | null };
+      const [{ data: profile }, { data: offer }] = await Promise.all([
+        supabase.from("profiles").select("display_name").eq("id", user!.id).maybeSingle(),
+        orgId
+          ? (supabase as any)
+              .from("offers")
+              .select("name")
+              .eq("org_id", orgId)
+              .eq("is_active", true)
+              .order("created_at")
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      return {
+        displayName: profile?.display_name ?? user!.email?.split("@")[0] ?? "Account",
+        offerName: (offer as { name?: string } | null)?.name ?? null,
+      };
+    },
+  });
+  const roleLabel = role
+    ? (ROLE_LABELS[role as ManagedRole] ??
+      role
+        .split("_")
+        .map((w) => w[0].toUpperCase() + w.slice(1))
+        .join(" "))
+    : "Member";
   const filterByRole = (items: NavItem[]) =>
     canManage ? items : items.filter((it) => RESTRICTED_ALLOW.has(it.to));
 
@@ -453,6 +494,29 @@ export function AppSidebar() {
             )}
           </div>
         </nav>
+        {identity && (
+          <Link
+            to="/settings"
+            className={cn(
+              "mx-2 flex items-center gap-2 rounded-lg border-t border-sidebar-border py-2.5 text-left hover:bg-sidebar-accent/40",
+              collapsed ? "justify-center px-0" : "px-1",
+            )}
+            title={collapsed ? `${identity.displayName} · ${roleLabel}` : undefined}
+          >
+            <AvatarInitials name={identity.displayName} size="sm" />
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-semibold text-sidebar-foreground">
+                  {identity.displayName}
+                </div>
+                <div className="truncate text-3xs text-muted-foreground">
+                  {roleLabel}
+                  {identity.offerName ? ` · ${identity.offerName}` : ""}
+                </div>
+              </div>
+            )}
+          </Link>
+        )}
         <div className="border-t border-sidebar-border p-2 space-y-1">
           <button
             type="button"

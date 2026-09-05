@@ -258,11 +258,11 @@ function InboundVelocityCard({
             Speed-to-lead &amp; inbound conversation flow
           </div>
         </div>
-        <span className="h-2 w-2 rounded-full bg-spectrum-cold shadow-[0_0_12px_rgba(34,211,238,0.9)]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-spectrum-cold" />
       </div>
       <div className="relative mt-3 grid gap-3 lg:grid-cols-[1.5fr_1fr]">
-        <div className="rounded-xl border border-spectrum-cold/20 bg-spectrum-cold/[0.045] p-3">
-          <div className="text-3xs font-bold uppercase tracking-[0.16em] text-spectrum-cold">
+        <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+          <div className="text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
             Inbound conversation funnel
           </div>
           <div className="mt-3 flex items-stretch gap-1.5">
@@ -339,8 +339,8 @@ function InboundVelocityCard({
             </span>
           </div>
         </div>
-        <div className="rounded-xl border border-spectrum-mid/20 bg-spectrum-mid/[0.045] p-3">
-          <div className="text-3xs font-bold uppercase tracking-[0.16em] text-spectrum-mid">
+        <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+          <div className="text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
             Response velocity &amp; setter stats
           </div>
           <div className="mt-3 space-y-2.5">
@@ -371,7 +371,7 @@ function InboundVelocityCard({
             ))}
           </div>
           {topSetter && (
-            <div className="mt-3 rounded-lg border border-spectrum-hot/20 bg-spectrum-hot/[0.05] px-2.5 py-2">
+            <div className="mt-3 rounded-lg border border-border/70 bg-muted/20 px-2.5 py-2">
               <div className="text-3xs uppercase tracking-wide text-muted-foreground">
                 Top inbound setter
               </div>
@@ -385,7 +385,6 @@ function InboundVelocityCard({
           )}
         </div>
       </div>
-      <span className="absolute inset-x-0 bottom-0 h-1 bg-spectrum-cold shadow-[0_0_16px_rgba(34,211,238,0.75)]" />
     </div>
   );
 }
@@ -412,7 +411,7 @@ function RateProgress({ chart }: { chart: RateChartSpec }) {
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted/60">
         <div
-          className="h-full rounded-full shadow-[0_0_12px_currentColor]"
+          className="h-full rounded-full"
           style={{
             width: `${Math.min(100, Math.max(0, chart.currentPct))}%`,
             background: SAFE_SPECTRUM_VAR[chart.spectrum],
@@ -443,7 +442,7 @@ function OperatingRatesPipeline({ charts }: { charts: RateChartSpec[] }) {
       <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
       <div className="relative flex items-center justify-between gap-3 border-b border-border/70 pb-3">
         <div className="flex items-center gap-2.5">
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-spectrum-cold/15 text-spectrum-cold">
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted/60 text-spectrum-cold">
             <Activity className="h-4 w-4" />
           </div>
           <div>
@@ -455,19 +454,19 @@ function OperatingRatesPipeline({ charts }: { charts: RateChartSpec[] }) {
             </div>
           </div>
         </div>
-        <span className="h-2 w-2 rounded-full bg-spectrum-mid shadow-[0_0_10px_var(--color-mid)]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-spectrum-mid" />
       </div>
       <div className="relative mt-3 grid gap-3 lg:grid-cols-2">
-        <div className="space-y-2 rounded-xl border border-spectrum-cold/20 bg-spectrum-cold/[0.045] p-3">
-          <div className="text-3xs font-bold uppercase tracking-[0.16em] text-spectrum-cold">
+        <div className="space-y-2 rounded-xl border border-border/70 bg-muted/20 p-3">
+          <div className="text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
             Marketing efficiency
           </div>
           {marketing.map((chart) => (
             <RateProgress key={chart.key} chart={chart} />
           ))}
         </div>
-        <div className="space-y-2 rounded-xl border border-spectrum-mid/20 bg-spectrum-mid/[0.045] p-3">
-          <div className="text-3xs font-bold uppercase tracking-[0.16em] text-spectrum-mid">
+        <div className="space-y-2 rounded-xl border border-border/70 bg-muted/20 p-3">
+          <div className="text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
             Sales efficiency
           </div>
           {sales.map((chart) => (
@@ -475,7 +474,6 @@ function OperatingRatesPipeline({ charts }: { charts: RateChartSpec[] }) {
           ))}
         </div>
       </div>
-      <span className="absolute inset-x-0 bottom-0 h-1 bg-spectrum-mid shadow-[0_0_16px_var(--color-mid)]" />
     </div>
   );
 }

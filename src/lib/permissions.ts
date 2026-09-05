@@ -112,7 +112,7 @@ export const RESOURCES: ResourceDef[] = [
     key: "copy",
     label: "Client DNA",
     group: "Marketing",
-    view: "C4's client positioning, voice and persuasion profile.",
+    view: "C4's client profile, positioning, and offer/ticket configuration.",
     edit: "Edit client DNA and extract voice fingerprints.",
   },
   {

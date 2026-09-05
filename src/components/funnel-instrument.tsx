@@ -87,8 +87,6 @@ export function FunnelInstrument({
           </div>
         </div>
       )}
-
-      <span className="absolute inset-x-0 bottom-0 h-1 bg-spectrum-mid shadow-[0_0_14px_rgba(168,85,247,0.55)]" />
     </div>
   );
 }
