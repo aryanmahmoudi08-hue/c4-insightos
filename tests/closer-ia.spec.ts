@@ -12,7 +12,11 @@ test("closer: sections render in A-G order, no duplicate cards, Deals Expected t
   consoleErrors,
 }) => {
   await page.goto("/closer", { waitUntil: "load" });
-  await expect(page.getByText("A · Primary closing performance")).toBeVisible({
+  // Renamed from "A · Primary closing performance" to "A · Money & closing
+  // performance" (Priority 4: money now leads the section, not just activity
+  // counts — Cash Collected/Revenue/Cash Collection Rate/Avg Contract Value
+  // render before Closes/Calls Booked/Showed/Offers Made in this same band).
+  await expect(page.getByText("A · Money & closing performance")).toBeVisible({
     timeout: 10_000,
   });
 

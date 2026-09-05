@@ -117,3 +117,25 @@ export function pctDelta(curr: number, prev: number): number | undefined {
   if (prev === 0) return undefined;
   return ((curr - prev) / prev) * 100;
 }
+
+/**
+ * A concise, dynamic period label for date-range-sensitive metrics (e.g.
+ * "Deals Expected to Close"). Preset labels (Today/Yesterday/Last 7d/MTD/
+ * All time) are already meaningful as-is; only "Custom" — the one label
+ * that told the user nothing about which days were actually selected —
+ * gets expanded into an explicit "Sep 1–Sep 12" style range.
+ */
+export function formatRangeLabel(range: { from: string; to: string; label: string }): string {
+  if (range.label !== "Custom") return range.label;
+  const from = new Date(`${range.from}T00:00:00`);
+  const to = new Date(`${range.to}T00:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return range.label;
+  const sameYear = from.getFullYear() === to.getFullYear();
+  const fmt = (d: Date, withYear: boolean) =>
+    d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: withYear ? "numeric" : undefined,
+    });
+  return `${fmt(from, !sameYear)}–${fmt(to, !sameYear)}`;
+}

@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { mergeBySourceTotal, mergeMax, type SeriesPoint } from "./trend";
+import { mergeBySourceTotal, mergeMax, formatRangeLabel, type SeriesPoint } from "./trend";
+
+describe("formatRangeLabel", () => {
+  it("passes preset labels through unchanged — they're already meaningful", () => {
+    for (const label of ["Today", "Yesterday", "Last 7d", "Last 30d", "MTD", "All time"]) {
+      expect(formatRangeLabel({ from: "2026-09-01", to: "2026-09-05", label })).toBe(label);
+    }
+  });
+
+  it("expands a same-year Custom range into a concise 'Sep 1–Sep 12' label", () => {
+    expect(formatRangeLabel({ from: "2026-09-01", to: "2026-09-12", label: "Custom" })).toBe(
+      "Sep 1–Sep 12",
+    );
+  });
+
+  it("includes the year on the start date when a Custom range spans two years", () => {
+    expect(formatRangeLabel({ from: "2025-12-28", to: "2026-01-03", label: "Custom" })).toBe(
+      "Dec 28, 2025–Jan 3, 2026",
+    );
+  });
+
+  it("falls back to the raw label if the custom range's dates are unparseable", () => {
+    expect(formatRangeLabel({ from: "not-a-date", to: "2026-09-05", label: "Custom" })).toBe(
+      "Custom",
+    );
+  });
+});
 
 describe("mergeBySourceTotal", () => {
   it("reconciles with Math.max(totalA, totalB) even when the winning source flips day to day", () => {

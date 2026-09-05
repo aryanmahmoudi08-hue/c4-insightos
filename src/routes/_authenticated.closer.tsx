@@ -64,6 +64,7 @@ import {
   mergeBySourceTotal,
   priorPeriod,
   pctDelta,
+  formatRangeLabel,
 } from "@/lib/trend";
 import { clusterObjectionsFn } from "@/lib/objection-clustering.functions";
 import { applyObjectionClusters } from "@/lib/objection-clustering";
@@ -269,8 +270,9 @@ function Closer() {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<
     | { kind: "close" | "money" | "pipeline"; index: number }
-    | { kind: "noshow"; index: 0 | 1 | 2 }
+    | { kind: "noshow"; index: 0 | 1 | 2 | 3 }
     | { kind: "attribution"; stageKey: string }
+    | { kind: "disposition"; source: "status" | "manual"; value: string; label: string }
     | null
   >(null);
 
@@ -1377,13 +1379,19 @@ function Closer() {
   // to this closer's own calls.
   const noShowRecovery = useMemo(() => {
     const noShows = list.filter((c) => c.status === "no_show");
-    const recovered = noShows.filter((c) => list.some((c2) => c2.recovered_from_call_id === c.id));
-    const recoveredClosed = recovered.filter((c) => {
-      const followUp = list.find((c2) => c2.recovered_from_call_id === c.id);
-      return followUp?.closed;
-    });
+    const followUpFor = (c: (typeof list)[number]) =>
+      list.find((c2) => c2.recovered_from_call_id === c.id);
+    // "Rebooked" = a follow-up call was logged against this no-show at all
+    // (whether or not it went on to show). "Recovered" is the stricter,
+    // brief-exact definition — the rebooking itself subsequently showed —
+    // since a rebooked call can still no-show again. Kept distinct so
+    // "Recovered Show Rate" never double-counts a rebooking that didn't show.
+    const rebooked = noShows.filter((c) => !!followUpFor(c));
+    const recovered = noShows.filter((c) => !!followUpFor(c)?.showed);
+    const recoveredClosed = recovered.filter((c) => !!followUpFor(c)?.closed);
     return {
       noShowCount: noShows.length,
+      rebookedCount: rebooked.length,
       recoveredShowRate: noShows.length ? (recovered.length / noShows.length) * 100 : null,
       recoveredCloseRate: recovered.length
         ? (recoveredClosed.length / recovered.length) * 100
@@ -1391,6 +1399,7 @@ function Closer() {
       // Row sets for the drilldowns below — same filters as the rates above,
       // so the card and its drilldown can never disagree.
       noShows,
+      rebooked,
       recovered,
       recoveredClosed,
     };
@@ -1910,7 +1919,7 @@ function Closer() {
             // so both come back honestly "insufficient_data" rather than
             // forcing a funnel-shaped narrative onto a metric that isn't one.
             panel = {
-              title: `Deals Expected to Close (${range.label})`,
+              title: `Deals Expected to Close (${formatRangeLabel(range)})`,
               columns: callColumns("Scheduled for", (c) =>
                 c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—",
               ),
@@ -2008,7 +2017,7 @@ function Closer() {
                     "A recovery rate, not a funnel stage — no prior-period comparison to derive.",
                 },
               };
-            } else {
+            } else if (selected.index === 2) {
               panel = {
                 title: `Recovered Close Rate (${noShowRecovery.recoveredClosed.length} of ${noShowRecovery.recovered.length})`,
                 columns: [
@@ -2038,6 +2047,41 @@ function Closer() {
                   status: "insufficient_data",
                   sentence:
                     "A recovery rate, not a funnel stage — no prior-period comparison to derive.",
+                },
+              };
+            } else {
+              panel = {
+                title: `No-shows Rebooked (${noShowRecovery.rebookedCount} of ${noShowRecovery.noShowCount})`,
+                columns: [
+                  { key: "lead", label: "Lead", render: leadOf },
+                  { key: "date", label: "Original no-show", render: dateOf },
+                  { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                  {
+                    key: "rescheduled",
+                    label: "Rescheduled to",
+                    render: (c) => {
+                      const f = followUpFor(c);
+                      return f?.scheduled_for
+                        ? new Date(f.scheduled_for).toLocaleDateString()
+                        : "—";
+                    },
+                  },
+                  {
+                    key: "showed",
+                    label: "Showed on reschedule",
+                    render: (c) => (followUpFor(c)?.showed ? "Yes" : followUpFor(c) ? "No" : "—"),
+                  },
+                ],
+                rows: noShowRecovery.rebooked,
+                cap: {
+                  status: "insufficient_data",
+                  sentence:
+                    "A raw count, not a funnel stage — no prior-stage constraint to derive.",
+                },
+                working: {
+                  status: "insufficient_data",
+                  sentence:
+                    "A raw count, not a funnel stage — no prior-period comparison to derive.",
                 },
               };
             }
@@ -2120,6 +2164,54 @@ function Closer() {
                   },
                 }
               : null;
+          } else if (selected?.kind === "disposition") {
+            const rows =
+              selected.source === "status"
+                ? list.filter(
+                    (c) =>
+                      normalizeCloserDisposition(c.status, c.closed, c.offer_made) ===
+                      selected.value,
+                  )
+                : list.filter((c) =>
+                    selected.value === "not_logged"
+                      ? !c.disposition
+                      : c.disposition === selected.value,
+                  );
+            panel = {
+              title: `Disposition: ${selected.label}`,
+              columns: [
+                { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                {
+                  key: "date",
+                  label: "Date",
+                  render: (c) =>
+                    c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—",
+                },
+                {
+                  key: "lead",
+                  label: "Lead",
+                  render: (c) => c.lead_email ?? c.leads?.full_name ?? "—",
+                },
+                {
+                  key: "status",
+                  label: "Status",
+                  render: (c) =>
+                    STATUS_LABEL[c.status] ??
+                    normalizeCloserDisposition(c.status, c.closed, c.offer_made),
+                },
+              ],
+              rows,
+              cap: {
+                status: "insufficient_data",
+                sentence:
+                  "A disposition breakdown, not a funnel stage — no prior-stage constraint to derive.",
+              },
+              working: {
+                status: "insufficient_data",
+                sentence:
+                  "A disposition breakdown, not a funnel stage — no prior-period comparison to derive.",
+              },
+            };
           } else if (selected) {
             const stage = closeStages[selected.index];
             const kind = ["oncal", "showed", "offers", "closes"][selected.index];
@@ -2140,7 +2232,82 @@ function Closer() {
             revenue: Number(p.revenue ?? 0),
           }));
 
+          // Money-first (Priority 4): Cash Collected and Revenue lead the page,
+          // followed by the two rate/derived money metrics, then core closing
+          // activity (Closes/Shows/Offers) — replacing the old activity-first
+          // order (oncal/showed/offers/closes/cash/revenue) that buried both
+          // dollar figures behind four count tiles and a full section header.
+          const cashRatePctNow = revCents ? (cashCents / revCents) * 100 : null;
+          const prevCashRatePctNow = prevRevCents ? (prevCashCents / prevRevCents) * 100 : null;
+          const avgContractValueCents = closes ? revCents / closes : null;
+          const prevAvgContractValueCents = prevClosed ? prevRevCents / prevClosed : null;
           const kpiItems: KpiBandItem[] = [
+            {
+              key: "cash",
+              label: "Cash Collected",
+              value: fmtMoney(cashCents),
+              spectrum: "hot",
+              featured: true,
+              wide: true,
+              deltaPct: pctDelta(cashCents, prevCashCents),
+              priorValue: fmtMoney(prevCashCents),
+              empty: cashCents === 0,
+              emptyHint: "Log a closed call with cash collected to see this populate.",
+              onClick: () => setSelected({ kind: "money", index: 0 }),
+            },
+            {
+              key: "revenue",
+              label: "Revenue Generated",
+              value: fmtMoney(revCents),
+              spectrum: "hot",
+              featured: true,
+              wide: true,
+              deltaPct: pctDelta(revCents, prevRevCents),
+              priorValue: fmtMoney(prevRevCents),
+              empty: revCents === 0,
+              emptyHint: "Total contract value shows up once a deal closes.",
+              onClick: () => setSelected({ kind: "money", index: 0 }),
+            },
+            {
+              key: "cashCollectionRate",
+              label: "Cash Collection Rate",
+              value: cashRatePctNow == null ? "—" : `${cashRatePctNow.toFixed(1)}%`,
+              spectrum: "hot",
+              featured: true,
+              deltaPct:
+                cashRatePctNow != null && prevCashRatePctNow != null
+                  ? pctDelta(cashRatePctNow, prevCashRatePctNow)
+                  : undefined,
+              empty: cashRatePctNow == null,
+              emptyHint: "Requires revenue on at least one closed call.",
+              onClick: () => setSelected({ kind: "money", index: 0 }),
+            },
+            {
+              key: "avgContractValue",
+              label: "Avg Contract Value",
+              value: avgContractValueCents == null ? "—" : fmtMoney(avgContractValueCents),
+              spectrum: "hot",
+              featured: true,
+              deltaPct:
+                avgContractValueCents != null && prevAvgContractValueCents != null
+                  ? pctDelta(avgContractValueCents, prevAvgContractValueCents)
+                  : undefined,
+              empty: avgContractValueCents == null,
+              emptyHint: "Revenue ÷ closes — needs at least one close in range.",
+              onClick: () => setSelected({ kind: "close", index: 3 }),
+            },
+            {
+              key: "closes",
+              label: "Closes",
+              value: fmtN0(closes),
+              spectrum: "hot",
+              featured: true,
+              deltaPct: pctDelta(closes, prevClosed),
+              priorValue: fmtN0(prevClosed),
+              empty: closes === 0,
+              emptyHint: "No closes yet this range — they'll show up here.",
+              onClick: () => setSelected({ kind: "close", index: 3 }),
+            },
             {
               key: "oncal",
               label: "Calls Booked",
@@ -2173,44 +2340,6 @@ function Closer() {
               empty: offers === 0,
               emptyHint: 'Mark "Offer made" on a logged call to populate.',
               onClick: () => setSelected({ kind: "close", index: 2 }),
-            },
-            {
-              key: "closes",
-              label: "Closes",
-              value: fmtN0(closes),
-              spectrum: "hot",
-              featured: true,
-              deltaPct: pctDelta(closes, prevClosed),
-              priorValue: fmtN0(prevClosed),
-              empty: closes === 0,
-              emptyHint: "No closes yet this range — they'll show up here.",
-              onClick: () => setSelected({ kind: "close", index: 3 }),
-            },
-            {
-              key: "cash",
-              label: "Cash Collected",
-              value: fmtMoney(cashCents),
-              spectrum: "hot",
-              featured: true,
-              wide: true,
-              deltaPct: pctDelta(cashCents, prevCashCents),
-              priorValue: fmtMoney(prevCashCents),
-              empty: cashCents === 0,
-              emptyHint: "Log a closed call with cash collected to see this populate.",
-              onClick: () => setSelected({ kind: "money", index: 0 }),
-            },
-            {
-              key: "revenue",
-              label: "Revenue Generated",
-              value: fmtMoney(revCents),
-              spectrum: "hot",
-              featured: true,
-              wide: true,
-              deltaPct: pctDelta(revCents, prevRevCents),
-              priorValue: fmtMoney(prevRevCents),
-              empty: revCents === 0,
-              emptyHint: "Total contract value shows up once a deal closes.",
-              onClick: () => setSelected({ kind: "money", index: 0 }),
             },
           ];
 
@@ -2313,16 +2442,6 @@ function Closer() {
             },
           ];
 
-          // Split the one combined "Key Metrics" band into activity counts
-          // (A · Primary closing performance) and dollar figures (C ·
-          // Payment performance) — same data/sparklines, no duplication,
-          // just grouped where the reorganized IA (below) puts each one.
-          const activityKpiItems = chartedKpiItems.filter((item) =>
-            ["oncal", "showed", "offers", "closes"].includes(item.key),
-          );
-          const moneyKpiItems = chartedKpiItems.filter((item) =>
-            ["cash", "revenue"].includes(item.key),
-          );
           const sectionHeader = (label: string) => (
             <div className="mt-6 mb-1 text-sm font-bold uppercase tracking-[0.16em] text-foreground first:mt-0">
               {label}
@@ -2331,8 +2450,16 @@ function Closer() {
 
           return (
             <>
-              {sectionHeader("A · Primary closing performance")}
-              <KpiBand items={activityKpiItems} title="Closer · Key Metrics" />
+              {sectionHeader("A · Money & closing performance")}
+              <KpiBand items={chartedKpiItems} title="Closer · Key Metrics" />
+              <MoneyInstrument
+                series={moneySeries}
+                payoutPct={10}
+                payoutCents={payoutCents}
+                cashRatePct={cashRatePct}
+                onCashClick={() => setSelected({ kind: "money", index: 0 })}
+                fmtMoney={fmtMoney}
+              />
               <FunnelInstrument
                 title="Close"
                 subtitle="Booked → Closed"
@@ -2340,42 +2467,6 @@ function Closer() {
                 onStageClick={(i) => setSelected({ kind: "close", index: i })}
               />
               <RateSmallMultiples charts={rateCharts} />
-              <KpiBand
-                title="Call quality"
-                items={[
-                  {
-                    key: "avgCallDuration",
-                    label: "Average Call Duration",
-                    value:
-                      avgCallDurationSeconds == null
-                        ? "Not logged"
-                        : `${Math.round(avgCallDurationSeconds / 60)}m`,
-                    spectrum: "cold",
-                    empty: avgCallDurationSeconds == null,
-                    emptyHint: "No call-length data logged in this range.",
-                  },
-                  {
-                    key: "avgTalkTime",
-                    label: "Average Talk Time",
-                    value:
-                      avgTalkSeconds == null ? "Not logged" : `${Math.round(avgTalkSeconds / 60)}m`,
-                    spectrum: "cold",
-                    empty: avgTalkSeconds == null,
-                    emptyHint: "No talk-time data logged in this range.",
-                  },
-                  {
-                    key: "talkListenRatio",
-                    label: "Talk / Listen Ratio",
-                    value:
-                      avgTalkListenRatioPct == null
-                        ? "Not logged"
-                        : `${Math.round(avgTalkListenRatioPct)}% talk`,
-                    spectrum: "mid",
-                    empty: avgTalkListenRatioPct == null,
-                    emptyHint: "Needs both call length and talk time on the same call.",
-                  },
-                ]}
-              />
 
               {sectionHeader("B · Pipeline & outcome")}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -2385,7 +2476,7 @@ function Closer() {
                   className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20"
                 >
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                    Deals Expected to Close · {range.label}
+                    Deals Expected to Close · {formatRangeLabel(range)}
                   </div>
                   <div className="mt-1 font-mono text-lg font-semibold">
                     {dealsExpectedToClose.length}
@@ -2421,9 +2512,19 @@ function Closer() {
                 {list.length ? (
                   <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     {dispositionMix.map((item) => (
-                      <div
+                      <button
                         key={item.value}
-                        className="rounded-lg border border-border/70 bg-background/40 p-3"
+                        type="button"
+                        disabled={item.count === 0}
+                        onClick={() =>
+                          setSelected({
+                            kind: "disposition",
+                            source: "status",
+                            value: item.value,
+                            label: item.label,
+                          })
+                        }
+                        className="rounded-lg border border-border/70 bg-background/40 p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-background/40"
                       >
                         <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                           {item.label}
@@ -2432,7 +2533,7 @@ function Closer() {
                         <div className="mt-1 text-3xs text-muted-foreground">
                           {pct(item.count, list.length)} of calls
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ) : (
@@ -2453,9 +2554,19 @@ function Closer() {
                 {manualDispositionMix.length ? (
                   <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     {manualDispositionMix.map((item) => (
-                      <div
+                      <button
                         key={item.value}
-                        className={`rounded-lg border p-3 ${item.value === "not_logged" ? "border-dashed border-border/50 bg-background/20" : "border-border/70 bg-background/40"}`}
+                        type="button"
+                        disabled={item.count === 0}
+                        onClick={() =>
+                          setSelected({
+                            kind: "disposition",
+                            source: "manual",
+                            value: item.value,
+                            label: item.label,
+                          })
+                        }
+                        className={`text-left transition hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-background/20 rounded-lg border p-3 ${item.value === "not_logged" ? "border-dashed border-border/50 bg-background/20" : "border-border/70 bg-background/40"}`}
                       >
                         <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                           {item.label}
@@ -2464,7 +2575,7 @@ function Closer() {
                         <div className="mt-1 text-3xs text-muted-foreground">
                           {pct(item.count, list.length)} of calls
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ) : (
@@ -2538,16 +2649,7 @@ function Closer() {
                 </table>
               </GlassTableShell>
 
-              {sectionHeader("C · Payment performance")}
-              <KpiBand items={moneyKpiItems} title="Cash & revenue" />
-              <MoneyInstrument
-                series={moneySeries}
-                payoutPct={10}
-                payoutCents={payoutCents}
-                cashRatePct={cashRatePct}
-                onCashClick={() => setSelected({ kind: "money", index: 0 })}
-                fmtMoney={fmtMoney}
-              />
+              {sectionHeader("C · Payment quality")}
               <KpiBand
                 title="Payment quality"
                 items={[
@@ -2682,7 +2784,7 @@ function Closer() {
               />
 
               {sectionHeader("D · No-show recovery")}
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <button
                   type="button"
                   disabled={noShowRecovery.noShowCount === 0}
@@ -2694,6 +2796,22 @@ function Closer() {
                   </div>
                   <div className="mt-1 font-mono text-lg font-semibold">
                     {noShowRecovery.noShowCount}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  disabled={noShowRecovery.rebookedCount === 0}
+                  onClick={() => setSelected({ kind: "noshow", index: 3 })}
+                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-card"
+                >
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    No-shows Rebooked
+                  </div>
+                  <div className="mt-1 font-mono text-lg font-semibold">
+                    {noShowRecovery.rebookedCount}
+                  </div>
+                  <div className="mt-1 text-3xs text-muted-foreground">
+                    A follow-up call was logged — not yet counted as recovered
                   </div>
                 </button>
                 <button
@@ -2732,6 +2850,42 @@ function Closer() {
               </div>
 
               {sectionHeader("E · Team & coaching")}
+              <KpiBand
+                title="Call quality"
+                items={[
+                  {
+                    key: "avgCallDuration",
+                    label: "Average Call Duration",
+                    value:
+                      avgCallDurationSeconds == null
+                        ? "Not logged"
+                        : `${Math.round(avgCallDurationSeconds / 60)}m`,
+                    spectrum: "cold",
+                    empty: avgCallDurationSeconds == null,
+                    emptyHint: "No call-length data logged in this range.",
+                  },
+                  {
+                    key: "avgTalkTime",
+                    label: "Average Talk Time",
+                    value:
+                      avgTalkSeconds == null ? "Not logged" : `${Math.round(avgTalkSeconds / 60)}m`,
+                    spectrum: "cold",
+                    empty: avgTalkSeconds == null,
+                    emptyHint: "No talk-time data logged in this range.",
+                  },
+                  {
+                    key: "talkListenRatio",
+                    label: "Talk / Listen Ratio",
+                    value:
+                      avgTalkListenRatioPct == null
+                        ? "Not logged"
+                        : `${Math.round(avgTalkListenRatioPct)}% talk`,
+                    spectrum: "mid",
+                    empty: avgTalkListenRatioPct == null,
+                    emptyHint: "Needs both call length and talk time on the same call.",
+                  },
+                ]}
+              />
               <div className="grid gap-4 lg:grid-cols-2">
                 <RepLeaderboard
                   titlePrefix="Closer leaderboard"
