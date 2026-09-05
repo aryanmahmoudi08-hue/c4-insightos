@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg, disableDevBypass } from "@/hooks/use-auth";
 import { useRole } from "@/hooks/use-role";
 import { ROLE_LABELS, type ManagedRole } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
@@ -132,7 +132,6 @@ const RESTRICTED_ALLOW = new Set([
 
 export function AppSidebar() {
   const loc = useLocation();
-  const nav = useNavigate();
   const { data: org } = useCurrentOrg();
   const { canManage, isAdmin, role } = useRole();
   const { theme, toggle } = useTheme();
@@ -554,8 +553,16 @@ export function AppSidebar() {
               collapsed ? "justify-center px-0" : "justify-start gap-2",
             )}
             onClick={async () => {
+              // Dev Bypass has no real session for supabase.auth.signOut() to
+              // clear — its flag only gets read once, on mount, so it has to
+              // be cleared explicitly here or it just re-authenticates the
+              // very next render. A hard navigation (rather than the router's
+              // client-side nav) forces a fresh mount everywhere, so /welcome
+              // never has a chance to read stale pre-sign-out auth state and
+              // bounce straight back into the app.
+              if (devBypass) disableDevBypass();
               await supabase.auth.signOut();
-              nav({ to: "/welcome" });
+              window.location.href = "/welcome";
             }}
             title={collapsed ? "Sign out" : undefined}
           >

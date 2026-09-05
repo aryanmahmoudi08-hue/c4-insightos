@@ -25,6 +25,17 @@ export function enableDevBypass() {
   sessionStorage.setItem(DEV_BYPASS_KEY, "1");
 }
 
+/**
+ * Reverses enableDevBypass(). Like enableDevBypass(), this only flips a flag
+ * AuthProvider reads once on mount — the caller must force a fresh mount
+ * (hard navigation) for it to take effect, since a real supabase.auth.signOut()
+ * has nothing to do with this flag and won't clear it on its own.
+ */
+export function disableDevBypass() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(DEV_BYPASS_KEY);
+}
+
 // Every requireSupabaseAuth-gated server fn throws this exact message under Dev Bypass —
 // there's no real session to attach a Bearer token from. That's expected, not a bug, so
 // swallow just that one toast instead of every call site special-casing devBypass itself.
