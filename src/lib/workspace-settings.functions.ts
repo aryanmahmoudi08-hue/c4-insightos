@@ -78,21 +78,6 @@ export type EodSettingsT = WorkspaceSettings["eod"];
  * wants documented defaults without a round-trip (e.g. tests, cold paths). */
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = WorkspaceSettingsSchema.parse({});
 
-/** Development-preview-only storage key; production settings remain Supabase-backed. */
-export const DEV_EOD_SETTINGS_STORAGE_KEY = "c4-dev-eod-settings";
-
-export function readDevEodSettings(): WorkspaceSettings {
-  if (typeof window !== "undefined") {
-    try {
-      const stored = sessionStorage.getItem(DEV_EOD_SETTINGS_STORAGE_KEY);
-      if (stored) return WorkspaceSettingsSchema.parse(JSON.parse(stored));
-    } catch {
-      // Ignore malformed local preview state and use documented defaults.
-    }
-  }
-  return DEFAULT_WORKSPACE_SETTINGS;
-}
-
 function parseStoredSettings(raw: Record<string, unknown>): WorkspaceSettings {
   // organizations.settings is a shared free-form jsonb column — ingest.functions.ts
   // already stores a top-level `ingest_token` key there. Only read/touch our

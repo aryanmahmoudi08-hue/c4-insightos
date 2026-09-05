@@ -3,7 +3,13 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, Pencil } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { cn } from "@/lib/utils";
@@ -24,12 +30,17 @@ interface Props {
   onExit: () => void;
 }
 
-const fmtValue = (q: EodQuestion, v: string | number | boolean | undefined, leadOptions?: EodLeadOption[]): string => {
+const fmtValue = (
+  q: EodQuestion,
+  v: string | number | boolean | undefined,
+  leadOptions?: EodLeadOption[],
+): string => {
   if (v === undefined || v === "") return "—";
   if (q.type === "checkbox") return v ? "Yes" : "No";
   if (q.type === "select" || q.type === "team-member") return String(v);
   if (q.type === "lead-picker") return leadOptions?.find((l) => l.id === v)?.label ?? "None picked";
-  if (q.money) return `$${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (q.money)
+    return `$${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   if (q.type === "number") return String(v);
   return String(v);
 };
@@ -58,7 +69,8 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
   const currentValid = current ? isAnswered(current, values[current.key]) : true;
   const pct = isReview ? 100 : Math.round((step / total) * 100);
 
-  const setVal = (key: string, v: string | number | boolean | undefined) => setValues((prev) => ({ ...prev, [key]: v }));
+  const setVal = (key: string, v: string | number | boolean | undefined) =>
+    setValues((prev) => ({ ...prev, [key]: v }));
 
   const handleFieldChange = (v: string | number | boolean | undefined) => {
     if (!current) return;
@@ -67,7 +79,10 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
     // "Log call" dialog already gives — only if the rep hasn't typed one yet.
     if (current.type === "lead-picker" && typeof v === "string") {
       const lead = leadOptions?.find((l) => l.id === v);
-      if (lead?.email) setValues((prev) => (prev.lead_email ? prev : { ...prev, lead_email: lead.email as string }));
+      if (lead?.email)
+        setValues((prev) =>
+          prev.lead_email ? prev : { ...prev, lead_email: lead.email as string },
+        );
     }
   };
 
@@ -76,7 +91,10 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
     setStep((s) => Math.min(s + 1, total));
   };
   const goBack = () => {
-    if (step === 0) { onExit(); return; }
+    if (step === 0) {
+      onExit();
+      return;
+    }
     setStep((s) => s - 1);
   };
 
@@ -109,7 +127,9 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
           <h2 className="display-serif text-2xl">Logged.</h2>
           <p className="text-sm text-muted-foreground">{title} submitted successfully.</p>
           <div className="mt-2 flex gap-2">
-            <Button variant="outline" onClick={onExit}>Back to EOD Reports</Button>
+            <Button variant="outline" onClick={onExit}>
+              Back to EOD Reports
+            </Button>
             <Button onClick={resetFlow}>Log another</Button>
           </div>
         </div>
@@ -132,27 +152,51 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
         </div>
 
         {!isReview && current && (
-          <div className="animate-in fade-in-0 slide-in-from-right-2 duration-200" key={current.key}>
+          <div
+            className="animate-in fade-in-0 slide-in-from-right-2 duration-200"
+            key={current.key}
+          >
             <h2 className="display-serif text-2xl leading-snug md:text-3xl">{current.label}</h2>
-            {current.helper && <p className="mt-2 text-sm text-muted-foreground">{current.helper}</p>}
+            {current.helper && (
+              <p className="mt-2 text-sm text-muted-foreground">{current.helper}</p>
+            )}
             <div className="mt-6">
-              <QuestionField question={current} value={values[current.key]} onChange={handleFieldChange} leadOptions={leadOptions} onAdvance={goNext} />
+              <QuestionField
+                question={current}
+                value={values[current.key]}
+                onChange={handleFieldChange}
+                leadOptions={leadOptions}
+                onAdvance={goNext}
+              />
             </div>
           </div>
         )}
 
         {isReview && (
           <div className="animate-in fade-in-0 duration-200">
-            <h2 className="display-serif text-2xl leading-snug md:text-3xl">Review before you submit</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Here's what's about to be logged. Edit anything that's off.</p>
+            <h2 className="display-serif text-2xl leading-snug md:text-3xl">
+              Review before you submit
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Here's what's about to be logged. Edit anything that's off.
+            </p>
             <div className="mt-6 divide-y divide-border rounded-lg border border-border/60">
               {schema.map((q, i) => (
                 <div key={q.key} className="flex items-start justify-between gap-3 px-3 py-2.5">
                   <div className="min-w-0">
-                    <div className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground truncate">{q.label}</div>
-                    <div className="mt-0.5 text-sm font-medium">{fmtValue(q, values[q.key], leadOptions)}</div>
+                    <div className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+                      {q.label}
+                    </div>
+                    <div className="mt-0.5 text-sm font-medium">
+                      {fmtValue(q, values[q.key], leadOptions)}
+                    </div>
                   </div>
-                  <button type="button" onClick={() => setStep(i)} className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted/40 hover:text-foreground" aria-label={`Edit ${q.label}`}>
+                  <button
+                    type="button"
+                    onClick={() => setStep(i)}
+                    className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                    aria-label={`Edit ${q.label}`}
+                  >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -181,7 +225,11 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
 }
 
 function QuestionField({
-  question, value, onChange, leadOptions, onAdvance,
+  question,
+  value,
+  onChange,
+  leadOptions,
+  onAdvance,
 }: {
   question: EodQuestion;
   value: string | number | boolean | undefined;
@@ -189,13 +237,22 @@ function QuestionField({
   leadOptions?: EodLeadOption[];
   onAdvance: () => void;
 }) {
-  const enterAdvances = (e: React.KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onAdvance(); } };
+  const enterAdvances = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onAdvance();
+    }
+  };
 
   switch (question.type) {
     case "number":
       return (
         <div className="relative">
-          {question.money && <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-mono text-muted-foreground">$</span>}
+          {question.money && (
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-mono text-muted-foreground">
+              $
+            </span>
+          )}
           <Input
             autoFocus
             type="number"
@@ -206,26 +263,83 @@ function QuestionField({
             onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
             onKeyDown={enterAdvances}
             placeholder={question.placeholder}
-            className={cn("h-20 text-center font-mono text-4xl tabular-nums", question.money && "pl-10")}
+            className={cn(
+              "h-20 text-center font-mono text-4xl tabular-nums",
+              question.money && "pl-10",
+            )}
           />
         </div>
       );
     case "textarea":
-      return <Textarea autoFocus rows={4} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} placeholder={question.placeholder} className="text-base" />;
+      return (
+        <Textarea
+          autoFocus
+          rows={4}
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={question.placeholder}
+          className="text-base"
+        />
+      );
     case "select":
       return (
-        <Select value={value === undefined ? undefined : String(value)} onValueChange={(v) => onChange(v)}>
-          <SelectTrigger className="h-14 text-lg"><SelectValue placeholder="Choose one" /></SelectTrigger>
-          <SelectContent>{(question.options ?? []).map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+        <Select
+          value={value === undefined ? undefined : String(value)}
+          onValueChange={(v) => onChange(v)}
+        >
+          <SelectTrigger className="h-14 text-lg">
+            <SelectValue placeholder="Choose one" />
+          </SelectTrigger>
+          <SelectContent>
+            {(question.options ?? []).map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
       );
     case "checkbox":
       return (
         <div className="grid grid-cols-2 gap-3">
-          <Button type="button" variant={value === true ? "default" : "outline"} className="h-14 text-base" onClick={() => onChange(true)}>Yes</Button>
-          <Button type="button" variant={value === false ? "default" : "outline"} className="h-14 text-base" onClick={() => onChange(false)}>No</Button>
+          <Button
+            type="button"
+            variant={value === true ? "default" : "outline"}
+            className="h-14 text-base"
+            onClick={() => onChange(true)}
+          >
+            Yes
+          </Button>
+          <Button
+            type="button"
+            variant={value === false ? "default" : "outline"}
+            className="h-14 text-base"
+            onClick={() => onChange(false)}
+          >
+            No
+          </Button>
         </div>
       );
+    case "scale": {
+      const lo = question.min ?? 1;
+      const hi = question.max ?? 10;
+      const opts = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
+      return (
+        <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
+          {opts.map((n) => (
+            <Button
+              key={n}
+              type="button"
+              variant={value === n ? "default" : "outline"}
+              className="h-12 font-mono text-base"
+              onClick={() => onChange(n)}
+            >
+              {n}
+            </Button>
+          ))}
+        </div>
+      );
+    }
     case "team-member":
       return (
         <TeamMemberPicker
@@ -237,20 +351,79 @@ function QuestionField({
       );
     case "lead-picker":
       return (
-        <Select value={value === undefined ? undefined : String(value)} onValueChange={(v) => onChange(v)}>
-          <SelectTrigger className="h-14 text-lg"><SelectValue placeholder="Pick a lead (optional)" /></SelectTrigger>
-          <SelectContent>{(leadOptions ?? []).map((l) => <SelectItem key={l.id} value={l.id}>{l.label}</SelectItem>)}</SelectContent>
+        <Select
+          value={value === undefined ? undefined : String(value)}
+          onValueChange={(v) => onChange(v)}
+        >
+          <SelectTrigger className="h-14 text-lg">
+            <SelectValue placeholder="Pick a lead (optional)" />
+          </SelectTrigger>
+          <SelectContent>
+            {(leadOptions ?? []).map((l) => (
+              <SelectItem key={l.id} value={l.id}>
+                {l.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
       );
     case "date":
-      return <Input autoFocus type="date" value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onKeyDown={enterAdvances} className="h-14 text-lg" />;
+      return (
+        <Input
+          autoFocus
+          type="date"
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={enterAdvances}
+          className="h-14 text-lg"
+        />
+      );
     case "datetime":
-      return <Input autoFocus type="datetime-local" value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onKeyDown={enterAdvances} className="h-14 text-lg" />;
+      return (
+        <Input
+          autoFocus
+          type="datetime-local"
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={enterAdvances}
+          className="h-14 text-lg"
+        />
+      );
     case "email":
-      return <Input autoFocus type="email" value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onKeyDown={enterAdvances} placeholder={question.placeholder} className="h-14 text-lg" />;
+      return (
+        <Input
+          autoFocus
+          type="email"
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={enterAdvances}
+          placeholder={question.placeholder}
+          className="h-14 text-lg"
+        />
+      );
     case "url":
-      return <Input autoFocus type="url" value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onKeyDown={enterAdvances} placeholder={question.placeholder} className="h-14 text-lg" />;
+      return (
+        <Input
+          autoFocus
+          type="url"
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={enterAdvances}
+          placeholder={question.placeholder}
+          className="h-14 text-lg"
+        />
+      );
     default:
-      return <Input autoFocus type="text" value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} onKeyDown={enterAdvances} placeholder={question.placeholder} className="h-14 text-lg" />;
+      return (
+        <Input
+          autoFocus
+          type="text"
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={enterAdvances}
+          placeholder={question.placeholder}
+          className="h-14 text-lg"
+        />
+      );
   }
 }

@@ -3,7 +3,6 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { fetchWorkspaceSettings, type WorkspaceSettings } from "@/lib/workspace-settings.functions";
 
 export const EOD_ROLES = ["dm_setter", "inbound_dialer", "closer"] as const;
 export type EodRole = (typeof EOD_ROLES)[number];
@@ -124,15 +123,6 @@ export async function requireEodAuthorization(
   if (!authorization.allowed) throw new Error("EOD access restricted");
   return authorization as EodAuthorization & { allowed: true };
 }
-
-/** Authorized settings load for EOD only; role/user precedence remains in the existing settings object. */
-export const getAuthorizedEodSettingsFn = createServerFn({ method: "POST" })
-  .inputValidator((input) => EodAccessInput.parse(input))
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ data, context }): Promise<WorkspaceSettings> => {
-    await requireEodAuthorization(context.supabase, data.orgId, context.userId, data.eodRole);
-    return fetchWorkspaceSettings(context.supabase, data.orgId);
-  });
 
 export function eodAccessDeniedMessage(): string {
   return "You don't have permission to access this EOD workflow.";

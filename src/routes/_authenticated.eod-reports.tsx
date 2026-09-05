@@ -1,18 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { supabase } from "@/integrations/supabase/client";
 import { TopBar } from "@/components/app-sidebar";
 import { PageHero } from "@/components/page-hero";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, MessageSquare, PhoneIncoming, PhoneCall, Link2 } from "lucide-react";
-import { EodWorkflowStatus } from "@/components/eod-workflow-status";
-import { readDevEodSettings } from "@/lib/workspace-settings.functions";
+import { ClipboardCheck, MessageSquare, PhoneIncoming, PhoneCall } from "lucide-react";
+import { EodStepFlow } from "@/components/eod-step-flow";
 import {
-  eodAccessDeniedMessage,
-  getAuthorizedEodSettingsFn,
-  getEodAccessProfileFn,
-} from "@/lib/eod-rbac";
+  DM_SETTER_EOD_SCHEMA,
+  INBOUND_DIALER_EOD_SCHEMA,
+  CLOSER_EOD_SCHEMA,
+  buildSetterActivityPayload,
+  buildClosureCallPayload,
+  type EodValues,
+} from "@/lib/eod-reports";
+import { eodAccessDeniedMessage, getEodAccessProfileFn } from "@/lib/eod-rbac";
+import { toast } from "sonner";
 
 type EodRole = "dm_setter" | "inbound_dialer" | "closer";
 const VALID_ROLES: EodRole[] = ["dm_setter", "inbound_dialer", "closer"];
@@ -39,8 +44,8 @@ const ROLE_CARDS: { role: EodRole; title: string; blurb: string; icon: typeof Me
   },
   {
     role: "closer",
-    title: "Closer EOD",
-    blurb: "Log a single call — status, cash collected, objections.",
+    title: "Closer Post-Call",
+    blurb: "Log a single call — status, cash collected, recording.",
     icon: PhoneCall,
   },
 ];
@@ -51,15 +56,14 @@ function EodReportsPage() {
   const nav = Route.useNavigate();
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
-  const { devBypass, user } = useAuth();
-  const getSettings = useServerFn(getAuthorizedEodSettingsFn);
+  const { devBypass } = useAuth();
   const getAccessProfile = useServerFn(getEodAccessProfileFn);
   const {
     data: accessProfile,
     isLoading: accessLoading,
     isError: accessError,
   } = useQuery({
-    queryKey: ["eod-access-profile", orgId, user?.id, devBypass],
+    queryKey: ["eod-access-profile", orgId, devBypass],
     enabled: !devBypass && !!orgId,
     queryFn: () => getAccessProfile({ data: { orgId: orgId! } }),
   });
@@ -68,14 +72,6 @@ function EodReportsPage() {
     : (accessProfile?.allowedRoles ?? []);
   const canAccessSelected = devBypass || allowedRoles.includes(activeRole);
   const effectiveRole = canAccessSelected ? activeRole : allowedRoles[0];
-  const { data: workspaceSettings } = useQuery({
-    queryKey: ["workspace-settings", orgId, devBypass, effectiveRole],
-    enabled: (devBypass || (!!orgId && canAccessSelected)) && !!effectiveRole,
-    queryFn: () =>
-      devBypass
-        ? Promise.resolve(readDevEodSettings())
-        : getSettings({ data: { orgId: orgId!, eodRole: effectiveRole! } }),
-  });
   const goRole = (r: EodRole | undefined) => nav({ search: { role: r }, replace: true });
 
   if (!devBypass && (accessLoading || (!accessProfile && !accessError))) {
@@ -127,9 +123,9 @@ function EodReportsPage() {
                   key={c.role}
                   type="button"
                   onClick={() => goRole(c.role)}
-                  className={`flex items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors ${selected ? "bg-spectrum-mid/15 text-foreground ring-1 ring-spectrum-mid/35" : "text-muted-foreground hover:bg-muted/30 hover:text-foreground"}`}
+                  className={`flex items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors ${selected ? "bg-accent/15 text-foreground ring-1 ring-accent/35" : "text-muted-foreground hover:bg-muted/30 hover:text-foreground"}`}
                 >
-                  <c.icon className={`h-4 w-4 shrink-0 ${selected ? "text-spectrum-mid" : ""}`} />
+                  <c.icon className={`h-4 w-4 shrink-0 ${selected ? "text-accent" : ""}`} />
                   <span className="min-w-0">
                     <span className="block text-xs font-semibold uppercase tracking-[0.12em]">
                       {c.title}
@@ -141,65 +137,82 @@ function EodReportsPage() {
             })}
           </div>
         </div>
-        <TypeformPlaceholder
-          url={
-            workspaceSettings?.eod?.userUrls?.[user?.id ?? ""] ||
-            workspaceSettings?.eod?.roleUrls?.[effectiveRole] ||
-            workspaceSettings?.eod?.defaultUrl ||
-            ""
-          }
+
+        <EodFlowForRole
+          key={effectiveRole}
           role={effectiveRole}
-        />
-        <EodWorkflowStatus
-          connected={Boolean(
-            workspaceSettings?.eod?.userUrls?.[user?.id ?? ""] ||
-            workspaceSettings?.eod?.roleUrls?.[effectiveRole] ||
-            workspaceSettings?.eod?.defaultUrl,
-          )}
-          role={effectiveRole}
+          orgId={orgId}
+          devBypass={devBypass}
+          onExit={() => goRole(undefined)}
         />
       </div>
     </>
   );
 }
 
-function TypeformPlaceholder({ url, role }: { url: string; role: EodRole }) {
-  const external = Boolean(url);
+const ROLE_META: Record<EodRole, { title: string; subtitle: string }> = {
+  dm_setter: { title: "DM Setter EOD", subtitle: "One question at a time" },
+  inbound_dialer: { title: "Dialer EOD", subtitle: "One question at a time" },
+  closer: { title: "Closer Post-Call", subtitle: "One question at a time" },
+};
+
+function EodFlowForRole({
+  role,
+  orgId,
+  devBypass,
+  onExit,
+}: {
+  role: EodRole;
+  orgId: string | undefined;
+  devBypass: boolean;
+  onExit: () => void;
+}) {
+  const qc = useQueryClient();
+  const schema =
+    role === "dm_setter"
+      ? DM_SETTER_EOD_SCHEMA
+      : role === "inbound_dialer"
+        ? INBOUND_DIALER_EOD_SCHEMA
+        : CLOSER_EOD_SCHEMA;
+
+  const onSubmit = async (values: EodValues) => {
+    if (role === "closer") {
+      const payload = buildClosureCallPayload(orgId ?? "", values);
+      if (payload === null) {
+        // "IGNORE" — the rep explicitly asked for this entry not to be
+        // recorded. No calls row is written; the review/submit step still
+        // completes so the rep gets a clear confirmation either way.
+        toast.info("Marked IGNORE — nothing was recorded.");
+        return;
+      }
+      if (devBypass) return;
+      // eod_lead_status isn't in the generated Supabase types yet (new
+      // column, see the migration comment).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).from("calls").insert(payload);
+      if (error) throw error;
+    } else {
+      const payload = buildSetterActivityPayload(role, orgId ?? "", values);
+      if (devBypass) return;
+      const { error } = await supabase.from("setter_activity").insert(payload);
+      if (error) throw error;
+    }
+    if (!devBypass) {
+      // Broad invalidation on a rare, deliberate submit action — every rep
+      // dashboard/Main Hub query that reads setter_activity/calls picks up
+      // the new row on next view without needing per-page-specific keys
+      // threaded through this shared form.
+      qc.invalidateQueries();
+    }
+  };
 
   return (
-    <div className="rounded-2xl border border-dashed border-spectrum-mid/35 bg-card/60 p-5 shadow-sm">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-spectrum-mid/15 text-spectrum-mid">
-            <Link2 className="h-4 w-4" />
-          </div>
-          <div>
-            <div className="text-3xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              Typeform placeholder
-            </div>
-            <div className="mt-1 text-base font-semibold text-foreground">
-              {role.replace(/_/g, " ")} EOD
-            </div>
-            <div className="mt-1 text-2xs text-muted-foreground">
-              Your linked Typeform will appear here when this role is configured.
-            </div>
-          </div>
-        </div>
-        {external ? (
-          <Button asChild size="sm" className="h-8 text-2xs">
-            <a href={url} target="_blank" rel="noopener noreferrer">
-              Open Typeform <Link2 className="ml-1 h-3 w-3" />
-            </a>
-          </Button>
-        ) : (
-          <Button asChild size="sm" variant="outline" className="h-8 text-2xs">
-            <a href="/settings">Configure Typeform</a>
-          </Button>
-        )}
-      </div>
-      <div className="mt-4 flex min-h-28 items-center justify-center rounded-xl border border-dashed border-border bg-background/40 text-center text-2xs text-muted-foreground">
-        Typeform will be displayed here
-      </div>
-    </div>
+    <EodStepFlow
+      title={ROLE_META[role].title}
+      subtitle={ROLE_META[role].subtitle}
+      schema={schema}
+      onSubmit={onSubmit}
+      onExit={onExit}
+    />
   );
 }
