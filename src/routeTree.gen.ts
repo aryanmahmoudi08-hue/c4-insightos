@@ -13,7 +13,7 @@ import { Route as RequestAccessRouteImport } from './routes/request-access'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DailyWinRouteImport } from './routes/daily-win'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
-import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.index'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as PcvTokenRouteImport } from './routes/pcv.$token'
 import { Route as AuthenticatedWeeklyReportRouteImport } from './routes/_authenticated.weekly-report'
 import { Route as AuthenticatedWebinarAnalyticsRouteImport } from './routes/_authenticated.webinar-analytics'
@@ -64,10 +64,10 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
+const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AuthenticatedRoute,
+  getParentRoute: () => rootRouteImport,
 } as any)
 const PcvTokenRoute = PcvTokenRouteImport.update({
   id: '/pcv/$token',
@@ -230,7 +230,7 @@ const ApiPublicIngestTokenRoute = ApiPublicIngestTokenRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AuthenticatedIndexRoute
+  '/': typeof IndexRoute
   '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
   '/request-access': typeof RequestAccessRoute
@@ -266,6 +266,7 @@ export interface FileRoutesByFullPath {
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
   '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
   '/request-access': typeof RequestAccessRoute
@@ -296,13 +297,13 @@ export interface FileRoutesByTo {
   '/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
-  '/': typeof AuthenticatedIndexRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
@@ -334,7 +335,6 @@ export interface FileRoutesById {
   '/_authenticated/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/_authenticated/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
-  '/_authenticated/': typeof AuthenticatedIndexRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
@@ -378,6 +378,7 @@ export interface FileRouteTypes {
     | '/api/public/twilio/$event'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
     | '/daily-win'
     | '/login'
     | '/request-access'
@@ -408,12 +409,12 @@ export interface FileRouteTypes {
     | '/webinar-analytics'
     | '/weekly-report'
     | '/pcv/$token'
-    | '/'
     | '/api/public/typeform'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
   id:
     | '__root__'
+    | '/'
     | '/_authenticated'
     | '/daily-win'
     | '/login'
@@ -445,13 +446,13 @@ export interface FileRouteTypes {
     | '/_authenticated/webinar-analytics'
     | '/_authenticated/weekly-report'
     | '/pcv/$token'
-    | '/_authenticated/'
     | '/api/public/typeform'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   DailyWinRoute: typeof DailyWinRoute
   LoginRoute: typeof LoginRoute
@@ -492,12 +493,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/': {
-      id: '/_authenticated/'
+    '/': {
+      id: '/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof AuthenticatedIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/pcv/$token': {
       id: '/pcv/$token'
@@ -739,7 +740,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedVslRoute: typeof AuthenticatedVslRoute
   AuthenticatedWebinarAnalyticsRoute: typeof AuthenticatedWebinarAnalyticsRoute
   AuthenticatedWeeklyReportRoute: typeof AuthenticatedWeeklyReportRoute
-  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -769,7 +769,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedVslRoute: AuthenticatedVslRoute,
   AuthenticatedWebinarAnalyticsRoute: AuthenticatedWebinarAnalyticsRoute,
   AuthenticatedWeeklyReportRoute: AuthenticatedWeeklyReportRoute,
-  AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
@@ -777,6 +776,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   DailyWinRoute: DailyWinRoute,
   LoginRoute: LoginRoute,

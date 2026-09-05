@@ -19,7 +19,7 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => { if (data.session) nav({ to: "/" }); });
+    supabase.auth.getSession().then(({ data }) => { if (data.session) nav({ to: "/dashboard" }); });
   }, [nav]);
 
   const submit = async (e: React.FormEvent) => {
@@ -37,7 +37,7 @@ function LoginPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
-      nav({ to: "/" });
+      nav({ to: "/dashboard" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Auth failed");
     } finally { setLoading(false); }
@@ -54,7 +54,7 @@ function LoginPage() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,oklch(1_0_0/.07),transparent_60%),radial-gradient(circle_at_80%_80%,oklch(1_0_0/.05),transparent_55%)]" />
         <div className="relative flex items-center gap-2">
           <div className="grid h-9 w-9 place-items-center rounded-md bg-gradient-to-br from-primary to-accent font-mono text-sm font-bold text-primary-foreground">C4</div>
-          <div className="font-semibold">InsightOS</div>
+          <div className="font-semibold">C4 OS</div>
         </div>
         <div className="relative space-y-4">
           <h2 className="text-3xl font-semibold leading-tight">If cash moves, content performs, or a lead breathes —<br/><span className="text-primary">it gets tracked.</span></h2>
