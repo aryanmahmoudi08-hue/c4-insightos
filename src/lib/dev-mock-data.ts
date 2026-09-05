@@ -612,17 +612,21 @@ const MOCK_LEAD_NAMES = [
 
 /** Real vocab, matching leads.tsx's STATUS_OPTIONS / PIPELINE_STAGES / PRIORITY_OPTIONS. */
 export function mockLeads() {
+  // Real lead_status enum values (supabase/migrations/20260518151934_...sql)
+  // — not this route's own STATUS_OPTIONS/BUCKET_STATUSES vocabulary, which
+  // writes/matches values the real column can never contain (see
+  // src/lib/lead-pipeline.ts's header comment for the full explanation).
   const statuses = [
-    "opt_in",
+    "dm_received",
+    "qualified",
+    "pre_call_assets_sent",
     "call_booked",
-    "rescheduling",
-    "follow_up_short",
-    "deposit",
+    "showed",
     "closed",
-    "lt_closed",
-    "no_show",
-    "no_close",
     "disqualified",
+    "follow_up",
+    "no_show",
+    "ghosted",
   ];
   const stages = ["cold", "warm", "hot", "diamond", ""];
   const priorities = ["diamond", "high", "normal", "normal", "low"];

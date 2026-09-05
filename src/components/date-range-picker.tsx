@@ -8,6 +8,7 @@ const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n
 
 export const RANGES = {
   today: (): DateRange => ({ from: today(), to: today(), label: "Today" }),
+  yesterday: (): DateRange => ({ from: daysAgo(1), to: daysAgo(1), label: "Yesterday" }),
   last7: (): DateRange => ({ from: daysAgo(6), to: today(), label: "Last 7d" }),
   last30: (): DateRange => ({ from: daysAgo(29), to: today(), label: "Last 30d" }),
   mtd: (): DateRange => { const d = new Date(); const f = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0,10); return { from: f, to: today(), label: "MTD" }; },
@@ -17,7 +18,7 @@ export const RANGES = {
 export function DateRangePicker({ value, onChange }: { value: DateRange; onChange: (r: DateRange) => void }) {
   const [custom, setCustom] = useState(false);
   const presets: { key: keyof typeof RANGES; label: string }[] = [
-    { key: "today", label: "Today" }, { key: "last7", label: "7d" },
+    { key: "today", label: "Today" }, { key: "yesterday", label: "Yesterday" }, { key: "last7", label: "7d" },
     { key: "last30", label: "30d" }, { key: "mtd", label: "MTD" }, { key: "all", label: "All" },
   ];
   return (

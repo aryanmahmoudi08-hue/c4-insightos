@@ -7,6 +7,7 @@ import { TopBar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -39,9 +40,36 @@ import {
 } from "@/components/glass-table";
 import { mockLeads, mockLeadInsights, withMockDelay } from "@/lib/dev-mock-data";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
-import { BentoGrid, BentoCell } from "@/components/bento-grid";
-import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, SPECTRUM_SEQUENCE } from "@/lib/spectrum";
 import { cn } from "@/lib/utils";
+import { DateRangePicker, RANGES, type DateRange } from "@/components/date-range-picker";
+import { PlatformIcon } from "@/components/platform-icon";
+import { normalizeSocialPlatform } from "@/lib/social-platform";
+import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
+import {
+  deriveCap,
+  deriveWorking,
+  type FunnelStage,
+  type Derivation,
+} from "@/lib/funnel-derivation";
+import { priorPeriod, pctDelta } from "@/lib/trend";
+import {
+  deriveLeadAvailability,
+  pipelineStageInfo,
+  formatLeadAge,
+  relativeTimeAgo,
+  type AvailabilityBucket,
+} from "@/lib/lead-pipeline";
+import {
+  PieChart,
+  Pie,
+  Cell as RechartsCell,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+} from "recharts";
+import {
+  getWorkspaceSettingsFn,
+  DEFAULT_WORKSPACE_SETTINGS,
+} from "@/lib/workspace-settings.functions";
 
 export const Route = createFileRoute("/_authenticated/leads")({
   component: Leads,
@@ -77,6 +105,11 @@ type LeadRow = {
   created_at: string;
   tags: string[] | null;
   ticket_tier: string | null;
+  /** Derived from the `calls` join at fetch time — real per-lead call history, not a raw dial-attempt count (this schema doesn't track per-lead dial attempts; see lead-pipeline.ts). */
+  callCount: number;
+  lastCallAt: string | null;
+  /** calls.closer_name (free text) — the reliable source going forward; calls.closer_id is an auth.users uuid the native EOD form never sets. */
+  closerName: string | null;
 };
 
 // Row tint (subtle, 5%) for the same tone family used by chips (15%) — one 4-accent
@@ -160,15 +193,11 @@ const STATUS_TONE: Record<string, { row: string; chip: string }> = Object.fromEn
 );
 const tone = (s: string) => STATUS_TONE[s] ?? STATUS_TONE.opt_in;
 
-const REACHED_CALL_STATUSES = [
-  "call_booked",
-  "rescheduling",
-  "no_show",
-  "deposit",
-  "closed",
-  "lt_closed",
-  "no_close",
-];
+// Real lead_status values implying a call was scheduled for this lead at
+// some point (whether or not they showed) — used for the pipeline-stage
+// donut's cap/working derivation, not this file's own (disconnected)
+// REACHED_CALL_STATUSES-style vocabulary above.
+const REACHED_CALL_REAL_STATUSES = ["call_booked", "showed", "closed", "no_show"];
 
 // Application data keys (match typeform mapping)
 const APP_COLS: { key: string; label: string; width?: string }[] = [
@@ -295,6 +324,143 @@ function SmartViewsBar({
   );
 }
 
+const LEAD_DETAIL_COLUMNS: DetailColumn<LeadRow>[] = [
+  { key: "name", label: "Name", render: (l) => l.full_name || l.handle || l.email || "(no name)" },
+  {
+    key: "stage",
+    label: "Stage",
+    render: (l) => (
+      <span
+        className={`rounded px-1.5 py-0.5 text-3xs font-medium ${CHIP_TONE_CLASSES[pipelineStageInfo(l.status).tone]}`}
+      >
+        {pipelineStageInfo(l.status).label}
+      </span>
+    ),
+  },
+  { key: "phone", label: "Phone", render: (l) => l.phone ?? "—" },
+  { key: "email", label: "Email", render: (l) => l.email ?? "—" },
+  {
+    key: "created",
+    label: "Created",
+    render: (l) => new Date(l.first_touch_at ?? l.created_at).toLocaleDateString(),
+  },
+];
+
+/**
+ * The Available-to-Call worklist (Priority 3, Section 2/4) — a dedicated
+ * component rather than MetricDetailPanel because it needs richer per-lead
+ * diagnostic columns (stage/setter/calls-on-record/availability reasoning)
+ * than a generic count drilldown's cap/working narrative applies to.
+ * Reuses the same Sheet/GlassTableShell primitives (now widened) so it
+ * stays visually consistent with every other drilldown in the app.
+ */
+function AvailableToCallDrawer({
+  open,
+  onOpenChange,
+  rows,
+  availabilityByLeadId,
+  setterProfiles,
+  onSelectLead,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  rows: LeadRow[];
+  availabilityByLeadId: Map<string, ReturnType<typeof deriveLeadAvailability>>;
+  setterProfiles: Record<string, string>;
+  onSelectLead: (l: LeadRow) => void;
+}) {
+  const nowISO = new Date().toISOString();
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full overflow-y-auto sm:max-w-4xl">
+        <SheetHeader>
+          <SheetTitle>Available to call</SheetTitle>
+          <div className="text-xs text-muted-foreground">
+            {rows.length} lead{rows.length === 1 ? "" : "s"} in the current range/filters, not yet
+            booked/closed/lost.
+          </div>
+        </SheetHeader>
+        <div className="mt-4">
+          <GlassTableShell maxHeight="70vh">
+            <table className="w-full text-xs">
+              <thead className="sticky-thead bg-muted/40 text-3xs uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="p-2 text-left">Lead</th>
+                  <th className="p-2 text-left">Phone</th>
+                  <th className="p-2 text-left">Email</th>
+                  <th className="p-2 text-left">Source</th>
+                  <th className="p-2 text-left">Created / Age</th>
+                  <th className="p-2 text-left">Stage</th>
+                  <th className="p-2 text-left">Setter</th>
+                  <th className="p-2 text-left">Availability</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((l) => {
+                  const availability = availabilityByLeadId.get(l.id);
+                  const entryAt = l.first_touch_at ?? l.created_at;
+                  const setterName = l.assigned_setter_id
+                    ? (setterProfiles[l.assigned_setter_id] ?? "Unknown")
+                    : "—";
+                  const platform = normalizeSocialPlatform(l.source_connector, l.source_platform);
+                  return (
+                    <tr
+                      key={l.id}
+                      className="border-t border-border/70 cursor-pointer hover:bg-muted/20"
+                      onClick={() => onSelectLead(l)}
+                    >
+                      <td className="p-2 font-medium">
+                        {l.full_name || l.handle || l.email || "(no name)"}
+                      </td>
+                      <td className="p-2 font-mono">{l.phone ?? "—"}</td>
+                      <td className="p-2">{l.email ?? "—"}</td>
+                      <td className="p-2">
+                        <span className="inline-flex items-center gap-1.5">
+                          <PlatformIcon platform={platform} className="h-3.5 w-3.5" />
+                          {platform}
+                        </span>
+                      </td>
+                      <td className="p-2 whitespace-nowrap">
+                        {new Date(entryAt).toLocaleDateString()}
+                        <span className="ml-1 text-muted-foreground">
+                          · {formatLeadAge(entryAt, nowISO)} old
+                        </span>
+                      </td>
+                      <td className="p-2">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-3xs font-medium ${CHIP_TONE_CLASSES[pipelineStageInfo(l.status).tone]}`}
+                        >
+                          {pipelineStageInfo(l.status).label}
+                        </span>
+                      </td>
+                      <td className="p-2">{setterName}</td>
+                      <td className="p-2">
+                        <div className="font-medium">{availability?.headline ?? "—"}</div>
+                        {availability?.detail && (
+                          <div className="text-3xs text-muted-foreground">
+                            {availability.detail}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="p-6 text-center text-muted-foreground">
+                      No leads available to call in the current range/filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </GlassTableShell>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 function Leads() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
@@ -309,31 +475,71 @@ function Leads() {
   // Range filter is deliberately local (not the shared global DateRangeProvider,
   // which defaults to "Last 30d") — this page is a historical lead-record view,
   // so it must show full history by default, not silently hide older leads.
-  const [entryFrom, setEntryFrom] = useState("");
-  const [entryTo, setEntryTo] = useState("");
+  // Same shared Today/Yesterday/7d/30d/MTD/Custom control every other page
+  // uses (date-range-picker.tsx), just defaulting to "All time" instead of
+  // "Last 30d" to preserve that full-history default.
+  const [entryRange, setEntryRange] = useState<DateRange>(() => RANGES.all());
   const [setterFilter, setSetterFilter] = useState("all");
   const [closerFilter, setCloserFilter] = useState("all");
   const [platformFilter, setPlatformFilter] = useState("all");
   const [offerFilter, setOfferFilter] = useState("all");
+  const [detailKind, setDetailKind] = useState<
+    "total" | "booked" | "closed" | "available" | "stage" | null
+  >(null);
+  const [detailStageFilter, setDetailStageFilter] = useState<string | null>(null);
 
   const { data: leads, isLoading: leadsLoading } = useQuery({
     queryKey: ["leads", orgId, devBypass],
     enabled: !!orgId,
-    queryFn: async () => {
-      if (devBypass) return mockLeads() as unknown as LeadRow[];
+    queryFn: async (): Promise<LeadRow[]> => {
+      if (devBypass) {
+        // Deterministic, varied mock call history so the new pipeline-stage/
+        // available-to-call UI has something real-shaped to render in the
+        // sandbox — mockLeads() itself stays a lean lead-only fixture.
+        return (
+          mockLeads() as unknown as Omit<LeadRow, "callCount" | "lastCallAt" | "closerName">[]
+        ).map((l, i) => {
+          const callCount = i % 4 === 0 ? 0 : i % 3;
+          return {
+            ...l,
+            closer_id: null,
+            callCount,
+            lastCallAt:
+              callCount > 0 ? new Date(Date.now() - (i % 6) * 3600e3).toISOString() : null,
+            closerName: callCount > 1 ? ["Jordan Blake", "Sam Rivera"][i % 2] : null,
+          };
+        });
+      }
       const { data, error } = await supabase
         .from("leads")
         .select(
-          "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, source_platform, source_format, source_campaign, first_touch_at, first_touch_content_id, assigned_setter_id, qualification_notes, application_data, notes, created_at, tags, ticket_tier, calls(closer_id)",
+          "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, source_platform, source_format, source_campaign, first_touch_at, first_touch_content_id, assigned_setter_id, qualification_notes, application_data, notes, created_at, tags, ticket_tier, calls(closer_id, closer_name, scheduled_for)",
         )
         .eq("org_id", orgId!)
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
-      type LeadWithCalls = LeadRow & { calls?: Array<{ closer_id: string | null }> };
+      type LeadWithCalls = LeadRow & {
+        calls?: Array<{
+          closer_id: string | null;
+          closer_name: string | null;
+          scheduled_for: string | null;
+        }>;
+      };
       return (data ?? []).map((row) => {
         const lead = row as unknown as LeadWithCalls;
-        return { ...lead, closer_id: lead.calls?.[0]?.closer_id ?? null };
+        const calls = lead.calls ?? [];
+        const sortedByDate = [...calls]
+          .filter((c) => !!c.scheduled_for)
+          .sort((a, b) => (b.scheduled_for! < a.scheduled_for! ? -1 : 1));
+        const latest = sortedByDate[0];
+        return {
+          ...lead,
+          closer_id: latest?.closer_id ?? calls[0]?.closer_id ?? null,
+          closerName: latest?.closer_name ?? calls.find((c) => c.closer_name)?.closer_name ?? null,
+          callCount: calls.length,
+          lastCallAt: latest?.scheduled_for ?? null,
+        };
       });
     },
   });
@@ -358,6 +564,60 @@ function Leads() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Real per-lead callback-due data — the same operational_work_items /
+  // "dialer_callback" entity the Inbound Dialer's own callback queue writes
+  // to (activity-module.tsx), keyed by entity_id = lead.id. Used for the
+  // "Follow-up — callback due today" wording; never fabricated when absent.
+  const { data: callbacksByLead = {} } = useQuery({
+    queryKey: ["leads-callbacks", orgId, devBypass],
+    enabled: !!orgId && !devBypass,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("operational_work_items" as never)
+        .select("entity_id, due_at, state")
+        .eq("org_id", orgId!)
+        .eq("entity_type", "dialer_callback");
+      if (error) throw error;
+      const map: Record<string, { due_at: string | null; state: string }> = {};
+      for (const row of (data ?? []) as {
+        entity_id: string;
+        due_at: string | null;
+        state: string;
+      }[]) {
+        if (row.entity_id) map[row.entity_id] = { due_at: row.due_at, state: row.state };
+      }
+      return map;
+    },
+  });
+
+  // Resolves leads.assigned_setter_id (a real auth.users uuid) to a display
+  // name where the user actually has a profile — "Unknown" otherwise. This
+  // is a genuinely different identity space from the free-text roster names
+  // (team_members.name) used by setter_activity/EOD forms; there is no
+  // reliable bridge between the two, so this is the best real join
+  // available for a per-lead "assigned setter" rather than a guess.
+  const setterIds = useMemo(
+    () =>
+      Array.from(
+        new Set((leads ?? []).map((l) => l.assigned_setter_id).filter((v): v is string => !!v)),
+      ),
+    [leads],
+  );
+  const { data: setterProfiles = {} } = useQuery({
+    queryKey: ["leads-setter-profiles", orgId, setterIds.join(","), devBypass],
+    enabled: !!orgId && !devBypass && setterIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, display_name")
+        .in("id", setterIds);
+      if (error) throw error;
+      const map: Record<string, string> = {};
+      for (const row of data ?? []) if (row.display_name) map[row.id] = row.display_name;
+      return map;
+    },
+  });
+
   const generateLinkFn = useServerFn(generatePreCallVideoLinkFn);
   const copyPreCallLink = useMutation({
     mutationFn: async (leadId: string) => {
@@ -375,48 +635,75 @@ function Leads() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Extracted so the same "every filter except the date range" predicate can
+  // be reused against the prior comparable period for the donut's cap/working
+  // derivations (an apples-to-apples comparison, not just a raw prior count).
+  const matchesNonDateFilters = (l: LeadRow, q: string) => {
+    if (bucket !== "all" && !BUCKET_STATUSES[bucket].includes(l.status)) return false;
+    if (statusFilter !== "all" && l.status !== statusFilter) return false;
+    const offer = typeof l.application_data?.offer === "string" ? l.application_data.offer : null;
+    if (setterFilter !== "all" && (l.assigned_setter_id ?? "unassigned") !== setterFilter)
+      return false;
+    if (closerFilter !== "all" && (l.closer_id ?? "unassigned") !== closerFilter) return false;
+    if (platformFilter !== "all" && (l.source_platform ?? "unavailable") !== platformFilter)
+      return false;
+    if (offerFilter !== "all" && (offer ?? "unavailable") !== offerFilter) return false;
+    if (!q) return true;
+    const hay = [
+      l.full_name,
+      l.email,
+      l.handle,
+      l.phone,
+      l.notes,
+      JSON.stringify(l.application_data ?? {}),
+    ]
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(q);
+  };
+
   const view = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (leads ?? []).filter((l) => {
-      if (bucket !== "all" && !BUCKET_STATUSES[bucket].includes(l.status)) return false;
-      if (statusFilter !== "all" && l.status !== statusFilter) return false;
       const entryAt = l.first_touch_at ?? l.created_at;
-      const offer = typeof l.application_data?.offer === "string" ? l.application_data.offer : null;
       if (selectedOptInDate && entryAt.slice(0, 10) !== selectedOptInDate) return false;
-      if (entryFrom && entryAt.slice(0, 10) < entryFrom) return false;
-      if (entryTo && entryAt.slice(0, 10) > entryTo) return false;
-      if (setterFilter !== "all" && (l.assigned_setter_id ?? "unassigned") !== setterFilter)
-        return false;
-      if (closerFilter !== "all" && (l.closer_id ?? "unassigned") !== closerFilter) return false;
-      if (platformFilter !== "all" && (l.source_platform ?? "unavailable") !== platformFilter)
-        return false;
-      if (offerFilter !== "all" && (offer ?? "unavailable") !== offerFilter) return false;
-      if (!q) return true;
-      const hay = [
-        l.full_name,
-        l.email,
-        l.handle,
-        l.phone,
-        l.notes,
-        JSON.stringify(l.application_data ?? {}),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
+      if (entryAt.slice(0, 10) < entryRange.from) return false;
+      if (entryAt.slice(0, 10) > entryRange.to) return false;
+      return matchesNonDateFilters(l, q);
     });
+    // matchesNonDateFilters closes over the filter state values already listed below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     leads,
     query,
     statusFilter,
     bucket,
     selectedOptInDate,
-    entryFrom,
-    entryTo,
+    entryRange,
     setterFilter,
     closerFilter,
     platformFilter,
     offerFilter,
   ]);
+
+  const nowISO = useMemo(() => new Date().toISOString(), []);
+  const availabilityByLeadId = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof deriveLeadAvailability>>();
+    for (const l of leads ?? []) {
+      const cb = callbacksByLead[l.id];
+      map.set(
+        l.id,
+        deriveLeadAvailability({
+          status: l.status,
+          callCount: l.callCount,
+          lastCallAt: l.lastCallAt,
+          callbackDueAt: cb?.state === "completed" ? null : (cb?.due_at ?? null),
+          nowISO,
+        }),
+      );
+    }
+    return map;
+  }, [leads, callbacksByLead, nowISO]);
 
   const filterOptions = useMemo(() => {
     const values = (pick: (lead: LeadRow) => string | null) =>
@@ -439,32 +726,123 @@ function Leads() {
 
   const { page, setPage, pageCount, paged, total, pageSize } = usePagination(view, 25);
 
+  // All date-range-sensitive: derived from `view` (respects entry range +
+  // every active filter), not the raw unfiltered `leads` array the old stats
+  // used — Priority 5's "the KPI cards must respect the selected range."
   const stats = useMemo(() => {
-    const all = leads ?? [];
     return {
-      total: all.length,
-      booked: all.filter((l) => l.status === "call_booked" || l.status === "rescheduling").length,
-      closed: all.filter((l) => l.status === "closed" || l.status === "lt_closed").length,
-      diamond: all.filter((l) => l.priority === "diamond" || l.pipeline_stage === "diamond").length,
+      total: view.length,
+      booked: view.filter((l) => l.status === "call_booked").length,
+      closed: view.filter((l) => l.status === "closed").length,
+      diamond: view.filter((l) => l.priority === "diamond" || l.pipeline_stage === "diamond")
+        .length,
+      available: view.filter((l) => availabilityByLeadId.get(l.id)?.bucket !== "unavailable")
+        .length,
     };
-  }, [leads]);
+  }, [view, availabilityByLeadId]);
 
-  // Pipeline funnel (Part B1 hero) — net-new: no aggregate stage chart existed
-  // before, only a per-row pipeline_stage dropdown. Approximated from current
-  // `status` snapshot (this table has no "milestone reached" history), cold →
-  // mid → hot in strict spectrum order: total leads → ever reached a call →
-  // closed.
-  const funnelStats = useMemo(() => {
-    const all = leads ?? [];
-    const total = all.length;
-    const reachedCall = all.filter((l) => REACHED_CALL_STATUSES.includes(l.status)).length;
-    const closed = all.filter((l) => l.status === "closed" || l.status === "lt_closed").length;
+  // Pipeline-stage composition (Priority 8's replacement chart) — a real
+  // share-of-leads-by-stage breakdown from the true lead_status enum, date-
+  // range aware via `view`. Donut, not a line chart: this is a composition/
+  // share metric at a point in time, not a time series.
+  const stageComposition = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const l of view) {
+      const label = pipelineStageInfo(l.status).label;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [view]);
+
+  // Real cumulative funnel (Total → Reached a Call → Closed) purely to feed
+  // deriveCap/deriveWorking's cap/working text on the KPI drilldowns below —
+  // not rendered as its own chart (Priority 8 asks for one chart total).
+  const cumulativeFunnelStages: FunnelStage[] = useMemo(
+    () => [
+      { key: "total", label: "Total Leads", value: view.length, spectrum: "cold" },
+      {
+        key: "reached_call",
+        label: "Reached a Call",
+        value: view.filter((l) => REACHED_CALL_REAL_STATUSES.includes(l.status)).length,
+        spectrum: "mid",
+      },
+      {
+        key: "closed",
+        label: "Closed",
+        value: view.filter((l) => l.status === "closed").length,
+        spectrum: "hot",
+      },
+    ],
+    [view],
+  );
+  const priorRange = useMemo(() => priorPeriod(entryRange.from, entryRange.to), [entryRange]);
+  const priorFunnelStages: FunnelStage[] = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const priorView = (leads ?? []).filter((l) => {
+      const entryAt = (l.first_touch_at ?? l.created_at).slice(0, 10);
+      if (entryAt < priorRange.from || entryAt > priorRange.to) return false;
+      return matchesNonDateFilters(l, q);
+    });
     return [
-      { stage: "Total Leads", value: total, spectrum: SPECTRUM_SEQUENCE[0] },
-      { stage: "Reached a Call", value: reachedCall, spectrum: SPECTRUM_SEQUENCE[1] },
-      { stage: "Closed", value: closed, spectrum: SPECTRUM_SEQUENCE[2] },
-    ] as const;
-  }, [leads]);
+      { key: "total", label: "Total Leads", value: priorView.length, spectrum: "cold" },
+      {
+        key: "reached_call",
+        label: "Reached a Call",
+        value: priorView.filter((l) => REACHED_CALL_REAL_STATUSES.includes(l.status)).length,
+        spectrum: "mid",
+      },
+      {
+        key: "closed",
+        label: "Closed",
+        value: priorView.filter((l) => l.status === "closed").length,
+        spectrum: "hot",
+      },
+    ];
+    // matchesNonDateFilters closes over the filter state values already listed below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    leads,
+    priorRange,
+    query,
+    bucket,
+    statusFilter,
+    setterFilter,
+    closerFilter,
+    platformFilter,
+    offerFilter,
+  ]);
+
+  const settingsFn = useServerFn(getWorkspaceSettingsFn);
+  const { data: workspaceSettings } = useQuery({
+    queryKey: ["workspace-settings", orgId, devBypass],
+    enabled: devBypass || !!orgId,
+    queryFn: () =>
+      devBypass
+        ? Promise.resolve(DEFAULT_WORKSPACE_SETTINGS)
+        : settingsFn({ data: { orgId: orgId! } }),
+  });
+  const minCapSample =
+    workspaceSettings?.funnel_instrument.minCapSample ??
+    DEFAULT_WORKSPACE_SETTINGS.funnel_instrument.minCapSample;
+
+  const workingDerivation: Derivation = useMemo(
+    () => deriveWorking(cumulativeFunnelStages, priorFunnelStages, minCapSample),
+    [cumulativeFunnelStages, priorFunnelStages, minCapSample],
+  );
+  const noUpstreamDerivation: Derivation = {
+    status: "insufficient_data",
+    sentence: "Nothing sits upstream of this count — there's no constraint to identify.",
+  };
+  const bookedCapDerivation: Derivation = useMemo(
+    () => deriveCap(cumulativeFunnelStages, 1, minCapSample),
+    [cumulativeFunnelStages, minCapSample],
+  );
+  const closedCapDerivation: Derivation = useMemo(
+    () => deriveCap(cumulativeFunnelStages, 2, minCapSample),
+    [cumulativeFunnelStages, minCapSample],
+  );
 
   return (
     <>
@@ -487,57 +865,71 @@ function Leads() {
           ]}
         />
 
-        {/* Pipeline funnel — the page's one hero moment (B1), net-new (Part F: nothing
-            relocated, PageHero above stays exactly as it was). Bars fill in stage-by-stage
-            in strict spectrum order (cold→mid→hot) on mount — the funnel-fill signature
-            moment (B5). */}
-        {/* cols={2} — this grid's only cell is the funnel hero, so it should fully cover
-            the grid rather than leaving 2 of 4 tracks empty; rowHeight trimmed to match
-            what 3 funnel bars actually need instead of the taller default. */}
-        <BentoGrid cols={2} rowHeight="8rem">
-          <BentoCell span="hero">
-            <LeadsFunnelHero funnel={funnelStats} />
-          </BentoCell>
-        </BentoGrid>
+        {/* Pipeline-stage composition — replaces the old 3-bar funnel (Priority 3/8):
+            a real share-of-leads-by-real-status donut, date-range aware via `view`,
+            click-through into the underlying leads for that stage. */}
+        <LeadsPipelineDonut
+          data={stageComposition}
+          onSelectStage={(label) => {
+            setDetailKind(null);
+            setDetailStageFilter(label);
+          }}
+        />
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger-fade">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 stagger-fade">
           {/* Volume/conversion metrics take their funnel position (B4) — never a semantic
-              tone. The delta badge's up/down green/red is untouched by this (trend
-              direction is a different signal than funnel temperature — MetricCard keeps
-              those separate by design). */}
+              tone. Deltas are real period-over-period counts (cumulativeFunnelStages vs
+              priorFunnelStages) — previously hardcoded placeholder numbers/sparks; a
+              real spark series would need daily-bucketed history this page doesn't
+              fetch, so it's omitted rather than fabricated (KpiTile's own convention). */}
           <MetricCard
             label="Total leads"
             value={stats.total}
             icon={<Users className="h-3 w-3" />}
             spectrum="cold"
-            deltaPct={9}
-            spark={[12, 15, 14, 18, 20, 19, 24]}
+            deltaPct={pctDelta(stats.total, priorFunnelStages[0].value)}
+            onClick={() => {
+              setDetailStageFilter(null);
+              setDetailKind("total");
+            }}
+          />
+          <MetricCard
+            label="Available to call"
+            value={stats.available}
+            icon={<PhoneCall className="h-3 w-3" />}
+            spectrum="mid"
+            onClick={() => {
+              setDetailStageFilter(null);
+              setDetailKind("available");
+            }}
           />
           <MetricCard
             label="Call booked"
             value={stats.booked}
-            icon={<PhoneCall className="h-3 w-3" />}
+            icon={<CalendarDays className="h-3 w-3" />}
             spectrum="mid"
-            deltaPct={4}
-            spark={[2, 3, 2, 4, 3, 4, 5]}
-            sparkVariant="bar"
+            deltaPct={pctDelta(stats.booked, priorFunnelStages[1].value)}
+            onClick={() => {
+              setDetailStageFilter(null);
+              setDetailKind("booked");
+            }}
           />
           <MetricCard
             label="Closed"
             value={stats.closed}
             icon={<Sparkles className="h-3 w-3" />}
             spectrum="hot"
-            deltaPct={17}
-            spark={[1, 1, 2, 1, 2, 3, 3]}
-            sparkVariant="bar"
+            deltaPct={pctDelta(stats.closed, priorFunnelStages[2].value)}
+            onClick={() => {
+              setDetailStageFilter(null);
+              setDetailKind("closed");
+            }}
           />
           <MetricCard
             label="💎 Diamond leads"
             value={stats.diamond}
             icon={<Gem className="h-3 w-3" />}
             spectrum="hot"
-            deltaPct={-2}
-            spark={[3, 4, 3, 4, 4, 3, 4]}
           />
         </div>
 
@@ -592,39 +984,7 @@ function Leads() {
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-1 rounded-md border border-input bg-background px-2">
-                <span className="text-3xs uppercase tracking-wider text-muted-foreground">
-                  Entry range
-                </span>
-                <input
-                  type="date"
-                  value={entryFrom}
-                  onChange={(e) => setEntryFrom(e.target.value)}
-                  aria-label="Entry date range — from"
-                  className="h-8 bg-transparent text-2xs outline-none"
-                />
-                <span className="text-3xs text-muted-foreground">→</span>
-                <input
-                  type="date"
-                  value={entryTo}
-                  onChange={(e) => setEntryTo(e.target.value)}
-                  aria-label="Entry date range — to"
-                  className="h-8 bg-transparent text-2xs outline-none"
-                />
-                {(entryFrom || entryTo) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEntryFrom("");
-                      setEntryTo("");
-                    }}
-                    className="text-2xs text-muted-foreground hover:text-foreground"
-                    aria-label="Clear entry date range"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
+              <DateRangePicker value={entryRange} onChange={setEntryRange} />
               {[
                 ["Setter", setterFilter, setSetterFilter, filterOptions.setters],
                 ["Closer", closerFilter, setCloserFilter, filterOptions.closers],
@@ -792,12 +1152,22 @@ function Leads() {
                       </select>
                     </td>
                     <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
+                      {/* Real pipeline stage (from the actual lead_status enum) — the
+                          editable dropdown below it writes a different, legacy vocabulary
+                          that only partially overlaps the real column (see
+                          lead-pipeline.ts's header comment); this chip is what's actually
+                          true right now. */}
+                      <span
+                        className={`mb-1 inline-flex rounded px-1.5 py-0.5 text-3xs font-medium ${CHIP_TONE_CLASSES[pipelineStageInfo(l.status).tone]}`}
+                      >
+                        {pipelineStageInfo(l.status).label}
+                      </span>
                       <select
                         value={l.status}
                         onChange={(e) =>
                           updateLead.mutate({ id: l.id, patch: { status: e.target.value } })
                         }
-                        className={`h-7 rounded px-2 text-2xs font-medium border-0 cursor-pointer ${t.chip}`}
+                        className={`block h-7 rounded px-2 text-2xs font-medium border-0 cursor-pointer ${t.chip}`}
                       >
                         {STATUS_OPTIONS.map((s) => (
                           <option key={s.v} value={s.v}>
@@ -889,73 +1259,177 @@ function Leads() {
             if (!o) setSelected(null);
           }}
         >
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {selected?.full_name || selected?.handle || selected?.email || "Lead"}
               </DialogTitle>
             </DialogHeader>
-            {selected && <LeadDetail lead={selected} />}
+            {selected && (
+              <LeadDetail
+                lead={selected}
+                setterName={
+                  selected.assigned_setter_id
+                    ? (setterProfiles[selected.assigned_setter_id] ?? "Unknown")
+                    : null
+                }
+                availability={availabilityByLeadId.get(selected.id) ?? null}
+              />
+            )}
           </DialogContent>
         </Dialog>
+
+        {(() => {
+          const kind = detailStageFilter ? "stage" : detailKind;
+          if (!kind) return null;
+          const rows =
+            kind === "total"
+              ? view
+              : kind === "booked"
+                ? view.filter((l) => l.status === "call_booked")
+                : kind === "closed"
+                  ? view.filter((l) => l.status === "closed")
+                  : kind === "available"
+                    ? view.filter((l) => availabilityByLeadId.get(l.id)?.bucket !== "unavailable")
+                    : view.filter((l) => pipelineStageInfo(l.status).label === detailStageFilter);
+          const title =
+            kind === "total"
+              ? "Total leads"
+              : kind === "booked"
+                ? "Call booked"
+                : kind === "closed"
+                  ? "Closed"
+                  : kind === "available"
+                    ? "Available to call"
+                    : `Stage: ${detailStageFilter}`;
+          const cap =
+            kind === "booked"
+              ? bookedCapDerivation
+              : kind === "closed"
+                ? closedCapDerivation
+                : noUpstreamDerivation;
+          const working =
+            kind === "total" || kind === "booked" || kind === "closed"
+              ? workingDerivation
+              : noUpstreamDerivation;
+          const close = () => {
+            setDetailKind(null);
+            setDetailStageFilter(null);
+          };
+          if (kind === "available") {
+            return (
+              <AvailableToCallDrawer
+                open
+                onOpenChange={(o) => !o && close()}
+                rows={rows}
+                availabilityByLeadId={availabilityByLeadId}
+                setterProfiles={setterProfiles}
+                onSelectLead={(l) => {
+                  close();
+                  setSelected(l);
+                }}
+              />
+            );
+          }
+          return (
+            <MetricDetailPanel
+              open
+              onOpenChange={(o) => !o && close()}
+              title={title}
+              subtitle={`${entryRange.label} · ${entryRange.from} → ${entryRange.to}`}
+              columns={LEAD_DETAIL_COLUMNS}
+              rows={rows}
+              rowKey={(l) => l.id}
+              cap={cap}
+              working={working}
+              emptyRowsLabel="No leads match this in the current range/filters."
+            />
+          );
+        })()}
       </div>
     </>
   );
 }
 
-function LeadsFunnelHero({
-  funnel,
+const DONUT_COLORS = [
+  "var(--spectrum-hot)",
+  "var(--spectrum-mid)",
+  "var(--spectrum-cold)",
+  "var(--accent)",
+  "var(--primary)",
+  "var(--color-warning)",
+  "var(--color-success)",
+];
+
+/**
+ * Replaces the old 3-bar "Pipeline Funnel" (Priority 8) — leads by real
+ * pipeline stage is a composition/share metric, not a time series, so a
+ * donut communicates it more directly. Same recharts PieChart/Cell pattern
+ * traffic.tsx's "Share of leads by channel" already established — no new
+ * chart dependency, same neutral-card/thin-treatment visual language.
+ */
+function LeadsPipelineDonut({
+  data,
+  onSelectStage,
 }: {
-  funnel: readonly { stage: string; value: number; spectrum: "cold" | "mid" | "hot" }[];
+  data: { label: string; value: number }[];
+  onSelectStage: (label: string) => void;
 }) {
-  const max = funnel[0]?.value || 1;
+  const total = data.reduce((s, d) => s + d.value, 0);
   return (
-    <div className="hover-lift relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-5">
-      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
-      <div className="relative">
-        <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Pipeline Funnel
-        </div>
-        <div className="display-serif mt-0.5 text-2xl">Where leads convert</div>
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className="border-b border-border bg-muted/30 px-4 py-2.5 text-2xs font-semibold uppercase tracking-wider">
+        Leads by Pipeline Stage
       </div>
-      <div className="relative flex flex-1 flex-col justify-center gap-3 py-3">
-        {funnel.map((f, i) => {
-          const width = Math.max(6, Math.round((f.value / max) * 100));
-          const prev = funnel[i - 1];
-          const conv =
-            prev && prev.value > 0 ? `${((f.value / prev.value) * 100).toFixed(0)}%` : null;
-          return (
-            <div key={f.stage} className="space-y-1">
-              <div className="flex items-center justify-between text-2xs">
-                <span className="font-medium">{f.stage}</span>
-                <span className="font-mono text-muted-foreground">
-                  {f.value.toLocaleString()}
-                  {conv && (
-                    <span className={cn("ml-1.5", SPECTRUM_TEXT_CLASS[f.spectrum])}>· {conv}</span>
-                  )}
-                </span>
-              </div>
-              {/* `width` is a plain inline style — correct on first paint with zero JS/
-                  animation dependency. `bar-draw-in` (styles.css) only ever animates
-                  `transform`, layered on top as decoration; if it never fires (reduced
-                  motion, or anything else going wrong) the bar is still at its real
-                  width, never zero. See styles.css's .bar-draw-in comment. */}
-              <div className="h-7 rounded-md bg-muted/30 overflow-hidden">
-                <div
-                  className="bar-draw-in h-full rounded-md"
-                  style={{
-                    width: `${width}%`,
-                    background: SPECTRUM_VAR[f.spectrum],
-                    animationDelay: `${i * 0.15}s`,
-                  }}
-                />
-              </div>
+      <div className="p-4">
+        {total > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,220px)_1fr]">
+            <div className="h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={data}
+                    dataKey="value"
+                    nameKey="label"
+                    innerRadius="55%"
+                    outerRadius="90%"
+                    paddingAngle={2}
+                    onClick={(entry: { label?: string }) =>
+                      entry?.label && onSelectStage(entry.label)
+                    }
+                    className="cursor-pointer"
+                  >
+                    {data.map((d, i) => (
+                      <RechartsCell key={d.label} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip formatter={(v: number) => `${v} leads`} />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-          );
-        })}
-        {funnel.every((f) => f.value === 0) && (
-          <div className="py-4 text-center text-xs text-muted-foreground">
-            No leads yet — the funnel fills in as leads come through.
+            <div className="flex flex-col justify-center gap-1.5">
+              {data.map((d, i) => (
+                <button
+                  key={d.label}
+                  type="button"
+                  onClick={() => onSelectStage(d.label)}
+                  className="-mx-1 flex items-center gap-2 rounded px-1 py-0.5 text-left text-xs hover:bg-muted/30"
+                >
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }}
+                  />
+                  <span className="flex-1 truncate font-medium">{d.label}</span>
+                  <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+                    {d.value} · {total ? ((d.value / total) * 100).toFixed(0) : 0}%
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="py-8 text-center text-xs text-muted-foreground">
+            No leads in range yet — the chart fills in as leads come through.
           </div>
         )}
       </div>
@@ -963,7 +1437,15 @@ function LeadsFunnelHero({
   );
 }
 
-function LeadDetail({ lead }: { lead: LeadRow }) {
+function LeadDetail({
+  lead,
+  setterName,
+  availability,
+}: {
+  lead: LeadRow;
+  setterName: string | null;
+  availability: ReturnType<typeof deriveLeadAvailability> | null;
+}) {
   const { data: org } = useCurrentOrg();
   const { user, devBypass } = useAuth();
   const orgId = org?.org_id;
@@ -1140,275 +1622,343 @@ function LeadDetail({ lead }: { lead: LeadRow }) {
 
   const totalCash = (timeline?.calls ?? []).reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
   const app = lead.application_data ?? {};
+  const stage = pipelineStageInfo(lead.status);
+  const entryAt = lead.first_touch_at ?? lead.created_at;
+  const platform = normalizeSocialPlatform(lead.source_connector, lead.source_platform);
 
   return (
-    <Tabs defaultValue="application" className="space-y-3">
-      <TabsList>
-        <TabsTrigger value="application">Application</TabsTrigger>
-        <TabsTrigger value="notes">Notes / Activity</TabsTrigger>
-        <TabsTrigger value="timeline">Timeline</TabsTrigger>
-        <TabsTrigger value="transcripts">Transcripts</TabsTrigger>
-      </TabsList>
-
-      <TabsContent value="application" className="space-y-3">
-        <div className="grid grid-cols-2 gap-3 rounded-md bg-muted/30 p-3 text-xs">
-          <div>
-            <span className="text-muted-foreground">Email:</span> {lead.email ?? "—"}
-          </div>
-          <div>
-            <span className="text-muted-foreground">Phone:</span> {lead.phone ?? "—"}
-          </div>
-          <div>
-            <span className="text-muted-foreground">Handle:</span> {lead.handle ?? "—"}
-          </div>
-          <div>
-            <span className="text-muted-foreground">Source:</span> {lead.source_connector ?? "—"}
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground">Ticket tier:</span>
-            <select
-              value={lead.ticket_tier ?? ""}
-              onChange={(e) => updateTicketTier.mutate(e.target.value)}
-              className="h-6 rounded border border-border bg-background px-1 text-2xs"
-            >
-              <option value="">Unclassified</option>
-              {ticketTiers.map((t) => (
-                <option key={t.key} value={t.key}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <div className="text-3xs uppercase tracking-wider text-muted-foreground">Tags</div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {tags.map((t) => (
-              <span
-                key={t}
-                className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
-              >
-                {t}
-                <button
-                  type="button"
-                  onClick={() => removeTag(t)}
-                  className="hover:text-destructive"
-                  title="Remove tag"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            <input
-              value={tagDraft}
-              onChange={(e) => setTagDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addTag();
-                }
-              }}
-              placeholder="Add tag…"
-              className="h-6 w-24 rounded border border-input bg-background px-1.5 text-2xs"
-            />
-          </div>
-        </div>
-        <div className="rounded border border-border divide-y divide-border text-xs">
-          {APP_COLS.map((c) => (
-            <div key={c.key} className="p-2.5 grid grid-cols-3 gap-2">
-              <div className="text-muted-foreground uppercase text-3xs tracking-wider">
-                {c.label}
-              </div>
-              <div className="col-span-2">
-                {app[c.key] || <span className="text-muted-foreground/50">—</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      </TabsContent>
-
-      <TabsContent value="notes" className="space-y-3">
-        <div className="space-y-2">
-          <Textarea
-            placeholder="Log what happened on the call, follow-up context, anything the next person needs to know…"
-            value={noteDraft}
-            onChange={(e) => setNoteDraft(e.target.value)}
-            className="min-h-[80px]"
-          />
-          <Button
-            size="sm"
-            onClick={() => noteDraft.trim() && addNote.mutate(noteDraft.trim())}
-            disabled={!noteDraft.trim() || addNote.isPending}
-          >
-            <StickyNote className="h-3.5 w-3.5 mr-1.5" /> Add note
-          </Button>
-        </div>
-        <div className="space-y-2">
-          {(notes ?? []).map((n: any) => (
-            <div key={n.id} className="rounded border border-border bg-card p-3 text-xs">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-3xs uppercase tracking-wider text-muted-foreground">
-                  {n.kind ?? "note"}
-                </span>
-                <span className="text-3xs text-muted-foreground">
-                  {new Date(n.created_at).toLocaleString()}
-                </span>
-              </div>
-              <div className="whitespace-pre-wrap">{n.body}</div>
-            </div>
-          ))}
-          {(!notes || notes.length === 0) && (
-            <div className="text-xs text-muted-foreground italic">
-              No notes yet — be the first to log context.
-            </div>
-          )}
-        </div>
-      </TabsContent>
-
-      <TabsContent value="timeline" className="space-y-3">
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="rounded border border-border p-2 text-center">
-            <Film className="h-3 w-3 mx-auto text-accent mb-1" />
-            <div className="font-mono font-bold">{timeline?.touches.length ?? 0}</div>
-            <div className="text-3xs text-muted-foreground">Content touches</div>
-          </div>
-          <div className="rounded border border-border p-2 text-center">
-            <MessageSquare className="h-3 w-3 mx-auto text-primary mb-1" />
-            <div className="font-mono font-bold">{timeline?.convs.length ?? 0}</div>
-            <div className="text-3xs text-muted-foreground">Conversations</div>
-          </div>
-          <div className="rounded border border-border p-2 text-center">
-            <PhoneCall className="h-3 w-3 mx-auto text-emerald-500 mb-1" />
-            <div className="font-mono font-bold">{timeline?.calls.length ?? 0}</div>
-            <div className="text-3xs text-muted-foreground">
-              calls · ${Math.round(totalCash / 100).toLocaleString()}
-            </div>
-          </div>
-        </div>
-
+    <div className="space-y-3">
+      {/* Decision-focused summary, visible regardless of which tab is active —
+          Priority 3, Section 7: pipeline stage, assigned setter, source,
+          call history, and availability reasoning at a glance. */}
+      <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-muted/20 p-3 text-xs sm:grid-cols-4">
         <div>
-          <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-            <Film className="h-3 w-3" /> Content path (first → last)
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground">Stage</div>
+          <span
+            className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-3xs font-medium ${CHIP_TONE_CLASSES[stage.tone]}`}
+          >
+            {stage.label}
+          </span>
+        </div>
+        <div>
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground">Source</div>
+          <span className="mt-0.5 inline-flex items-center gap-1.5">
+            <PlatformIcon platform={platform} className="h-3.5 w-3.5" />
+            {platform}
+          </span>
+        </div>
+        <div>
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+            Assigned setter
           </div>
-          <div className="space-y-1.5">
-            {(timeline?.touches ?? []).map((t: any) => {
-              const cp = Array.isArray(t.content_pieces) ? t.content_pieces[0] : t.content_pieces;
-              return (
-                <div key={t.id} className="flex items-center gap-2 text-xs">
-                  <div className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" />
-                  <div className="flex-1 truncate">
-                    {cp?.title || "(untitled)"}{" "}
-                    <span className="text-muted-foreground">· {cp?.platform}</span>
-                  </div>
-                  <div className="text-3xs text-muted-foreground">
-                    {t.touch_type} · {new Date(t.touched_at).toLocaleDateString()}
-                  </div>
-                </div>
-              );
-            })}
-            {(timeline?.touches ?? []).length === 0 && (
-              <div className="text-xs text-muted-foreground italic">
-                No content touches tracked.
-              </div>
+          <div className="mt-0.5">{setterName ?? "—"}</div>
+        </div>
+        <div>
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+            Assigned closer
+          </div>
+          <div className="mt-0.5">{lead.closerName ?? "—"}</div>
+        </div>
+        <div>
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground">Lead age</div>
+          <div className="mt-0.5">{formatLeadAge(entryAt, new Date().toISOString())}</div>
+        </div>
+        <div>
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+            Calls on record
+          </div>
+          <div className="mt-0.5">
+            {lead.callCount}
+            {lead.lastCallAt && (
+              <span className="ml-1 text-muted-foreground">
+                · last {relativeTimeAgo(lead.lastCallAt, new Date().toISOString())}
+              </span>
             )}
           </div>
         </div>
+        <div className="col-span-2 sm:col-span-2">
+          <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+            Availability
+          </div>
+          <div className="mt-0.5">
+            {availability?.headline ?? "—"}
+            {availability?.detail && (
+              <span className="ml-1 text-muted-foreground">· {availability.detail}</span>
+            )}
+          </div>
+        </div>
+      </div>
 
-        <div>
-          <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-            <PhoneCall className="h-3 w-3" /> Calls
+      <Tabs defaultValue="application" className="space-y-3">
+        <TabsList>
+          <TabsTrigger value="application">Application</TabsTrigger>
+          <TabsTrigger value="notes">Notes / Activity</TabsTrigger>
+          <TabsTrigger value="timeline">Timeline</TabsTrigger>
+          <TabsTrigger value="transcripts">Transcripts</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="application" className="space-y-3">
+          <div className="grid grid-cols-2 gap-3 rounded-md bg-muted/30 p-3 text-xs">
+            <div>
+              <span className="text-muted-foreground">Email:</span> {lead.email ?? "—"}
+            </div>
+            <div>
+              <span className="text-muted-foreground">Phone:</span> {lead.phone ?? "—"}
+            </div>
+            <div>
+              <span className="text-muted-foreground">Handle:</span> {lead.handle ?? "—"}
+            </div>
+            <div>
+              <span className="text-muted-foreground">Source:</span> {lead.source_connector ?? "—"}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">Ticket tier:</span>
+              <select
+                value={lead.ticket_tier ?? ""}
+                onChange={(e) => updateTicketTier.mutate(e.target.value)}
+                className="h-6 rounded border border-border bg-background px-1 text-2xs"
+              >
+                <option value="">Unclassified</option>
+                {ticketTiers.map((t) => (
+                  <option key={t.key} value={t.key}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="space-y-1.5">
-            {(timeline?.calls ?? []).map((c: any) => (
-              <div key={c.id} className="rounded border border-border p-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium uppercase text-3xs">{c.status}</span>
-                  <span className="font-mono text-emerald-500">
-                    ${Math.round((c.cash_collected_cents ?? 0) / 100).toLocaleString()}
+            <div className="text-3xs uppercase tracking-wider text-muted-foreground">Tags</div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {tags.map((t) => (
+                <span
+                  key={t}
+                  className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
+                >
+                  {t}
+                  <button
+                    type="button"
+                    onClick={() => removeTag(t)}
+                    className="hover:text-destructive"
+                    title="Remove tag"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addTag();
+                  }
+                }}
+                placeholder="Add tag…"
+                className="h-6 w-24 rounded border border-input bg-background px-1.5 text-2xs"
+              />
+            </div>
+          </div>
+          <div className="rounded border border-border divide-y divide-border text-xs">
+            {APP_COLS.map((c) => (
+              <div key={c.key} className="p-2.5 grid grid-cols-3 gap-2">
+                <div className="text-muted-foreground uppercase text-3xs tracking-wider">
+                  {c.label}
+                </div>
+                <div className="col-span-2">
+                  {app[c.key] || <span className="text-muted-foreground/50">—</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="notes" className="space-y-3">
+          <div className="space-y-2">
+            <Textarea
+              placeholder="Log what happened on the call, follow-up context, anything the next person needs to know…"
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              className="min-h-[80px]"
+            />
+            <Button
+              size="sm"
+              onClick={() => noteDraft.trim() && addNote.mutate(noteDraft.trim())}
+              disabled={!noteDraft.trim() || addNote.isPending}
+            >
+              <StickyNote className="h-3.5 w-3.5 mr-1.5" /> Add note
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {(notes ?? []).map((n: any) => (
+              <div key={n.id} className="rounded border border-border bg-card p-3 text-xs">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    {n.kind ?? "note"}
+                  </span>
+                  <span className="text-3xs text-muted-foreground">
+                    {new Date(n.created_at).toLocaleString()}
                   </span>
                 </div>
-                {c.call_summary && (
-                  <div className="mt-1 text-muted-foreground line-clamp-2">{c.call_summary}</div>
+                <div className="whitespace-pre-wrap">{n.body}</div>
+              </div>
+            ))}
+            {(!notes || notes.length === 0) && (
+              <div className="text-xs text-muted-foreground italic">
+                No notes yet — be the first to log context.
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="timeline" className="space-y-3">
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="rounded border border-border p-2 text-center">
+              <Film className="h-3 w-3 mx-auto text-accent mb-1" />
+              <div className="font-mono font-bold">{timeline?.touches.length ?? 0}</div>
+              <div className="text-3xs text-muted-foreground">Content touches</div>
+            </div>
+            <div className="rounded border border-border p-2 text-center">
+              <MessageSquare className="h-3 w-3 mx-auto text-primary mb-1" />
+              <div className="font-mono font-bold">{timeline?.convs.length ?? 0}</div>
+              <div className="text-3xs text-muted-foreground">Conversations</div>
+            </div>
+            <div className="rounded border border-border p-2 text-center">
+              <PhoneCall className="h-3 w-3 mx-auto text-emerald-500 mb-1" />
+              <div className="font-mono font-bold">{timeline?.calls.length ?? 0}</div>
+              <div className="text-3xs text-muted-foreground">
+                calls · ${Math.round(totalCash / 100).toLocaleString()}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+              <Film className="h-3 w-3" /> Content path (first → last)
+            </div>
+            <div className="space-y-1.5">
+              {(timeline?.touches ?? []).map((t: any) => {
+                const cp = Array.isArray(t.content_pieces) ? t.content_pieces[0] : t.content_pieces;
+                return (
+                  <div key={t.id} className="flex items-center gap-2 text-xs">
+                    <div className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" />
+                    <div className="flex-1 truncate">
+                      {cp?.title || "(untitled)"}{" "}
+                      <span className="text-muted-foreground">· {cp?.platform}</span>
+                    </div>
+                    <div className="text-3xs text-muted-foreground">
+                      {t.touch_type} · {new Date(t.touched_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                );
+              })}
+              {(timeline?.touches ?? []).length === 0 && (
+                <div className="text-xs text-muted-foreground italic">
+                  No content touches tracked.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-3xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+              <PhoneCall className="h-3 w-3" /> Calls
+            </div>
+            <div className="space-y-1.5">
+              {(timeline?.calls ?? []).map((c: any) => (
+                <div key={c.id} className="rounded border border-border p-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium uppercase text-3xs">{c.status}</span>
+                    <span className="font-mono text-emerald-500">
+                      ${Math.round((c.cash_collected_cents ?? 0) / 100).toLocaleString()}
+                    </span>
+                  </div>
+                  {c.call_summary && (
+                    <div className="mt-1 text-muted-foreground line-clamp-2">{c.call_summary}</div>
+                  )}
+                  <div className="text-3xs text-muted-foreground mt-1">
+                    {c.scheduled_for ? new Date(c.scheduled_for).toLocaleString() : "no date"}
+                  </div>
+                </div>
+              ))}
+              {(timeline?.calls ?? []).length === 0 && (
+                <div className="text-xs text-muted-foreground italic">No calls yet.</div>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="transcripts" className="space-y-3">
+          <div className="space-y-2 rounded border border-border p-3">
+            <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground">
+              <FileText className="h-3.5 w-3.5" /> Add transcript
+            </div>
+            <div className="flex gap-2">
+              <select
+                value={transcriptType}
+                onChange={(e) => setTranscriptType(e.target.value as "setting" | "closing")}
+                className="h-8 rounded border border-input bg-background px-2 text-xs"
+              >
+                <option value="setting">Setting call</option>
+                <option value="closing">Closing call</option>
+              </select>
+              <input
+                value={transcriptSource}
+                onChange={(e) => setTranscriptSource(e.target.value)}
+                placeholder="Source (Loom link, call recorder…)"
+                className="h-8 flex-1 rounded border border-input bg-background px-2 text-xs"
+              />
+            </div>
+            <Textarea
+              placeholder="Paste the call transcript…"
+              value={transcriptDraft}
+              onChange={(e) => setTranscriptDraft(e.target.value)}
+              className="min-h-[80px]"
+            />
+            <Button
+              size="sm"
+              onClick={() => transcriptDraft.trim() && addTranscript.mutate()}
+              disabled={!transcriptDraft.trim() || addTranscript.isPending}
+            >
+              <FileText className="h-3.5 w-3.5 mr-1.5" /> Add transcript
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {(transcripts ?? []).map((t) => (
+              <div key={t.id} className="rounded border border-border bg-card p-3 text-xs">
+                <div className="flex items-center justify-between mb-1">
+                  <span
+                    className={cn(
+                      "rounded px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wider",
+                      t.call_type === "closing"
+                        ? CHIP_TONE_CLASSES.success
+                        : CHIP_TONE_CLASSES.info,
+                    )}
+                  >
+                    {t.call_type === "closing" ? "Closing call" : "Setting call"}
+                  </span>
+                  <span className="text-3xs text-muted-foreground">
+                    {new Date(t.created_at).toLocaleString()}
+                  </span>
+                </div>
+                {t.source && (
+                  <div className="mb-1 text-3xs text-muted-foreground">Source: {t.source}</div>
                 )}
-                <div className="text-3xs text-muted-foreground mt-1">
-                  {c.scheduled_for ? new Date(c.scheduled_for).toLocaleString() : "no date"}
+                <div className="whitespace-pre-wrap text-muted-foreground line-clamp-6">
+                  {t.transcript}
                 </div>
               </div>
             ))}
-            {(timeline?.calls ?? []).length === 0 && (
-              <div className="text-xs text-muted-foreground italic">No calls yet.</div>
+            {(!transcripts || transcripts.length === 0) && (
+              <div className="text-xs text-muted-foreground italic">
+                No transcripts logged for this lead yet.
+              </div>
             )}
           </div>
-        </div>
-      </TabsContent>
-
-      <TabsContent value="transcripts" className="space-y-3">
-        <div className="space-y-2 rounded border border-border p-3">
-          <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground">
-            <FileText className="h-3.5 w-3.5" /> Add transcript
-          </div>
-          <div className="flex gap-2">
-            <select
-              value={transcriptType}
-              onChange={(e) => setTranscriptType(e.target.value as "setting" | "closing")}
-              className="h-8 rounded border border-input bg-background px-2 text-xs"
-            >
-              <option value="setting">Setting call</option>
-              <option value="closing">Closing call</option>
-            </select>
-            <input
-              value={transcriptSource}
-              onChange={(e) => setTranscriptSource(e.target.value)}
-              placeholder="Source (Loom link, call recorder…)"
-              className="h-8 flex-1 rounded border border-input bg-background px-2 text-xs"
-            />
-          </div>
-          <Textarea
-            placeholder="Paste the call transcript…"
-            value={transcriptDraft}
-            onChange={(e) => setTranscriptDraft(e.target.value)}
-            className="min-h-[80px]"
-          />
-          <Button
-            size="sm"
-            onClick={() => transcriptDraft.trim() && addTranscript.mutate()}
-            disabled={!transcriptDraft.trim() || addTranscript.isPending}
-          >
-            <FileText className="h-3.5 w-3.5 mr-1.5" /> Add transcript
-          </Button>
-        </div>
-        <div className="space-y-2">
-          {(transcripts ?? []).map((t) => (
-            <div key={t.id} className="rounded border border-border bg-card p-3 text-xs">
-              <div className="flex items-center justify-between mb-1">
-                <span
-                  className={cn(
-                    "rounded px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wider",
-                    t.call_type === "closing" ? CHIP_TONE_CLASSES.success : CHIP_TONE_CLASSES.info,
-                  )}
-                >
-                  {t.call_type === "closing" ? "Closing call" : "Setting call"}
-                </span>
-                <span className="text-3xs text-muted-foreground">
-                  {new Date(t.created_at).toLocaleString()}
-                </span>
-              </div>
-              {t.source && (
-                <div className="mb-1 text-3xs text-muted-foreground">Source: {t.source}</div>
-              )}
-              <div className="whitespace-pre-wrap text-muted-foreground line-clamp-6">
-                {t.transcript}
-              </div>
-            </div>
-          ))}
-          {(!transcripts || transcripts.length === 0) && (
-            <div className="text-xs text-muted-foreground italic">
-              No transcripts logged for this lead yet.
-            </div>
-          )}
-        </div>
-      </TabsContent>
-    </Tabs>
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
 

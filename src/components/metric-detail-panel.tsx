@@ -34,7 +34,7 @@ export function MetricDetailPanel<T>({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
         <SheetHeader>
           <SheetTitle className="pr-8 leading-snug">{title}</SheetTitle>
           {subtitle && <div className="text-xs text-muted-foreground">{subtitle}</div>}
