@@ -36,9 +36,14 @@ import { GlassTableShell, FilterPills } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
 import { KpiBand, type KpiBandItem } from "@/components/kpi-band";
 import { RepLeaderboard, type RepMetricOption } from "@/components/rep-leaderboard";
+import { KpiTargetAdmin } from "@/components/kpi-target-admin";
+import { KpiTargetTeamTable } from "@/components/kpi-target-team-table";
 import type { DateRange } from "@/components/date-range-picker";
 import { priorPeriod, pctDelta } from "@/lib/trend";
 import { cn } from "@/lib/utils";
+import { fetchRepKpiTargets } from "@/lib/rep-kpi-targets";
+import { currentTargetsAsOf, type TargetRecord } from "@/lib/kpi-targets";
+import type { CallActualRow, SetterActivityActualRow } from "@/lib/rep-kpi-actuals";
 
 export const Route = createFileRoute("/_authenticated/team")({ component: Team });
 
@@ -113,7 +118,7 @@ const TEAM_SETTER_METRICS: RepMetricOption<HubSetterPerson>[] = [
 
 function Team() {
   const { data: org } = useCurrentOrg();
-  const { isAdmin } = useRole();
+  const { isAdmin, canManage } = useRole();
   const { devBypass, user } = useAuth();
   const orgId = org?.org_id;
   const { range } = useDateRange();
@@ -269,6 +274,65 @@ function Team() {
         .order("name");
       if (error) throw error;
       return (data ?? []) as unknown as TeamMemberRow[];
+    },
+  });
+
+  // Rep KPI Target Engine (Priority 2) — "as of today" always, independent
+  // of this page's own `range` (which the Roster tab's stats table uses for
+  // an unrelated purpose). Fetches the widest window any target's own period
+  // could need (this month's start → today) once; each target row slices its
+  // own daily/weekly/monthly window out of these same raw rows.
+  const targetAnchor = new Date().toISOString().slice(0, 10);
+  const targetWindowStart = `${targetAnchor.slice(0, 7)}-01`;
+
+  const { data: repKpiTargetsRaw } = useQuery({
+    queryKey: ["rep-kpi-targets", orgId],
+    enabled: !!orgId && !devBypass,
+    queryFn: () => fetchRepKpiTargets(orgId!),
+  });
+  // Owned here (not inside KpiTargetAdmin) so the team-wide table below and
+  // the admin panel's own listing both reflect the same devBypass-only rows
+  // — otherwise saving a target in the admin panel would never show up in
+  // the comparison table above it.
+  const [devTargets, setDevTargets] = useState<TargetRecord[]>([]);
+  const currentTargets = useMemo(
+    () => currentTargetsAsOf(devBypass ? devTargets : (repKpiTargetsRaw ?? []), targetAnchor),
+    [devBypass, devTargets, repKpiTargetsRaw, targetAnchor],
+  );
+
+  const { data: targetSetterActivityRows = [] } = useQuery({
+    queryKey: ["target-setter-activity", orgId, targetWindowStart, targetAnchor],
+    enabled: !!orgId && !devBypass,
+    queryFn: async (): Promise<SetterActivityActualRow[]> => {
+      const { data, error } = await supabase
+        .from("setter_activity")
+        .select(
+          "team_member_name, activity_date, outbound_dms_sent, inbound_dms_sent, replies, qualified_convos, calls_on_calendar, live_calls, dials, connections, leads_contacted",
+        )
+        .eq("org_id", orgId!)
+        .gte("activity_date", targetWindowStart)
+        .lte("activity_date", targetAnchor)
+        .limit(2000);
+      if (error) throw error;
+      return (data ?? []) as unknown as SetterActivityActualRow[];
+    },
+  });
+
+  const { data: targetCallRows = [] } = useQuery({
+    queryKey: ["target-calls", orgId, targetWindowStart, targetAnchor],
+    enabled: !!orgId && !devBypass,
+    queryFn: async (): Promise<CallActualRow[]> => {
+      const { data, error } = await supabase
+        .from("calls")
+        .select(
+          "closer_name, scheduled_for, showed, offer_made, closed, cash_collected_cents, contract_value_cents, status",
+        )
+        .eq("org_id", orgId!)
+        .gte("scheduled_for", `${targetWindowStart}T00:00:00`)
+        .lte("scheduled_for", `${targetAnchor}T23:59:59`)
+        .limit(2000);
+      if (error) throw error;
+      return (data ?? []) as unknown as CallActualRow[];
     },
   });
 
@@ -568,6 +632,34 @@ function Team() {
                 overridden={!!lbOverride}
                 onResetRange={() => setLbOverride(null)}
               />
+            </div>
+
+            <div className="space-y-3">
+              <div className="text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+                Rep KPI targets
+              </div>
+              <KpiTargetTeamTable
+                targets={currentTargets}
+                setterActivityRows={targetSetterActivityRows}
+                callRows={targetCallRows}
+                anchorISODate={targetAnchor}
+              />
+              <div className="pt-1">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Configure targets
+                </div>
+                <KpiTargetAdmin
+                  orgId={orgId}
+                  roster={(teamMembersAll ?? []).map((m) => ({
+                    name: m.name,
+                    role: m.role,
+                    active: m.active,
+                  }))}
+                  canManage={canManage}
+                  devTargets={devTargets}
+                  setDevTargets={setDevTargets}
+                />
+              </div>
             </div>
           </TabsContent>
 

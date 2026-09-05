@@ -102,6 +102,20 @@ import {
   Radar,
   Legend,
 } from "recharts";
+import { KpiTargetCard } from "@/components/kpi-target-card";
+import { fetchRepKpiTargets } from "@/lib/rep-kpi-targets";
+import {
+  KPI_DEFINITIONS,
+  computeTargetProgress,
+  currentTargetsAsOf,
+  periodWindow,
+  type KpiRole,
+} from "@/lib/kpi-targets";
+import {
+  actualFromSetterActivity,
+  sliceSetterActivityToWindow,
+  type SetterActivityActualRow,
+} from "@/lib/rep-kpi-actuals";
 
 export type ActivityRole = "dm_setter" | "inbound_dialer";
 
@@ -344,6 +358,82 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       return data;
     },
   });
+
+  // Rep KPI Target Engine (Priority 2) — "as of today," independent of this
+  // page's own `range` (which stays a separate, historical-browsing concept;
+  // see kpi-targets.ts's periodWindow doc comment on why the two are kept
+  // apart). One org+role-scoped fetch of this month's raw rows; each target
+  // slices its own daily/weekly/monthly window out of the same batch.
+  const targetAnchor = new Date().toISOString().slice(0, 10);
+  const targetWindowStart = `${targetAnchor.slice(0, 7)}-01`;
+  const { data: repKpiTargetsRaw } = useQuery({
+    queryKey: ["rep-kpi-targets", orgId, role],
+    enabled: !!orgId && !devBypass,
+    queryFn: () => fetchRepKpiTargets(orgId!, role as KpiRole),
+  });
+  const { data: targetActivityRows = [] } = useQuery({
+    queryKey: ["target-activity-rows", orgId, role, targetWindowStart, targetAnchor],
+    enabled: !!orgId && !devBypass,
+    queryFn: async (): Promise<SetterActivityActualRow[]> => {
+      const { data, error } = await supabase
+        .from("setter_activity")
+        .select(
+          "team_member_name, activity_date, outbound_dms_sent, inbound_dms_sent, replies, qualified_convos, calls_on_calendar, live_calls, dials, connections, leads_contacted",
+        )
+        .eq("org_id", orgId!)
+        .eq("role", role)
+        .gte("activity_date", targetWindowStart)
+        .lte("activity_date", targetAnchor)
+        .limit(1000);
+      if (error) throw error;
+      return (data ?? []) as unknown as SetterActivityActualRow[];
+    },
+  });
+  const currentTargetsForRole = useMemo(
+    () => currentTargetsAsOf(repKpiTargetsRaw ?? [], targetAnchor),
+    [repKpiTargetsRaw, targetAnchor],
+  );
+  // One card per catalogue KPI for the currently-selected rep — "No target
+  // configured" is shown explicitly rather than omitting the metric, so it's
+  // visible which KPIs still lack a target (Priority 12).
+  const memberTargetCards = useMemo(() => {
+    if (member === ALL_MEMBERS) return [];
+    const forMember = currentTargetsForRole.filter((t) => t.teamMemberName === member);
+    return KPI_DEFINITIONS[role as KpiRole].flatMap((def) => {
+      const matches = forMember.filter((t) => t.metricKey === def.key);
+      if (matches.length === 0) {
+        return [
+          {
+            key: def.key,
+            label: def.label,
+            progress: computeTargetProgress({
+              format: def.format,
+              period: "monthly",
+              anchorISODate: targetAnchor,
+              targetValue: null,
+              actualValue: actualFromSetterActivity(targetActivityRows, member, def.key),
+            }),
+          },
+        ];
+      }
+      return matches.map((t) => {
+        const window = periodWindow(t.period, targetAnchor);
+        const sliced = sliceSetterActivityToWindow(targetActivityRows, window.start, window.end);
+        return {
+          key: `${def.key}-${t.period}`,
+          label: def.label,
+          progress: computeTargetProgress({
+            format: def.format,
+            period: t.period,
+            anchorISODate: targetAnchor,
+            targetValue: t.targetValue,
+            actualValue: actualFromSetterActivity(sliced, member, def.key),
+          }),
+        };
+      });
+    });
+  }, [member, currentTargetsForRole, targetActivityRows, role, targetAnchor]);
+
   // Active leads available to dial, split by ticket tier (spec section 4).
   // "Active" = not yet closed/disqualified/ghosted/no-show — still workable.
   const OPEN_LEAD_STATUSES = [
@@ -2300,6 +2390,28 @@ export function ActivityModule({ role, title, subtitle }: Props) {
           </div>
         </div>
 
+        {member !== ALL_MEMBERS && (
+          <div className="space-y-2">
+            <div className="text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+              {member} · Targets
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {memberTargetCards.map((c) => (
+                <KpiTargetCard
+                  key={c.key}
+                  label={c.label}
+                  progress={c.progress}
+                  onClick={() =>
+                    document
+                      .getElementById("rep-activity-log")
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  }
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
             <TeamMemberFilter role={role} value={member} onChange={setMember} />
@@ -3146,6 +3258,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         </Tabs>
 
         {/* Activity Log */}
+        <div id="rep-activity-log" />
         <GlassTableShell
           toolbar={
             <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
