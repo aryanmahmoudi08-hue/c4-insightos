@@ -555,7 +555,7 @@ export function AppSidebar() {
             )}
             onClick={async () => {
               await supabase.auth.signOut();
-              nav({ to: "/login" });
+              nav({ to: "/welcome" });
             }}
             title={collapsed ? "Sign out" : undefined}
           >

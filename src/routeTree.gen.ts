@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as RequestAccessRouteImport } from './routes/request-access'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DailyWinRouteImport } from './routes/daily-win'
@@ -45,6 +46,11 @@ import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typef
 import { Route as ApiPublicTwilioEventRouteImport } from './routes/api/public/twilio.$event'
 import { Route as ApiPublicIngestTokenRouteImport } from './routes/api/public/ingest.$token'
 
+const WelcomeRoute = WelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RequestAccessRoute = RequestAccessRouteImport.update({
   id: '/request-access',
   path: '/request-access',
@@ -234,6 +240,7 @@ export interface FileRoutesByFullPath {
   '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
   '/request-access': typeof RequestAccessRoute
+  '/welcome': typeof WelcomeRoute
   '/attribution': typeof AuthenticatedAttributionRoute
   '/clients': typeof AuthenticatedClientsRoute
   '/closer': typeof AuthenticatedCloserRoute
@@ -270,6 +277,7 @@ export interface FileRoutesByTo {
   '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
   '/request-access': typeof RequestAccessRoute
+  '/welcome': typeof WelcomeRoute
   '/attribution': typeof AuthenticatedAttributionRoute
   '/clients': typeof AuthenticatedClientsRoute
   '/closer': typeof AuthenticatedCloserRoute
@@ -308,6 +316,7 @@ export interface FileRoutesById {
   '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
   '/request-access': typeof RequestAccessRoute
+  '/welcome': typeof WelcomeRoute
   '/_authenticated/attribution': typeof AuthenticatedAttributionRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRoute
   '/_authenticated/closer': typeof AuthenticatedCloserRoute
@@ -346,6 +355,7 @@ export interface FileRouteTypes {
     | '/daily-win'
     | '/login'
     | '/request-access'
+    | '/welcome'
     | '/attribution'
     | '/clients'
     | '/closer'
@@ -382,6 +392,7 @@ export interface FileRouteTypes {
     | '/daily-win'
     | '/login'
     | '/request-access'
+    | '/welcome'
     | '/attribution'
     | '/clients'
     | '/closer'
@@ -419,6 +430,7 @@ export interface FileRouteTypes {
     | '/daily-win'
     | '/login'
     | '/request-access'
+    | '/welcome'
     | '/_authenticated/attribution'
     | '/_authenticated/clients'
     | '/_authenticated/closer'
@@ -457,6 +469,7 @@ export interface RootRouteChildren {
   DailyWinRoute: typeof DailyWinRoute
   LoginRoute: typeof LoginRoute
   RequestAccessRoute: typeof RequestAccessRoute
+  WelcomeRoute: typeof WelcomeRoute
   PcvTokenRoute: typeof PcvTokenRoute
   ApiPublicTypeformRoute: typeof ApiPublicTypeformRoute
   ApiPublicIngestTokenRoute: typeof ApiPublicIngestTokenRoute
@@ -465,6 +478,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/welcome': {
+      id: '/welcome'
+      path: '/welcome'
+      fullPath: '/welcome'
+      preLoaderRoute: typeof WelcomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/request-access': {
       id: '/request-access'
       path: '/request-access'
@@ -781,6 +801,7 @@ const rootRouteChildren: RootRouteChildren = {
   DailyWinRoute: DailyWinRoute,
   LoginRoute: LoginRoute,
   RequestAccessRoute: RequestAccessRoute,
+  WelcomeRoute: WelcomeRoute,
   PcvTokenRoute: PcvTokenRoute,
   ApiPublicTypeformRoute: ApiPublicTypeformRoute,
   ApiPublicIngestTokenRoute: ApiPublicIngestTokenRoute,

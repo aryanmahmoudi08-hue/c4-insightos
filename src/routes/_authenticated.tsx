@@ -15,7 +15,7 @@ function AuthedLayout() {
   const { user, loading } = useAuth();
   const nav = useNavigate();
   useEffect(() => {
-    if (!loading && !user) nav({ to: "/login" });
+    if (!loading && !user) nav({ to: "/welcome" });
   }, [loading, user, nav]);
   if (loading || !user) {
     return (

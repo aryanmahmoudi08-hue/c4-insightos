@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, redirect } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import c4Logo from "@/assets/c4-logo.png";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
@@ -49,27 +50,12 @@ function LoginPage() {
   };
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="relative hidden lg:flex flex-col justify-between overflow-hidden border-r border-border bg-sidebar p-10">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,oklch(1_0_0/.07),transparent_60%),radial-gradient(circle_at_80%_80%,oklch(1_0_0/.05),transparent_55%)]" />
-        <div className="relative flex items-center gap-2">
-          <div className="grid h-9 w-9 place-items-center rounded-md bg-gradient-to-br from-primary to-accent font-mono text-sm font-bold text-primary-foreground">C4</div>
-          <div className="font-semibold">C4 OS</div>
-        </div>
-        <div className="relative space-y-4">
-          <h2 className="text-3xl font-semibold leading-tight">If cash moves, content performs, or a lead breathes —<br/><span className="text-primary">it gets tracked.</span></h2>
-          <p className="text-sm text-muted-foreground max-w-md">Your complete business intelligence ecosystem. Content → leads → calls → cash, with full attribution.</p>
-          <div className="grid grid-cols-3 gap-3 max-w-md pt-4">
-            {[["Cash/1k", "$284"], ["Show", "78%"], ["Close", "31%"]].map(([k,v]) => (
-              <div key={k} className="rounded-md border border-border bg-card/60 p-3">
-                <div className="text-3xs uppercase tracking-wider text-muted-foreground">{k}</div>
-                <div className="font-mono text-lg font-semibold">{v}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="flex items-center justify-center p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center p-6">
+      <Link to="/welcome" className="mb-8 flex items-center gap-2">
+        <img src={c4Logo} alt="" className="theme-logo h-7 w-7 shrink-0 object-contain" />
+        <span className="display-serif text-lg">C4 OS</span>
+      </Link>
+      <div className="flex w-full items-center justify-center">
         <form onSubmit={submit} className="w-full max-w-sm space-y-5">
           <div>
             <h1 className="text-2xl font-semibold">{mode === "signup" ? "Create workspace" : "Welcome back"}</h1>
