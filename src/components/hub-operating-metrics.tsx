@@ -292,28 +292,28 @@ function InboundVelocityCard({
           <div className="mt-3 h-24">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={series} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
+                <CartesianGrid stroke="var(--border)" vertical={false} />
                 <XAxis
                   dataKey="d"
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 8, fill: "#94a3b8" }}
+                  tick={{ fontSize: 8, fill: "var(--muted-foreground)" }}
                   minTickGap={24}
                 />
                 <Tooltip
                   contentStyle={{
-                    background: "#11101a",
-                    border: "1px solid rgba(148,163,184,.25)",
+                    background: "var(--popover)",
+                    border: "1px solid var(--border)",
                     borderRadius: 8,
                     fontSize: 11,
                   }}
-                  labelStyle={{ color: "#cbd5e1" }}
+                  labelStyle={{ color: "var(--foreground)" }}
                 />
                 <Line
                   type="monotone"
                   dataKey="leads"
                   name="Inbound leads"
-                  stroke="#06b6d4"
+                  stroke={SAFE_SPECTRUM_VAR.cold}
                   strokeWidth={2}
                   dot={false}
                 />
@@ -321,7 +321,7 @@ function InboundVelocityCard({
                   type="monotone"
                   dataKey="links"
                   name="Links sent"
-                  stroke="#a855f7"
+                  stroke={SAFE_SPECTRUM_VAR.mid}
                   strokeWidth={2}
                   dot={false}
                 />

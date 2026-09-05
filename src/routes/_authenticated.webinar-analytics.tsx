@@ -48,6 +48,7 @@ import { splitPitchOutcomes, type WebinarEventRow } from "@/lib/webinar-events";
 import { calculateAcquisitionMetrics, type AcquisitionSpendRecord } from "@/lib/acquisition";
 import { createMockWebinarFixture } from "@/lib/webinar-mock-data";
 import { webinarProfit } from "@/lib/operating-workflows";
+import { SPECTRUM_VAR } from "@/lib/spectrum";
 
 export const Route = createFileRoute("/_authenticated/webinar-analytics")({
   component: WebinarAnalyticsPage,
@@ -283,13 +284,13 @@ function WebinarAnalyticsPage() {
         showDateRange
       />
       <main className="space-y-6 p-4 md:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/40 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.2)] backdrop-blur-xl">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 p-2 text-cyan-300">
+            <div className="rounded-xl border border-spectrum-cold/20 bg-spectrum-cold/10 p-2 text-spectrum-cold">
               <Video className="h-4 w-4" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
+              <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 {webinarEvents.length > 0 ? (
                   <>
                     <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.9)]" />
@@ -297,19 +298,19 @@ function WebinarAnalyticsPage() {
                   </>
                 ) : (
                   <>
-                    <span className="h-2 w-2 rounded-full bg-white/25" />
+                    <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
                     Telemetry not connected
                   </>
                 )}
               </div>
-              <div className="mt-1 truncate text-base font-semibold tracking-tight text-white">
+              <div className="mt-1 truncate text-base font-semibold tracking-tight text-foreground">
                 {selected?.name ?? "Webinar workspace"}
               </div>
             </div>
           </div>
           <Select value={selectedId} onValueChange={setSelectedId}>
             <SelectTrigger
-              className="w-full border-white/10 bg-black/50 text-xs shadow-none backdrop-blur-xl sm:w-[280px]"
+              className="w-full text-xs shadow-none sm:w-[280px]"
               title={selected?.name}
             >
               <SelectValue placeholder="Choose webinar command" className="truncate" />
@@ -630,12 +631,12 @@ function WebinarAnalyticsPage() {
                 title="Compare webinars"
                 subtitle="Pick a second real webinar from the pipeline to compare against the one selected above."
               />
-              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-black/30 p-3 backdrop-blur">
-                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/55">
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/20 p-3">
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Compare with
                 </span>
                 {(webinarsQuery.data?.length ?? 0) < 2 ? (
-                  <span className="text-xs text-white/45">
+                  <span className="text-xs text-muted-foreground">
                     Add another webinar to enable a comparison.
                   </span>
                 ) : (
@@ -707,7 +708,7 @@ function TrafficAnalytics({
       ? `${((replayAttendees / registrants) * 100).toFixed(1)}%`
       : "Unavailable";
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02] p-6 backdrop-blur">
+    <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-6">
       <svg
         className="pointer-events-none absolute inset-0 h-full w-full opacity-40"
         viewBox="0 0 1000 220"
@@ -717,7 +718,7 @@ function TrafficAnalytics({
         <path
           d="M235 88 C315 88 325 88 390 88 M610 88 C690 44 715 44 780 44 M610 128 C690 168 715 168 780 168"
           fill="none"
-          stroke="rgba(148,163,184,0.65)"
+          stroke="var(--border)"
           strokeWidth="2"
           strokeDasharray="5 8"
         />
@@ -757,7 +758,7 @@ function TrafficAnalytics({
           </div>
         </div>
       </div>
-      <div className="relative mt-5 text-[10px] uppercase tracking-[0.16em] text-white/35">
+      <div className="relative mt-5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
         Source-backed attendance split · no provider data is inferred
       </div>
     </div>
@@ -766,24 +767,24 @@ function TrafficAnalytics({
 
 function TrafficNode({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/30 p-4">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/55">
+    <div className="rounded-xl border border-border bg-muted/20 p-4">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {icon}
         {label}
       </div>
-      <div className="mt-3 text-3xl font-bold tracking-tight text-white">{value}</div>
+      <div className="mt-3 text-3xl font-bold tracking-tight text-foreground">{value}</div>
     </div>
   );
 }
 
 function TrafficConnector({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2 px-1 py-1 text-[10px] uppercase tracking-[0.12em] text-white/40 md:flex-col md:px-0">
-      <span className="h-px flex-1 bg-white/15 md:h-6 md:w-px" />
-      <span className="whitespace-nowrap text-cyan-300/80">
+    <div className="flex items-center gap-2 px-1 py-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground md:flex-col md:px-0">
+      <span className="h-px flex-1 bg-border md:h-6 md:w-px" />
+      <span className="whitespace-nowrap text-spectrum-cold">
         {label} · {value}
       </span>
-      <ChevronRight className="h-3 w-3 text-white/40 md:rotate-90" />
+      <ChevronRight className="h-3 w-3 text-muted-foreground md:rotate-90" />
     </div>
   );
 }
@@ -818,19 +819,19 @@ function WebinarAnalyticsOverview({
     [<CircleDollarSign className="h-4 w-4" />, "Revenue", currency(revenueCents)],
   ];
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02] p-6">
-      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">
+    <div className="overflow-hidden rounded-2xl border border-border bg-card p-6">
+      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         Key metrics
       </div>
-      <div className="grid gap-x-8 divide-y divide-white/5 sm:grid-cols-2 sm:divide-y-0">
+      <div className="grid gap-x-8 divide-y divide-border sm:grid-cols-2 sm:divide-y-0">
         {metrics.map(([icon, label, value]) => (
           <div
             key={label}
-            className="flex items-center gap-3 border-white/5 py-3 first:pt-0 sm:border-b sm:py-2.5"
+            className="flex items-center gap-3 border-border py-3 first:pt-0 sm:border-b sm:py-2.5"
           >
-            <span className="text-cyan-300">{icon}</span>
-            <span className="min-w-0 flex-1 text-xs text-white/55">{label}</span>
-            <span className="font-mono text-sm text-white">{value}</span>
+            <span className="text-spectrum-cold">{icon}</span>
+            <span className="min-w-0 flex-1 text-xs text-muted-foreground">{label}</span>
+            <span className="font-mono text-sm text-foreground">{value}</span>
           </div>
         ))}
       </div>
@@ -868,15 +869,15 @@ function RetentionPanel({
     pct: registered ? (point.audience / registered) * 100 : null,
   }));
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-5 backdrop-blur">
+    <div className="rounded-2xl border border-border bg-card p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-white">Audience retention</h3>
-          <p className="mt-1 text-xs text-white/45">
+          <h3 className="text-sm font-semibold text-foreground">Audience retention</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
             Registration → live attendance → audience remaining → pitch, based on event timestamps.
           </p>
         </div>
-        <Activity className="h-4 w-4 text-cyan-300" />
+        <Activity className="h-4 w-4 text-spectrum-cold" />
       </div>
       {retention.length ? (
         <div className="mt-4 h-72">
@@ -884,24 +885,20 @@ function RetentionPanel({
             <AreaChart data={chartData} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
               <defs>
                 <linearGradient id="retention-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#22d3ee" stopOpacity={0} />
+                  <stop offset="0%" stopColor={SPECTRUM_VAR.cold} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={SPECTRUM_VAR.cold} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid
-                strokeDasharray="2 4"
-                stroke="rgba(255,255,255,0.08)"
-                vertical={false}
-              />
+              <CartesianGrid strokeDasharray="2 4" stroke="var(--border)" vertical={false} />
               <XAxis
                 dataKey="label"
-                stroke="rgba(255,255,255,0.45)"
+                stroke="var(--muted-foreground)"
                 fontSize={10}
                 tickLine={false}
-                axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
+                axisLine={{ stroke: "var(--border)" }}
               />
               <YAxis
-                stroke="rgba(255,255,255,0.45)"
+                stroke="var(--muted-foreground)"
                 fontSize={10}
                 tickLine={false}
                 axisLine={false}
@@ -911,14 +908,13 @@ function RetentionPanel({
               />
               <RechartsTooltip
                 contentStyle={{
-                  background: "rgba(2,6,23,0.95)",
-                  border: "1px solid rgba(34,211,238,0.3)",
+                  background: "var(--popover)",
+                  border: "1px solid var(--border)",
                   borderRadius: 8,
                   fontSize: 12,
                   padding: "8px 12px",
-                  boxShadow: "0 0 18px rgba(34,211,238,0.18)",
                 }}
-                labelStyle={{ color: "#67e8f9", fontWeight: 600, marginBottom: 4 }}
+                labelStyle={{ color: "var(--foreground)", fontWeight: 600, marginBottom: 4 }}
                 formatter={(_value: number, _name: string, item) => {
                   const point = item.payload as (typeof chartData)[number];
                   return [
@@ -934,11 +930,16 @@ function RetentionPanel({
               <Area
                 type="monotone"
                 dataKey="pct"
-                stroke="#22d3ee"
+                stroke={SPECTRUM_VAR.cold}
                 strokeWidth={2}
                 fill="url(#retention-fill)"
-                dot={{ r: 4, fill: "white", stroke: "#22d3ee", strokeWidth: 1.5 }}
-                activeDot={{ r: 5.5, fill: "white", stroke: "#22d3ee", strokeWidth: 2 }}
+                dot={{ r: 4, fill: "var(--card)", stroke: SPECTRUM_VAR.cold, strokeWidth: 1.5 }}
+                activeDot={{
+                  r: 5.5,
+                  fill: "var(--card)",
+                  stroke: SPECTRUM_VAR.cold,
+                  strokeWidth: 2,
+                }}
                 isAnimationActive={false}
               />
             </AreaChart>
@@ -1072,8 +1073,8 @@ function ComparisonPanel({
     ],
   ];
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur">
-      <div className="grid grid-cols-3 border-b border-white/10 bg-white/[0.02] px-4 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-white/55">
+    <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="grid grid-cols-3 border-b border-border bg-muted/30 px-4 py-3 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
         <span>Metric</span>
         <span className="truncate" title={leftName}>
           {leftName}
@@ -1094,16 +1095,16 @@ function ComparisonPanel({
         return (
           <div
             key={label}
-            className="grid grid-cols-3 border-b border-white/5 px-4 py-3 text-sm transition hover:bg-white/[0.02] last:border-0"
+            className="grid grid-cols-3 border-b border-border/60 px-4 py-3 text-sm transition hover:bg-muted/20 last:border-0"
           >
-            <span className="self-center text-white/55">{label}</span>
-            <span className="relative overflow-hidden rounded-md px-2 py-1 font-mono text-white">
+            <span className="self-center text-muted-foreground">{label}</span>
+            <span className="relative overflow-hidden rounded-md px-2 py-1 font-mono text-foreground">
               <span className="relative z-10">{a}</span>
-              {bar(aNum, "bg-purple-500/20")}
+              {bar(aNum, "bg-spectrum-mid/20")}
             </span>
-            <span className="relative overflow-hidden rounded-md px-2 py-1 font-mono text-white">
+            <span className="relative overflow-hidden rounded-md px-2 py-1 font-mono text-foreground">
               <span className="relative z-10">{b}</span>
-              {bar(bNum, "bg-cyan-500/15")}
+              {bar(bNum, "bg-spectrum-cold/15")}
             </span>
           </div>
         );
@@ -1122,17 +1123,17 @@ function AnalyticsPanel({
   values: [string, string][];
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-5 backdrop-blur">
-      <h3 className="text-sm font-semibold text-white">{title}</h3>
-      <p className="mt-1 text-xs text-white/45">{description}</p>
+    <div className="rounded-2xl border border-border bg-card p-5">
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
       <div className="mt-4 space-y-2">
         {values.map(([label, value]) => (
           <div
             key={label}
-            className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm"
+            className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm"
           >
-            <span className="text-white/55">{label}</span>
-            <span className="font-mono text-white">{value}</span>
+            <span className="text-muted-foreground">{label}</span>
+            <span className="font-mono text-foreground">{value}</span>
           </div>
         ))}
       </div>

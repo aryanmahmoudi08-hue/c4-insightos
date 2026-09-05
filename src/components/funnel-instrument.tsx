@@ -48,10 +48,10 @@ export function FunnelInstrument({
               key={stage.key}
               type="button"
               onClick={onStageClick ? () => onStageClick(index) : undefined}
-              className="flex w-full items-center justify-between gap-4 rounded-lg border border-slate-800/60 bg-slate-900/50 p-3 text-left transition-colors hover:border-border hover:bg-muted/30"
+              className="flex w-full items-center justify-between gap-4 rounded-lg border border-border/70 bg-muted/20 p-3 text-left transition-colors hover:border-border hover:bg-muted/30"
             >
               <span className="min-w-0 flex-1">
-                <span className="block whitespace-normal text-xs font-medium uppercase tracking-wider text-slate-400">
+                <span className="block whitespace-normal text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   {stage.label}
                 </span>
                 {conversion !== null && (
@@ -66,7 +66,7 @@ export function FunnelInstrument({
                   />
                 </span>
               </span>
-              <span className="shrink-0 font-sans text-2xl font-semibold tabular-nums text-white">
+              <span className="shrink-0 font-sans text-2xl font-semibold tabular-nums text-foreground">
                 {stage.value.toLocaleString()}
               </span>
             </button>
