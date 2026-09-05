@@ -1573,3 +1573,40 @@ export function mockWeeklyReport(): WeeklyReport {
     trends: ["Cash up 16% WoW", "1 content mechanism not posted this week"],
   };
 }
+
+/** Real-shaped lead_response_events rows for the Inbound Dialer's Speed-to-
+ * Lead section and its attribution-source branching (Priority 5) — three
+ * distinct platforms so the merge visual has more than one source to show. */
+export function mockLeadResponseEvents() {
+  const now = Date.now();
+  const platforms = ["instagram", "instagram", "tiktok", "youtube"];
+  return platforms.flatMap((platform, pi) =>
+    Array.from({ length: 6 - pi }).map((_, i) => {
+      const idx = pi * 10 + i;
+      const createdAt = new Date(now - idx * 4 * 3600e3).toISOString();
+      return {
+        lead_id: `mock-lre-${idx}`,
+        lead_created_at: createdAt,
+        lead_assigned_at: createdAt,
+        first_attempt_at: new Date(now - idx * 4 * 3600e3 + 3 * 60e3).toISOString(),
+        first_connection_at: null,
+        rep_id: null,
+        source_platform: platform,
+        lead_source: platform,
+        campaign: null,
+        connected: idx % 2 === 0,
+        qualified: idx % 3 === 0,
+        set: idx % 4 === 0,
+        booked_call: idx % 4 === 0,
+        showed: idx % 5 === 0,
+        closed: false,
+        content_id: null,
+        call_id: null,
+        client_id: null,
+        payment_id: null,
+        event_at: createdAt,
+        event_type: "dial_attempt",
+      };
+    }),
+  );
+}

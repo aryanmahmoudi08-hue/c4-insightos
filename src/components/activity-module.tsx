@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { PlatformIcon } from "@/components/platform-icon";
-import { mockLeads } from "@/lib/dev-mock-data";
+import { mockLeads, mockLeadResponseEvents } from "@/lib/dev-mock-data";
 import {
   Select,
   SelectContent,
@@ -55,6 +55,7 @@ import { MoneyInstrument, type MoneyPoint } from "@/components/money-instrument"
 import { KpiBand, type KpiBandItem } from "@/components/kpi-band";
 import { OperationalWorkflowPanel } from "@/components/operational-workflow-panel";
 import { AttributionPathPanel, type AttributionPath } from "@/components/attribution-path-panel";
+import { groupBySourcePlatform } from "@/lib/attribution-flow";
 import { RateSmallMultiples, type RateChartSpec } from "@/components/rate-small-multiples";
 import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
 import {
@@ -824,9 +825,15 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   });
 
   const { data: speedEvents = [] } = useQuery({
-    queryKey: ["speed-to-lead", role, orgId, range.from, range.to],
+    queryKey: ["speed-to-lead", role, orgId, range.from, range.to, devBypass],
     enabled: isDialer && !!orgId,
     queryFn: async () => {
+      // devBypass never has a real Supabase session, so the RLS-scoped query
+      // below comes back empty — same reasoning as every other devBypass
+      // branch in this app. A small real-shaped fixture here is what lets
+      // the Priority 5 attribution-source branching actually be exercised
+      // in this sandbox, not just unit-tested.
+      if (devBypass) return mockLeadResponseEvents();
       const { data, error } = await (supabase as any)
         .from("lead_response_events")
         .select(
@@ -1914,6 +1921,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
           connectorAvailable={false}
         />
         {(() => {
+          const platformSources = groupBySourcePlatform(speedEvents, (e: any) => e.source_platform);
           const setterPaths: AttributionPath[] = [
             {
               id: "dm-lifecycle",
@@ -1982,13 +1990,27 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             {
               id: "vsl-flow",
               label: "Path 3 · platform → first touch → content/campaign → setter/VSL → outcome",
+              // Dialer only: lead_response_events (speedEvents, already fetched
+              // for the Speed-to-Lead section above) carries a real per-lead
+              // source_platform — a genuine branching breakdown replacing the
+              // "no verified platform join" placeholder stage, rather than one
+              // flat unavailable number implying nothing is known. DM Setter's
+              // aggregate daily activity has no equivalent per-lead join, so it
+              // keeps the honest "unavailable" stage instead.
+              sources: platformSources.length
+                ? platformSources.map((s) => ({ key: s.label, label: s.label, value: s.count }))
+                : undefined,
               stages: [
-                {
-                  key: "platform",
-                  label: "Platform",
-                  value: null,
-                  detail: "No verified platform join in aggregate activity",
-                },
+                ...(platformSources.length
+                  ? []
+                  : [
+                      {
+                        key: "platform",
+                        label: "Platform",
+                        value: null,
+                        detail: "No verified platform join in aggregate activity",
+                      },
+                    ]),
                 {
                   key: "touch",
                   label: "First touch",

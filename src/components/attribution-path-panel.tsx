@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { ArrowRight, GitBranch, X } from "lucide-react";
+import { ArrowRight, GitBranch, GitMerge, X } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { PlatformIcon } from "@/components/platform-icon";
 
 export type AttributionPathStage = {
   key: string;
@@ -14,9 +15,25 @@ export type AttributionPathStage = {
   onOpenRecords?: () => void;
 };
 
+export type AttributionSourceNode = {
+  key: string;
+  label: string;
+  value: number;
+  onOpenRecords?: () => void;
+};
+
 export type AttributionPath = {
   id: string;
   label: string;
+  /**
+   * Real per-source breakdown (e.g. Instagram/TikTok/YouTube, each a real
+   * count over actually-fetched rows) that merges into `stages[0]` — Priority
+   * 5's core fix: without this, a single aggregate "Channel: 3" stage number
+   * visually implies one linear path when the reality is several distinct
+   * sources converging on the same downstream stage. Omit entirely when no
+   * reliable per-record source join exists — never fabricate a split.
+   */
+  sources?: AttributionSourceNode[];
   stages: AttributionPathStage[];
   unavailable?: string;
 };
@@ -62,6 +79,42 @@ export function AttributionPathPanel({
               // near-illegibility. Short paths still render naturally; long
               // ones scroll instead of cramming.
               <div className="flex flex-col gap-2 md:flex-row md:items-stretch md:overflow-x-auto md:pb-1">
+                {path.sources && path.sources.length > 0 && (
+                  <div className="flex flex-col gap-2 md:shrink-0 md:flex-row md:items-center">
+                    {/* Real per-source breakdown, stacked vertically, merging
+                        into stages[0] — never one flat "Channel: N" number
+                        standing in for several actually-distinct sources. */}
+                    <div className="flex flex-col gap-1 md:w-40">
+                      {path.sources.map((src) => (
+                        <button
+                          key={src.key}
+                          type="button"
+                          onClick={src.onOpenRecords}
+                          disabled={!src.onOpenRecords}
+                          title={src.onOpenRecords ? "Click to see records" : undefined}
+                          className="flex w-full items-center gap-1.5 rounded-md border border-border/70 bg-muted/20 px-2 py-1 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/40 disabled:cursor-default disabled:hover:border-border/70 disabled:hover:bg-muted/20"
+                        >
+                          <PlatformIcon
+                            platform={src.label}
+                            className="h-3 w-3 shrink-0 text-muted-foreground"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-[10px] text-foreground">
+                            {src.label}
+                          </span>
+                          <span className="shrink-0 font-mono text-[10px] font-semibold text-muted-foreground">
+                            {src.value.toLocaleString()}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <div
+                      className="flex items-center justify-center text-muted-foreground md:px-1"
+                      title={`${path.sources.length} source${path.sources.length === 1 ? "" : "s"} merge here`}
+                    >
+                      <GitMerge className="h-4 w-4 rotate-90 md:rotate-0" />
+                    </div>
+                  </div>
+                )}
                 {path.stages.map((stage, index) => (
                   <div key={stage.key} className="flex items-center gap-2 md:shrink-0">
                     <button

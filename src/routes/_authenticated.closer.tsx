@@ -34,6 +34,7 @@ import { Plus, Trophy, Activity as ActivityIcon, PhoneCall } from "lucide-react"
 import { toast } from "sonner";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { AttributionPathPanel, type AttributionPath } from "@/components/attribution-path-panel";
+import { groupBySourcePlatform } from "@/lib/attribution-flow";
 import { TeamMemberFilter, ALL_MEMBERS } from "@/components/team-member-filter";
 import {
   BarChart,
@@ -271,7 +272,7 @@ function Closer() {
   const [selected, setSelected] = useState<
     | { kind: "close" | "money" | "pipeline"; index: number }
     | { kind: "noshow"; index: 0 | 1 | 2 | 3 }
-    | { kind: "attribution"; stageKey: string }
+    | { kind: "attribution"; stageKey: string; sourceValue?: string }
     | { kind: "disposition"; source: "status" | "manual"; value: string; label: string }
     | null
   >(null);
@@ -1009,18 +1010,40 @@ function Closer() {
   // same `list`, so it complements (doesn't add to) the other attribution
   // views: it's the same calls counted along a different axis, not a second
   // revenue source layered on top.
+  // Real per-platform breakdown feeding the lifecycle below (Priority 5) —
+  // replaces a single "Original Channel: N" aggregate count, which visually
+  // implied one linear path when the reality is several distinct real
+  // sources (Instagram/TikTok/YouTube/...) converging on the same downstream
+  // campaign/capture/setter/booked/cash sequence. Every group here is a real
+  // count over `list` (the same calls driving every other number on this
+  // page) — normalizeSocialPlatform never invents a platform, it only
+  // classifies what source_platform/source_connector actually say, with
+  // "Unknown / Unattributed" for calls that have neither.
+  const channelSources = useMemo(
+    () =>
+      groupBySourcePlatform(
+        list.filter((c) => c.source_platform),
+        (c) => c.source_platform,
+      ),
+    [list],
+  );
+
   const closerLifecyclePath: AttributionPath[] = useMemo(
     () => [
       {
         id: "closer-lifecycle",
         label:
           "Channel → campaign/content → capture mechanism → setter/dialer → booked → offer → payment plan → cash",
+        sources: channelSources.map((s) => ({
+          key: s.label,
+          label: s.label,
+          value: s.count,
+          onOpenRecords: () =>
+            setSelected({ kind: "attribution", stageKey: "channel", sourceValue: s.label }),
+        })),
         stages: (() => {
           const openStage = (key: string) => () =>
             setSelected({ kind: "attribution", stageKey: key });
-          const channelCount =
-            new Set(list.map((c) => (c as Record<string, unknown>).source_platform).filter(Boolean))
-              .size || null;
           const campaignCount =
             new Set(
               list
@@ -1037,13 +1060,6 @@ function Closer() {
           const setterCount = list.filter((c) => c.setter_id).length;
           const offerCount = list.filter((c) => c.offer_made).length;
           return [
-            {
-              key: "channel",
-              label: "Original Channel",
-              value: channelCount,
-              detail: "Distinct source platforms on these calls",
-              onOpenRecords: channelCount ? openStage("channel") : undefined,
-            },
             {
               key: "campaign",
               label: "Campaign / Content",
@@ -1103,7 +1119,7 @@ function Closer() {
         })(),
       },
     ],
-    [list, paymentPlanCount, cashCents],
+    [list, paymentPlanCount, cashCents, channelSources],
   );
   const avgCashPerBooked = onCalendar ? cashCents / onCalendar : 0;
   const avgCashPerShowed = showed ? cashCents / showed : 0;
@@ -2087,7 +2103,14 @@ function Closer() {
             }
           } else if (selected?.kind === "attribution") {
             const stageRowsFor = (key: string): CallRow[] => {
-              if (key === "channel") return list.filter((c) => c.source_platform);
+              if (key === "channel") {
+                if (selected.sourceValue) {
+                  return list.filter(
+                    (c) => normalizeSocialPlatform(c.source_platform) === selected.sourceValue,
+                  );
+                }
+                return list.filter((c) => c.source_platform);
+              }
               if (key === "campaign")
                 return list.filter((c) => c.source_campaign || c.source_content_id);
               if (key === "capture") return list.filter((c) => c.source_format);
@@ -2131,12 +2154,19 @@ function Closer() {
                 };
               return { key: "value", label: "Booked", render: () => "✓" };
             };
-            const stageMeta = closerLifecyclePath[0].stages.find(
-              (s) => s.key === selected.stageKey,
-            );
+            // "channel" no longer lives in `stages` (Priority 5: it's now the
+            // real per-platform `sources` breakdown merging into stages[0]
+            // instead of one flat aggregate count) — synthesize its label so
+            // clicking a source node still opens a real, correctly-titled panel.
+            const stageMeta =
+              selected.stageKey === "channel"
+                ? { key: "channel", label: "Original Channel" }
+                : closerLifecyclePath[0].stages.find((s) => s.key === selected.stageKey);
             panel = stageMeta
               ? {
-                  title: stageMeta.label,
+                  title: selected.sourceValue
+                    ? `${stageMeta.label}: ${selected.sourceValue}`
+                    : stageMeta.label,
                   columns: [
                     { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
                     {
