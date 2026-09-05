@@ -19,8 +19,11 @@ import {
   Inbox,
   AlertTriangle,
   Flame,
+  CheckCircle2,
+  Lightbulb,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { cn } from "@/lib/utils";
 import {
   ResponsiveContainer,
@@ -47,7 +50,37 @@ import { InteractiveSparkline } from "@/components/interactive-sparkline";
 import { HubOperatingMetrics } from "@/components/hub-operating-metrics";
 import { MoneyInstrument, type MoneyPoint } from "@/components/money-instrument";
 import { RepLeaderboard, type RepMetricOption } from "@/components/rep-leaderboard";
-import { pctDelta } from "@/lib/trend";
+import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
+import { FunnelInstrument } from "@/components/funnel-instrument";
+import {
+  deriveCap,
+  deriveWorking,
+  type FunnelStage as DerivedFunnelStage,
+  type Derivation,
+} from "@/lib/funnel-derivation";
+import {
+  AttributionPathPanel,
+  type AttributionSourceNode,
+} from "@/components/attribution-path-panel";
+import {
+  buildAttributionPathsForModel,
+  aggregateCashByContent,
+  ATTRIBUTION_MODEL_LABELS,
+  ATTRIBUTION_MODELS,
+} from "@/lib/content-attribution";
+import type { AttributionModel, CanonicalLifecycleAttributionPath } from "@/lib/acquisition";
+import {
+  getWorkspaceSettingsFn,
+  DEFAULT_WORKSPACE_SETTINGS,
+} from "@/lib/workspace-settings.functions";
+import { fetchRepKpiTargets } from "@/lib/rep-kpi-targets";
+import {
+  currentTargetsAsOf,
+  computeTargetProgress,
+  STATUS_LABELS,
+  type TargetProgress,
+} from "@/lib/kpi-targets";
+import { pctDelta, formatRangeLabel } from "@/lib/trend";
 import { SPECTRUM_VAR, type SpectrumPosition } from "@/lib/spectrum";
 import type { DateRange } from "@/components/date-range-picker";
 import {
@@ -162,16 +195,21 @@ async function fetchPeriod(
       .eq("org_id", orgId)
       .gte("collected_at", fromISO)
       .lte("collected_at", toISO),
+    // full_name/email/lead_email/closer_name/scheduled_for are only read by
+    // the Level 4 funnel drilldown panel (which only ever looks at the
+    // current-period call's leadRows/callRows), but Supabase's typed
+    // `.select()` needs a literal string — not a conditional — to infer row
+    // types, so both periods fetch the same superset of columns.
     supabase
       .from("leads")
-      .select("id, created_at, source_platform, source_campaign")
+      .select("id, created_at, source_platform, source_campaign, full_name, email")
       .eq("org_id", orgId)
       .gte("created_at", fromISO)
       .lte("created_at", toISO),
     supabase
       .from("calls")
       .select(
-        "showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at, source_platform, source_campaign",
+        "showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at, source_platform, source_campaign, lead_email, closer_name, scheduled_for",
       )
       .eq("org_id", orgId)
       .gte("created_at", fromISO)
@@ -242,8 +280,57 @@ async function fetchPeriod(
     contractValue: callList.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0),
     views: contentList.reduce((s, m) => s + (m.views ?? 0), 0),
     contentLeads: contentList.reduce((s, m) => s + (m.leads_generated ?? 0), 0),
+    // Row-level data for the Level 4 funnel diagnostic's record drilldowns —
+    // only the current-period call renders these, but returning them from
+    // both is cheap and keeps fetchPeriod's shape uniform.
+    leadRows: leadList,
+    callRows: callList,
   };
 }
+
+const FUNNEL_LABELS = ["Views", "Leads", "Booked", "Showed", "Offers", "Closed"] as const;
+const FUNNEL_SPECTRUM: SpectrumPosition[] = ["cold", "cold", "mid", "mid", "mid", "hot"];
+
+const NO_UPSTREAM: Derivation = {
+  status: "insufficient_data",
+  sentence: "No row-level records or upstream constraint to derive for this stage.",
+};
+const NOT_A_FUNNEL_STAGE_CAP: Derivation = {
+  status: "insufficient_data",
+  sentence:
+    "A content attribution breakdown, not a funnel stage — no upstream constraint to derive.",
+};
+const NOT_A_FUNNEL_STAGE_WORKING: Derivation = {
+  status: "insufficient_data",
+  sentence:
+    "A content attribution breakdown, not a funnel stage — no prior-period comparison to derive.",
+};
+
+// Leads and calls are different real shapes, so both funnel-drilldown
+// branches map into one shared display record — keeps a single concrete T
+// for MetricDetailPanel instead of a union across branches.
+type FunnelRecord = {
+  id: string;
+  primary: string;
+  detail: string;
+  date: string | null;
+  cashCents: number | null;
+};
+const FUNNEL_RECORD_COLUMNS: DetailColumn<FunnelRecord>[] = [
+  { key: "primary", label: "Record", render: (r) => r.primary },
+  { key: "detail", label: "Detail", render: (r) => r.detail },
+  {
+    key: "date",
+    label: "Date",
+    render: (r) => (r.date ? new Date(r.date).toLocaleDateString() : "—"),
+  },
+  {
+    key: "cash",
+    label: "Cash",
+    align: "right",
+    render: (r) => (r.cashCents == null ? "—" : money(r.cashCents)),
+  },
+];
 
 function Dashboard() {
   const { data: org } = useCurrentOrg();
@@ -295,66 +382,48 @@ function Dashboard() {
       const daysInMonth = monthEnd.getDate();
       const dayOfMonth = now.getDate();
 
-      const [
-        curr,
-        prev,
-        monthPays,
-        monthCalls,
-        monthSetters,
-        setterAct,
-        alerts,
-        insights,
-        contentAttribution,
-      ] = await Promise.all([
-        fetchPeriod(orgId!, range.from, range.to, { socialPlatform, acquisitionSource }),
-        fetchPeriod(orgId!, prevFrom, prevTo, { socialPlatform, acquisitionSource }),
-        supabase
-          .from("payments")
-          .select("amount_cents")
-          .eq("org_id", orgId!)
-          .gte("collected_at", `${monthStart}T00:00:00`),
-        supabase
-          .from("calls")
-          .select("cash_collected_cents")
-          .eq("org_id", orgId!)
-          .gte("created_at", `${monthStart}T00:00:00`),
-        supabase
-          .from("setter_activity")
-          .select("cash_collected_cents")
-          .eq("org_id", orgId!)
-          .gte("activity_date", monthStart),
-        supabase
-          .from("setter_activity")
-          .select("team_member_name, role, sets, closes, cash_collected_cents, total_revenue_cents")
-          .eq("org_id", orgId!)
-          .gte("activity_date", range.from)
-          .lte("activity_date", range.to),
-        supabase
-          .from("alerts")
-          .select("id, severity, title, created_at")
-          .eq("org_id", orgId!)
-          .eq("acknowledged", false)
-          .order("created_at", { ascending: false })
-          .limit(6),
-        supabase
-          .from("ai_insights")
-          .select("id, title, body, module, created_at")
-          .eq("org_id", orgId!)
-          .eq("dismissed", false)
-          .order("created_at", { ascending: false })
-          .limit(4),
-        // Content-to-cash: top pieces by attributed cash in range
-        supabase
-          .from("content_metrics")
-          .select(
-            "content_id, cash_collected_cents, leads_generated, closes, views, content_pieces!inner(title, platform)",
-          )
-          .eq("org_id", orgId!)
-          .gte("captured_at", fromISO)
-          .lte("captured_at", toISO)
-          .order("cash_collected_cents", { ascending: false, nullsFirst: false })
-          .limit(5),
-      ]);
+      const [curr, prev, monthPays, monthCalls, monthSetters, setterAct, alerts, insights] =
+        await Promise.all([
+          fetchPeriod(orgId!, range.from, range.to, { socialPlatform, acquisitionSource }),
+          fetchPeriod(orgId!, prevFrom, prevTo, { socialPlatform, acquisitionSource }),
+          supabase
+            .from("payments")
+            .select("amount_cents")
+            .eq("org_id", orgId!)
+            .gte("collected_at", `${monthStart}T00:00:00`),
+          supabase
+            .from("calls")
+            .select("cash_collected_cents")
+            .eq("org_id", orgId!)
+            .gte("created_at", `${monthStart}T00:00:00`),
+          supabase
+            .from("setter_activity")
+            .select("cash_collected_cents")
+            .eq("org_id", orgId!)
+            .gte("activity_date", monthStart),
+          supabase
+            .from("setter_activity")
+            .select(
+              "team_member_name, role, sets, closes, cash_collected_cents, total_revenue_cents",
+            )
+            .eq("org_id", orgId!)
+            .gte("activity_date", range.from)
+            .lte("activity_date", range.to),
+          supabase
+            .from("alerts")
+            .select("id, severity, title, created_at")
+            .eq("org_id", orgId!)
+            .eq("acknowledged", false)
+            .order("created_at", { ascending: false })
+            .limit(6),
+          supabase
+            .from("ai_insights")
+            .select("id, title, body, module, created_at")
+            .eq("org_id", orgId!)
+            .eq("dismissed", false)
+            .order("created_at", { ascending: false })
+            .limit(4),
+        ]);
 
       // Closer leaderboard from calls
       const callsForLeaders = await supabase
@@ -560,7 +629,6 @@ function Dashboard() {
         funnel,
         alerts: alerts.data ?? [],
         insights: insights.data ?? [],
-        contentAttribution: contentAttribution.data ?? [],
         pace: { monthCash, projection, dayOfMonth, daysInMonth, dailyPace },
       };
     },
@@ -644,6 +712,462 @@ function Dashboard() {
     [stats?.series],
   );
   const cashRatePct = c?.contractValue ? (c.cash / c.contractValue) * 100 : undefined;
+  const prevCashRatePct = p?.contractValue ? (p.cash / p.contractValue) * 100 : undefined;
+
+  // Level 3 · Content attribution — reuses the same canonical multi-touch
+  // engine (buildAttributionPathsForModel) the Content Command Center runs,
+  // scoped to the Main Hub's own date range (same independent-query
+  // convention as the leaderboards above). Never a second attribution engine
+  // — just a lighter query against the shared model logic.
+  const [attributionModel, setAttributionModel] = useState<AttributionModel>("first_touch");
+  const { data: attribution } = useQuery({
+    queryKey: ["hub-attribution", orgId, range.from, range.to, devBypass],
+    enabled: !!orgId,
+    queryFn: async () => {
+      if (devBypass) {
+        return {
+          pathsByModel: {} as Record<AttributionModel, CanonicalLifecycleAttributionPath[]>,
+          contentMeta: new Map<string, { title: string; platform: string; views: number }>(),
+          bookedByContent: new Map<string, number>(),
+          showedByContent: new Map<string, number>(),
+          closedCalls: [] as {
+            id: string;
+            created_at: string | null;
+            contract_value_cents: number | null;
+            cash_collected_cents: number | null;
+            lead_id: string | null;
+            source_content_id: string | null;
+          }[],
+        };
+      }
+      const fromISO = `${range.from}T00:00:00`;
+      const toISO = `${range.to}T23:59:59`;
+      const [leadsRes, callsRes, touchesRes, closedRes, metricsRes] = await Promise.all([
+        supabase
+          .from("leads")
+          .select("id, created_at, source_content_id")
+          .eq("org_id", orgId!)
+          .gte("created_at", fromISO)
+          .lte("created_at", toISO),
+        // ALL calls (not just closed) — needed for real Booked/Showed counts
+        // per content via the call's own direct source_content_id field.
+        // This is a call-level fact independent of which touch-attribution
+        // model is selected above, so it's computed once, not per model.
+        supabase
+          .from("calls")
+          .select(
+            "id, lead_id, created_at, closed, showed, source_content_id, cash_collected_cents",
+          )
+          .eq("org_id", orgId!)
+          .gte("created_at", fromISO)
+          .lte("created_at", toISO),
+        supabase
+          .from("lead_content_touches")
+          .select("id, lead_id, content_id, touched_at")
+          .eq("org_id", orgId!)
+          .gte("touched_at", fromISO)
+          .lte("touched_at", toISO),
+        supabase
+          .from("calls")
+          .select(
+            "id, created_at, contract_value_cents, cash_collected_cents, lead_id, source_content_id",
+          )
+          .eq("org_id", orgId!)
+          .eq("closed", true)
+          .gte("created_at", fromISO)
+          .lte("created_at", toISO),
+        supabase
+          .from("content_metrics")
+          .select("content_id, views, content_pieces!inner(title, platform)")
+          .eq("org_id", orgId!)
+          .gte("captured_at", fromISO)
+          .lte("captured_at", toISO),
+      ]);
+      const modelInput = {
+        leads: (leadsRes.data ?? []).map((l) => ({
+          id: l.id,
+          created_at: l.created_at,
+          source_content_id: l.source_content_id,
+        })),
+        calls: (closedRes.data ?? []).map((c2) => ({
+          id: c2.id,
+          lead_id: c2.lead_id,
+          created_at: c2.created_at,
+          closed: true,
+          source_content_id: c2.source_content_id,
+        })),
+        touches: touchesRes.data ?? [],
+        sampleSize: closedRes.data?.length ?? 0,
+      };
+      const pathsByModel = Object.fromEntries(
+        ATTRIBUTION_MODELS.map((model) => [
+          model,
+          buildAttributionPathsForModel(model, modelInput),
+        ]),
+      ) as Record<AttributionModel, CanonicalLifecycleAttributionPath[]>;
+      const contentMeta = new Map<string, { title: string; platform: string; views: number }>();
+      for (const m of metricsRes.data ?? []) {
+        const cp = Array.isArray(m.content_pieces) ? m.content_pieces[0] : m.content_pieces;
+        if (!m.content_id) continue;
+        const existing = contentMeta.get(m.content_id);
+        contentMeta.set(m.content_id, {
+          title: cp?.title ?? "(untitled)",
+          platform: cp?.platform ?? "Unknown",
+          views: (existing?.views ?? 0) + (m.views ?? 0),
+        });
+      }
+      const bookedByContent = new Map<string, number>();
+      const showedByContent = new Map<string, number>();
+      for (const call of callsRes.data ?? []) {
+        if (!call.source_content_id) continue;
+        bookedByContent.set(
+          call.source_content_id,
+          (bookedByContent.get(call.source_content_id) ?? 0) + 1,
+        );
+        if (call.showed) {
+          showedByContent.set(
+            call.source_content_id,
+            (showedByContent.get(call.source_content_id) ?? 0) + 1,
+          );
+        }
+      }
+      return {
+        pathsByModel,
+        contentMeta,
+        bookedByContent,
+        showedByContent,
+        closedCalls: closedRes.data ?? [],
+      };
+    },
+  });
+
+  // Level 1 pacing target — rolls up the real, individually-configured closer
+  // "Cash Collected" monthly targets from the Rep KPI Target Engine (never an
+  // invented company-wide number). Anchored to the calendar month containing
+  // today, matching periodWindow's own calendar-month semantics — deliberately
+  // independent of the page's own (possibly partial/custom) date range.
+  const settingsFn = useServerFn(getWorkspaceSettingsFn);
+  const { data: workspaceSettings } = useQuery({
+    queryKey: ["workspace-settings", orgId, devBypass],
+    enabled: devBypass || !!orgId,
+    queryFn: () =>
+      devBypass
+        ? Promise.resolve(DEFAULT_WORKSPACE_SETTINGS)
+        : settingsFn({ data: { orgId: orgId! } }),
+  });
+  const minCapSample =
+    workspaceSettings?.funnel_instrument.minCapSample ??
+    DEFAULT_WORKSPACE_SETTINGS.funnel_instrument.minCapSample;
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const { data: closerCashTargetCents } = useQuery({
+    queryKey: ["hub-cash-target", orgId, devBypass],
+    enabled: !!orgId && !devBypass,
+    queryFn: async () => {
+      const records = await fetchRepKpiTargets(orgId!, "closer");
+      const active = currentTargetsAsOf(records, todayISO).filter(
+        (r) => r.metricKey === "cash_collected_cents" && r.period === "monthly",
+      );
+      return active.reduce((sum, r) => sum + r.targetValue, 0);
+    },
+  });
+  const targetProgress = stats?.pace
+    ? computeTargetProgress({
+        format: "money_cents",
+        period: "monthly",
+        anchorISODate: todayISO,
+        targetValue:
+          closerCashTargetCents && closerCashTargetCents > 0 ? closerCashTargetCents : null,
+        actualValue: stats.pace.monthCash,
+      })
+    : null;
+
+  // Level 3/4 detail-panel state — same click-any-metric pattern the rep
+  // dashboards use (MetricDetailPanel + Derivation), scoped to whichever
+  // funnel stage or attribution content row was clicked.
+  type HubDetailSelection =
+    | { kind: "funnel"; index: number }
+    | { kind: "attribution"; contentId: string; label: string };
+  const [hubSelected, setHubSelected] = useState<HubDetailSelection | null>(null);
+
+  // Level 4 · Funnel diagnostic — reshapes the already-computed funnel counts
+  // (both periods) into FunnelStage[] for FunnelInstrument + the shared
+  // deriveCap/deriveWorking engine. No new numbers, just the existing
+  // curr/prev totals in the shape that engine expects.
+  const funnelStages: DerivedFunnelStage[] = useMemo(
+    () =>
+      (stats?.funnel ?? []).map((f, i) => ({
+        key: FUNNEL_LABELS[i]?.toLowerCase() ?? f.stage.toLowerCase(),
+        label: f.stage,
+        value: f.value,
+        spectrum: FUNNEL_SPECTRUM[i] ?? "mid",
+      })),
+    [stats?.funnel],
+  );
+  const prevFunnelStages: DerivedFunnelStage[] = useMemo(
+    () =>
+      p
+        ? [
+            { key: "views", label: "Views", value: p.views, spectrum: "cold" as SpectrumPosition },
+            {
+              key: "leads",
+              label: "Leads",
+              value: p.newLeads,
+              spectrum: "cold" as SpectrumPosition,
+            },
+            {
+              key: "booked",
+              label: "Booked",
+              value: p.totalCalls,
+              spectrum: "mid" as SpectrumPosition,
+            },
+            {
+              key: "showed",
+              label: "Showed",
+              value: p.showed,
+              spectrum: "mid" as SpectrumPosition,
+            },
+            {
+              key: "offers",
+              label: "Offers",
+              value: p.offers,
+              spectrum: "mid" as SpectrumPosition,
+            },
+            {
+              key: "closed",
+              label: "Closed",
+              value: p.closed,
+              spectrum: "hot" as SpectrumPosition,
+            },
+          ]
+        : [],
+    [p],
+  );
+  // deriveCap/deriveWorking always exclude Views: it's impressions, a
+  // different unit/scale than every downstream stage's head-count, so any
+  // rate comparison that included it (leak-finding, "what's working",
+  // capped-upside math) would either spuriously win/lose or produce a wildly
+  // inflated estimate purely from the unit mismatch, not real funnel health.
+  // capStages therefore starts at Leads — deriveCap's own "needs 2 upstream
+  // stages" rule then correctly leaves Booked (only Leads behind it) as
+  // insufficient too, same as it already does for Leads itself.
+  const capStages = useMemo(() => funnelStages.slice(1), [funnelStages]);
+  const prevCapStages = useMemo(() => prevFunnelStages.slice(1), [prevFunnelStages]);
+  const funnelWorking = useMemo(
+    () => deriveWorking(capStages, prevCapStages, minCapSample),
+    [capStages, prevCapStages, minCapSample],
+  );
+  // Largest leak = the adjacent stage pair (within capStages) with the
+  // lowest conversion rate, gated by the same sample-size floor deriveCap
+  // itself requires — picking "worst rate" rather than "biggest raw drop"
+  // surfaces a real bottleneck instead of just whichever stage has the most
+  // volume. leakIndex is expressed in the FULL funnelStages index space
+  // (capIndex + 1) so callers can look up labels directly.
+  const leakIndex = useMemo(() => {
+    let worst: { index: number; rate: number } | null = null;
+    for (let i = 2; i < capStages.length; i++) {
+      const prevStage = capStages[i - 1];
+      if (prevStage.value < minCapSample) continue;
+      const rate = prevStage.value > 0 ? capStages[i].value / prevStage.value : 0;
+      if (!worst || rate < worst.rate) worst = { index: i, rate };
+    }
+    return worst ? worst.index + 1 : null;
+  }, [capStages, minCapSample]);
+  const leakCap = useMemo(
+    () => (leakIndex != null ? deriveCap(capStages, leakIndex - 1, minCapSample) : null),
+    [capStages, leakIndex, minCapSample],
+  );
+  // Only Showed/Offers/Closed are ever selected as leakIndex (see above), so
+  // only those three need an action.
+  const LEAK_ACTIONS: Record<string, string> = {
+    showed: "Prioritize a confirmation/reminder sequence for booked calls.",
+    offers: "Review call-to-offer script consistency — offers aren't reaching enough shows.",
+    closed: "Audit objection handling and post-call follow-up cadence on unclosed offers.",
+  };
+  const leakAction = leakIndex != null ? LEAK_ACTIONS[funnelStages[leakIndex]?.key] : undefined;
+
+  // Level 3 · Content attribution — per-content rows for the selected model.
+  // Leads/Closes/Cash/Revenue come from the canonical paths (buildAttributionPathsForModel,
+  // the same engine Content Command Center uses); Booked/Showed come from the
+  // direct call-level source_content_id field, which is model-independent.
+  const attributionRows = useMemo(() => {
+    const paths = attribution?.pathsByModel?.[attributionModel] ?? [];
+    const cashById: Record<string, number | null | undefined> = {};
+    const revenueById: Record<string, number | null | undefined> = {};
+    for (const c2 of attribution?.closedCalls ?? []) {
+      if (c2.id) {
+        cashById[c2.id] = c2.cash_collected_cents;
+        revenueById[c2.id] = c2.contract_value_cents;
+      }
+    }
+    const cashAgg = aggregateCashByContent(paths, cashById);
+    const revenueAgg = aggregateCashByContent(paths, revenueById);
+    const cashByContent = new Map(cashAgg.map((a) => [a.contentId, a.cashCents]));
+    const revenueByContent = new Map(revenueAgg.map((a) => [a.contentId, a.cashCents]));
+    const leadsByContent = new Map<string, Set<string>>();
+    const closesByContent = new Map<string, Set<string>>();
+    for (const path of paths) {
+      if (!path.contentId) continue;
+      if (!leadsByContent.has(path.contentId)) leadsByContent.set(path.contentId, new Set());
+      leadsByContent.get(path.contentId)!.add(path.personKey);
+      if (path.callId) {
+        if (!closesByContent.has(path.contentId)) closesByContent.set(path.contentId, new Set());
+        closesByContent.get(path.contentId)!.add(path.callId);
+      }
+    }
+    const contentIds = new Set<string>([
+      ...leadsByContent.keys(),
+      ...(attribution?.bookedByContent.keys() ?? []),
+    ]);
+    return Array.from(contentIds)
+      .map((contentId) => {
+        const meta = attribution?.contentMeta.get(contentId);
+        return {
+          contentId,
+          title: meta?.title ?? "(untitled)",
+          platform: meta?.platform ?? "Unknown",
+          views: meta?.views ?? 0,
+          leads: leadsByContent.get(contentId)?.size ?? 0,
+          booked: attribution?.bookedByContent.get(contentId) ?? 0,
+          showed: attribution?.showedByContent.get(contentId) ?? 0,
+          closes: closesByContent.get(contentId)?.size ?? 0,
+          cashCents: cashByContent.get(contentId) ?? 0,
+          revenueCents: revenueByContent.get(contentId) ?? 0,
+        };
+      })
+      .filter((r) => r.leads > 0 || r.booked > 0 || r.cashCents > 0)
+      .sort((a, b) => b.cashCents - a.cashCents)
+      .slice(0, 8);
+  }, [attribution, attributionModel]);
+
+  // Branching visual (Priority 5) — real per-platform sources merging into
+  // this model's aggregate outcome stages. Omitted (unavailable) when there's
+  // nothing resolved for this model yet.
+  const attributionSources: AttributionSourceNode[] = useMemo(() => {
+    const byPlatform = new Map<string, number>();
+    for (const row of attributionRows) {
+      byPlatform.set(row.platform, (byPlatform.get(row.platform) ?? 0) + row.leads);
+    }
+    return Array.from(byPlatform.entries())
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, value]) => ({ key: label, label, value }));
+  }, [attributionRows]);
+  const attributionTotals = useMemo(
+    () =>
+      attributionRows.reduce(
+        (acc, r) => ({
+          leads: acc.leads + r.leads,
+          closes: acc.closes + r.closes,
+          cashCents: acc.cashCents + r.cashCents,
+        }),
+        { leads: 0, closes: 0, cashCents: 0 },
+      ),
+    [attributionRows],
+  );
+
+  // Two independently-typed panels (rather than one union-typed panel) so
+  // each MetricDetailPanel<T> instantiation below infers its own concrete T
+  // instead of TypeScript trying to unify a funnel-row shape with a
+  // closed-call shape across one shared generic.
+  const funnelSelectedIndex = hubSelected?.kind === "funnel" ? hubSelected.index : null;
+  const funnelPanel = useMemo(() => {
+    if (funnelSelectedIndex == null) return null;
+    const stage = funnelStages[funnelSelectedIndex];
+    if (!stage) return null;
+    const leadRows = c?.leadRows ?? [];
+    const callRows = c?.callRows ?? [];
+    let rows: FunnelRecord[] = [];
+    let emptyRowsLabel = "No records in range.";
+    if (funnelSelectedIndex === 1) {
+      rows = leadRows.map((r) => ({
+        id: r.id,
+        primary: r.full_name || r.email || "—",
+        detail: r.source_platform ?? r.source_campaign ?? "—",
+        date: r.created_at,
+        cashCents: null,
+      }));
+    } else if (funnelSelectedIndex >= 2) {
+      const filterFn =
+        funnelSelectedIndex === 3
+          ? (r: (typeof callRows)[number]) => !!r.showed
+          : funnelSelectedIndex === 4
+            ? (r: (typeof callRows)[number]) => !!r.offer_made || !!r.closed
+            : funnelSelectedIndex === 5
+              ? (r: (typeof callRows)[number]) => !!r.closed
+              : () => true;
+      rows = callRows.filter(filterFn).map((r, i) => ({
+        id: `${r.created_at}-${r.lead_email ?? i}`,
+        primary: r.lead_email ?? "—",
+        detail: r.closer_name ?? "—",
+        date: r.scheduled_for ?? r.created_at,
+        cashCents: r.cash_collected_cents ?? 0,
+      }));
+    } else {
+      // Views (index 0): aggregates from content performance, not individual
+      // leads — no row-level records or upstream constraint to derive.
+      emptyRowsLabel = "Views aggregate from content performance — no individual records here.";
+    }
+    return {
+      title: stage.label,
+      subtitle: formatRangeLabel(range),
+      columns: FUNNEL_RECORD_COLUMNS,
+      rows,
+      rowKey: (r: FunnelRecord) => r.id,
+      // capStages excludes Views, so a full-array index maps to capIndex - 1.
+      // Views itself (index 0) has no representation in capStages at all —
+      // deriveCap already correctly rejects Leads/Booked (capIndex 0/1, below
+      // its own "needs 2 upstream stages" floor) with a specific message,
+      // rather than (for Booked) wrongly using Views as its "lost
+      // population" and producing a nonsensically inflated estimate.
+      cap:
+        funnelSelectedIndex === 0
+          ? NO_UPSTREAM
+          : deriveCap(capStages, funnelSelectedIndex - 1, minCapSample),
+      working: funnelSelectedIndex === 0 ? NO_UPSTREAM : funnelWorking,
+      emptyRowsLabel,
+    };
+  }, [funnelSelectedIndex, funnelStages, capStages, funnelWorking, minCapSample, c, range]);
+
+  const attribSelected = hubSelected?.kind === "attribution" ? hubSelected : null;
+  const attributionPanel = useMemo(() => {
+    if (!attribSelected) return null;
+    const paths = attribution?.pathsByModel?.[attributionModel] ?? [];
+    const callIds = new Set(
+      paths.filter((p2) => p2.contentId === attribSelected.contentId).map((p2) => p2.callId),
+    );
+    const rows = (attribution?.closedCalls ?? []).filter((c2) => c2.id && callIds.has(c2.id));
+    type ClosedCall = (typeof rows)[number];
+    const columns: DetailColumn<ClosedCall>[] = [
+      {
+        key: "date",
+        label: "Closed",
+        render: (r) => (r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"),
+      },
+      {
+        key: "cash",
+        label: "Cash",
+        align: "right",
+        render: (r) => money(r.cash_collected_cents ?? 0),
+      },
+      {
+        key: "revenue",
+        label: "Revenue",
+        align: "right",
+        render: (r) => money(r.contract_value_cents ?? 0),
+      },
+    ];
+    return {
+      title: attribSelected.label,
+      subtitle: `${ATTRIBUTION_MODEL_LABELS[attributionModel]} attribution · ${formatRangeLabel(range)}`,
+      columns,
+      rows,
+      rowKey: (r: ClosedCall) => r.id ?? "",
+      cap: NOT_A_FUNNEL_STAGE_CAP,
+      working: NOT_A_FUNNEL_STAGE_WORKING,
+      emptyRowsLabel: "No closed calls resolved to this content for this model.",
+    };
+  }, [attribSelected, attribution, attributionModel, range]);
 
   return (
     <>
@@ -753,10 +1277,11 @@ function Dashboard() {
                   revenue={c?.contractValue}
                   series={moneySeries}
                   pace={stats?.pace}
+                  prevCashRatePct={prevCashRatePct}
                 />
               </BentoCell>
               <BentoCell span="tall">
-                <PaceTallCard pace={stats?.pace} />
+                <PaceTallCard pace={stats?.pace} targetProgress={targetProgress} />
               </BentoCell>
             </BentoGrid>
           </>
@@ -820,41 +1345,215 @@ function Dashboard() {
             KpiBand/RateSmallMultiples vocabulary as the rest of this page. */}
         <HubOperatingMetrics />
 
-        <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
-          Level 3 · Funnel and cash outcomes
+        <div className="mt-8 mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+            Level 3 · Content attribution
+          </div>
+          <label className="grid gap-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+            Attribution model
+            <Select
+              value={attributionModel}
+              onValueChange={(value) => setAttributionModel(value as AttributionModel)}
+            >
+              <SelectTrigger className="h-8 w-44 text-xs normal-case tracking-normal text-foreground">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ATTRIBUTION_MODELS.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {ATTRIBUTION_MODEL_LABELS[m]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
         </div>
-        {/* Reach and Close are deliberate summary instruments: two horizontal cards
-            keep the funnel readable without nesting legacy stage capsules inside a
-            grouped container. The cash-vs-revenue chart remains below them. */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <ReachSummaryCard
-            views={c?.views ?? 0}
-            leads={c?.newLeads ?? 0}
-            priorViews={p?.views ?? 0}
-            priorLeads={p?.newLeads ?? 0}
-            series={hubSeries}
-          />
-          <CloseSummaryCard
-            booked={c?.totalCalls ?? 0}
-            showed={c?.showed ?? 0}
-            offers={c?.offers ?? 0}
-            closed={c?.closed ?? 0}
-            series={hubSeries}
-          />
+        {/* Where did the money come from? Real branching sources (platforms)
+            merging into this model's outcome stages, then a compact
+            executive table per content piece — the same canonical
+            multi-touch engine Content Command Center runs (never a second
+            attribution engine), just scoped to the Main Hub's own range. */}
+        <AttributionPathPanel
+          title="Money-origin flow"
+          subtitle={`${ATTRIBUTION_MODEL_LABELS[attributionModel]} basis${attributionModel === "assisted_touch" ? " — assisted credit, not direct revenue credit" : ""}`}
+          paths={[
+            {
+              id: "content-to-cash",
+              label: "Sources → Attributed outcome",
+              sources: attributionSources.length > 0 ? attributionSources : undefined,
+              stages: [
+                {
+                  key: "leads",
+                  label: "Leads",
+                  value: attributionTotals.leads,
+                  detail: "Distinct leads with a resolvable content attribution for this model.",
+                },
+                {
+                  key: "closes",
+                  label: "Closed",
+                  value: attributionTotals.closes,
+                  detail: "Closed calls resolved to a content source under this model.",
+                },
+              ],
+              unavailable:
+                attributionRows.length === 0
+                  ? "No leads/closes have a resolvable content attribution for this model in range."
+                  : undefined,
+            },
+          ]}
+        />
+        <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/70 text-left text-2xs uppercase tracking-wider text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">Content</th>
+                  <th className="px-3 py-2 text-right font-medium">Views</th>
+                  <th className="px-3 py-2 text-right font-medium">Leads</th>
+                  <th className="px-3 py-2 text-right font-medium">Booked</th>
+                  <th className="px-3 py-2 text-right font-medium">Shows</th>
+                  <th className="px-3 py-2 text-right font-medium">Closes</th>
+                  <th className="px-3 py-2 text-right font-medium">Cash</th>
+                  <th className="px-4 py-2 text-right font-medium">Revenue</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/70">
+                {attributionRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-6 text-center text-xs text-muted-foreground">
+                      No attributed content activity in this range for this model.
+                    </td>
+                  </tr>
+                ) : (
+                  attributionRows.map((row) => (
+                    <tr
+                      key={row.contentId}
+                      className="cursor-pointer hover:bg-muted/20"
+                      onClick={() =>
+                        setHubSelected({
+                          kind: "attribution",
+                          contentId: row.contentId,
+                          label: row.title,
+                        })
+                      }
+                    >
+                      <td className="px-4 py-2.5">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <PlatformIcon
+                            platform={row.platform}
+                            className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                          />
+                          <span className="truncate text-sm font-medium">{row.title}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                        {fmt(row.views)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                        {fmt(row.leads)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                        {fmt(row.booked)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                        {fmt(row.showed)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                        {fmt(row.closes)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-sm font-semibold text-foreground">
+                        {money(row.cashCents)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                        {money(row.revenueCents)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          {attributionRows.length > 0 && (
+            <div className="border-t border-border/70 px-4 py-2 text-3xs text-muted-foreground">
+              Booked/Shows reflect each call's own logged source and stay the same across every
+              attribution model above — they're a direct call-level fact, not a multi-touch credit.
+            </div>
+          )}
         </div>
-        <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
-          Level 3 · Content attribution
-        </div>
-        {/* Content-to-cash attribution strip */}
-        <ContentToCashStrip rows={stats?.contentAttribution ?? []} />
 
         <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
-          Level 4 · Team efficiency
+          Level 4 · Funnel diagnostic
+        </div>
+        {/* What part of the funnel is working or leaking? Same real
+            Views→Leads→Booked→Showed→Offers→Closed counts the page already
+            computes, now in the canonical FunnelInstrument (clickable stages
+            → real underlying records) plus one deterministic leak finding —
+            no AI call, the same deriveCap/deriveWorking engine the rep
+            dashboards use. */}
+        <FunnelInstrument
+          title="Views → Leads → Booked → Showed → Offers → Closed"
+          subtitle={formatRangeLabel(range)}
+          stages={funnelStages}
+          onStageClick={(i) => setHubSelected({ kind: "funnel", index: i })}
+        />
+        <div className="mt-3 rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <AlertTriangle className="h-3.5 w-3.5 text-spectrum-mid" /> Largest funnel leak
+          </div>
+          {leakCap ? (
+            <>
+              <p
+                className={cn(
+                  "mt-2 text-sm",
+                  leakCap.status === "insufficient_data"
+                    ? "italic text-muted-foreground"
+                    : "text-foreground",
+                )}
+              >
+                {leakIndex != null
+                  ? `Largest leak: ${funnelStages[leakIndex - 1]?.label} → ${funnelStages[leakIndex]?.label}. `
+                  : ""}
+                {leakCap.sentence}
+              </p>
+              {leakCap.status === "ok" && leakAction && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">Recommended: </span>
+                  {leakAction}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="mt-2 text-sm italic text-muted-foreground">
+              Revenue impact unavailable — insufficient connected data.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+          Executive insights
+        </div>
+        {/* What requires attention? A small, honest list — never a recreation
+            of the removed Action & Intelligence section. Deterministic rules
+            over already-computed real numbers (funnel leak, pace-vs-target),
+            never a generic AI claim; "All clear" when nothing qualifies. */}
+        <ExecutiveInsights
+          leakIndex={leakIndex}
+          leakCap={leakCap}
+          leakAction={leakAction}
+          funnelStages={funnelStages}
+          targetProgress={targetProgress}
+          fmtMoney={money}
+        />
+
+        <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+          Team efficiency
         </div>
         {/* Leaderboards — RepLeaderboard + metric-selector, same component and
             pattern the rep dashboards already use. Closers rank by Closes /
             Cash Collected / Revenue Generated; Setters by Sets / Cash
-            Collected / Revenue Generated (Part 7). */}
+            Collected / Revenue Generated (Part 7). Preserved as-is — not part
+            of the Level 3/4 reconstruction, just renumbered out of the way
+            since Level 4 now means the funnel diagnostic. */}
         <div className="grid gap-4 lg:grid-cols-2">
           <RepLeaderboard
             titlePrefix="Top closers"
@@ -884,275 +1583,35 @@ function Dashboard() {
 
         {/* Level 5 Action and Intelligence is intentionally removed per product specification. */}
       </div>
+      {funnelPanel && (
+        <MetricDetailPanel
+          open={hubSelected?.kind === "funnel"}
+          onOpenChange={(v) => !v && setHubSelected(null)}
+          title={funnelPanel.title}
+          subtitle={funnelPanel.subtitle}
+          columns={funnelPanel.columns}
+          rows={funnelPanel.rows}
+          rowKey={funnelPanel.rowKey}
+          cap={funnelPanel.cap}
+          working={funnelPanel.working}
+          emptyRowsLabel={funnelPanel.emptyRowsLabel}
+        />
+      )}
+      {attributionPanel && (
+        <MetricDetailPanel
+          open={hubSelected?.kind === "attribution"}
+          onOpenChange={(v) => !v && setHubSelected(null)}
+          title={attributionPanel.title}
+          subtitle={attributionPanel.subtitle}
+          columns={attributionPanel.columns}
+          rows={attributionPanel.rows}
+          rowKey={attributionPanel.rowKey}
+          cap={attributionPanel.cap}
+          working={attributionPanel.working}
+          emptyRowsLabel={attributionPanel.emptyRowsLabel}
+        />
+      )}
     </>
-  );
-}
-
-type FunnelSeriesPoint = {
-  d: string;
-  views?: number;
-  leads?: number;
-  calls?: number;
-  showed?: number;
-  offers?: number;
-  closed?: number;
-};
-
-function StatusDot({ tone }: { tone: "cold" | "mid" | "hot" }) {
-  return (
-    <span
-      className="h-2 w-2 rounded-full shadow-[0_0_10px_currentColor]"
-      style={{ color: SPECTRUM_VAR[tone], background: SPECTRUM_VAR[tone] }}
-      aria-hidden
-    />
-  );
-}
-
-function ReachSummaryCard({
-  views,
-  leads,
-  priorViews,
-  priorLeads,
-  series,
-}: {
-  views: number;
-  leads: number;
-  priorViews: number;
-  priorLeads: number;
-  series: FunnelSeriesPoint[];
-}) {
-  const conversion = views > 0 ? (leads / views) * 100 : 0;
-  const priorConversion = priorViews > 0 ? (priorLeads / priorViews) * 100 : 0;
-  const conversionDelta =
-    priorConversion > 0 ? ((conversion - priorConversion) / priorConversion) * 100 : 0;
-  const chartData = series.map((point) => ({
-    d: point.d,
-    views: Number(point.views ?? 0),
-    leads: Number(point.leads ?? 0),
-  }));
-  return (
-    <div className="group relative overflow-hidden rounded-2xl border border-spectrum-cold/30 bg-gradient-to-br from-card via-card to-spectrum-cold/[0.08] p-4 shadow-[0_18px_55px_-34px_rgba(34,211,238,0.55)]">
-      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
-      <div className="relative flex items-center justify-between gap-3 border-b border-border/60 pb-3">
-        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          <Activity className="h-4 w-4 shrink-0 text-spectrum-cold" />
-          <span className="truncate">Reach: Views to Leads</span>
-        </div>
-        <StatusDot tone="cold" />
-      </div>
-      <div className="relative mt-4 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
-        <div className="min-w-0">
-          <div className="font-sans text-3xl font-bold tabular-nums tracking-tight text-spectrum-cold">
-            {fmt(views)}
-          </div>
-          <div className="mt-1 text-2xs text-muted-foreground">Top-of-funnel volume</div>
-          <div className="mt-1 text-3xs text-muted-foreground">vs {fmt(priorViews)} prior</div>
-        </div>
-        <div className="min-w-[5.5rem] text-center">
-          <div className="font-sans text-xl font-bold tabular-nums text-spectrum-hot">
-            {conversion.toFixed(2)}%
-          </div>
-          <div className="mt-0.5 flex items-center justify-center gap-1 text-3xs uppercase tracking-[0.12em] text-muted-foreground">
-            {conversionDelta >= 0 ? (
-              <TrendingUp className="h-3 w-3 text-[color:var(--color-success)]" />
-            ) : (
-              <TrendingDown className="h-3 w-3 text-destructive" />
-            )}
-            {Math.abs(conversionDelta).toFixed(0)}% · Lead Conv
-          </div>
-        </div>
-        <div className="min-w-0 text-right">
-          <div className="font-sans text-3xl font-bold tabular-nums tracking-tight text-spectrum-cold">
-            {fmt(leads)}
-          </div>
-          <div className="mt-1 text-2xs text-muted-foreground">Qualified outcomes</div>
-          <div className="mt-1 text-3xs text-muted-foreground">vs {fmt(priorLeads)} prior</div>
-        </div>
-      </div>
-      <div className="relative mt-4 rounded-lg border border-spectrum-cold/20 bg-background/20 px-2 py-2">
-        <div className="mb-1 flex items-center justify-between text-3xs uppercase tracking-[0.12em] text-muted-foreground">
-          <span>Volume history</span>
-          <span className="flex items-center gap-2">
-            <span className="text-spectrum-cold">Views</span>
-            <span className="text-spectrum-hot">Leads</span>
-          </span>
-        </div>
-        <div className="h-16">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 3, right: 3, left: 3, bottom: 0 }}>
-              <CartesianGrid
-                stroke="var(--border)"
-                strokeDasharray="2 3"
-                vertical={false}
-                opacity={0.35}
-              />
-              <XAxis dataKey="d" hide />
-              <YAxis yAxisId="views" hide domain={["auto", "auto"]} />
-              <YAxis yAxisId="leads" hide domain={["auto", "auto"]} />
-              <Tooltip
-                contentStyle={{
-                  background: "var(--popover)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  fontSize: 11,
-                }}
-                formatter={(value: number, name: string) => [
-                  value.toLocaleString(),
-                  name === "views" ? "Views" : "Leads",
-                ]}
-                labelFormatter={(label) => String(label)}
-              />
-              <Line
-                yAxisId="views"
-                type="monotone"
-                dataKey="views"
-                name="views"
-                stroke={SPECTRUM_VAR.cold}
-                strokeWidth={1.8}
-                dot={false}
-                isAnimationActive={false}
-              />
-              <Line
-                yAxisId="leads"
-                type="monotone"
-                dataKey="leads"
-                name="leads"
-                stroke={SPECTRUM_VAR.hot}
-                strokeWidth={1.8}
-                dot={false}
-                isAnimationActive={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CloseSummaryCard({
-  booked,
-  showed,
-  offers,
-  closed,
-  series,
-}: {
-  booked: number;
-  showed: number;
-  offers: number;
-  closed: number;
-  series: FunnelSeriesPoint[];
-}) {
-  const stages = [
-    { label: "Booked", value: booked, tone: "mid" as const, rate: null },
-    {
-      label: "Showed",
-      value: showed,
-      tone: "mid" as const,
-      rate: booked > 0 ? (showed / booked) * 100 : null,
-    },
-    {
-      label: "Offers",
-      value: offers,
-      tone: "mid" as const,
-      rate: showed > 0 ? (offers / showed) * 100 : null,
-    },
-    {
-      label: "Closed",
-      value: closed,
-      tone: "hot" as const,
-      rate: offers > 0 ? (closed / offers) * 100 : null,
-    },
-  ];
-  const chartData = stages.map((stage) => ({
-    stage: stage.label,
-    value: series.reduce((sum, point) => {
-      const key = stage.label === "Booked" ? "calls" : stage.label.toLowerCase();
-      return sum + Number(point[key as keyof FunnelSeriesPoint] ?? 0);
-    }, 0),
-  }));
-  return (
-    <div className="group relative overflow-hidden rounded-2xl border border-spectrum-hot/30 bg-gradient-to-br from-card via-card to-spectrum-hot/[0.08] p-4 shadow-[0_18px_55px_-34px_rgba(236,72,153,0.55)]">
-      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
-      <div className="relative flex items-center justify-between gap-3 border-b border-border/60 pb-3">
-        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          <Flame className="h-4 w-4 shrink-0 text-spectrum-hot" />
-          <span className="truncate">Close: Booked to Closed</span>
-        </div>
-        <StatusDot tone="hot" />
-      </div>
-      <div className="relative mt-4 grid grid-cols-4 gap-1.5">
-        {stages.map((stage, index) => (
-          <div
-            key={stage.label}
-            className="relative min-w-0 rounded-lg border border-spectrum-mid/20 bg-spectrum-mid/[0.07] px-2 py-2.5 text-center"
-          >
-            <div className="text-3xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-              {stage.label}
-            </div>
-            <div className="mt-1 font-sans text-2xl font-bold tabular-nums text-foreground">
-              {fmt(stage.value)}
-            </div>
-            {stage.rate !== null && (
-              <div className="mt-1 text-3xs font-mono tabular-nums text-spectrum-mid">
-                {stage.rate.toFixed(1)}%
-              </div>
-            )}
-            {index < stages.length - 1 && (
-              <span className="absolute -right-2 top-1/2 z-10 text-muted-foreground">→</span>
-            )}
-          </div>
-        ))}
-      </div>
-      <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-muted/60">
-        {stages.map((stage, index) => (
-          <span
-            key={stage.label}
-            className="inline-block h-full"
-            style={{
-              width: `${Math.max(8, (stage.value / Math.max(booked, 1)) * 25)}%`,
-              background: SPECTRUM_VAR[stage.tone],
-              opacity: 0.55 + index * 0.12,
-            }}
-          />
-        ))}
-      </div>
-      <div className="relative mt-3 rounded-lg border border-spectrum-hot/20 bg-background/20 px-2 py-2">
-        <div className="mb-1 text-3xs uppercase tracking-[0.12em] text-muted-foreground">
-          Stage volume
-        </div>
-        <div className="h-14">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 2, right: 2, left: 2, bottom: 0 }}>
-              <CartesianGrid
-                stroke="var(--border)"
-                strokeDasharray="2 3"
-                vertical={false}
-                opacity={0.35}
-              />
-              <XAxis dataKey="stage" hide />
-              <YAxis hide domain={[0, "auto"]} />
-              <Tooltip
-                contentStyle={{
-                  background: "var(--popover)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  fontSize: 11,
-                }}
-                formatter={(value: number) => [value.toLocaleString(), "Count"]}
-              />
-              <Bar
-                dataKey="value"
-                fill={SPECTRUM_VAR.hot}
-                radius={[3, 3, 0, 0]}
-                maxBarSize={32}
-                isAnimationActive={false}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1240,12 +1699,14 @@ function CashHero({
   revenue,
   series,
   pace,
+  prevCashRatePct,
 }: {
   curr?: number;
   prev?: number;
   revenue?: number;
   series: MoneyPoint[];
   pace?: PaceStats;
+  prevCashRatePct?: number;
 }) {
   const animated = useCountUp(curr ?? 0, 700);
   const hasDelta = curr !== undefined && prev !== undefined;
@@ -1255,6 +1716,10 @@ function CashHero({
   const down = delta < -0.5;
   const DeltaIcon = up ? TrendingUp : down ? TrendingDown : Minus;
   const cashRate = revenue && revenue > 0 ? ((curr ?? 0) / revenue) * 100 : 0;
+  const cashRateDeltaPts =
+    revenue && revenue > 0 && prevCashRatePct !== undefined
+      ? cashRate - prevCashRatePct
+      : undefined;
 
   return (
     <div className="group relative flex h-full flex-col justify-between overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -1362,6 +1827,17 @@ function CashHero({
         <span>
           Cash collected rate:{" "}
           <span className="font-mono text-foreground">{cashRate.toFixed(1)}%</span>
+          {cashRateDeltaPts !== undefined && (
+            <span
+              className={cn(
+                "ml-1 font-mono",
+                cashRateDeltaPts >= 0 ? "text-[color:var(--color-success)]" : "text-destructive",
+              )}
+            >
+              ({cashRateDeltaPts >= 0 ? "+" : ""}
+              {cashRateDeltaPts.toFixed(1)}pt vs prior)
+            </span>
+          )}
         </span>
         {pace && (
           <span>
@@ -1378,10 +1854,26 @@ function CashHero({
 /** Month-end pace, in a "tall" bento cell alongside the cash hero — relocated
  * from the old standalone PaceCard (same monthCash/projection/dailyPace/progress
  * values, vertical layout to fit the 1x2 span). */
-function PaceTallCard({ pace }: { pace?: PaceStats }) {
+const TARGET_STATUS_TONE: Record<string, string> = {
+  ahead: "text-[color:var(--color-success)]",
+  on_pace: "text-[color:var(--color-success)]",
+  behind: "text-spectrum-mid",
+  at_risk: "text-destructive",
+  no_target: "text-muted-foreground",
+  insufficient_data: "text-muted-foreground",
+};
+
+function PaceTallCard({
+  pace,
+  targetProgress,
+}: {
+  pace?: PaceStats;
+  targetProgress?: TargetProgress | null;
+}) {
   if (!pace) return null;
   const progress = Math.min(100, (pace.dayOfMonth / pace.daysInMonth) * 100);
   const remaining = Math.max(0, pace.daysInMonth - pace.dayOfMonth);
+  const hasTarget = targetProgress && targetProgress.status !== "no_target";
   return (
     <div className="relative flex h-full flex-col gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-center gap-2">
@@ -1424,12 +1916,55 @@ function PaceTallCard({ pace }: { pace?: PaceStats }) {
             </div>
           </div>
         </div>
+
+        {/* Real target rollup from the Rep KPI Target Engine (sum of active
+            closer monthly Cash Collected targets) — never invented. Anchored
+            to the calendar month, independent of the page's own date range,
+            so a partial custom range never gets misread as a full-period
+            result (Priority 9 §9). */}
+        {hasTarget && targetProgress ? (
+          <div className="rounded-xl border border-border/50 bg-background/35 p-2.5">
+            <div className="flex items-center justify-between text-3xs uppercase tracking-wide text-muted-foreground">
+              <span>Target · {targetProgress.periodLabel}</span>
+              <span className={cn("font-semibold", TARGET_STATUS_TONE[targetProgress.status])}>
+                {STATUS_LABELS[targetProgress.status]}
+              </span>
+            </div>
+            <div className="mt-1 flex items-baseline justify-between">
+              <span className="font-sans text-base font-semibold tabular-nums">
+                {money(targetProgress.targetValue ?? 0)}
+              </span>
+              <span
+                className={cn(
+                  "font-mono text-xs tabular-nums",
+                  (targetProgress.variance ?? 0) >= 0
+                    ? "text-[color:var(--color-success)]"
+                    : "text-destructive",
+                )}
+              >
+                {(targetProgress.variance ?? 0) >= 0 ? "+" : "−"}
+                {money(Math.abs(targetProgress.variance ?? 0))}
+              </span>
+            </div>
+            {targetProgress.requiredDailyPace != null && targetProgress.daysRemaining > 0 && (
+              <div className="mt-1 text-3xs text-muted-foreground">
+                Needs {money(targetProgress.requiredDailyPace)}/day to reach target ·{" "}
+                {targetProgress.daysRemaining} days left in the month
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-border/50 bg-background/20 p-2.5 text-3xs text-muted-foreground">
+            No monthly Cash Collected target configured for the closer team yet — set one in Team →
+            KPI Targets to see pace-to-target here.
+          </div>
+        )}
       </div>
 
       <div>
         <div className="mb-1.5 flex justify-between text-3xs uppercase tracking-[0.14em] text-muted-foreground">
           <span>
-            Day {pace.dayOfMonth}/{pace.daysInMonth}
+            Day {pace.dayOfMonth}/{pace.daysInMonth} (calendar month)
           </span>
           <span>
             {remaining} left · {progress.toFixed(0)}%
@@ -1443,89 +1978,101 @@ function PaceTallCard({ pace }: { pace?: PaceStats }) {
   );
 }
 
-type ContentAttrRow = {
-  content_id: string;
-  cash_collected_cents: number | null;
-  leads_generated: number | null;
-  closes: number | null;
-  views: number | null;
-  content_pieces:
-    | { title: string | null; platform: string }
-    | { title: string | null; platform: string }[];
-};
+/**
+ * "What requires attention?" — a small, honest list of real, deterministic
+ * findings (never a recreation of the removed Action & Intelligence section,
+ * never an AI call). Each insight is derived from numbers already computed
+ * on this page; "All clear" when nothing meets the bar rather than padding
+ * the list to hit a count.
+ */
+function ExecutiveInsights({
+  leakIndex,
+  leakCap,
+  leakAction,
+  funnelStages,
+  targetProgress,
+  fmtMoney,
+}: {
+  leakIndex: number | null;
+  leakCap: Derivation | null;
+  leakAction?: string;
+  funnelStages: DerivedFunnelStage[];
+  targetProgress?: TargetProgress | null;
+  fmtMoney: (cents: number) => string;
+}) {
+  type Insight = {
+    key: string;
+    claim: string;
+    metric: string;
+    implication?: string;
+    action: string;
+  };
+  const insights: Insight[] = [];
 
-function ContentToCashStrip({ rows }: { rows: ContentAttrRow[] }) {
-  const items = rows
-    .filter((r) => (r.cash_collected_cents ?? 0) > 0 || (r.leads_generated ?? 0) > 0)
-    .map((r) => {
-      const cp = Array.isArray(r.content_pieces) ? r.content_pieces[0] : r.content_pieces;
-      return {
-        id: r.content_id,
-        title: cp?.title ?? "(untitled)",
-        platform: cp?.platform ?? "",
-        cash: r.cash_collected_cents ?? 0,
-        leads: r.leads_generated ?? 0,
-        closes: r.closes ?? 0,
-        views: r.views ?? 0,
-      };
-    })
-    .slice(0, 5);
+  if (leakIndex != null && leakCap?.status === "ok" && leakAction) {
+    const from = funnelStages[leakIndex - 1]?.label;
+    const to = funnelStages[leakIndex]?.label;
+    insights.push({
+      key: "leak",
+      claim: `Largest funnel leak: ${from} → ${to}`,
+      metric: leakCap.sentence,
+      implication:
+        "The single biggest constraint on how much of your top-of-funnel volume turns into cash this period.",
+      action: leakAction,
+    });
+  }
+
+  if (
+    targetProgress &&
+    (targetProgress.status === "behind" || targetProgress.status === "at_risk")
+  ) {
+    insights.push({
+      key: "pace",
+      claim:
+        targetProgress.status === "at_risk"
+          ? "At risk of missing this month's cash target"
+          : "Behind pace on this month's cash target",
+      metric: targetProgress.reason,
+      implication:
+        targetProgress.variance != null
+          ? `Currently ${fmtMoney(Math.abs(targetProgress.variance))} ${
+              targetProgress.variance < 0 ? "short of" : "ahead of"
+            } where this month should be.`
+          : undefined,
+      action:
+        leakIndex != null && funnelStages[leakIndex]
+          ? `Focus on ${funnelStages[leakIndex - 1]?.label} → ${funnelStages[leakIndex]?.label} (see Funnel Diagnostic above) to close the gap.`
+          : "Increase booked-call volume or prioritize higher-intent leads to close the gap.",
+    });
+  }
+
+  if (insights.length === 0) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-4 text-sm text-foreground">
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-[color:var(--color-success)]" />
+        All clear — continue monitoring cash pace and funnel conversion.
+      </div>
+    );
+  }
 
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30">
-        <div className="text-xs font-semibold uppercase tracking-wider">Content → Revenue</div>
-        <Link
-          to="/content"
-          className="text-xs text-primary hover:underline flex items-center gap-1"
-        >
-          Open module <ArrowUpRight className="h-3 w-3" />
-        </Link>
-      </div>
-      {items.length === 0 ? (
-        <div className="p-6 text-center text-xs text-muted-foreground">
-          No attributed content cash in this range. Log content with cash_collected_cents to see top
-          performers here.
+    <div className="grid gap-3 sm:grid-cols-2">
+      {insights.slice(0, 5).map((insight) => (
+        <div key={insight.key} className="rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-2 text-3xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            <Lightbulb className="h-3.5 w-3.5 text-spectrum-mid" /> Requires attention
+          </div>
+          <div className="mt-1.5 text-sm font-semibold text-foreground">{insight.claim}</div>
+          <p className="mt-1 text-xs text-muted-foreground">{insight.metric}</p>
+          {insight.implication && (
+            <p className="mt-1 text-xs text-muted-foreground">{insight.implication}</p>
+          )}
+          <p className="mt-2 text-xs">
+            <span className="font-semibold text-foreground">Recommended: </span>
+            <span className="text-muted-foreground">{insight.action}</span>
+          </p>
         </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/70 text-left text-2xs uppercase tracking-wider text-muted-foreground">
-                <th className="px-4 py-2 font-medium">Content</th>
-                <th className="px-3 py-2 text-right font-medium">Views</th>
-                <th className="px-3 py-2 text-right font-medium">Leads</th>
-                <th className="px-3 py-2 text-right font-medium">Closes</th>
-                <th className="px-4 py-2 text-right font-medium">Cash</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/70">
-              {items.map((it) => (
-                <tr key={it.id} className="hover:bg-muted/20">
-                  <td className="px-4 py-2.5">
-                    <Link to="/content" className="block min-w-0 hover:underline">
-                      <div className="truncate text-sm font-medium">{it.title}</div>
-                      <div className="text-3xs text-muted-foreground">{it.platform}</div>
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
-                    {fmt(it.views)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
-                    {it.leads}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
-                    {it.closes}
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-sm font-semibold text-foreground">
-                    {money(it.cash)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      ))}
     </div>
   );
 }
