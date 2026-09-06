@@ -87,6 +87,8 @@ import {
   DEFAULT_WORKSPACE_SETTINGS,
 } from "@/lib/workspace-settings.functions";
 import { clusterObjectionsFn } from "@/lib/objection-clustering.functions";
+import { markLeadDialedFn } from "@/lib/lead-dial-attempts.functions";
+import { useMoney } from "@/hooks/use-money";
 import { applyObjectionClusters } from "@/lib/objection-clustering";
 import {
   ResponsiveContainer,
@@ -127,9 +129,20 @@ interface Props {
 }
 
 const NUM = (v: FormDataEntryValue | null) => Number(v ?? 0) || 0;
-const fmtMoney = (cents: number) =>
-  `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%");
+
+/** Available-to-Dial state — real first-dial-attempt/ring, not assignment, is what removes a lead from the queue (spec: Active Leads Available to Dial). */
+type DialStatus = "Available" | "Dialed" | "Connected" | "Booked" | "Follow-up";
+function deriveDialStatus(
+  lead: { status: string },
+  event?: { firstAttemptAt: string | null; firstConnectionAt: string | null } | null,
+): DialStatus {
+  if (lead.status === "call_booked") return "Booked";
+  if (lead.status === "follow_up") return "Follow-up";
+  if (event?.firstConnectionAt) return "Connected";
+  if (event?.firstAttemptAt) return "Dialed";
+  return "Available";
+}
 
 // Callback scheduling timezone (spec: "Log a Call" timezone visibility).
 // Leads have no stored timezone anywhere in the schema — the `datetime-local`
@@ -169,12 +182,16 @@ interface ActivityLbPerson {
 }
 
 // Part C3 — exact per-role metric option lists for the setter/dialer leaderboard selector.
-const SETTER_METRICS: RepMetricOption<ActivityLbPerson>[] = [
+// Factories (not static arrays) so the leaderboard's Cash Collected column honors the
+// global display-currency selection via the `money` formatter passed in from the component.
+const buildSetterMetrics = (
+  money: (cents: number) => string,
+): RepMetricOption<ActivityLbPerson>[] => [
   {
     key: "cash",
     label: "Cash Collected",
     spectrum: "hot",
-    primary: (p) => fmtMoney(p.cash),
+    primary: (p) => money(p.cash),
     secondary: (p) => `${p.sets} sets`,
     rankBy: (p) => p.cash,
   },
@@ -199,7 +216,7 @@ const SETTER_METRICS: RepMetricOption<ActivityLbPerson>[] = [
     label: "Closes",
     spectrum: "hot",
     primary: (p) => `${p.closes}`,
-    secondary: (p) => fmtMoney(p.cash),
+    secondary: (p) => money(p.cash),
     rankBy: (p) => p.closes,
   },
   {
@@ -236,12 +253,14 @@ const SETTER_METRICS: RepMetricOption<ActivityLbPerson>[] = [
   },
 ];
 
-const DIALER_METRICS: RepMetricOption<ActivityLbPerson>[] = [
+const buildDialerMetrics = (
+  money: (cents: number) => string,
+): RepMetricOption<ActivityLbPerson>[] => [
   {
     key: "cash",
     label: "Cash Collected",
     spectrum: "hot",
-    primary: (p) => fmtMoney(p.cash),
+    primary: (p) => money(p.cash),
     secondary: (p) => `${p.sets} sets`,
     rankBy: (p) => p.cash,
   },
@@ -290,7 +309,7 @@ const DIALER_METRICS: RepMetricOption<ActivityLbPerson>[] = [
     label: "Closes",
     spectrum: "hot",
     primary: (p) => `${p.closes}`,
-    secondary: (p) => fmtMoney(p.cash),
+    secondary: (p) => money(p.cash),
     rankBy: (p) => p.closes,
   },
 ];
@@ -300,6 +319,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
   const qc = useQueryClient();
+  const money = useMoney();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<
     | { kind: "reach" | "close" | "money"; index: number }
@@ -345,7 +365,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const [lbMetric, setLbMetric] = useState<string>("cash");
   const [lbOverride, setLbOverride] = useState<DateRange | null>(null);
   const lbRange = lbOverride ?? range;
-  const lbMetrics = isDialer ? DIALER_METRICS : SETTER_METRICS;
+  const lbMetrics = useMemo(
+    () => (isDialer ? buildDialerMetrics(money) : buildSetterMetrics(money)),
+    [isDialer, money],
+  );
 
   const { data: allRows } = useQuery({
     queryKey: ["activity", role, orgId, range.from, range.to],
@@ -530,17 +553,72 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       ) as Record<string, string>;
     },
   });
+  // Real first-dial-attempt state per lead — the same lead_response_events
+  // pipeline Speed to Lead uses (Twilio "initiated" -> first_attempt,
+  // "answered" -> first_connection). A lead is only removed from the
+  // Available-to-Dial queue once a real attempt lands here — never merely
+  // because it's assigned.
+  const dialableLeadIds = useMemo(() => dialableLeads.map((l) => l.id), [dialableLeads]);
+  const { data: dialableLeadEvents = [] } = useQuery({
+    queryKey: ["dialable-lead-response-events", orgId, dialableLeadIds],
+    enabled: isDialer && !!orgId && !devBypass && dialableLeadIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("lead_response_events")
+        .select("lead_id, first_attempt_at, first_connection_at")
+        .eq("org_id", orgId!)
+        .in("lead_id", dialableLeadIds);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const dialAttemptByLead = useMemo(() => {
+    const map = new Map<
+      string,
+      { firstAttemptAt: string | null; firstConnectionAt: string | null }
+    >();
+    for (const e of dialableLeadEvents as any[]) {
+      map.set(e.lead_id, {
+        firstAttemptAt: e.first_attempt_at,
+        firstConnectionAt: e.first_connection_at,
+      });
+    }
+    return map;
+  }, [dialableLeadEvents]);
+  const availableDialableLeads = useMemo(
+    () => dialableLeads.filter((l) => !dialAttemptByLead.get(l.id)?.firstAttemptAt),
+    [dialableLeads, dialAttemptByLead],
+  );
+  const markDialedFn = useServerFn(markLeadDialedFn);
+  const markDialedMutation = useMutation({
+    mutationFn: async (leadId: string) => {
+      if (devBypass || !orgId) return;
+      await markDialedFn({ data: { org_id: orgId, lead_id: leadId } });
+    },
+    onSuccess: () => {
+      if (!devBypass) {
+        qc.invalidateQueries({ queryKey: ["dialable-lead-response-events"] });
+        qc.invalidateQueries({ queryKey: ["speed-to-lead"] });
+      }
+      toast.success("Marked as dialed");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  // Tile counts reflect the true Available-to-Dial queue (no first_attempt_at
+  // yet). The drilldown table below shows the tier's full open pipeline —
+  // including already-dialed leads — with a per-row dial status instead, so
+  // reps can see where each lead actually is, not just who's left to call.
   const ticketTierSplit = useMemo(() => {
     const byTier = offerTiers.map((t) => ({
       ...t,
-      count: dialableLeads.filter((l) => l.ticket_tier === t.key).length,
+      count: availableDialableLeads.filter((l) => l.ticket_tier === t.key).length,
     }));
     const known = new Set(offerTiers.map((t) => t.key));
-    const unclassified = dialableLeads.filter(
+    const unclassified = availableDialableLeads.filter(
       (l) => !l.ticket_tier || !known.has(l.ticket_tier),
     ).length;
-    return { byTier, unclassified, total: dialableLeads.length };
-  }, [dialableLeads, offerTiers]);
+    return { byTier, unclassified, total: availableDialableLeads.length };
+  }, [availableDialableLeads, offerTiers]);
   const [activeLeadsTier, setActiveLeadsTier] = useState<string | null>(null);
   const activeLeadsDrilldownRows = useMemo(
     () => dialableLeads.filter((l) => l.ticket_tier === activeLeadsTier),
@@ -1421,6 +1499,622 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const activeReps = scorecardNames.length;
   const fmtN0 = (n: number) => Math.round(n).toLocaleString();
 
+  // Composed instruments, not atomized tiles. Every rate ("show rate",
+  // "close rate", "pickup rate"...) is the conv% between two adjacent
+  // funnel stages, not a separate box. Click a stage or Cash Collected
+  // to see what produced it, what's capping it, and what's working.
+  //
+  // Hoisted out of the JSX tree (was an inline `{(() => {...})()}`) so its
+  // "top" output (Key Metrics + Primary Activity + funnel/rate) can render
+  // at the top of the page while "secondary" (Additional Stats + drilldown)
+  // stays trailing, per the §8/§9 IA reorg — same computation, two positions.
+  const metricsBlocks = (() => {
+    const reachStages: FunnelStage[] = isDialer
+      ? [
+          { key: "inbound_leads", label: "Inbound Leads", value: dials, spectrum: "cold" },
+          { key: "qualified", label: "Qualified Convos", value: qualified, spectrum: "mid" },
+          { key: "sets", label: "Sets", value: sets, spectrum: "mid" },
+        ]
+      : [
+          {
+            key: "inbound_leads",
+            label: "Inbound Leads",
+            value: contacted,
+            spectrum: "cold",
+          },
+          { key: "qualified", label: "Qualified Convos", value: qualified, spectrum: "mid" },
+          { key: "sets", label: "Sets", value: sets, spectrum: "mid" },
+        ];
+    const prevReachStages: FunnelStage[] = isDialer
+      ? [
+          {
+            key: "inbound_leads",
+            label: "Inbound Leads",
+            value: prevDials,
+            spectrum: "cold",
+          },
+          {
+            key: "qualified",
+            label: "Qualified Convos",
+            value: prevQualified,
+            spectrum: "mid",
+          },
+          { key: "sets", label: "Sets", value: prevSets, spectrum: "mid" },
+        ]
+      : [
+          {
+            key: "inbound_leads",
+            label: "Inbound Leads",
+            value: prevContacted,
+            spectrum: "cold",
+          },
+          {
+            key: "qualified",
+            label: "Qualified Convos",
+            value: prevQualified,
+            spectrum: "mid",
+          },
+          { key: "sets", label: "Sets", value: prevSets, spectrum: "mid" },
+        ];
+    const reachFields = isDialer
+      ? ["dials", "qualified_convos", "sets"]
+      : ["leads_contacted", "qualified_convos", "sets"];
+
+    const closeStages: FunnelStage[] = [
+      { key: "oncal", label: "Calls on Calendar", value: onCalendar, spectrum: "mid" },
+      { key: "showed", label: "Showed", value: showed, spectrum: "mid" },
+      { key: "closes", label: "Closes", value: closes, spectrum: "hot" },
+    ];
+    const prevCloseStages: FunnelStage[] = [
+      { key: "oncal", label: "Calls on Calendar", value: prevOnCalendar, spectrum: "mid" },
+      { key: "showed", label: "Showed", value: prevShowed, spectrum: "mid" },
+      { key: "closes", label: "Closes", value: prevCloses, spectrum: "hot" },
+    ];
+    const closeFields = ["calls_on_calendar", "live_calls", "closes"];
+
+    const avgCashPerClose = closes ? cashCents / closes : 0;
+    const prevAvgCashPerClose = prevCloses ? prevCashCents / prevCloses : 0;
+
+    type ActivityRow = Record<string, unknown>;
+    const activityRowsBy = (field: string): ActivityRow[] =>
+      [...((rows ?? []) as unknown as ActivityRow[])]
+        .sort((a, b) => Number(b[field] ?? 0) - Number(a[field] ?? 0))
+        .slice(0, 50);
+    const activityColumns = (
+      field: string,
+      label: string,
+      fmt?: (v: number) => string,
+    ): DetailColumn<ActivityRow>[] => [
+      { key: "name", label: "Rep", render: (r) => String(r.team_member_name ?? "—") },
+      { key: "date", label: "Date", render: (r) => String(r.activity_date ?? "—") },
+      { key: "source", label: "Source", render: (r) => String(r.lead_source ?? "—") },
+      {
+        key: "canonicalPath",
+        label: "Canonical path",
+        render: (r) => {
+          const evidence = evaluateAttributionEvidence({
+            model: "lead_source",
+            supportingEvents: r.activity_date ? ["daily_activity"] : [],
+            knownTouchpoints: 0,
+            sampleSize: null,
+            directOutcomeLinked: false,
+            drilldownKey: null,
+          });
+          return `${evidence.coverage} — aggregate row`;
+        },
+      },
+      {
+        key: "value",
+        label,
+        align: "right",
+        render: (r) => (fmt ? fmt(Number(r[field] ?? 0)) : String(r[field] ?? 0)),
+      },
+    ];
+
+    let panel: {
+      title: string;
+      columns: DetailColumn<ActivityRow>[];
+      rows: ActivityRow[];
+      cap: ReturnType<typeof deriveCap>;
+      working: ReturnType<typeof deriveWorking>;
+    } | null = null;
+    if (selected?.kind === "money") {
+      panel = {
+        title: "Cash Collected",
+        columns: activityColumns("cash_collected_cents", "Cash", money),
+        rows: activityRowsBy("cash_collected_cents"),
+        cap: deriveMoneyCap(closes, avgCashPerClose, cashCents, minCapSample, money),
+        working: deriveMoneyWorking(
+          avgCashPerClose,
+          prevAvgCashPerClose,
+          closes,
+          prevCloses,
+          minCapSample,
+          money,
+        ),
+      };
+    } else if (selected?.kind === "activity") {
+      const notAFunnelStage = {
+        status: "insufficient_data" as const,
+        sentence:
+          "Daily aggregate activity, not a funnel stage — no upstream constraint to derive.",
+      };
+      panel = {
+        title: selected.label,
+        columns: activityColumns(selected.field, selected.label),
+        rows: activityRowsBy(selected.field),
+        cap: notAFunnelStage,
+        working: notAFunnelStage,
+      };
+    } else if (selected) {
+      const stages = selected.kind === "reach" ? reachStages : closeStages;
+      const prevStages = selected.kind === "reach" ? prevReachStages : prevCloseStages;
+      const fields = selected.kind === "reach" ? reachFields : closeFields;
+      const stage = stages[selected.index];
+      panel = stage
+        ? {
+            title: stage.label,
+            columns: activityColumns(fields[selected.index], stage.label),
+            rows: activityRowsBy(fields[selected.index]),
+            cap: deriveCap(stages, selected.index, minCapSample),
+            working: deriveWorking(stages, prevStages, minCapSample),
+          }
+        : null;
+    }
+
+    const moneySeries: MoneyPoint[] = daySeries.map((p) => ({
+      d: p.d,
+      cash: Number(p.cash_collected_cents ?? 0),
+      revenue: Number(p.total_revenue_cents ?? 0),
+    }));
+
+    const kpiItems: KpiBandItem[] = [
+      ...(isDialer
+        ? [
+            {
+              key: "dials",
+              label: "Dials",
+              value: fmtN0(dials),
+              spectrum: "cold" as const,
+              deltaPct: pctDelta(dials, prevDials),
+              priorValue: fmtN0(prevDials),
+              empty: dials === 0,
+              emptyHint: 'Log your dial count in "Log day" to start tracking reach.',
+              onClick: () => setSelected({ kind: "reach", index: 0 }),
+            },
+            {
+              key: "connections",
+              label: "Connections",
+              value: fmtN0(conns),
+              spectrum: "cold" as const,
+              deltaPct: pctDelta(conns, prevConns),
+              priorValue: fmtN0(prevConns),
+              empty: conns === 0,
+              emptyHint: 'Connections drive your pickup rate — log them in "Log day."',
+              onClick: () => setSelected({ kind: "reach", index: 1 }),
+            },
+            {
+              key: "qualified",
+              label: "Qualified Convos",
+              value: fmtN0(qualified),
+              spectrum: "mid" as const,
+              deltaPct: pctDelta(qualified, prevQualified),
+              priorValue: fmtN0(prevQualified),
+              empty: qualified === 0,
+              emptyHint: "No qualified convos logged yet this range.",
+              onClick: () => setSelected({ kind: "reach", index: 2 }),
+            },
+            {
+              key: "sets",
+              label: "Sets",
+              value: fmtN0(sets),
+              spectrum: "mid" as const,
+              deltaPct: pctDelta(sets, prevSets),
+              priorValue: fmtN0(prevSets),
+              empty: sets === 0,
+              emptyHint: "Sets show up once a call actually gets booked.",
+              onClick: () => setSelected({ kind: "reach", index: 3 }),
+            },
+          ]
+        : [
+            {
+              key: "contacted",
+              label: "Leads Contacted",
+              value: fmtN0(contacted),
+              spectrum: "cold" as const,
+              deltaPct: pctDelta(contacted, prevContacted),
+              priorValue: fmtN0(prevContacted),
+              empty: contacted === 0,
+              emptyHint: 'Log outreach in "Log day" to start tracking reach.',
+              onClick: () => setSelected({ kind: "reach", index: 0 }),
+            },
+            {
+              key: "qualified",
+              label: "Qualified Convos",
+              value: fmtN0(qualified),
+              spectrum: "mid" as const,
+              deltaPct: pctDelta(qualified, prevQualified),
+              priorValue: fmtN0(prevQualified),
+              empty: qualified === 0,
+              emptyHint: "No qualified convos logged yet this range.",
+              onClick: () => setSelected({ kind: "reach", index: 1 }),
+            },
+            {
+              key: "sets",
+              label: "Sets",
+              value: fmtN0(sets),
+              spectrum: "mid" as const,
+              deltaPct: pctDelta(sets, prevSets),
+              priorValue: fmtN0(prevSets),
+              empty: sets === 0,
+              emptyHint: "Sets show up once a call actually gets booked.",
+              onClick: () => setSelected({ kind: "reach", index: 2 }),
+            },
+          ]),
+      {
+        key: "oncal",
+        label: "Calls Booked",
+        value: fmtN0(onCalendar),
+        spectrum: "mid",
+        deltaPct: pctDelta(onCalendar, prevOnCalendar),
+        priorValue: fmtN0(prevOnCalendar),
+        empty: onCalendar === 0,
+        emptyHint: "Nothing on the calendar yet for this range.",
+        onClick: () => setSelected({ kind: "close", index: 0 }),
+      },
+      {
+        key: "showed",
+        label: "Showed",
+        value: fmtN0(showed),
+        spectrum: "mid",
+        deltaPct: pctDelta(showed, prevShowed),
+        priorValue: fmtN0(prevShowed),
+        empty: showed === 0,
+        emptyHint: 'Mark calls as showed in "Log day" once they happen.',
+        onClick: () => setSelected({ kind: "close", index: 1 }),
+      },
+      {
+        key: "closes",
+        label: "Closes",
+        value: fmtN0(closes),
+        spectrum: "hot",
+        featured: true,
+        deltaPct: pctDelta(closes, prevCloses),
+        priorValue: fmtN0(prevCloses),
+        empty: closes === 0,
+        emptyHint: "No closes yet this range — they'll show up here.",
+        onClick: () => setSelected({ kind: "close", index: 2 }),
+      },
+      {
+        key: "cash",
+        label: "Cash Collected",
+        value: money(cashCents),
+        spectrum: "hot",
+        featured: true,
+        wide: true,
+        deltaPct: pctDelta(cashCents, prevCashCents),
+        priorValue: money(prevCashCents),
+        empty: cashCents === 0,
+        emptyHint: "Log a close with cash collected to see this populate.",
+        onClick: () => setSelected({ kind: "money", index: 0 }),
+      },
+      {
+        key: "revenue",
+        label: "Revenue Generated",
+        value: money(revCents),
+        spectrum: "hot",
+        featured: true,
+        wide: true,
+        deltaPct: pctDelta(revCents, prevRevCents),
+        priorValue: money(prevRevCents),
+        empty: revCents === 0,
+        emptyHint: "Total contract value shows up once a deal closes.",
+        onClick: () => setSelected({ kind: "money", index: 0 }),
+      },
+      ...(isDialer
+        ? [
+            {
+              key: "averageCallLength",
+              label: "Average Call Length",
+              value: fmtDuration(appointmentQuality.avgDurationSeconds),
+              spectrum: "cold" as const,
+              empty: appointmentQuality.avgDurationSeconds == null,
+              emptyHint: "Requires duration_seconds logged on calls.",
+            },
+            {
+              key: "averageTalkTime",
+              label: "Average Talk Time",
+              value: fmtDuration(appointmentQuality.avgTalkSeconds),
+              spectrum: "cold" as const,
+              empty: appointmentQuality.avgTalkSeconds == null,
+              emptyHint: "Requires talk_seconds logged on calls.",
+            },
+          ]
+        : []),
+    ];
+
+    const pickupPct = dials ? (conns / dials) * 100 : 0;
+    const prevPickupPct = prevDials ? (prevConns / prevDials) * 100 : 0;
+    const qualDen = isDialer ? conns : contacted;
+    const prevQualDen = isDialer ? prevConns : prevContacted;
+    const qualPct = qualDen ? (qualified / qualDen) * 100 : 0;
+    const prevQualPct = prevQualDen ? (prevQualified / prevQualDen) * 100 : 0;
+    const setPct = qualified ? (sets / qualified) * 100 : 0;
+    const prevSetPct = prevQualified ? (prevSets / prevQualified) * 100 : 0;
+    const showPct = onCalendar ? (showed / onCalendar) * 100 : 0;
+    const prevShowPct = prevOnCalendar ? (prevShowed / prevOnCalendar) * 100 : 0;
+    const closeRatePct = showed ? (closes / showed) * 100 : 0;
+    const prevCloseRatePct = prevShowed ? (prevCloses / prevShowed) * 100 : 0;
+
+    const rateCharts: RateChartSpec[] = [
+      ...(isDialer
+        ? [
+            {
+              key: "pickup",
+              label: "Pickup Rate",
+              points: seriesRatePoints(daySeries, "connections", "dials"),
+              currentPct: pickupPct,
+              deltaPct: pctDelta(pickupPct, prevPickupPct),
+              spectrum: "cold" as const,
+              onClick: () => setSelected({ kind: "reach", index: 1 }),
+            },
+          ]
+        : []),
+      {
+        key: "qualrate",
+        label: "Qualified Convo Rate",
+        points: seriesRatePoints(
+          daySeries,
+          "qualified_convos",
+          isDialer ? "connections" : "leads_contacted",
+        ),
+        currentPct: qualPct,
+        deltaPct: pctDelta(qualPct, prevQualPct),
+        spectrum: "mid",
+        onClick: () => setSelected({ kind: "reach", index: isDialer ? 2 : 1 }),
+      },
+      {
+        key: "setrate",
+        label: "Set Rate",
+        points: seriesRatePoints(daySeries, "sets", "qualified_convos"),
+        currentPct: setPct,
+        deltaPct: pctDelta(setPct, prevSetPct),
+        spectrum: "mid",
+        onClick: () => setSelected({ kind: "reach", index: isDialer ? 3 : 2 }),
+      },
+      {
+        key: "showrate",
+        label: "Show Rate",
+        points: seriesRatePoints(daySeries, "live_calls", "calls_on_calendar"),
+        currentPct: showPct,
+        deltaPct: pctDelta(showPct, prevShowPct),
+        spectrum: "mid",
+        onClick: () => setSelected({ kind: "close", index: 1 }),
+      },
+      {
+        key: "closerate",
+        label: "Close Rate",
+        points: seriesRatePoints(daySeries, "closes", "live_calls"),
+        currentPct: closeRatePct,
+        deltaPct: pctDelta(closeRatePct, prevCloseRatePct),
+        spectrum: "hot",
+        onClick: () => setSelected({ kind: "close", index: 2 }),
+      },
+    ];
+
+    const activityChartFields: Record<string, string> = {
+      dials: "dials",
+      connections: "connections",
+      contacted: "leads_contacted",
+      qualified: "qualified_convos",
+      sets: "sets",
+      oncal: "calls_on_calendar",
+      showed: "live_calls",
+      closes: "closes",
+      cash: "cash_collected_cents",
+      revenue: "total_revenue_cents",
+    };
+    const activityBarKeys = new Set([
+      "dials",
+      "connections",
+      "contacted",
+      "qualified",
+      "sets",
+      "oncal",
+      "showed",
+      "closes",
+    ]);
+    const chartedKpiItems = kpiItems.map((item) => {
+      const field = activityChartFields[item.key];
+      return field
+        ? {
+            ...item,
+            spark: daySeries.map((point) => Number((point as Record<string, unknown>)[field] ?? 0)),
+            sparkLabels: daySeries.map((point) => point.d),
+            sparkVariant: activityBarKeys.has(item.key) ? ("bar" as const) : ("line" as const),
+          }
+        : item;
+    });
+
+    const top = (
+      <>
+        <KpiBand
+          items={chartedKpiItems}
+          title={
+            isDialer
+              ? "Inbound Dialer · Key Metrics"
+              : "DM Setter Key Metrics / Primary Performance"
+          }
+        />
+        {!isDialer && (
+          <KpiBand
+            title="DM Setter · Primary Activity"
+            items={[
+              {
+                key: "inbound-dms",
+                label: "Inbound DMs Sent",
+                value: inboundDms == null ? "Unavailable" : fmtN0(inboundDms),
+                spectrum: "mid",
+                empty: inboundDms == null,
+                emptyHint: "Requires connected message events.",
+                onClick:
+                  inboundDms == null
+                    ? undefined
+                    : () =>
+                        setSelected({
+                          kind: "activity",
+                          field: "inbound_dms_sent",
+                          label: "Inbound DMs Sent",
+                        }),
+              },
+              {
+                key: "outbound-dms",
+                label: "Outbound DMs Sent",
+                value: outboundDms == null ? "Unavailable" : fmtN0(outboundDms),
+                spectrum: "mid",
+                empty: outboundDms == null,
+                emptyHint: "Requires connected message events.",
+                onClick:
+                  outboundDms == null
+                    ? undefined
+                    : () =>
+                        setSelected({
+                          kind: "activity",
+                          field: "outbound_dms_sent",
+                          label: "Outbound DMs Sent",
+                        }),
+              },
+              {
+                key: "followups",
+                label: "Follow-ups Sent",
+                value: followupsSent == null ? "Unavailable" : fmtN0(followupsSent),
+                spectrum: "mid",
+                empty: followupsSent == null,
+                emptyHint: "Requires connected message events.",
+                onClick:
+                  followupsSent == null
+                    ? undefined
+                    : () =>
+                        setSelected({
+                          kind: "activity",
+                          field: "followups_sent",
+                          label: "Follow-ups Sent",
+                        }),
+              },
+              {
+                key: "links-sent",
+                label: "Links Sent",
+                value: fmtN0(linksSent),
+                spectrum: "mid",
+                onClick: () =>
+                  setSelected({ kind: "activity", field: "links_sent", label: "Links Sent" }),
+              },
+              {
+                key: "links-clicked",
+                label: "Links Clicked",
+                value: linksClicked == null ? "Unavailable" : fmtN0(linksClicked),
+                spectrum: "mid",
+                empty: linksClicked == null,
+                emptyHint: "Requires connected link events.",
+                onClick:
+                  linksClicked == null
+                    ? undefined
+                    : () =>
+                        setSelected({
+                          kind: "activity",
+                          field: "links_clicked",
+                          label: "Links Clicked",
+                        }),
+              },
+              {
+                key: "post-booking",
+                label: "Post-booking Visits",
+                value: postBookingVisits == null ? "Unavailable" : fmtN0(postBookingVisits),
+                spectrum: "hot",
+                empty: postBookingVisits == null,
+                emptyHint: "Requires connected page events.",
+              },
+              {
+                key: "precall",
+                label: "Pre-call Watches",
+                value: preCallWatches == null ? "Unavailable" : fmtN0(preCallWatches),
+                spectrum: "hot",
+                empty: preCallWatches == null,
+                emptyHint: "Requires connected video events.",
+              },
+            ]}
+          />
+        )}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FunnelInstrument
+              title="Reach"
+              subtitle="Inbound Leads → Sets"
+              stages={reachStages}
+              onStageClick={(i) => setSelected({ kind: "reach", index: i })}
+            />
+            <FunnelInstrument
+              title="Close"
+              subtitle="Booked → Closed"
+              stages={closeStages}
+              onStageClick={(i) => setSelected({ kind: "close", index: i })}
+            />
+          </div>
+          <MoneyInstrument
+            series={moneySeries}
+            payoutPct={5}
+            payoutCents={cashCents * 0.05}
+            cashRatePct={revCents ? (cashCents / revCents) * 100 : 0}
+            onCashClick={() => setSelected({ kind: "money", index: 0 })}
+            fmtMoney={money}
+          />
+        </div>
+        <RateSmallMultiples charts={rateCharts} />
+      </>
+    );
+    const secondary = (
+      <>
+        <KpiBand
+          title="Additional Stats"
+          items={
+            [
+              // Links Sent, Inbound/Outbound DMs, Follow-ups, Links
+              // Clicked, Post-booking Visits, and Pre-call Watches all
+              // used to be duplicated here AND in "DM Setter · Primary
+              // Activity" above — same metric, same value, two cards.
+              // Primary Activity is the single home for all of them now;
+              // Additional Stats keeps only what's genuinely secondary.
+              {
+                key: "downsells",
+                label: "Downsells",
+                value: downsells.toLocaleString(),
+                spectrum: "mid",
+                deltaPct: pctDelta(downsells, prevDownsells),
+                priorValue: prevDownsells.toLocaleString(),
+                empty: !downsells,
+                emptyHint: "No downsells logged in this range.",
+              },
+            ].filter(Boolean) as KpiBandItem[]
+          }
+        />
+        {panel && (
+          <MetricDetailPanel
+            open={!!selected}
+            onOpenChange={(v) => !v && setSelected(null)}
+            title={panel.title}
+            subtitle={`${range.from} → ${range.to}`}
+            columns={panel.columns}
+            rows={panel.rows}
+            rowKey={(r) => String(r.id ?? `${r.team_member_name}-${r.activity_date}`)}
+            cap={panel.cap}
+            working={panel.working}
+            emptyRowsLabel="No entries in this date range."
+          />
+        )}
+      </>
+    );
+    return { top, secondary };
+  })();
   return (
     <>
       <TopBar title={title} subtitle={subtitle} showDateRange />
@@ -1453,6 +2147,363 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 ]
           }
         />
+        {metricsBlocks.top}
+        {!isDialer && (
+          <KpiBand
+            title="Reply Performance"
+            items={[
+              {
+                key: "replies",
+                label: "Replies",
+                value: replies == null ? "Unavailable" : fmtN0(replies),
+                spectrum: "hot",
+                deltaPct:
+                  replies == null || prevReplies == null
+                    ? undefined
+                    : pctDelta(replies, prevReplies),
+                priorValue: replies == null || prevReplies == null ? undefined : fmtN0(prevReplies),
+                empty: replies == null,
+                emptyHint: "Requires connected message events.",
+                onClick:
+                  replies == null
+                    ? undefined
+                    : () => setSelected({ kind: "activity", field: "replies", label: "Replies" }),
+              },
+              {
+                key: "reply-rate",
+                label: "Reply Rate",
+                value:
+                  replies == null || !outboundDms
+                    ? "Unavailable"
+                    : `${((replies / outboundDms) * 100).toFixed(1)}%`,
+                spectrum: "hot",
+                deltaPct:
+                  replies == null || !outboundDms || prevReplies == null || !prevOutboundDms
+                    ? undefined
+                    : pctDelta(
+                        (replies / outboundDms) * 100,
+                        (prevReplies / prevOutboundDms) * 100,
+                      ),
+                empty: replies == null || !outboundDms,
+                emptyHint: "Log Outbound DMs Sent and Replies to see reply rate.",
+                onClick:
+                  replies == null
+                    ? undefined
+                    : () =>
+                        setSelected({ kind: "activity", field: "replies", label: "Reply Rate" }),
+              },
+              {
+                key: "qualified-convo-rate",
+                label: "Qualified Convo Rate",
+                value: contacted ? `${((qualified / contacted) * 100).toFixed(1)}%` : "Unavailable",
+                spectrum: "mid",
+                deltaPct:
+                  contacted && prevContacted
+                    ? pctDelta((qualified / contacted) * 100, (prevQualified / prevContacted) * 100)
+                    : undefined,
+                empty: !contacted,
+                emptyHint: "Log Leads Contacted and Qualified Conversations to see this rate.",
+                onClick: () =>
+                  setSelected({
+                    kind: "activity",
+                    field: "qualified_convos",
+                    label: "Qualified Conversations",
+                  }),
+              },
+              {
+                key: "positive-intent",
+                label: "Positive-Intent Replies",
+                value: "Not Tracked",
+                spectrum: "cold",
+                empty: true,
+                emptyHint: "No reply-outcome/sentiment field exists in the data model yet.",
+              },
+            ]}
+          />
+        )}
+        <OperationalWorkflowPanel
+          role={role}
+          qualified={qualified}
+          sets={sets}
+          booked={onCalendar}
+          closes={closes}
+          cashLabel={money(cashCents)}
+          linksSent={linksSent}
+          connectorAvailable={false}
+        />
+        {(() => {
+          const platformSources = groupBySourcePlatform(speedEvents, (e: any) => e.source_platform);
+          const setterPaths: AttributionPath[] = [
+            {
+              id: "dm-lifecycle",
+              label: "Path 1 · DM → reply → qualified → booked → showed → closed → cash",
+              stages: [
+                {
+                  key: "outbound",
+                  label: "Outbound DMs",
+                  value: outboundDms,
+                  detail: "Verified daily activity",
+                },
+                {
+                  key: "inbound",
+                  label: "Inbound DMs",
+                  value: inboundDms,
+                  detail: "Verified daily activity",
+                },
+                {
+                  key: "replies",
+                  label: "Replies",
+                  value: replies,
+                  detail: "Verified message replies",
+                },
+                {
+                  key: "qualified",
+                  label: "Qualified",
+                  value: qualified,
+                  detail: "Qualified conversations",
+                },
+                { key: "booked", label: "Booked", value: onCalendar, detail: "Calls on calendar" },
+                { key: "showed", label: "Showed", value: showed, detail: "Live calls" },
+                { key: "closed", label: "Closed", value: closes, detail: "Closed calls" },
+                {
+                  key: "cash",
+                  label: "Cash",
+                  value: cashCents ? Math.round(cashCents / 100) : 0,
+                  detail: `${money(cashCents)} collected`,
+                },
+              ],
+            },
+            {
+              id: "content-mechanism",
+              label: "Path 2 · format/content → conversation → booked → cash",
+              stages: [
+                {
+                  key: "format",
+                  label: "Format / content",
+                  value: null,
+                  detail: "No verified content-touch join in daily activity",
+                },
+                {
+                  key: "conversation",
+                  label: "Conversation",
+                  value: replies,
+                  detail: "Verified replies when available",
+                },
+                { key: "booked", label: "Booked", value: onCalendar, detail: "Calls on calendar" },
+                {
+                  key: "cash",
+                  label: "Cash",
+                  value: cashCents ? Math.round(cashCents / 100) : 0,
+                  detail: `${money(cashCents)} collected`,
+                },
+              ],
+            },
+            {
+              id: "vsl-flow",
+              label: "Path 3 · platform → first touch → content/campaign → setter/VSL → outcome",
+              // Dialer only: lead_response_events (speedEvents, already fetched
+              // for the Speed-to-Lead section above) carries a real per-lead
+              // source_platform — a genuine branching breakdown replacing the
+              // "no verified platform join" placeholder stage, rather than one
+              // flat unavailable number implying nothing is known. DM Setter's
+              // aggregate daily activity has no equivalent per-lead join, so it
+              // keeps the honest "unavailable" stage instead.
+              sources: platformSources.length
+                ? platformSources.map((s) => ({ key: s.label, label: s.label, value: s.count }))
+                : undefined,
+              stages: [
+                ...(platformSources.length
+                  ? []
+                  : [
+                      {
+                        key: "platform",
+                        label: "Platform",
+                        value: null,
+                        detail: "No verified platform join in aggregate activity",
+                      },
+                    ]),
+                {
+                  key: "touch",
+                  label: "First touch",
+                  value: null,
+                  detail: "No verified content touchpoint join",
+                },
+                {
+                  key: "setter",
+                  label: isDialer ? "Dialer" : "DM Setter",
+                  value: isDialer ? dials : contacted,
+                  detail: "Current role activity",
+                },
+                {
+                  key: "qualified",
+                  label: "Qualified",
+                  value: qualified,
+                  detail: "Qualified conversations",
+                },
+                { key: "booked", label: "Booked", value: onCalendar, detail: "Calls on calendar" },
+                {
+                  key: "cash",
+                  label: "Cash",
+                  value: cashCents ? Math.round(cashCents / 100) : 0,
+                  detail: `${money(cashCents)} collected`,
+                },
+              ],
+            },
+            {
+              id: "dm-vsl-flow",
+              label:
+                "DM Setter → VSL → post-booking → testimonial → FAQ/objection → booking → cash",
+              stages: [
+                { key: "dm", label: "DM Setter", value: contacted, detail: "Leads contacted" },
+                {
+                  key: "vsl",
+                  label: "VSL",
+                  value: null,
+                  detail: "VSL identity/event join not connected",
+                },
+                {
+                  key: "post-booking",
+                  label: "Post-booking page",
+                  value: postBookingVisits,
+                  detail: "Verified page visits when connected",
+                },
+                {
+                  key: "testimonial",
+                  label: "Testimonial videos",
+                  value: preCallWatches,
+                  detail: "Pre-call watches; video identity unavailable",
+                },
+                {
+                  key: "faq",
+                  label: "FAQ / objections",
+                  value: null,
+                  detail: "No verified FAQ-video event source",
+                },
+                { key: "booked", label: "Booking", value: onCalendar, detail: "Calls on calendar" },
+                {
+                  key: "cash",
+                  label: "Cash",
+                  value: cashCents ? Math.round(cashCents / 100) : 0,
+                  detail: `${money(cashCents)} collected`,
+                },
+              ],
+            },
+          ];
+          if (isDialer) {
+            return (
+              <>
+                <AttributionPathPanel
+                  title="Inbound Dialer attribution"
+                  subtitle="Source → capture → connection → qualified → booked → showed → closed → cash"
+                  paths={[setterPaths[2]]}
+                />
+                <AttributionPathPanel
+                  title="Dialer callbacks & appointment quality"
+                  subtitle="Callbacks Requested → Due Today → Completed Today → Booked → Closed → Cash"
+                  paths={[
+                    {
+                      id: "callbacks",
+                      label: "Callback workflow",
+                      stages: [
+                        {
+                          key: "requested",
+                          label: "Callbacks Requested",
+                          value: callbackFunnel.requested,
+                          detail: "Logged in this range",
+                        },
+                        {
+                          key: "due",
+                          label: "Due Today",
+                          value: callbackFunnel.dueToday,
+                          detail: "due_at falls today",
+                        },
+                        {
+                          key: "completed",
+                          label: "Completed Today",
+                          value: callbackFunnel.completedToday,
+                          detail: "Marked completed today",
+                        },
+                        {
+                          key: "booked",
+                          label: "Calls Booked",
+                          value: onCalendar,
+                          detail: "Verified calls on calendar",
+                        },
+                        {
+                          key: "closed",
+                          label: "Closed",
+                          value: closes,
+                          detail: "Verified closes",
+                        },
+                        {
+                          key: "cash",
+                          label: "Cash",
+                          value: cashCents ? Math.round(cashCents / 100) : 0,
+                          detail: `${money(cashCents)} collected`,
+                        },
+                      ],
+                    },
+                    {
+                      id: "appointment-quality",
+                      label: "Appointment quality",
+                      stages: [
+                        {
+                          key: "cancel",
+                          label: "Cancellation Rate",
+                          value:
+                            appointmentQuality.cancellationRate == null
+                              ? null
+                              : Math.round(appointmentQuality.cancellationRate),
+                          detail: appointmentQuality.total
+                            ? `${appointmentQuality.total} scheduled calls in range`
+                            : "No scheduled calls in range",
+                        },
+                        {
+                          key: "reschedule",
+                          label: "Reschedule Rate",
+                          value:
+                            appointmentQuality.rescheduleRate == null
+                              ? null
+                              : Math.round(appointmentQuality.rescheduleRate),
+                          detail: appointmentQuality.total
+                            ? `${appointmentQuality.total} scheduled calls in range`
+                            : "No scheduled calls in range",
+                        },
+                        {
+                          key: "no-show",
+                          label: "No-show Rate",
+                          value:
+                            appointmentQuality.noShowRate == null
+                              ? null
+                              : Math.round(appointmentQuality.noShowRate),
+                          detail: appointmentQuality.total
+                            ? `${appointmentQuality.total} scheduled calls in range`
+                            : "No scheduled calls in range",
+                        },
+                        {
+                          key: "recovery",
+                          label: "No-show Recovery",
+                          value:
+                            appointmentQuality.noShowRecoveryRate == null
+                              ? null
+                              : Math.round(appointmentQuality.noShowRecoveryRate),
+                          detail: "% of no-shows later marked recovered on a follow-up call",
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              </>
+            );
+          }
+          return (
+            <AttributionPathPanel
+              title="DM Setter attribution"
+              subtitle="Distinct DM, content, platform, and VSL paths; aggregate rows stay evidence-scoped"
+              paths={setterPaths}
+            />
+          );
+        })()}
         {isDialer && (
           <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -1829,6 +2880,39 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                   render: (l) => l.status.replace(/_/g, " "),
                 },
                 {
+                  key: "dialStatus",
+                  label: "Dial status",
+                  render: (l) => {
+                    const dialStatus = deriveDialStatus(l, dialAttemptByLead.get(l.id));
+                    const tone =
+                      dialStatus === "Available"
+                        ? "text-spectrum-cold"
+                        : dialStatus === "Connected" || dialStatus === "Booked"
+                          ? "text-spectrum-hot"
+                          : "text-muted-foreground";
+                    return <span className={`text-xs font-semibold ${tone}`}>{dialStatus}</span>;
+                  },
+                },
+                {
+                  key: "dialAction",
+                  label: "",
+                  render: (l) => {
+                    if (deriveDialStatus(l, dialAttemptByLead.get(l.id)) !== "Available")
+                      return null;
+                    return (
+                      <button
+                        type="button"
+                        title="Mark as dialed — manual fallback for when a real dial isn't captured automatically"
+                        onClick={() => markDialedMutation.mutate(l.id)}
+                        disabled={markDialedMutation.isPending || devBypass}
+                        className="rounded-md border border-border/70 px-2 py-1 text-3xs font-semibold uppercase tracking-wide text-muted-foreground transition hover:border-primary/50 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Mark Dialed
+                      </button>
+                    );
+                  },
+                },
+                {
                   key: "assigned",
                   label: "Assigned rep",
                   render: (l) =>
@@ -1862,668 +2946,208 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               working={{
                 status: "insufficient_data",
                 sentence:
-                  "Assigned-dialer and call-attempt tracking aren't connected on the lead record yet, so only what's actually stored (status, source, created date, next scheduled follow-up) is shown here.",
+                  "Dial status (Dialed/Connected) comes from real call events where Twilio is connected. Per-dialer assignment tracking on the lead record still isn't connected, so 'Assigned rep' only reflects who the lead was assigned to, not who actually dialed it.",
               }}
               emptyRowsLabel="No leads in this tier right now."
             />
           </div>
         )}
-        {!isDialer && (
-          <KpiBand
-            title="Reply Performance"
-            items={[
-              {
-                key: "replies",
-                label: "Replies",
-                value: replies == null ? "Unavailable" : fmtN0(replies),
-                spectrum: "hot",
-                deltaPct:
-                  replies == null || prevReplies == null
-                    ? undefined
-                    : pctDelta(replies, prevReplies),
-                priorValue: replies == null || prevReplies == null ? undefined : fmtN0(prevReplies),
-                empty: replies == null,
-                emptyHint: "Requires connected message events.",
-                onClick:
-                  replies == null
-                    ? undefined
-                    : () => setSelected({ kind: "activity", field: "replies", label: "Replies" }),
-              },
-              {
-                key: "reply-rate",
-                label: "Reply Rate",
-                value:
-                  replies == null || !outboundDms
-                    ? "Unavailable"
-                    : `${((replies / outboundDms) * 100).toFixed(1)}%`,
-                spectrum: "hot",
-                deltaPct:
-                  replies == null || !outboundDms || prevReplies == null || !prevOutboundDms
-                    ? undefined
-                    : pctDelta(
-                        (replies / outboundDms) * 100,
-                        (prevReplies / prevOutboundDms) * 100,
-                      ),
-                empty: replies == null || !outboundDms,
-                emptyHint: "Log Outbound DMs Sent and Replies to see reply rate.",
-                onClick:
-                  replies == null
-                    ? undefined
-                    : () =>
-                        setSelected({ kind: "activity", field: "replies", label: "Reply Rate" }),
-              },
-              {
-                key: "qualified-convo-rate",
-                label: "Qualified Convo Rate",
-                value: contacted ? `${((qualified / contacted) * 100).toFixed(1)}%` : "Unavailable",
-                spectrum: "mid",
-                deltaPct:
-                  contacted && prevContacted
-                    ? pctDelta((qualified / contacted) * 100, (prevQualified / prevContacted) * 100)
-                    : undefined,
-                empty: !contacted,
-                emptyHint: "Log Leads Contacted and Qualified Conversations to see this rate.",
-                onClick: () =>
-                  setSelected({
-                    kind: "activity",
-                    field: "qualified_convos",
-                    label: "Qualified Conversations",
-                  }),
-              },
-              {
-                key: "positive-intent",
-                label: "Positive-Intent Replies",
-                value: "Not Tracked",
-                spectrum: "cold",
-                empty: true,
-                emptyHint: "No reply-outcome/sentiment field exists in the data model yet.",
-              },
-            ]}
-          />
-        )}
-        {!isDialer && (
-          <KpiBand
-            title="DM Setter · Primary Activity"
-            items={[
-              {
-                key: "contacted",
-                label: "Leads Contacted",
-                value: fmtN0(contacted),
-                spectrum: "cold",
-              },
-              {
-                key: "inbound-dms",
-                label: "Inbound DMs Sent",
-                value: inboundDms == null ? "Unavailable" : fmtN0(inboundDms),
-                spectrum: "mid",
-                empty: inboundDms == null,
-                emptyHint: "Requires connected message events.",
-                onClick:
-                  inboundDms == null
-                    ? undefined
-                    : () =>
-                        setSelected({
-                          kind: "activity",
-                          field: "inbound_dms_sent",
-                          label: "Inbound DMs Sent",
-                        }),
-              },
-              {
-                key: "outbound-dms",
-                label: "Outbound DMs Sent",
-                value: outboundDms == null ? "Unavailable" : fmtN0(outboundDms),
-                spectrum: "mid",
-                empty: outboundDms == null,
-                emptyHint: "Requires connected message events.",
-                onClick:
-                  outboundDms == null
-                    ? undefined
-                    : () =>
-                        setSelected({
-                          kind: "activity",
-                          field: "outbound_dms_sent",
-                          label: "Outbound DMs Sent",
-                        }),
-              },
-              {
-                key: "followups",
-                label: "Follow-ups Sent",
-                value: followupsSent == null ? "Unavailable" : fmtN0(followupsSent),
-                spectrum: "mid",
-                empty: followupsSent == null,
-                emptyHint: "Requires connected message events.",
-                onClick:
-                  followupsSent == null
-                    ? undefined
-                    : () =>
-                        setSelected({
-                          kind: "activity",
-                          field: "followups_sent",
-                          label: "Follow-ups Sent",
-                        }),
-              },
-              {
-                key: "links-sent",
-                label: "Links Sent",
-                value: fmtN0(linksSent),
-                spectrum: "mid",
-                onClick: () =>
-                  setSelected({ kind: "activity", field: "links_sent", label: "Links Sent" }),
-              },
-              {
-                key: "links-clicked",
-                label: "Links Clicked",
-                value: linksClicked == null ? "Unavailable" : fmtN0(linksClicked),
-                spectrum: "mid",
-                empty: linksClicked == null,
-                emptyHint: "Requires connected link events.",
-                onClick:
-                  linksClicked == null
-                    ? undefined
-                    : () =>
-                        setSelected({
-                          kind: "activity",
-                          field: "links_clicked",
-                          label: "Links Clicked",
-                        }),
-              },
-              {
-                key: "post-booking",
-                label: "Post-booking Visits",
-                value: postBookingVisits == null ? "Unavailable" : fmtN0(postBookingVisits),
-                spectrum: "hot",
-                empty: postBookingVisits == null,
-                emptyHint: "Requires connected page events.",
-              },
-              {
-                key: "precall",
-                label: "Pre-call Watches",
-                value: preCallWatches == null ? "Unavailable" : fmtN0(preCallWatches),
-                spectrum: "hot",
-                empty: preCallWatches == null,
-                emptyHint: "Requires connected video events.",
-              },
-            ]}
-          />
-        )}
-        <OperationalWorkflowPanel
-          role={role}
-          qualified={qualified}
-          sets={sets}
-          booked={onCalendar}
-          closes={closes}
-          cashLabel={fmtMoney(cashCents)}
-          linksSent={linksSent}
-          connectorAvailable={false}
-        />
-        {(() => {
-          const platformSources = groupBySourcePlatform(speedEvents, (e: any) => e.source_platform);
-          const setterPaths: AttributionPath[] = [
-            {
-              id: "dm-lifecycle",
-              label: "Path 1 · DM → reply → qualified → booked → showed → closed → cash",
-              stages: [
-                {
-                  key: "outbound",
-                  label: "Outbound DMs",
-                  value: outboundDms,
-                  detail: "Verified daily activity",
-                },
-                {
-                  key: "inbound",
-                  label: "Inbound DMs",
-                  value: inboundDms,
-                  detail: "Verified daily activity",
-                },
-                {
-                  key: "replies",
-                  label: "Replies",
-                  value: replies,
-                  detail: "Verified message replies",
-                },
-                {
-                  key: "qualified",
-                  label: "Qualified",
-                  value: qualified,
-                  detail: "Qualified conversations",
-                },
-                { key: "booked", label: "Booked", value: onCalendar, detail: "Calls on calendar" },
-                { key: "showed", label: "Showed", value: showed, detail: "Live calls" },
-                { key: "closed", label: "Closed", value: closes, detail: "Closed calls" },
-                {
-                  key: "cash",
-                  label: "Cash",
-                  value: cashCents ? Math.round(cashCents / 100) : 0,
-                  detail: `${fmtMoney(cashCents)} collected`,
-                },
-              ],
-            },
-            {
-              id: "content-mechanism",
-              label: "Path 2 · format/content → conversation → booked → cash",
-              stages: [
-                {
-                  key: "format",
-                  label: "Format / content",
-                  value: null,
-                  detail: "No verified content-touch join in daily activity",
-                },
-                {
-                  key: "conversation",
-                  label: "Conversation",
-                  value: replies,
-                  detail: "Verified replies when available",
-                },
-                { key: "booked", label: "Booked", value: onCalendar, detail: "Calls on calendar" },
-                {
-                  key: "cash",
-                  label: "Cash",
-                  value: cashCents ? Math.round(cashCents / 100) : 0,
-                  detail: `${fmtMoney(cashCents)} collected`,
-                },
-              ],
-            },
-            {
-              id: "vsl-flow",
-              label: "Path 3 · platform → first touch → content/campaign → setter/VSL → outcome",
-              // Dialer only: lead_response_events (speedEvents, already fetched
-              // for the Speed-to-Lead section above) carries a real per-lead
-              // source_platform — a genuine branching breakdown replacing the
-              // "no verified platform join" placeholder stage, rather than one
-              // flat unavailable number implying nothing is known. DM Setter's
-              // aggregate daily activity has no equivalent per-lead join, so it
-              // keeps the honest "unavailable" stage instead.
-              sources: platformSources.length
-                ? platformSources.map((s) => ({ key: s.label, label: s.label, value: s.count }))
-                : undefined,
-              stages: [
-                ...(platformSources.length
-                  ? []
-                  : [
-                      {
-                        key: "platform",
-                        label: "Platform",
-                        value: null,
-                        detail: "No verified platform join in aggregate activity",
-                      },
-                    ]),
-                {
-                  key: "touch",
-                  label: "First touch",
-                  value: null,
-                  detail: "No verified content touchpoint join",
-                },
-                {
-                  key: "setter",
-                  label: isDialer ? "Dialer" : "DM Setter",
-                  value: isDialer ? dials : contacted,
-                  detail: "Current role activity",
-                },
-                {
-                  key: "qualified",
-                  label: "Qualified",
-                  value: qualified,
-                  detail: "Qualified conversations",
-                },
-                { key: "booked", label: "Booked", value: onCalendar, detail: "Calls on calendar" },
-                {
-                  key: "cash",
-                  label: "Cash",
-                  value: cashCents ? Math.round(cashCents / 100) : 0,
-                  detail: `${fmtMoney(cashCents)} collected`,
-                },
-              ],
-            },
-            {
-              id: "dm-vsl-flow",
-              label:
-                "DM Setter → VSL → post-booking → testimonial → FAQ/objection → booking → cash",
-              stages: [
-                { key: "dm", label: "DM Setter", value: contacted, detail: "Leads contacted" },
-                {
-                  key: "vsl",
-                  label: "VSL",
-                  value: null,
-                  detail: "VSL identity/event join not connected",
-                },
-                {
-                  key: "post-booking",
-                  label: "Post-booking page",
-                  value: postBookingVisits,
-                  detail: "Verified page visits when connected",
-                },
-                {
-                  key: "testimonial",
-                  label: "Testimonial videos",
-                  value: preCallWatches,
-                  detail: "Pre-call watches; video identity unavailable",
-                },
-                {
-                  key: "faq",
-                  label: "FAQ / objections",
-                  value: null,
-                  detail: "No verified FAQ-video event source",
-                },
-                { key: "booked", label: "Booking", value: onCalendar, detail: "Calls on calendar" },
-                {
-                  key: "cash",
-                  label: "Cash",
-                  value: cashCents ? Math.round(cashCents / 100) : 0,
-                  detail: `${fmtMoney(cashCents)} collected`,
-                },
-              ],
-            },
-          ];
-          if (isDialer) {
-            return (
-              <>
-                <AttributionPathPanel
-                  title="Inbound Dialer attribution"
-                  subtitle="Source → capture → connection → qualified → booked → showed → closed → cash"
-                  paths={[setterPaths[2]]}
-                />
-                <AttributionPathPanel
-                  title="Dialer callbacks & appointment quality"
-                  subtitle="Callbacks Requested → Due Today → Completed Today → Booked → Closed → Cash"
-                  paths={[
-                    {
-                      id: "callbacks",
-                      label: "Callback workflow",
-                      stages: [
-                        {
-                          key: "requested",
-                          label: "Callbacks Requested",
-                          value: callbackFunnel.requested,
-                          detail: "Logged in this range",
-                        },
-                        {
-                          key: "due",
-                          label: "Due Today",
-                          value: callbackFunnel.dueToday,
-                          detail: "due_at falls today",
-                        },
-                        {
-                          key: "completed",
-                          label: "Completed Today",
-                          value: callbackFunnel.completedToday,
-                          detail: "Marked completed today",
-                        },
-                        {
-                          key: "booked",
-                          label: "Calls Booked",
-                          value: onCalendar,
-                          detail: "Verified calls on calendar",
-                        },
-                        {
-                          key: "closed",
-                          label: "Closed",
-                          value: closes,
-                          detail: "Verified closes",
-                        },
-                        {
-                          key: "cash",
-                          label: "Cash",
-                          value: cashCents ? Math.round(cashCents / 100) : 0,
-                          detail: `${fmtMoney(cashCents)} collected`,
-                        },
-                      ],
-                    },
-                    {
-                      id: "appointment-quality",
-                      label: "Appointment quality",
-                      stages: [
-                        {
-                          key: "cancel",
-                          label: "Cancellation Rate",
-                          value:
-                            appointmentQuality.cancellationRate == null
-                              ? null
-                              : Math.round(appointmentQuality.cancellationRate),
-                          detail: appointmentQuality.total
-                            ? `${appointmentQuality.total} scheduled calls in range`
-                            : "No scheduled calls in range",
-                        },
-                        {
-                          key: "reschedule",
-                          label: "Reschedule Rate",
-                          value:
-                            appointmentQuality.rescheduleRate == null
-                              ? null
-                              : Math.round(appointmentQuality.rescheduleRate),
-                          detail: appointmentQuality.total
-                            ? `${appointmentQuality.total} scheduled calls in range`
-                            : "No scheduled calls in range",
-                        },
-                        {
-                          key: "no-show",
-                          label: "No-show Rate",
-                          value:
-                            appointmentQuality.noShowRate == null
-                              ? null
-                              : Math.round(appointmentQuality.noShowRate),
-                          detail: appointmentQuality.total
-                            ? `${appointmentQuality.total} scheduled calls in range`
-                            : "No scheduled calls in range",
-                        },
-                        {
-                          key: "recovery",
-                          label: "No-show Recovery",
-                          value:
-                            appointmentQuality.noShowRecoveryRate == null
-                              ? null
-                              : Math.round(appointmentQuality.noShowRecoveryRate),
-                          detail: "% of no-shows later marked recovered on a follow-up call",
-                        },
-                      ],
-                    },
-                  ]}
-                />
-                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Log a callback
-                    </div>
+        {/* Log a Callback — relocated (§9) to sit with Speed to Lead / Active
+            Leads as the dialer's actionable operational cluster, right after
+            the attribution charts above. Logic/markup unchanged, position only. */}
+        {isDialer && (
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Log a callback
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="relative">
+                <Label className="text-2xs">Lead</Label>
+                {callbackSelectedLead ? (
+                  <div className="mt-1 flex w-fit items-center gap-2 rounded-lg border border-spectrum-mid/40 bg-spectrum-mid/10 py-1.5 pr-1.5 pl-2.5">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-spectrum-mid shadow-[0_0_6px_var(--spectrum-mid)]" />
+                    <span className="text-xs font-semibold text-foreground">
+                      {callbackSelectedLead.full_name ??
+                        callbackSelectedLead.handle ??
+                        callbackSelectedLead.email}
+                    </span>
+                    {callbackSelectedLead.email && (
+                      <span className="text-3xs text-muted-foreground">
+                        {callbackSelectedLead.email}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      aria-label="Change lead"
+                      onClick={() => setCallbackSelectedLead(null)}
+                      className="rounded p-0.5 text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
                   </div>
-                  <div className="space-y-3">
-                    <div className="relative">
-                      <Label className="text-2xs">Lead</Label>
-                      {callbackSelectedLead ? (
-                        <div className="mt-1 flex w-fit items-center gap-2 rounded-lg border border-spectrum-mid/40 bg-spectrum-mid/10 py-1.5 pr-1.5 pl-2.5">
-                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-spectrum-mid shadow-[0_0_6px_var(--spectrum-mid)]" />
-                          <span className="text-xs font-semibold text-foreground">
-                            {callbackSelectedLead.full_name ??
-                              callbackSelectedLead.handle ??
-                              callbackSelectedLead.email}
-                          </span>
-                          {callbackSelectedLead.email && (
-                            <span className="text-3xs text-muted-foreground">
-                              {callbackSelectedLead.email}
-                            </span>
-                          )}
+                ) : (
+                  <>
+                    <Input
+                      value={callbackLeadQuery}
+                      onChange={(e) => setCallbackLeadQuery(e.target.value)}
+                      placeholder="Search a Legacy Lead by name, handle, or email"
+                      className="mt-1 h-8 w-72 text-xs"
+                    />
+                    {callbackLeadResults.length > 0 && (
+                      <div className="absolute top-full left-0 z-20 mt-1 w-72 rounded-md border border-border bg-popover shadow-md">
+                        {callbackLeadResults.map((lead) => (
                           <button
+                            key={lead.id}
                             type="button"
-                            aria-label="Change lead"
-                            onClick={() => setCallbackSelectedLead(null)}
-                            className="rounded p-0.5 text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                            className="block w-full truncate px-3 py-1.5 text-left text-xs hover:bg-muted"
+                            onClick={() => {
+                              setCallbackSelectedLead(lead);
+                              setCallbackLeadQuery("");
+                            }}
                           >
-                            <X className="h-3 w-3" />
+                            {lead.full_name ?? lead.handle ?? lead.email ?? "Unnamed lead"}
+                            {lead.email && (
+                              <span className="ml-1.5 text-muted-foreground">{lead.email}</span>
+                            )}
                           </button>
-                        </div>
-                      ) : (
-                        <>
-                          <Input
-                            value={callbackLeadQuery}
-                            onChange={(e) => setCallbackLeadQuery(e.target.value)}
-                            placeholder="Search a Legacy Lead by name, handle, or email"
-                            className="mt-1 h-8 w-72 text-xs"
-                          />
-                          {callbackLeadResults.length > 0 && (
-                            <div className="absolute top-full left-0 z-20 mt-1 w-72 rounded-md border border-border bg-popover shadow-md">
-                              {callbackLeadResults.map((lead) => (
-                                <button
-                                  key={lead.id}
-                                  type="button"
-                                  className="block w-full truncate px-3 py-1.5 text-left text-xs hover:bg-muted"
-                                  onClick={() => {
-                                    setCallbackSelectedLead(lead);
-                                    setCallbackLeadQuery("");
-                                  }}
-                                >
-                                  {lead.full_name ?? lead.handle ?? lead.email ?? "Unnamed lead"}
-                                  {lead.email && (
-                                    <span className="ml-1.5 text-muted-foreground">
-                                      {lead.email}
-                                    </span>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-end gap-2">
-                      <div className="space-y-1">
-                        <Label className="text-2xs">Date</Label>
-                        <Input
-                          type="date"
-                          value={callbackDueDate}
-                          onChange={(e) => setCallbackDueDate(e.target.value)}
-                          className="h-8 w-36 text-xs"
-                        />
+                        ))}
                       </div>
-                      <div className="space-y-1">
-                        <Label className="text-2xs">Time</Label>
-                        <Input
-                          type="time"
-                          value={callbackDueTime}
-                          onChange={(e) => setCallbackDueTime(e.target.value)}
-                          className="h-8 w-28 text-xs"
-                        />
-                      </div>
-                      <Button
-                        size="sm"
-                        disabled={!callbackSelectedLead || logCallback.isPending}
-                        onClick={() => {
-                          if (!callbackSelectedLead) return;
-                          logCallback.mutate(
-                            {
-                              leadId: callbackSelectedLead.id,
-                              leadName:
-                                callbackSelectedLead.full_name ??
-                                callbackSelectedLead.handle ??
-                                callbackSelectedLead.email ??
-                                "Unnamed lead",
-                              dueAt: callbackDueAt,
-                            },
-                            {
-                              onSuccess: () => {
-                                setCallbackSelectedLead(null);
-                                setCallbackLeadQuery("");
-                                resetCallbackDueAt();
-                              },
-                            },
-                          );
-                        }}
-                      >
-                        Log callback
-                      </Button>
-                    </div>
+                    )}
+                  </>
+                )}
+              </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5 text-3xs">
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/50 px-2 py-1 text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        Your time zone:{" "}
-                        <span className="font-medium text-foreground">
-                          {browserTzAbbrev()} ({browserUtcOffset()})
-                        </span>
-                      </span>
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/50 px-2 py-1 text-muted-foreground">
-                        Lead time zone:{" "}
-                        <span className="font-medium text-foreground">Unavailable</span>
-                      </span>
-                      {callbackDueAt && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-spectrum-mid/40 bg-spectrum-mid/10 px-2 py-1 text-spectrum-mid">
-                          Scheduling for{" "}
-                          {new Date(callbackDueAt).toLocaleString(undefined, {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          })}{" "}
-                          {browserTzAbbrev()}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {callbacks.filter((c) => c.state !== "completed").length > 0 && (
-                    <div className="mt-3 overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b border-border/70 text-left text-muted-foreground">
-                            <th className="pb-2 pr-3">Lead</th>
-                            <th className="pb-2 pr-3">Due</th>
-                            <th className="pb-2 pr-3">State</th>
-                            <th className="pb-2" />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {callbacks
-                            .filter((c) => c.state !== "completed")
-                            .map((c) => (
-                              <tr key={c.id} className="border-b border-border/40 last:border-0">
-                                <td className="py-2 pr-3">
-                                  {c.entity_id ? (
-                                    <Link
-                                      to="/leads"
-                                      search={{ leadId: c.entity_id }}
-                                      className="text-primary hover:underline"
-                                    >
-                                      {c.payload?.lead_name ?? "Open lead"}
-                                    </Link>
-                                  ) : (
-                                    (c.payload?.lead_name ?? "—")
-                                  )}
-                                </td>
-                                <td className="py-2 pr-3 font-mono">
-                                  <span className="inline-flex items-center gap-1.5">
-                                    {c.due_at ? new Date(c.due_at).toLocaleString() : "—"}
-                                    {c.due_at?.slice(0, 10) ===
-                                      new Date().toISOString().slice(0, 10) && (
-                                      <span className="rounded-full bg-spectrum-hot/15 px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wide text-spectrum-hot">
-                                        Due today
-                                      </span>
-                                    )}
-                                  </span>
-                                </td>
-                                <td className="py-2 pr-3 uppercase">{c.state}</td>
-                                <td className="py-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-6 text-2xs"
-                                    onClick={() => completeCallback.mutate(c.id)}
-                                  >
-                                    Mark completed
-                                  </Button>
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="space-y-1">
+                  <Label className="text-2xs">Date</Label>
+                  <Input
+                    type="date"
+                    value={callbackDueDate}
+                    onChange={(e) => setCallbackDueDate(e.target.value)}
+                    className="h-8 w-36 text-xs"
+                  />
                 </div>
-              </>
-            );
-          }
-          return (
-            <AttributionPathPanel
-              title="DM Setter attribution"
-              subtitle="Distinct DM, content, platform, and VSL paths; aggregate rows stay evidence-scoped"
-              paths={setterPaths}
-            />
-          );
-        })()}
+                <div className="space-y-1">
+                  <Label className="text-2xs">Time</Label>
+                  <Input
+                    type="time"
+                    value={callbackDueTime}
+                    onChange={(e) => setCallbackDueTime(e.target.value)}
+                    className="h-8 w-28 text-xs"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  disabled={!callbackSelectedLead || logCallback.isPending}
+                  onClick={() => {
+                    if (!callbackSelectedLead) return;
+                    logCallback.mutate(
+                      {
+                        leadId: callbackSelectedLead.id,
+                        leadName:
+                          callbackSelectedLead.full_name ??
+                          callbackSelectedLead.handle ??
+                          callbackSelectedLead.email ??
+                          "Unnamed lead",
+                        dueAt: callbackDueAt,
+                      },
+                      {
+                        onSuccess: () => {
+                          setCallbackSelectedLead(null);
+                          setCallbackLeadQuery("");
+                          resetCallbackDueAt();
+                        },
+                      },
+                    );
+                  }}
+                >
+                  Log callback
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5 text-3xs">
+                <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/50 px-2 py-1 text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  Your time zone:{" "}
+                  <span className="font-medium text-foreground">
+                    {browserTzAbbrev()} ({browserUtcOffset()})
+                  </span>
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/50 px-2 py-1 text-muted-foreground">
+                  Lead time zone: <span className="font-medium text-foreground">Unavailable</span>
+                </span>
+                {callbackDueAt && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-spectrum-mid/40 bg-spectrum-mid/10 px-2 py-1 text-spectrum-mid">
+                    Scheduling for{" "}
+                    {new Date(callbackDueAt).toLocaleString(undefined, {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}{" "}
+                    {browserTzAbbrev()}
+                  </span>
+                )}
+              </div>
+            </div>
+            {callbacks.filter((c) => c.state !== "completed").length > 0 && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border/70 text-left text-muted-foreground">
+                      <th className="pb-2 pr-3">Lead</th>
+                      <th className="pb-2 pr-3">Due</th>
+                      <th className="pb-2 pr-3">State</th>
+                      <th className="pb-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {callbacks
+                      .filter((c) => c.state !== "completed")
+                      .map((c) => (
+                        <tr key={c.id} className="border-b border-border/40 last:border-0">
+                          <td className="py-2 pr-3">
+                            {c.entity_id ? (
+                              <Link
+                                to="/leads"
+                                search={{ leadId: c.entity_id }}
+                                className="text-primary hover:underline"
+                              >
+                                {c.payload?.lead_name ?? "Open lead"}
+                              </Link>
+                            ) : (
+                              (c.payload?.lead_name ?? "—")
+                            )}
+                          </td>
+                          <td className="py-2 pr-3 font-mono">
+                            <span className="inline-flex items-center gap-1.5">
+                              {c.due_at ? new Date(c.due_at).toLocaleString() : "—"}
+                              {c.due_at?.slice(0, 10) === new Date().toISOString().slice(0, 10) && (
+                                <span className="rounded-full bg-spectrum-hot/15 px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wide text-spectrum-hot">
+                                  Due today
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-3 uppercase">{c.state}</td>
+                          <td className="py-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-2xs"
+                              onClick={() => completeCallback.mutate(c.id)}
+                            >
+                              Mark completed
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
         {/* Leaderboard with metric selector + independent date range (Part C3) + spectrum activity heatmap (Part C4) */}
         <div className="grid gap-4 lg:grid-cols-2">
           <RepLeaderboard
@@ -2809,520 +3433,16 @@ export function ActivityModule({ role, title, subtitle }: Props) {
           </Dialog>
         </div>
 
-        {/* Composed instruments, not atomized tiles. Every rate ("show rate",
-            "close rate", "pickup rate"...) is the conv% between two adjacent
-            funnel stages, not a separate box. Click a stage or Cash Collected
-            to see what produced it, what's capping it, and what's working. */}
-        {(() => {
-          const reachStages: FunnelStage[] = isDialer
-            ? [
-                { key: "inbound_leads", label: "Inbound Leads", value: dials, spectrum: "cold" },
-                { key: "qualified", label: "Qualified Convos", value: qualified, spectrum: "mid" },
-                { key: "sets", label: "Sets", value: sets, spectrum: "mid" },
-              ]
-            : [
-                {
-                  key: "inbound_leads",
-                  label: "Inbound Leads",
-                  value: contacted,
-                  spectrum: "cold",
-                },
-                { key: "qualified", label: "Qualified Convos", value: qualified, spectrum: "mid" },
-                { key: "sets", label: "Sets", value: sets, spectrum: "mid" },
-              ];
-          const prevReachStages: FunnelStage[] = isDialer
-            ? [
-                {
-                  key: "inbound_leads",
-                  label: "Inbound Leads",
-                  value: prevDials,
-                  spectrum: "cold",
-                },
-                {
-                  key: "qualified",
-                  label: "Qualified Convos",
-                  value: prevQualified,
-                  spectrum: "mid",
-                },
-                { key: "sets", label: "Sets", value: prevSets, spectrum: "mid" },
-              ]
-            : [
-                {
-                  key: "inbound_leads",
-                  label: "Inbound Leads",
-                  value: prevContacted,
-                  spectrum: "cold",
-                },
-                {
-                  key: "qualified",
-                  label: "Qualified Convos",
-                  value: prevQualified,
-                  spectrum: "mid",
-                },
-                { key: "sets", label: "Sets", value: prevSets, spectrum: "mid" },
-              ];
-          const reachFields = isDialer
-            ? ["dials", "qualified_convos", "sets"]
-            : ["leads_contacted", "qualified_convos", "sets"];
-
-          const closeStages: FunnelStage[] = [
-            { key: "oncal", label: "Calls on Calendar", value: onCalendar, spectrum: "mid" },
-            { key: "showed", label: "Showed", value: showed, spectrum: "mid" },
-            { key: "closes", label: "Closes", value: closes, spectrum: "hot" },
-          ];
-          const prevCloseStages: FunnelStage[] = [
-            { key: "oncal", label: "Calls on Calendar", value: prevOnCalendar, spectrum: "mid" },
-            { key: "showed", label: "Showed", value: prevShowed, spectrum: "mid" },
-            { key: "closes", label: "Closes", value: prevCloses, spectrum: "hot" },
-          ];
-          const closeFields = ["calls_on_calendar", "live_calls", "closes"];
-
-          const avgCashPerClose = closes ? cashCents / closes : 0;
-          const prevAvgCashPerClose = prevCloses ? prevCashCents / prevCloses : 0;
-
-          type ActivityRow = Record<string, unknown>;
-          const activityRowsBy = (field: string): ActivityRow[] =>
-            [...((rows ?? []) as unknown as ActivityRow[])]
-              .sort((a, b) => Number(b[field] ?? 0) - Number(a[field] ?? 0))
-              .slice(0, 50);
-          const activityColumns = (
-            field: string,
-            label: string,
-            fmt?: (v: number) => string,
-          ): DetailColumn<ActivityRow>[] => [
-            { key: "name", label: "Rep", render: (r) => String(r.team_member_name ?? "—") },
-            { key: "date", label: "Date", render: (r) => String(r.activity_date ?? "—") },
-            { key: "source", label: "Source", render: (r) => String(r.lead_source ?? "—") },
-            {
-              key: "canonicalPath",
-              label: "Canonical path",
-              render: (r) => {
-                const evidence = evaluateAttributionEvidence({
-                  model: "lead_source",
-                  supportingEvents: r.activity_date ? ["daily_activity"] : [],
-                  knownTouchpoints: 0,
-                  sampleSize: null,
-                  directOutcomeLinked: false,
-                  drilldownKey: null,
-                });
-                return `${evidence.coverage} — aggregate row`;
-              },
-            },
-            {
-              key: "value",
-              label,
-              align: "right",
-              render: (r) => (fmt ? fmt(Number(r[field] ?? 0)) : String(r[field] ?? 0)),
-            },
-          ];
-
-          let panel: {
-            title: string;
-            columns: DetailColumn<ActivityRow>[];
-            rows: ActivityRow[];
-            cap: ReturnType<typeof deriveCap>;
-            working: ReturnType<typeof deriveWorking>;
-          } | null = null;
-          if (selected?.kind === "money") {
-            panel = {
-              title: "Cash Collected",
-              columns: activityColumns("cash_collected_cents", "Cash", fmtMoney),
-              rows: activityRowsBy("cash_collected_cents"),
-              cap: deriveMoneyCap(closes, avgCashPerClose, cashCents, minCapSample, fmtMoney),
-              working: deriveMoneyWorking(
-                avgCashPerClose,
-                prevAvgCashPerClose,
-                closes,
-                prevCloses,
-                minCapSample,
-                fmtMoney,
-              ),
-            };
-          } else if (selected?.kind === "activity") {
-            const notAFunnelStage = {
-              status: "insufficient_data" as const,
-              sentence:
-                "Daily aggregate activity, not a funnel stage — no upstream constraint to derive.",
-            };
-            panel = {
-              title: selected.label,
-              columns: activityColumns(selected.field, selected.label),
-              rows: activityRowsBy(selected.field),
-              cap: notAFunnelStage,
-              working: notAFunnelStage,
-            };
-          } else if (selected) {
-            const stages = selected.kind === "reach" ? reachStages : closeStages;
-            const prevStages = selected.kind === "reach" ? prevReachStages : prevCloseStages;
-            const fields = selected.kind === "reach" ? reachFields : closeFields;
-            const stage = stages[selected.index];
-            panel = stage
-              ? {
-                  title: stage.label,
-                  columns: activityColumns(fields[selected.index], stage.label),
-                  rows: activityRowsBy(fields[selected.index]),
-                  cap: deriveCap(stages, selected.index, minCapSample),
-                  working: deriveWorking(stages, prevStages, minCapSample),
-                }
-              : null;
-          }
-
-          const moneySeries: MoneyPoint[] = daySeries.map((p) => ({
-            d: p.d,
-            cash: Number(p.cash_collected_cents ?? 0),
-            revenue: Number(p.total_revenue_cents ?? 0),
-          }));
-
-          const kpiItems: KpiBandItem[] = [
-            ...(isDialer
-              ? [
-                  {
-                    key: "dials",
-                    label: "Dials",
-                    value: fmtN0(dials),
-                    spectrum: "cold" as const,
-                    deltaPct: pctDelta(dials, prevDials),
-                    priorValue: fmtN0(prevDials),
-                    empty: dials === 0,
-                    emptyHint: 'Log your dial count in "Log day" to start tracking reach.',
-                    onClick: () => setSelected({ kind: "reach", index: 0 }),
-                  },
-                  {
-                    key: "connections",
-                    label: "Connections",
-                    value: fmtN0(conns),
-                    spectrum: "cold" as const,
-                    deltaPct: pctDelta(conns, prevConns),
-                    priorValue: fmtN0(prevConns),
-                    empty: conns === 0,
-                    emptyHint: 'Connections drive your pickup rate — log them in "Log day."',
-                    onClick: () => setSelected({ kind: "reach", index: 1 }),
-                  },
-                  {
-                    key: "qualified",
-                    label: "Qualified Convos",
-                    value: fmtN0(qualified),
-                    spectrum: "mid" as const,
-                    deltaPct: pctDelta(qualified, prevQualified),
-                    priorValue: fmtN0(prevQualified),
-                    empty: qualified === 0,
-                    emptyHint: "No qualified convos logged yet this range.",
-                    onClick: () => setSelected({ kind: "reach", index: 2 }),
-                  },
-                  {
-                    key: "sets",
-                    label: "Sets",
-                    value: fmtN0(sets),
-                    spectrum: "mid" as const,
-                    deltaPct: pctDelta(sets, prevSets),
-                    priorValue: fmtN0(prevSets),
-                    empty: sets === 0,
-                    emptyHint: "Sets show up once a call actually gets booked.",
-                    onClick: () => setSelected({ kind: "reach", index: 3 }),
-                  },
-                ]
-              : [
-                  {
-                    key: "contacted",
-                    label: "Leads Contacted",
-                    value: fmtN0(contacted),
-                    spectrum: "cold" as const,
-                    deltaPct: pctDelta(contacted, prevContacted),
-                    priorValue: fmtN0(prevContacted),
-                    empty: contacted === 0,
-                    emptyHint: 'Log outreach in "Log day" to start tracking reach.',
-                    onClick: () => setSelected({ kind: "reach", index: 0 }),
-                  },
-                  {
-                    key: "qualified",
-                    label: "Qualified Convos",
-                    value: fmtN0(qualified),
-                    spectrum: "mid" as const,
-                    deltaPct: pctDelta(qualified, prevQualified),
-                    priorValue: fmtN0(prevQualified),
-                    empty: qualified === 0,
-                    emptyHint: "No qualified convos logged yet this range.",
-                    onClick: () => setSelected({ kind: "reach", index: 1 }),
-                  },
-                  {
-                    key: "sets",
-                    label: "Sets",
-                    value: fmtN0(sets),
-                    spectrum: "mid" as const,
-                    deltaPct: pctDelta(sets, prevSets),
-                    priorValue: fmtN0(prevSets),
-                    empty: sets === 0,
-                    emptyHint: "Sets show up once a call actually gets booked.",
-                    onClick: () => setSelected({ kind: "reach", index: 2 }),
-                  },
-                ]),
-            {
-              key: "oncal",
-              label: "Calls Booked",
-              value: fmtN0(onCalendar),
-              spectrum: "mid",
-              deltaPct: pctDelta(onCalendar, prevOnCalendar),
-              priorValue: fmtN0(prevOnCalendar),
-              empty: onCalendar === 0,
-              emptyHint: "Nothing on the calendar yet for this range.",
-              onClick: () => setSelected({ kind: "close", index: 0 }),
-            },
-            {
-              key: "showed",
-              label: "Showed",
-              value: fmtN0(showed),
-              spectrum: "mid",
-              deltaPct: pctDelta(showed, prevShowed),
-              priorValue: fmtN0(prevShowed),
-              empty: showed === 0,
-              emptyHint: 'Mark calls as showed in "Log day" once they happen.',
-              onClick: () => setSelected({ kind: "close", index: 1 }),
-            },
-            {
-              key: "closes",
-              label: "Closes",
-              value: fmtN0(closes),
-              spectrum: "hot",
-              featured: true,
-              deltaPct: pctDelta(closes, prevCloses),
-              priorValue: fmtN0(prevCloses),
-              empty: closes === 0,
-              emptyHint: "No closes yet this range — they'll show up here.",
-              onClick: () => setSelected({ kind: "close", index: 2 }),
-            },
-            {
-              key: "cash",
-              label: "Cash Collected",
-              value: fmtMoney(cashCents),
-              spectrum: "hot",
-              featured: true,
-              wide: true,
-              deltaPct: pctDelta(cashCents, prevCashCents),
-              priorValue: fmtMoney(prevCashCents),
-              empty: cashCents === 0,
-              emptyHint: "Log a close with cash collected to see this populate.",
-              onClick: () => setSelected({ kind: "money", index: 0 }),
-            },
-            {
-              key: "revenue",
-              label: "Revenue Generated",
-              value: fmtMoney(revCents),
-              spectrum: "hot",
-              featured: true,
-              wide: true,
-              deltaPct: pctDelta(revCents, prevRevCents),
-              priorValue: fmtMoney(prevRevCents),
-              empty: revCents === 0,
-              emptyHint: "Total contract value shows up once a deal closes.",
-              onClick: () => setSelected({ kind: "money", index: 0 }),
-            },
-            ...(isDialer
-              ? [
-                  {
-                    key: "averageCallLength",
-                    label: "Average Call Length",
-                    value: fmtDuration(appointmentQuality.avgDurationSeconds),
-                    spectrum: "cold" as const,
-                    empty: appointmentQuality.avgDurationSeconds == null,
-                    emptyHint: "Requires duration_seconds logged on calls.",
-                  },
-                  {
-                    key: "averageTalkTime",
-                    label: "Average Talk Time",
-                    value: fmtDuration(appointmentQuality.avgTalkSeconds),
-                    spectrum: "cold" as const,
-                    empty: appointmentQuality.avgTalkSeconds == null,
-                    emptyHint: "Requires talk_seconds logged on calls.",
-                  },
-                ]
-              : []),
-          ];
-
-          const pickupPct = dials ? (conns / dials) * 100 : 0;
-          const prevPickupPct = prevDials ? (prevConns / prevDials) * 100 : 0;
-          const qualDen = isDialer ? conns : contacted;
-          const prevQualDen = isDialer ? prevConns : prevContacted;
-          const qualPct = qualDen ? (qualified / qualDen) * 100 : 0;
-          const prevQualPct = prevQualDen ? (prevQualified / prevQualDen) * 100 : 0;
-          const setPct = qualified ? (sets / qualified) * 100 : 0;
-          const prevSetPct = prevQualified ? (prevSets / prevQualified) * 100 : 0;
-          const showPct = onCalendar ? (showed / onCalendar) * 100 : 0;
-          const prevShowPct = prevOnCalendar ? (prevShowed / prevOnCalendar) * 100 : 0;
-          const closeRatePct = showed ? (closes / showed) * 100 : 0;
-          const prevCloseRatePct = prevShowed ? (prevCloses / prevShowed) * 100 : 0;
-
-          const rateCharts: RateChartSpec[] = [
-            ...(isDialer
-              ? [
-                  {
-                    key: "pickup",
-                    label: "Pickup Rate",
-                    points: seriesRatePoints(daySeries, "connections", "dials"),
-                    currentPct: pickupPct,
-                    deltaPct: pctDelta(pickupPct, prevPickupPct),
-                    spectrum: "cold" as const,
-                    onClick: () => setSelected({ kind: "reach", index: 1 }),
-                  },
-                ]
-              : []),
-            {
-              key: "qualrate",
-              label: "Qualified Convo Rate",
-              points: seriesRatePoints(
-                daySeries,
-                "qualified_convos",
-                isDialer ? "connections" : "leads_contacted",
-              ),
-              currentPct: qualPct,
-              deltaPct: pctDelta(qualPct, prevQualPct),
-              spectrum: "mid",
-              onClick: () => setSelected({ kind: "reach", index: isDialer ? 2 : 1 }),
-            },
-            {
-              key: "setrate",
-              label: "Set Rate",
-              points: seriesRatePoints(daySeries, "sets", "qualified_convos"),
-              currentPct: setPct,
-              deltaPct: pctDelta(setPct, prevSetPct),
-              spectrum: "mid",
-              onClick: () => setSelected({ kind: "reach", index: isDialer ? 3 : 2 }),
-            },
-            {
-              key: "showrate",
-              label: "Show Rate",
-              points: seriesRatePoints(daySeries, "live_calls", "calls_on_calendar"),
-              currentPct: showPct,
-              deltaPct: pctDelta(showPct, prevShowPct),
-              spectrum: "mid",
-              onClick: () => setSelected({ kind: "close", index: 1 }),
-            },
-            {
-              key: "closerate",
-              label: "Close Rate",
-              points: seriesRatePoints(daySeries, "closes", "live_calls"),
-              currentPct: closeRatePct,
-              deltaPct: pctDelta(closeRatePct, prevCloseRatePct),
-              spectrum: "hot",
-              onClick: () => setSelected({ kind: "close", index: 2 }),
-            },
-          ];
-
-          const activityChartFields: Record<string, string> = {
-            dials: "dials",
-            connections: "connections",
-            contacted: "leads_contacted",
-            qualified: "qualified_convos",
-            sets: "sets",
-            oncal: "calls_on_calendar",
-            showed: "live_calls",
-            closes: "closes",
-            cash: "cash_collected_cents",
-            revenue: "total_revenue_cents",
-          };
-          const activityBarKeys = new Set([
-            "dials",
-            "connections",
-            "contacted",
-            "qualified",
-            "sets",
-            "oncal",
-            "showed",
-            "closes",
-          ]);
-          const chartedKpiItems = kpiItems.map((item) => {
-            const field = activityChartFields[item.key];
-            return field
-              ? {
-                  ...item,
-                  spark: daySeries.map((point) =>
-                    Number((point as Record<string, unknown>)[field] ?? 0),
-                  ),
-                  sparkLabels: daySeries.map((point) => point.d),
-                  sparkVariant: activityBarKeys.has(item.key)
-                    ? ("bar" as const)
-                    : ("line" as const),
-                }
-              : item;
-          });
-
-          return (
-            <>
-              <KpiBand
-                items={chartedKpiItems}
-                title={isDialer ? "Inbound Dialer · Key Metrics" : "DM Setter · Key Metrics"}
-              />
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FunnelInstrument
-                    title="Reach"
-                    subtitle="Inbound Leads → Sets"
-                    stages={reachStages}
-                    onStageClick={(i) => setSelected({ kind: "reach", index: i })}
-                  />
-                  <FunnelInstrument
-                    title="Close"
-                    subtitle="Booked → Closed"
-                    stages={closeStages}
-                    onStageClick={(i) => setSelected({ kind: "close", index: i })}
-                  />
-                </div>
-                <MoneyInstrument
-                  series={moneySeries}
-                  payoutPct={5}
-                  payoutCents={cashCents * 0.05}
-                  cashRatePct={revCents ? (cashCents / revCents) * 100 : 0}
-                  onCashClick={() => setSelected({ kind: "money", index: 0 })}
-                  fmtMoney={fmtMoney}
-                />
-              </div>
-              <RateSmallMultiples charts={rateCharts} />
-              <KpiBand
-                title="Additional Stats"
-                items={
-                  [
-                    // Links Sent, Inbound/Outbound DMs, Follow-ups, Links
-                    // Clicked, Post-booking Visits, and Pre-call Watches all
-                    // used to be duplicated here AND in "DM Setter · Primary
-                    // Activity" above — same metric, same value, two cards.
-                    // Primary Activity is the single home for all of them now;
-                    // Additional Stats keeps only what's genuinely secondary.
-                    {
-                      key: "downsells",
-                      label: "Downsells",
-                      value: downsells.toLocaleString(),
-                      spectrum: "mid",
-                      deltaPct: pctDelta(downsells, prevDownsells),
-                      priorValue: prevDownsells.toLocaleString(),
-                      empty: !downsells,
-                      emptyHint: "No downsells logged in this range.",
-                    },
-                  ].filter(Boolean) as KpiBandItem[]
-                }
-              />
-              {panel && (
-                <MetricDetailPanel
-                  open={!!selected}
-                  onOpenChange={(v) => !v && setSelected(null)}
-                  title={panel.title}
-                  subtitle={`${range.from} → ${range.to}`}
-                  columns={panel.columns}
-                  rows={panel.rows}
-                  rowKey={(r) => String(r.id ?? `${r.team_member_name}-${r.activity_date}`)}
-                  cap={panel.cap}
-                  working={panel.working}
-                  emptyRowsLabel="No entries in this date range."
-                />
-              )}
-            </>
-          );
-        })()}
+        {metricsBlocks.secondary}
 
         {/* Insights row: Objection frequency + Momentum + Scorecard */}
         <Tabs defaultValue="objections">
           <TabsList>
             <TabsTrigger value="objections">Objection frequency</TabsTrigger>
             <TabsTrigger value="momentum">Momentum (7d)</TabsTrigger>
-            <TabsTrigger value="scorecard">Setter scorecard</TabsTrigger>
+            <TabsTrigger value="scorecard">
+              {isDialer ? "Dialer scorecard" : "Setter scorecard"}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="objections">
@@ -3384,7 +3504,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             <div className="rounded-lg border border-border bg-card p-4">
               <div className="mb-3">
                 <div className="text-sm font-semibold">
-                  Setter scorecard · Sets / Show / Close / Qual
+                  {isDialer ? "Dialer scorecard" : "Setter scorecard"} · Sets / Show / Close / Qual
                 </div>
                 <div className="text-xs text-muted-foreground">
                   Normalized 0–100. Sets is relative to top performer.
@@ -3441,7 +3561,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         <GlassTableShell
           toolbar={
             <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
-              {isDialer ? "Setter Input" : "DM Setter Input"} · {totalRows} rows
+              {isDialer ? "Inbound Dialer Input" : "DM Setter Input"} · {totalRows} rows
             </div>
           }
           footer={

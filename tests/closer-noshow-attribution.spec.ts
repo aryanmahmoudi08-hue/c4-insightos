@@ -2,7 +2,7 @@ import { test, expect, realErrors } from "./fixtures";
 
 /**
  * Regression for two new drilldown surfaces on Closer:
- *  - No-show recovery (section D): all cards were static; each now opens
+ *  - No-show recovery (section C): all cards were static; each now opens
  *    the real underlying calls, with rate-based cards showing both the
  *    numerator and denominator records so the arithmetic is visible.
  *  - Lifecycle attribution (section F): each node in "Original Channel →
@@ -20,7 +20,7 @@ test("closer: no-show recovery and attribution nodes open real record drilldowns
   consoleErrors,
 }) => {
   await page.goto("/closer", { waitUntil: "load" });
-  await expect(page.getByText("D · No-show recovery")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("C · No-show recovery")).toBeVisible({ timeout: 10_000 });
 
   const noShowBtn = page.getByRole("button", { name: /No-shows in range/ });
   const noShowCount = Number((await noShowBtn.locator(".font-mono").innerText()).trim());

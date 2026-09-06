@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import c4Logo from "@/assets/c4-logo.png";
+import c4OsWhite from "@/assets/c4-os-white.png";
+import c4OsBlack from "@/assets/c4-os-black.png";
 
 const LINKS = [
   { href: "#platform", label: "Platform" },
@@ -13,8 +14,16 @@ export function LandingFooter() {
     <footer className="border-t border-border py-10">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-4 md:flex-row md:justify-between md:px-6">
         <div className="flex items-center gap-2">
-          <img src={c4Logo} alt="" className="theme-logo h-6 w-6 shrink-0 object-contain" />
-          <span className="display-serif text-base">C4 OS</span>
+          <img
+            src={c4OsWhite}
+            alt="C4 OS"
+            className="theme-logo-dark h-7 w-auto shrink-0 object-contain"
+          />
+          <img
+            src={c4OsBlack}
+            alt="C4 OS"
+            className="theme-logo-light h-7 w-auto shrink-0 object-contain"
+          />
         </div>
         <nav className="flex flex-wrap items-center justify-center gap-5">
           {LINKS.map((link) => (

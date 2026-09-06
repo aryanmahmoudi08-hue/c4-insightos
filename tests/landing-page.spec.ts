@@ -17,7 +17,10 @@ test("landing page loads unauthenticated with C4 OS branding, not C4 InsightOS",
   await page.goto("/welcome", { waitUntil: "load" });
 
   await expect(page).toHaveTitle(/C4 OS/);
-  await expect(page.getByText("C4 OS", { exact: true }).first()).toBeVisible();
+  // The C4 OS wordmark is now the actual supplied logo image (not
+  // approximated with a text span) — assert the logo asset renders with the
+  // right accessible name instead of looking for a literal "C4 OS" text node.
+  await expect(page.getByAltText("C4 OS").first()).toBeVisible();
   // The public identity is "C4 OS" — never the internal "C4 InsightOS" name.
   await expect(page.getByText("C4 InsightOS", { exact: false })).toHaveCount(0);
   await expect(page.getByText("InsightOS", { exact: false })).toHaveCount(0);

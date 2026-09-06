@@ -58,6 +58,7 @@ import type { Derivation } from "@/lib/funnel-derivation";
 import { MenteeOperationsPanel } from "@/components/mentee-operations-panel";
 import { CollectionsChart } from "@/components/mentee-collections-chart";
 import { MenteeScheduledComms } from "@/components/mentee-scheduled-comms";
+import { useMoney } from "@/hooks/use-money";
 import {
   getWorkspaceSettingsFn,
   DEFAULT_WORKSPACE_SETTINGS,
@@ -203,7 +204,7 @@ function MenteeLifecycleEvidence({
     directOutcomeLinked: clientPayments.length > 0,
     drilldownKey: client.id,
   });
-  const money = (cents: number) => `$${Math.round(cents / 100).toLocaleString()}`;
+  const money = useMoney();
 
   const { data: activity = [] } = useQuery({
     queryKey: ["client-activity", orgId, client.id],
@@ -894,8 +895,8 @@ function Mentees() {
     | "collectionRate"
     | "atRiskFutureCash";
   const [selectedMetric, setSelectedMetric] = useState<MenteeMetric | null>(null);
-  const moneyStr = (cents: number | null | undefined) =>
-    cents == null ? "—" : `$${Math.round(cents / 100).toLocaleString()}`;
+  const money = useMoney();
+  const moneyStr = (cents: number | null | undefined) => (cents == null ? "—" : money(cents));
   type MenteeDetailRow = { id: string; c1: string; c2: string; c3: string; c4: string };
   const menteePanel = useMemo(() => {
     if (!selectedMetric) return null;
@@ -1065,6 +1066,7 @@ function Mentees() {
     effectiveScheduleItems,
     renewalAtRiskDays,
     monthStart,
+    moneyStr,
   ]);
 
   return (
@@ -1114,7 +1116,7 @@ function Mentees() {
           />
           <StatCard
             label="Paid collections"
-            value={`$${(paidCollectionsCents / 100).toLocaleString()}`}
+            value={money(paidCollectionsCents)}
             spectrum="hot"
             icon={<BadgeCheck className="h-4 w-4" />}
             hint={
@@ -1134,7 +1136,7 @@ function Mentees() {
           />
           <StatCard
             label="Forecast · next 30d"
-            value={`$${(forecast30DayCents / 100).toLocaleString()}`}
+            value={money(forecast30DayCents)}
             spectrum="mid"
             icon={<Repeat className="h-4 w-4" />}
             hint="Scheduled payment events"
@@ -1142,7 +1144,7 @@ function Mentees() {
           />
           <StatCard
             label="Outstanding balance"
-            value={`$${(outstandingBalanceCents / 100).toLocaleString()}`}
+            value={money(outstandingBalanceCents)}
             spectrum="hot"
             icon={<AlertTriangle className="h-4 w-4" />}
             hint="Contracted less invested"
@@ -1150,7 +1152,7 @@ function Mentees() {
           />
           <StatCard
             label="Collected cash MTD"
-            value={`$${(collectedMtdCents / 100).toLocaleString()}`}
+            value={money(collectedMtdCents)}
             spectrum="hot"
             icon={<BadgeCheck className="h-4 w-4" />}
             hint="Month-to-date, distinct from all-time"
@@ -1158,7 +1160,7 @@ function Mentees() {
           />
           <StatCard
             label="Due next 7d"
-            value={`$${(dueNext7dCents / 100).toLocaleString()}`}
+            value={money(dueNext7dCents)}
             spectrum="mid"
             icon={<Repeat className="h-4 w-4" />}
             onClick={() => setSelectedMetric("dueNext7d")}
@@ -1184,7 +1186,7 @@ function Mentees() {
           />
           <StatCard
             label="At-risk future cash"
-            value={`$${(atRiskFutureCashCents / 100).toLocaleString()}`}
+            value={money(atRiskFutureCashCents)}
             accent={atRiskFutureCashCents ? "destructive" : "primary"}
             icon={<AlertTriangle className="h-4 w-4" />}
             onClick={() => setSelectedMetric("atRiskFutureCash")}

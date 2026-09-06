@@ -32,17 +32,23 @@ test("money KPIs render before secondary/activity stats, in the money-first orde
   expect(revenueIdx).toBeLessThan(closesIdx);
   expect(closesIdx).toBeLessThan(bookedIdx);
 
-  // Section G (secondary stats) exists further down the page, after A-F.
-  await expect(page.getByText("G · Secondary stats", { exact: true })).toBeVisible();
+  // Section F (attribution) exists further down the page, after A-E — the
+  // old "G · Secondary stats" (Downsells-only) wrapper was deleted; Downsells
+  // now lives inside "B · Payment quality" instead (no leftover empty section).
+  await expect(page.getByText("F · Attribution", { exact: true })).toBeVisible();
 
   expect(realErrors(consoleErrors)).toEqual([]);
 });
 
-test("Deals Expected to Close sits in the primary Pipeline & Outcome section and is clickable", async ({
+test("Deals Expected to Close sits in the Pipeline & team visibility section and is clickable", async ({
   page,
 }) => {
   await page.goto("/closer", { waitUntil: "load" });
-  await expect(page.getByText("B · Pipeline & outcome", { exact: true })).toBeVisible();
+  // Command-center follow-up pass: the old "B · Pipeline & outcome" content
+  // moved below the promoted C-E sections and absorbed the Leaderboard/Heat
+  // Map/Closer scorecard carved out of the old E — re-lettered "E · Pipeline
+  // & team visibility".
+  await expect(page.getByText("E · Pipeline & team visibility", { exact: true })).toBeVisible();
   const tile = page.getByRole("button", { name: /Deals Expected to Close/ });
   await expect(tile).toBeVisible();
 });
@@ -104,18 +110,21 @@ test("No-Show Recovery section shows all four real tiles with the corrected 'sub
   page,
 }) => {
   await page.goto("/closer", { waitUntil: "load" });
-  await expect(page.getByText("D · No-show recovery", { exact: true })).toBeVisible();
+  await expect(page.getByText("C · No-show recovery", { exact: true })).toBeVisible();
   await expect(page.getByText("No-shows in range", { exact: true })).toBeVisible();
   await expect(page.getByText("No-shows Rebooked", { exact: true })).toBeVisible();
   await expect(page.getByText("Recovered Show Rate", { exact: true })).toBeVisible();
   await expect(page.getByText("Recovered Close Rate", { exact: true })).toBeVisible();
 });
 
-test("Team & Coaching section includes Call Quality alongside the leaderboard/coaching panel", async ({
+test("Call quality & coaching section includes Call Quality alongside the coaching panel", async ({
   page,
 }) => {
   await page.goto("/closer", { waitUntil: "load" });
-  const section = page.getByText("E · Team & coaching", { exact: true });
+  // Command-center follow-up pass: Leaderboard/Heat Map/Closer scorecard were
+  // carved out of this section (they now live in "E · Pipeline & team
+  // visibility") — this section is Call Quality + Coaching only.
+  const section = page.getByText("D · Call quality & coaching", { exact: true });
   await section.scrollIntoViewIfNeeded();
   await expect(page.getByText("Call quality", { exact: true })).toBeVisible();
   await expect(page.getByText("Average Call Duration", { exact: true })).toBeVisible();

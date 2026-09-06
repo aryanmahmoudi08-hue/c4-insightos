@@ -41,12 +41,22 @@ import { useRole } from "@/hooks/use-role";
 import { ROLE_LABELS, type ManagedRole } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
-import { useState } from "react";
-import c4Logo from "@/assets/c4-logo.png";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useRef, useState } from "react";
+import c4OsWhite from "@/assets/c4-os-white.png";
+import c4OsBlack from "@/assets/c4-os-black.png";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { useDateRange } from "@/hooks/use-date-range";
 import { useTheme } from "@/hooks/use-theme";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
+import { useDisplayCurrency } from "@/hooks/use-display-currency";
+import { DISPLAY_CURRENCIES } from "@/lib/currency";
 import { openCommandPalette } from "@/components/command-palette";
 
 type NavItem = {
@@ -211,6 +221,25 @@ export function AppSidebar() {
 
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Hover/focus-to-expand (desktop only): transient, never persisted. The
+  // persisted `collapsed` stays the source of truth for the main-content
+  // margin in _authenticated.tsx (so this stays an overlay, not a reflow) —
+  // `showExpanded` only controls what THIS component renders/shows.
+  const [hovered, setHovered] = useState(false);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const expandOnHover = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setHovered(true);
+  };
+  const collapseAfterDelay = () => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => setHovered(false), 250);
+  };
+  const showExpanded = !collapsed || hovered;
+
   const closeMobile = () => setMobileOpen(false);
 
   /** Expanding a section while the rail is collapsed un-collapses it first — collapsed
@@ -228,7 +257,7 @@ export function AppSidebar() {
     const pathActive = loc.pathname === it.to || (it.to !== "/" && loc.pathname.startsWith(it.to));
     const active = pathActive && matchesSearch;
     const Icon = it.icon;
-    const pl = collapsed
+    const pl = !showExpanded
       ? "px-2.5 justify-center"
       : depth === 0
         ? "px-2.5"
@@ -241,7 +270,7 @@ export function AppSidebar() {
         to={it.to}
         search={it.search as never}
         onClick={closeMobile}
-        title={collapsed ? it.label : undefined}
+        title={!showExpanded ? it.label : undefined}
         className={cn(
           "group relative flex min-h-9 items-center gap-2.5 rounded-lg py-1.5 transition-all",
           nested ? "text-xs" : "text-sm",
@@ -262,11 +291,11 @@ export function AppSidebar() {
         <Icon
           className={cn(
             "shrink-0 transition-transform",
-            depth >= 2 && !collapsed ? "h-3.5 w-3.5" : "h-4 w-4",
+            depth >= 2 && showExpanded ? "h-3.5 w-3.5" : "h-4 w-4",
             active && "scale-105",
           )}
         />
-        {!collapsed && <span className="flex-1 truncate">{it.label}</span>}
+        {showExpanded && <span className="flex-1 truncate">{it.label}</span>}
       </Link>
     );
   };
@@ -282,17 +311,17 @@ export function AppSidebar() {
     <button
       type="button"
       onClick={() => onClick(!open)}
-      title={collapsed ? label : undefined}
+      title={!showExpanded ? label : undefined}
       className={cn(
         "group flex min-h-9 w-full items-center gap-2.5 rounded-lg py-2 text-sm transition-all",
-        collapsed ? "px-2.5 justify-center" : depth === 0 ? "px-2.5" : "pl-8 pr-2.5 py-1.5",
+        !showExpanded ? "px-2.5 justify-center" : depth === 0 ? "px-2.5" : "pl-8 pr-2.5 py-1.5",
         isActive
           ? "bg-sidebar-accent/30 text-sidebar-foreground"
           : "text-sidebar-foreground/65 hover:bg-sidebar-accent/55 hover:text-sidebar-foreground",
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />
-      {!collapsed && (
+      {showExpanded && (
         <>
           <span className="flex-1 text-left truncate">{label}</span>
           <ChevronRight
@@ -321,9 +350,13 @@ export function AppSidebar() {
         />
       )}
       <aside
+        onMouseEnter={expandOnHover}
+        onMouseLeave={collapseAfterDelay}
+        onFocusCapture={expandOnHover}
+        onBlurCapture={collapseAfterDelay}
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]/98 backdrop-blur-xl shadow-lg transition-[transform,width] duration-200",
-          collapsed ? "w-60 md:w-14" : "w-60",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]/98 backdrop-blur-xl shadow-lg transition-[transform,width] duration-200 motion-reduce:transition-none",
+          !showExpanded ? "w-60 md:w-14" : "w-60",
           "md:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
@@ -331,24 +364,25 @@ export function AppSidebar() {
         <div
           className={cn(
             "flex items-center gap-2 border-b border-sidebar-border py-3.5",
-            collapsed ? "px-2.5 justify-center" : "px-4",
+            !showExpanded ? "px-2.5 justify-center" : "px-4",
           )}
         >
-          {/* Source PNG is white-on-transparent — invisible on light mode's
-              near-white sidebar. .theme-logo (styles.css) inverts it under
-              .light so it stays a real second theme, not just an inversion
-              elsewhere with one asset silently breaking. */}
+          {/* Two real theme-specific assets (not a CSS invert approximation)
+              — .theme-logo-dark shows by default, .theme-logo-light shows
+              only under .light (styles.css), so the swap is pure CSS/SSR-
+              safe with no theme-detection flash. */}
           <img
-            src={c4Logo}
-            alt="C4 Consulting"
-            className="theme-logo h-9 w-9 shrink-0 object-contain"
+            src={c4OsWhite}
+            alt="C4 OS"
+            className="theme-logo-dark h-9 w-9 shrink-0 object-contain"
           />
-          {!collapsed && (
+          <img
+            src={c4OsBlack}
+            alt="C4 OS"
+            className="theme-logo-light h-9 w-9 shrink-0 object-contain"
+          />
+          {showExpanded && (
             <button type="button" className="group min-w-0 flex-1 text-left" title="Workspace">
-              <div className="eyebrow truncate">C4 · Insight</div>
-              <div className="display-serif truncate text-base text-sidebar-foreground">
-                InsightOS
-              </div>
               <div className="flex items-center gap-1 truncate text-3xs uppercase tracking-wider text-muted-foreground/80">
                 {org?.organizations?.name ?? "Workspace"}
                 <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60 transition-transform group-hover:translate-y-px" />
@@ -366,19 +400,19 @@ export function AppSidebar() {
         </div>
         <nav className="flex flex-1 flex-col overflow-y-auto p-2 space-y-0.5">
           <div className="px-2.5 pb-1 pt-1 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/50">
-            {!collapsed && "Core"}
+            {showExpanded && "Core"}
           </div>
           {mainItems.map((it) => renderItem(it))}
 
           <div className="mt-3 border-t border-sidebar-border/60 px-2.5 pb-1 pt-3 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/50">
-            {!collapsed && "Sales & Clients"}
+            {showExpanded && "Sales & Clients"}
           </div>
           {salesItems.length > 0 && (
             <>
               {sectionBtn("Sales", Users, salesOpen, salesActive, (next) =>
                 expandSection(setSalesOpen, next),
               )}
-              {salesOpen && !collapsed && (
+              {salesOpen && showExpanded && (
                 <div className="space-y-0.5">
                   {salesItems.map((it) => renderItem(it, true, 1))}
                   {repsItems.length > 0 && (
@@ -407,7 +441,7 @@ export function AppSidebar() {
               {sectionBtn("Mentees", Users, clientsOpen, clientsActive, (next) =>
                 expandSection(setClientsOpen, next),
               )}
-              {clientsOpen && !collapsed && (
+              {clientsOpen && showExpanded && (
                 <div className="space-y-0.5">
                   {clientsItems.map((it) => renderItem(it, true, 1))}
                 </div>
@@ -419,21 +453,21 @@ export function AppSidebar() {
               {sectionBtn("Team", Users, teamOpen, teamActive, (next) =>
                 expandSection(setTeamOpen, next),
               )}
-              {teamOpen && !collapsed && (
+              {teamOpen && showExpanded && (
                 <div className="space-y-0.5">{teamItems.map((it) => renderItem(it, true, 1))}</div>
               )}
             </>
           )}
 
           <div className="mt-3 border-t border-sidebar-border/60 px-2.5 pb-1 pt-3 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/50">
-            {!collapsed && "Marketing"}
+            {showExpanded && "Marketing"}
           </div>
           {marketingContentItems.length > 0 && (
             <>
               {sectionBtn("Content", Video, contentOpen, contentActive, (next) =>
                 expandSection(setContentOpen, next),
               )}
-              {contentOpen && !collapsed && (
+              {contentOpen && showExpanded && (
                 <div className="space-y-0.5">
                   {marketingContentItems.map((it) => renderItem(it, true, 1))}
                 </div>
@@ -449,7 +483,7 @@ export function AppSidebar() {
                 analyticsActive,
                 (next) => expandSection(setAnalyticsOpen, next),
               )}
-              {analyticsOpen && !collapsed && (
+              {analyticsOpen && showExpanded && (
                 <div className="space-y-0.5">
                   {analyticsItems.map((it) => renderItem(it, true, 1))}
                 </div>
@@ -461,7 +495,7 @@ export function AppSidebar() {
               {sectionBtn("Client DNA", Users, copyOpen, copyActive, (next) =>
                 expandSection(setCopyOpen, next),
               )}
-              {copyOpen && !collapsed && (
+              {copyOpen && showExpanded && (
                 <div className="space-y-0.5">
                   {copyItems.map((it) => renderItem(it, true, 1))}
                   {messagingItems.map((it) => renderItem(it, true, 1))}
@@ -471,7 +505,7 @@ export function AppSidebar() {
           )}
 
           <div className="mt-3 border-t border-sidebar-border/60 px-2.5 pb-1 pt-3 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/50">
-            {!collapsed && "Reporting"}
+            {showExpanded && "Reporting"}
           </div>
           {reportingItems.map((it) => renderItem(it))}
 
@@ -479,7 +513,7 @@ export function AppSidebar() {
             {sectionBtn("System", Settings, systemOpen, systemActive, (next) =>
               expandSection(setSystemOpen, next),
             )}
-            {systemOpen && !collapsed && (
+            {systemOpen && showExpanded && (
               <div className="space-y-0.5">
                 {systemItems.map((it) => renderItem(it, true, 1))}
                 {renderItem({ to: "/settings", label: "Settings", icon: Settings }, true, 1)}
@@ -498,12 +532,12 @@ export function AppSidebar() {
             to="/settings"
             className={cn(
               "mx-2 flex items-center gap-2 rounded-lg border-t border-sidebar-border py-2.5 text-left hover:bg-sidebar-accent/40",
-              collapsed ? "justify-center px-0" : "px-1",
+              !showExpanded ? "justify-center px-0" : "px-1",
             )}
-            title={collapsed ? `${identity.displayName} · ${roleLabel}` : undefined}
+            title={!showExpanded ? `${identity.displayName} · ${roleLabel}` : undefined}
           >
             <AvatarInitials name={identity.displayName} size="sm" />
-            {!collapsed && (
+            {showExpanded && (
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs font-semibold text-sidebar-foreground">
                   {identity.displayName}
@@ -520,15 +554,15 @@ export function AppSidebar() {
           <button
             type="button"
             onClick={openCommandPalette}
-            title={collapsed ? "Search (⌘K)" : undefined}
+            title={!showExpanded ? "Search (⌘K)" : undefined}
             className={cn(
               "flex min-h-9 w-full items-center gap-2 rounded-lg py-1.5 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent/60 transition-all",
-              collapsed ? "justify-center px-2.5" : "px-2.5",
+              !showExpanded ? "justify-center px-2.5" : "px-2.5",
             )}
           >
             <Command className="h-4 w-4 shrink-0" />
-            {!collapsed && <span className="flex-1 text-left">Search…</span>}
-            {!collapsed && (
+            {showExpanded && <span className="flex-1 text-left">Search…</span>}
+            {showExpanded && (
               <span className="badge-glass text-3xs normal-case tracking-normal">⌘K</span>
             )}
           </button>
@@ -537,20 +571,20 @@ export function AppSidebar() {
             size="sm"
             className={cn(
               "w-full text-sidebar-foreground/80 hover:bg-sidebar-accent/50",
-              collapsed ? "justify-center px-0" : "justify-start gap-2",
+              !showExpanded ? "justify-center px-0" : "justify-start gap-2",
             )}
             onClick={toggle}
-            title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}
+            title={!showExpanded ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}
           >
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            {!collapsed && (theme === "dark" ? "Light mode" : "Dark mode")}
+            {showExpanded && (theme === "dark" ? "Light mode" : "Dark mode")}
           </Button>
           <Button
             variant="ghost"
             size="sm"
             className={cn(
               "w-full text-sidebar-foreground/80 hover:bg-destructive/10 hover:text-destructive",
-              collapsed ? "justify-center px-0" : "justify-start gap-2",
+              !showExpanded ? "justify-center px-0" : "justify-start gap-2",
             )}
             onClick={async () => {
               // Dev Bypass has no real session for supabase.auth.signOut() to
@@ -564,10 +598,10 @@ export function AppSidebar() {
               await supabase.auth.signOut();
               window.location.href = "/welcome";
             }}
-            title={collapsed ? "Sign out" : undefined}
+            title={!showExpanded ? "Sign out" : undefined}
           >
             <LogOut className="h-4 w-4" />
-            {!collapsed && "Sign out"}
+            {showExpanded && "Sign out"}
           </Button>
           <button
             type="button"
@@ -642,12 +676,37 @@ export function TopBar({
         </div>
       </div>
       {showDateRange && (
-        <div className="mt-2.5">
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
           <DateRangePicker value={range} onChange={setRange} />
+          <CurrencySelector />
         </div>
       )}
       <div className="rule-gold mt-3 -mx-4 md:-mx-7" />
     </div>
+  );
+}
+
+/** Global display-currency selector (B — currency architecture). Persistent across
+ *  navigation via useDisplayCurrency's localStorage-backed context; USD stays the
+ *  canonical stored value everywhere, this only controls presentation. */
+export function CurrencySelector() {
+  const { currency, setCurrency } = useDisplayCurrency();
+  return (
+    <Select
+      value={currency}
+      onValueChange={(v) => setCurrency(v as (typeof DISPLAY_CURRENCIES)[number])}
+    >
+      <SelectTrigger className="h-8 w-[4.5rem] text-xs" aria-label="Display currency">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {DISPLAY_CURRENCIES.map((c) => (
+          <SelectItem key={c} value={c} className="text-xs">
+            {c}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

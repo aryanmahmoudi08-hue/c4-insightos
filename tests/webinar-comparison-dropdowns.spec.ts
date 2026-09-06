@@ -56,7 +56,14 @@ test("webinar analytics: comparison dropdowns are real, mutually exclusive, and 
   // A webinar can't be compared against itself: switching the primary
   // selector to the webinar currently in the comparison slot must reset the
   // comparison back to "none" rather than silently comparing it with itself.
-  const primaryTrigger = page.getByRole("combobox").first();
+  // Command-center follow-up pass added a global currency selector to the
+  // shared TopBar (rendered before this page's own content), so it's now
+  // literally the first combobox in DOM order on every page — exclude it by
+  // its distinct trigger text (a bare currency code) rather than by position.
+  const primaryTrigger = page
+    .getByRole("combobox")
+    .filter({ hasNotText: /^(USD|CAD|EUR|GBP)$/ })
+    .first();
   await primaryTrigger.click();
   await page.getByRole("option", { name: /The Client Acquisition Masterclass/ }).click();
   await expect(compareTrigger).toHaveText("No comparison");

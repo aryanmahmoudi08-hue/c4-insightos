@@ -544,12 +544,18 @@
     border-color: oklch(0.16 0 0 / 18%);
   }
 
-  /* The C4 mark (assets/c4-logo.png) is a white-on-transparent PNG — invisible
-     against light mode's near-white sidebar with no adjustment. Inverting
-     under .light turns it into a real second-theme-correct dark mark instead
-     of silently disappearing; dark mode is untouched (no filter applied). */
-  .light .theme-logo {
-    filter: invert(1);
+  /* C4 OS logo: two real assets (c4-os-white.png / c4-os-black.png), not one
+     asset approximated via CSS filter. .theme-logo-dark shows by default
+     (dark sidebar); .light flips which one is visible. Pure CSS, no theme-
+     detection JS, so there's no flash. */
+  .theme-logo-light {
+    display: none;
+  }
+  .light .theme-logo-dark {
+    display: none;
+  }
+  .light .theme-logo-light {
+    display: block;
   }
 
   /* Status dot — small glowing indicator for badges/leaderboards/rows.

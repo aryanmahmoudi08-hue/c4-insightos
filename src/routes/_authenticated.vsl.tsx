@@ -92,6 +92,7 @@ import { VideoActionQueue, type VideoActionQueueItem } from "@/components/video-
 import { AttributionPathPanel, type AttributionPath } from "@/components/attribution-path-panel";
 import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
 import type { Derivation } from "@/lib/funnel-derivation";
+import { useMoney } from "@/hooks/use-money";
 
 export const Route = createFileRoute("/_authenticated/vsl")({ component: VslPage });
 
@@ -134,10 +135,6 @@ function mmss(sec: number) {
  * ever populated from an inferred or estimated figure. A stage with no
  * connected data renders "Unavailable" rather than a zero.
  */
-const vslMoney = (cents: number) =>
-  "$" +
-  new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(cents / 100));
-
 const VSL_NOT_A_FUNNEL_RATE: Derivation = {
   status: "insufficient_data",
   sentence:
@@ -145,6 +142,7 @@ const VSL_NOT_A_FUNNEL_RATE: Derivation = {
 };
 
 function VslFunnelPanel({ vsl }: { vsl: any }) {
+  const vslMoney = useMoney();
   const { devBypass } = useAuth();
   // The Wistia-native stages (landing/play/milestones/CTA) reflect a single
   // latest snapshot regardless of range — only the CRM/cash stages

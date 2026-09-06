@@ -40,6 +40,7 @@ import {
 } from "@/lib/content-attribution";
 import { normalizeSocialPlatform } from "@/lib/social-platform";
 import { PlatformIcon } from "@/components/platform-icon";
+import { useMoney } from "@/hooks/use-money";
 
 export type ContentCommandMetric = {
   captured_at?: string | null;
@@ -163,8 +164,6 @@ type Props = {
 
 const fmt = (value: number) =>
   new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(value));
-const money = (cents: number) =>
-  `$${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(cents / 100))}`;
 const titleFor = (piece: ContentCommandPiece) => piece.title || piece.hook || "Untitled content";
 const platformFor = (platform: string) => platform.replace(/_/g, " ");
 
@@ -266,6 +265,7 @@ function MoneyOriginSection({
   onFilterContent: (contentId: string) => void;
   onFilterPlatform: (platform: string) => void;
 }) {
+  const money = useMoney();
   const pieceById = useMemo(() => new Map(pieces.map((p) => [p.id, p])), [pieces]);
   const attributedCallCount = useMemo(
     () => new Set(canonicalPaths.map((p) => p.callId).filter(Boolean)).size,

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Menu } from "lucide-react";
-import c4Logo from "@/assets/c4-logo.png";
+import c4OsWhite from "@/assets/c4-os-white.png";
+import c4OsBlack from "@/assets/c4-os-black.png";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -39,8 +40,16 @@ export function LandingHeader() {
         )}
       >
         <a href="#top" className="flex min-w-0 items-center gap-2">
-          <img src={c4Logo} alt="" className="theme-logo h-7 w-7 shrink-0 object-contain" />
-          <span className="display-serif truncate text-lg">C4 OS</span>
+          <img
+            src={c4OsWhite}
+            alt="C4 OS"
+            className="theme-logo-dark h-9 w-auto shrink-0 object-contain"
+          />
+          <img
+            src={c4OsBlack}
+            alt="C4 OS"
+            className="theme-logo-light h-9 w-auto shrink-0 object-contain"
+          />
         </a>
 
         <nav className="hidden items-center gap-7 md:flex">

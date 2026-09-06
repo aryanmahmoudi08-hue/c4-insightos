@@ -99,11 +99,10 @@ import {
   periodWindow,
 } from "@/lib/kpi-targets";
 import { actualFromCalls, sliceCallsToWindow, type CallActualRow } from "@/lib/rep-kpi-actuals";
+import { useMoney } from "@/hooks/use-money";
 
 export const Route = createFileRoute("/_authenticated/closer")({ component: Closer });
 
-const fmtMoney = (cents: number) =>
-  `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%");
 const fmtN0 = (n: number) => Math.round(n).toLocaleString();
 const CLOSER_SOURCES = ["Instagram Spiderweb", "Keyword", "Inbound", "Referral", "Ads", "Other"];
@@ -120,64 +119,70 @@ interface CloserLbPerson {
 }
 
 // Part C3 — exact per-role metric option list for Closer's leaderboard selector.
-const CLOSER_METRICS: RepMetricOption<CloserLbPerson>[] = [
-  {
-    key: "cash",
-    label: "Cash Collected",
-    spectrum: "hot",
-    primary: (p) => fmtMoney(p.cash),
-    secondary: (p) => `${p.closeRate.toFixed(0)}% close`,
-    rankBy: (p) => p.cash,
-  },
-  {
-    key: "closes",
-    label: "Closes",
-    spectrum: "hot",
-    primary: (p) => `${p.closes} closes`,
-    secondary: (p) => fmtMoney(p.cash),
-    rankBy: (p) => p.closes,
-  },
-  {
-    key: "closeRate",
-    label: "Close Rate",
-    spectrum: "hot",
-    primary: (p) => `${p.closeRate.toFixed(0)}%`,
-    secondary: (p) => `${p.closes} closes`,
-    rankBy: (p) => p.closeRate,
-  },
-  {
-    key: "showRate",
-    label: "Show Rate",
-    spectrum: "mid",
-    primary: (p) => `${p.showRate.toFixed(0)}%`,
-    secondary: (p) => `${p.offers} offers`,
-    rankBy: (p) => p.showRate,
-  },
-  {
-    key: "offers",
-    label: "Offers Made",
-    spectrum: "mid",
-    primary: (p) => `${p.offers} offers`,
-    secondary: (p) => `${p.closeRate.toFixed(0)}% close`,
-    rankBy: (p) => p.offers,
-  },
-  {
-    key: "avgCashCall",
-    label: "Avg Cash-Call",
-    spectrum: "hot",
-    primary: (p) => fmtMoney(p.avgCashCall),
-    secondary: (p) => `${p.closes} closes`,
-    rankBy: (p) => p.avgCashCall,
-  },
-  {
-    key: "deposits",
-    label: "Deposits",
-    spectrum: "mid",
-    primary: (p) => `${p.deposits} deposits`,
-    secondary: (p) => `${p.closeRate.toFixed(0)}% close`,
-    rankBy: (p) => p.deposits,
-  },
-];
+// Factory (not a static array) so the dollar-formatted entries can be built
+// with the live display-currency formatter rather than a fixed USD helper.
+function buildCloserMetrics(
+  fmtMoney: (cents: number) => string,
+): RepMetricOption<CloserLbPerson>[] {
+  return [
+    {
+      key: "cash",
+      label: "Cash Collected",
+      spectrum: "hot",
+      primary: (p) => fmtMoney(p.cash),
+      secondary: (p) => `${p.closeRate.toFixed(0)}% close`,
+      rankBy: (p) => p.cash,
+    },
+    {
+      key: "closes",
+      label: "Closes",
+      spectrum: "hot",
+      primary: (p) => `${p.closes} closes`,
+      secondary: (p) => fmtMoney(p.cash),
+      rankBy: (p) => p.closes,
+    },
+    {
+      key: "closeRate",
+      label: "Close Rate",
+      spectrum: "hot",
+      primary: (p) => `${p.closeRate.toFixed(0)}%`,
+      secondary: (p) => `${p.closes} closes`,
+      rankBy: (p) => p.closeRate,
+    },
+    {
+      key: "showRate",
+      label: "Show Rate",
+      spectrum: "mid",
+      primary: (p) => `${p.showRate.toFixed(0)}%`,
+      secondary: (p) => `${p.offers} offers`,
+      rankBy: (p) => p.showRate,
+    },
+    {
+      key: "offers",
+      label: "Offers Made",
+      spectrum: "mid",
+      primary: (p) => `${p.offers} offers`,
+      secondary: (p) => `${p.closeRate.toFixed(0)}% close`,
+      rankBy: (p) => p.offers,
+    },
+    {
+      key: "avgCashCall",
+      label: "Avg Cash-Call",
+      spectrum: "hot",
+      primary: (p) => fmtMoney(p.avgCashCall),
+      secondary: (p) => `${p.closes} closes`,
+      rankBy: (p) => p.avgCashCall,
+    },
+    {
+      key: "deposits",
+      label: "Deposits",
+      spectrum: "mid",
+      primary: (p) => `${p.deposits} deposits`,
+      secondary: (p) => `${p.closeRate.toFixed(0)}% close`,
+      rankBy: (p) => p.deposits,
+    },
+  ];
+}
 
 // All 8 real values of the `call_status` DB enum — the dropdown previously
 // exposed only 4, which meant "Showed"/"No Show"/"Offer Made"/"Rescheduled"
@@ -268,6 +273,11 @@ function Closer() {
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
   const qc = useQueryClient();
+  // Shadows the old module-level USD-only helper of the same name — every
+  // existing fmtMoney(...) call site below is unchanged, but now resolves
+  // through the global display-currency selection.
+  const fmtMoney = useMoney();
+  const closerMetrics = useMemo(() => buildCloserMetrics(fmtMoney), [fmtMoney]);
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<
     | { kind: "close" | "money" | "pipeline"; index: number }
@@ -1138,7 +1148,7 @@ function Closer() {
         })(),
       },
     ],
-    [list, paymentPlanCount, cashCents, channelSources],
+    [list, paymentPlanCount, cashCents, channelSources, fmtMoney],
   );
   const avgCashPerBooked = onCalendar ? cashCents / onCalendar : 0;
   const avgCashPerShowed = showed ? cashCents / showed : 0;
@@ -1588,10 +1598,10 @@ function Closer() {
           ]}
         />
 
-        {/* Leaderboard + activity heatmap moved into "E · Team & coaching"
-            below, alongside the scorecard/calls-reviewed/coaching-review
-            metrics they belong with — no longer stranded above the closer's
-            own primary performance metrics. */}
+        {/* Leaderboard + activity heatmap + scorecard live in "E · Pipeline &
+            team visibility" below, alongside pipeline/outcome and follow-up
+            data — no longer stranded above the closer's own primary
+            performance metrics. */}
 
         {member !== ALL_MEMBERS && (
           <div className="space-y-2">
@@ -2674,7 +2684,302 @@ function Closer() {
               />
               <RateSmallMultiples charts={rateCharts} />
 
-              {sectionHeader("B · Pipeline & outcome")}
+              {sectionHeader("B · Payment quality")}
+              <KpiBand
+                title="Payment quality"
+                items={[
+                  {
+                    key: "avgCashBooked",
+                    label: "Avg Cash / Booked",
+                    value: fmtMoney(avgCashPerBooked),
+                    spectrum: "mid",
+                    empty: !avgCashPerBooked,
+                    emptyHint: "No booked-call cash in this range.",
+                    onClick: () => setSelected({ kind: "close", index: 0 }),
+                  },
+                  {
+                    key: "avgCashShowed",
+                    label: "Avg Cash / Showed",
+                    value: fmtMoney(avgCashPerShowed),
+                    spectrum: "mid",
+                    empty: !avgCashPerShowed,
+                    emptyHint: "No showed-call cash in this range.",
+                    onClick: () => setSelected({ kind: "close", index: 1 }),
+                  },
+                  {
+                    key: "avgCashClosed",
+                    label: "Avg Cash / Closed",
+                    value: fmtMoney(avgCashPerClosed),
+                    spectrum: "hot",
+                    empty: !avgCashPerClosed,
+                    emptyHint: "No closed-call cash in this range.",
+                    onClick: () => setSelected({ kind: "close", index: 3 }),
+                  },
+                  {
+                    key: "deposits",
+                    label: "Deposits",
+                    value: depositCount.toLocaleString(),
+                    spectrum: "hot",
+                    empty: !depositCount,
+                    emptyHint: "No deposits logged in this range.",
+                    onClick: () => setSelected({ kind: "payment", metric: "deposits" }),
+                  },
+                  {
+                    key: "depositAmount",
+                    label: "Deposit Amount",
+                    value: depositAmountCents ? fmtMoney(depositAmountCents) : "—",
+                    spectrum: "hot",
+                    empty: !depositAmountCents,
+                    emptyHint: "No deposit amount logged in this range.",
+                    onClick: () => setSelected({ kind: "payment", metric: "deposits" }),
+                  },
+                  {
+                    key: "depositConversion",
+                    label: "Deposit → Close",
+                    value:
+                      depositConversionPct == null ? "—" : `${depositConversionPct.toFixed(1)}%`,
+                    spectrum: "hot",
+                    empty: depositConversionPct == null,
+                    emptyHint: "Requires a closed call and a logged deposit.",
+                    onClick: () => setSelected({ kind: "payment", metric: "depositConversion" }),
+                  },
+                  {
+                    key: "averageDepositPct",
+                    label: "Avg Deposit %",
+                    value: averageDepositPct == null ? "—" : `${averageDepositPct.toFixed(1)}%`,
+                    spectrum: "mid",
+                    empty: averageDepositPct == null,
+                    emptyHint: "Requires deposit and contract values.",
+                    onClick: () => setSelected({ kind: "payment", metric: "averageDepositPct" }),
+                  },
+                  {
+                    key: "paymentPlanUptake",
+                    label: "Payment Plan Uptake",
+                    value: list.length
+                      ? `${((paymentPlanCount / list.length) * 100).toFixed(1)}%`
+                      : "—",
+                    spectrum: "mid",
+                    empty: !list.length,
+                    emptyHint: "No calls in this date range.",
+                    onClick: () => setSelected({ kind: "payment", metric: "paymentPlanUptake" }),
+                  },
+                  {
+                    key: "onTimeRate",
+                    // Renamed from "On-Time Payment Rate" — payments has no
+                    // due_date column anywhere in the schema, so this can
+                    // only ever measure paid-vs-not, never genuine timing.
+                    label: "Payment Success Rate",
+                    value:
+                      paymentQualityStats.onTimeRatePct == null
+                        ? "Unavailable"
+                        : `${paymentQualityStats.onTimeRatePct.toFixed(1)}%`,
+                    spectrum: "mid",
+                    empty: paymentQualityStats.onTimeRatePct == null,
+                    emptyHint:
+                      paymentQualityStats.onTimeRatePct == null
+                        ? "No payment records for these calls yet."
+                        : "Share of payments that came through, not pending/failed — not a due-date timing measure.",
+                    onClick: () => setSelected({ kind: "payment", metric: "onTimeRate" }),
+                  },
+                  {
+                    key: "failedPaymentRate",
+                    label: "Failed / Default Rate",
+                    value:
+                      paymentQualityStats.failedRatePct == null
+                        ? "Unavailable"
+                        : `${paymentQualityStats.failedRatePct.toFixed(1)}%`,
+                    spectrum: "hot",
+                    empty: paymentQualityStats.failedRatePct == null,
+                    emptyHint: "No payment records for these calls yet.",
+                    onClick: () => setSelected({ kind: "payment", metric: "failedPaymentRate" }),
+                  },
+                  {
+                    key: "failedPaymentCount",
+                    label: "Failed Payments",
+                    value: fmtN0(paymentQualityStats.failedCount),
+                    spectrum: "hot",
+                    empty: paymentQualityStats.total === 0,
+                    emptyHint: "No payment records for these calls yet.",
+                    onClick: () => setSelected({ kind: "payment", metric: "failedPaymentRate" }),
+                  },
+                  {
+                    key: "recoveredFailedPayments",
+                    label: "Recovered Failed Payments (inferred)",
+                    value: fmtN0(paymentQualityStats.recoveredFailedCount),
+                    spectrum: "mid",
+                    empty: paymentQualityStats.failedCount === 0,
+                    emptyHint:
+                      paymentQualityStats.failedCount === 0
+                        ? "No failed payments in this range."
+                        : "Inferred from a later successful payment on the same call — not a direct retry record.",
+                    onClick: () =>
+                      setSelected({ kind: "payment", metric: "recoveredFailedPayments" }),
+                  },
+                  {
+                    key: "depositToFullPayment",
+                    label: "Deposit → Full Payment",
+                    value:
+                      paymentQualityStats.depositToFullPaymentPct == null
+                        ? "Unavailable"
+                        : `${paymentQualityStats.depositToFullPaymentPct.toFixed(1)}%`,
+                    spectrum: "hot",
+                    empty: paymentQualityStats.depositToFullPaymentPct == null,
+                    emptyHint: "Requires a deposit and payment records for these calls.",
+                    onClick: () => setSelected({ kind: "payment", metric: "depositToFullPayment" }),
+                  },
+                  {
+                    key: "futureScheduledCash",
+                    label: "Future Scheduled Cash",
+                    value: fmtMoney(paymentQualityStats.futureScheduledCents),
+                    spectrum: "mid",
+                    empty: paymentQualityStats.futureScheduledCents === 0,
+                    emptyHint: "No outstanding payment-plan balance in this range.",
+                    onClick: () => setSelected({ kind: "payment", metric: "futureScheduledCash" }),
+                  },
+                  {
+                    // Pulled out of the old catch-all "Secondary stats"
+                    // section — this is deal-quality/revenue information, so
+                    // it lives with the rest of payment quality, not a
+                    // generic leftover bucket. Not duplicated anywhere else.
+                    key: "downsells",
+                    label: "Downsells",
+                    value: downsells.toLocaleString(),
+                    spectrum: "mid",
+                    empty: !downsells,
+                    emptyHint: "No downsells logged in this range.",
+                  },
+                ]}
+              />
+
+              {sectionHeader("C · No-show recovery")}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <button
+                  type="button"
+                  disabled={noShowRecovery.noShowCount === 0}
+                  onClick={() => setSelected({ kind: "noshow", index: 0 })}
+                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-card"
+                >
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    No-shows in range
+                  </div>
+                  <div className="mt-1 font-mono text-lg font-semibold">
+                    {noShowRecovery.noShowCount}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  disabled={noShowRecovery.rebookedCount === 0}
+                  onClick={() => setSelected({ kind: "noshow", index: 3 })}
+                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-card"
+                >
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    No-shows Rebooked
+                  </div>
+                  <div className="mt-1 font-mono text-lg font-semibold">
+                    {noShowRecovery.rebookedCount}
+                  </div>
+                  <div className="mt-1 text-3xs text-muted-foreground">
+                    A follow-up call was logged — not yet counted as recovered
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  disabled={noShowRecovery.noShowCount === 0}
+                  onClick={() => setSelected({ kind: "noshow", index: 1 })}
+                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-card"
+                >
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    Recovered Show Rate
+                  </div>
+                  <div className="mt-1 font-mono text-lg font-semibold">
+                    {noShowRecovery.recoveredShowRate == null
+                      ? "—"
+                      : `${noShowRecovery.recoveredShowRate.toFixed(0)}%`}
+                  </div>
+                  <div className="mt-1 text-3xs text-muted-foreground">
+                    Rescheduled and re-attended after a no-show
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  disabled={noShowRecovery.recovered.length === 0}
+                  onClick={() => setSelected({ kind: "noshow", index: 2 })}
+                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-card"
+                >
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                    Recovered Close Rate
+                  </div>
+                  <div className="mt-1 font-mono text-lg font-semibold">
+                    {noShowRecovery.recoveredCloseRate == null
+                      ? "—"
+                      : `${noShowRecovery.recoveredCloseRate.toFixed(0)}%`}
+                  </div>
+                </button>
+              </div>
+
+              {sectionHeader("D · Call quality & coaching")}
+              <KpiBand
+                title="Call quality"
+                items={[
+                  {
+                    key: "avgCallDuration",
+                    label: "Average Call Duration",
+                    value:
+                      avgCallDurationSeconds == null
+                        ? "Not logged"
+                        : `${Math.round(avgCallDurationSeconds / 60)}m`,
+                    spectrum: "cold",
+                    empty: avgCallDurationSeconds == null,
+                    emptyHint: "No call-length data logged in this range.",
+                  },
+                  {
+                    key: "avgTalkTime",
+                    label: "Average Talk Time",
+                    value:
+                      avgTalkSeconds == null ? "Not logged" : `${Math.round(avgTalkSeconds / 60)}m`,
+                    spectrum: "cold",
+                    empty: avgTalkSeconds == null,
+                    emptyHint: "No talk-time data logged in this range.",
+                  },
+                  {
+                    key: "talkListenRatio",
+                    label: "Talk / Listen Ratio",
+                    value:
+                      avgTalkListenRatioPct == null
+                        ? "Not logged"
+                        : `${Math.round(avgTalkListenRatioPct)}% talk`,
+                    spectrum: "mid",
+                    empty: avgTalkListenRatioPct == null,
+                    emptyHint: "Needs both call length and talk time on the same call.",
+                  },
+                ]}
+              />
+              <KpiBand
+                title="Coaching"
+                items={[
+                  {
+                    key: "callsReviewed",
+                    label: "Calls Reviewed",
+                    value: coachingReviewCount.toLocaleString(),
+                    spectrum: "hot",
+                    empty: coachingReviewCount === 0,
+                    emptyHint: "No coaching reviews logged in this range.",
+                    // The real reviewed-call records are already rendered
+                    // unconditionally in CoachingPanel just below — jump
+                    // there instead of opening a second panel that would
+                    // just duplicate the same rows.
+                    onClick: () =>
+                      document
+                        .getElementById("coaching-panel")
+                        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                  },
+                ]}
+              />
+              <div id="coaching-panel">
+                <CoachingPanel orgId={orgId} range={range} />
+              </div>
+
+              {sectionHeader("E · Pipeline & team visibility")}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <button
                   type="button"
@@ -2854,269 +3159,10 @@ function Closer() {
                   </tbody>
                 </table>
               </GlassTableShell>
-
-              {sectionHeader("C · Payment quality")}
-              <KpiBand
-                title="Payment quality"
-                items={[
-                  {
-                    key: "avgCashBooked",
-                    label: "Avg Cash / Booked",
-                    value: fmtMoney(avgCashPerBooked),
-                    spectrum: "mid",
-                    empty: !avgCashPerBooked,
-                    emptyHint: "No booked-call cash in this range.",
-                    onClick: () => setSelected({ kind: "close", index: 0 }),
-                  },
-                  {
-                    key: "avgCashShowed",
-                    label: "Avg Cash / Showed",
-                    value: fmtMoney(avgCashPerShowed),
-                    spectrum: "mid",
-                    empty: !avgCashPerShowed,
-                    emptyHint: "No showed-call cash in this range.",
-                    onClick: () => setSelected({ kind: "close", index: 1 }),
-                  },
-                  {
-                    key: "avgCashClosed",
-                    label: "Avg Cash / Closed",
-                    value: fmtMoney(avgCashPerClosed),
-                    spectrum: "hot",
-                    empty: !avgCashPerClosed,
-                    emptyHint: "No closed-call cash in this range.",
-                    onClick: () => setSelected({ kind: "close", index: 3 }),
-                  },
-                  {
-                    key: "deposits",
-                    label: "Deposits",
-                    value: depositCount.toLocaleString(),
-                    spectrum: "hot",
-                    empty: !depositCount,
-                    emptyHint: "No deposits logged in this range.",
-                    onClick: () => setSelected({ kind: "payment", metric: "deposits" }),
-                  },
-                  {
-                    key: "depositAmount",
-                    label: "Deposit Amount",
-                    value: depositAmountCents ? fmtMoney(depositAmountCents) : "—",
-                    spectrum: "hot",
-                    empty: !depositAmountCents,
-                    emptyHint: "No deposit amount logged in this range.",
-                    onClick: () => setSelected({ kind: "payment", metric: "deposits" }),
-                  },
-                  {
-                    key: "depositConversion",
-                    label: "Deposit → Close",
-                    value:
-                      depositConversionPct == null ? "—" : `${depositConversionPct.toFixed(1)}%`,
-                    spectrum: "hot",
-                    empty: depositConversionPct == null,
-                    emptyHint: "Requires a closed call and a logged deposit.",
-                    onClick: () => setSelected({ kind: "payment", metric: "depositConversion" }),
-                  },
-                  {
-                    key: "averageDepositPct",
-                    label: "Avg Deposit %",
-                    value: averageDepositPct == null ? "—" : `${averageDepositPct.toFixed(1)}%`,
-                    spectrum: "mid",
-                    empty: averageDepositPct == null,
-                    emptyHint: "Requires deposit and contract values.",
-                    onClick: () => setSelected({ kind: "payment", metric: "averageDepositPct" }),
-                  },
-                  {
-                    key: "paymentPlanUptake",
-                    label: "Payment Plan Uptake",
-                    value: list.length
-                      ? `${((paymentPlanCount / list.length) * 100).toFixed(1)}%`
-                      : "—",
-                    spectrum: "mid",
-                    empty: !list.length,
-                    emptyHint: "No calls in this date range.",
-                    onClick: () => setSelected({ kind: "payment", metric: "paymentPlanUptake" }),
-                  },
-                  {
-                    key: "onTimeRate",
-                    // Renamed from "On-Time Payment Rate" — payments has no
-                    // due_date column anywhere in the schema, so this can
-                    // only ever measure paid-vs-not, never genuine timing.
-                    label: "Payment Success Rate",
-                    value:
-                      paymentQualityStats.onTimeRatePct == null
-                        ? "Unavailable"
-                        : `${paymentQualityStats.onTimeRatePct.toFixed(1)}%`,
-                    spectrum: "mid",
-                    empty: paymentQualityStats.onTimeRatePct == null,
-                    emptyHint:
-                      paymentQualityStats.onTimeRatePct == null
-                        ? "No payment records for these calls yet."
-                        : "Share of payments that came through, not pending/failed — not a due-date timing measure.",
-                    onClick: () => setSelected({ kind: "payment", metric: "onTimeRate" }),
-                  },
-                  {
-                    key: "failedPaymentRate",
-                    label: "Failed / Default Rate",
-                    value:
-                      paymentQualityStats.failedRatePct == null
-                        ? "Unavailable"
-                        : `${paymentQualityStats.failedRatePct.toFixed(1)}%`,
-                    spectrum: "hot",
-                    empty: paymentQualityStats.failedRatePct == null,
-                    emptyHint: "No payment records for these calls yet.",
-                    onClick: () => setSelected({ kind: "payment", metric: "failedPaymentRate" }),
-                  },
-                  {
-                    key: "failedPaymentCount",
-                    label: "Failed Payments",
-                    value: fmtN0(paymentQualityStats.failedCount),
-                    spectrum: "hot",
-                    empty: paymentQualityStats.total === 0,
-                    emptyHint: "No payment records for these calls yet.",
-                    onClick: () => setSelected({ kind: "payment", metric: "failedPaymentRate" }),
-                  },
-                  {
-                    key: "recoveredFailedPayments",
-                    label: "Recovered Failed Payments (inferred)",
-                    value: fmtN0(paymentQualityStats.recoveredFailedCount),
-                    spectrum: "mid",
-                    empty: paymentQualityStats.failedCount === 0,
-                    emptyHint:
-                      paymentQualityStats.failedCount === 0
-                        ? "No failed payments in this range."
-                        : "Inferred from a later successful payment on the same call — not a direct retry record.",
-                    onClick: () =>
-                      setSelected({ kind: "payment", metric: "recoveredFailedPayments" }),
-                  },
-                  {
-                    key: "depositToFullPayment",
-                    label: "Deposit → Full Payment",
-                    value:
-                      paymentQualityStats.depositToFullPaymentPct == null
-                        ? "Unavailable"
-                        : `${paymentQualityStats.depositToFullPaymentPct.toFixed(1)}%`,
-                    spectrum: "hot",
-                    empty: paymentQualityStats.depositToFullPaymentPct == null,
-                    emptyHint: "Requires a deposit and payment records for these calls.",
-                    onClick: () => setSelected({ kind: "payment", metric: "depositToFullPayment" }),
-                  },
-                  {
-                    key: "futureScheduledCash",
-                    label: "Future Scheduled Cash",
-                    value: fmtMoney(paymentQualityStats.futureScheduledCents),
-                    spectrum: "mid",
-                    empty: paymentQualityStats.futureScheduledCents === 0,
-                    emptyHint: "No outstanding payment-plan balance in this range.",
-                    onClick: () => setSelected({ kind: "payment", metric: "futureScheduledCash" }),
-                  },
-                ]}
-              />
-
-              {sectionHeader("D · No-show recovery")}
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <button
-                  type="button"
-                  disabled={noShowRecovery.noShowCount === 0}
-                  onClick={() => setSelected({ kind: "noshow", index: 0 })}
-                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-card"
-                >
-                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                    No-shows in range
-                  </div>
-                  <div className="mt-1 font-mono text-lg font-semibold">
-                    {noShowRecovery.noShowCount}
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  disabled={noShowRecovery.rebookedCount === 0}
-                  onClick={() => setSelected({ kind: "noshow", index: 3 })}
-                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-card"
-                >
-                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                    No-shows Rebooked
-                  </div>
-                  <div className="mt-1 font-mono text-lg font-semibold">
-                    {noShowRecovery.rebookedCount}
-                  </div>
-                  <div className="mt-1 text-3xs text-muted-foreground">
-                    A follow-up call was logged — not yet counted as recovered
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  disabled={noShowRecovery.noShowCount === 0}
-                  onClick={() => setSelected({ kind: "noshow", index: 1 })}
-                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-card"
-                >
-                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                    Recovered Show Rate
-                  </div>
-                  <div className="mt-1 font-mono text-lg font-semibold">
-                    {noShowRecovery.recoveredShowRate == null
-                      ? "—"
-                      : `${noShowRecovery.recoveredShowRate.toFixed(0)}%`}
-                  </div>
-                  <div className="mt-1 text-3xs text-muted-foreground">
-                    Rescheduled and re-attended after a no-show
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  disabled={noShowRecovery.recovered.length === 0}
-                  onClick={() => setSelected({ kind: "noshow", index: 2 })}
-                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border/70 disabled:hover:bg-card"
-                >
-                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                    Recovered Close Rate
-                  </div>
-                  <div className="mt-1 font-mono text-lg font-semibold">
-                    {noShowRecovery.recoveredCloseRate == null
-                      ? "—"
-                      : `${noShowRecovery.recoveredCloseRate.toFixed(0)}%`}
-                  </div>
-                </button>
-              </div>
-
-              {sectionHeader("E · Team & coaching")}
-              <KpiBand
-                title="Call quality"
-                items={[
-                  {
-                    key: "avgCallDuration",
-                    label: "Average Call Duration",
-                    value:
-                      avgCallDurationSeconds == null
-                        ? "Not logged"
-                        : `${Math.round(avgCallDurationSeconds / 60)}m`,
-                    spectrum: "cold",
-                    empty: avgCallDurationSeconds == null,
-                    emptyHint: "No call-length data logged in this range.",
-                  },
-                  {
-                    key: "avgTalkTime",
-                    label: "Average Talk Time",
-                    value:
-                      avgTalkSeconds == null ? "Not logged" : `${Math.round(avgTalkSeconds / 60)}m`,
-                    spectrum: "cold",
-                    empty: avgTalkSeconds == null,
-                    emptyHint: "No talk-time data logged in this range.",
-                  },
-                  {
-                    key: "talkListenRatio",
-                    label: "Talk / Listen Ratio",
-                    value:
-                      avgTalkListenRatioPct == null
-                        ? "Not logged"
-                        : `${Math.round(avgTalkListenRatioPct)}% talk`,
-                    spectrum: "mid",
-                    empty: avgTalkListenRatioPct == null,
-                    emptyHint: "Needs both call length and talk time on the same call.",
-                  },
-                ]}
-              />
               <div className="grid gap-4 lg:grid-cols-2">
                 <RepLeaderboard
                   titlePrefix="Closer leaderboard"
-                  metrics={CLOSER_METRICS}
+                  metrics={closerMetrics}
                   metricKey={lbMetric}
                   onMetricChange={setLbMetric}
                   people={lbPeople}
@@ -3193,30 +3239,6 @@ function Closer() {
                   </tbody>
                 </table>
               </GlassTableShell>
-              <KpiBand
-                title="Coaching"
-                items={[
-                  {
-                    key: "callsReviewed",
-                    label: "Calls Reviewed",
-                    value: coachingReviewCount.toLocaleString(),
-                    spectrum: "hot",
-                    empty: coachingReviewCount === 0,
-                    emptyHint: "No coaching reviews logged in this range.",
-                    // The real reviewed-call records are already rendered
-                    // unconditionally in CoachingPanel just below — jump
-                    // there instead of opening a second panel that would
-                    // just duplicate the same rows.
-                    onClick: () =>
-                      document
-                        .getElementById("coaching-panel")
-                        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-                  },
-                ]}
-              />
-              <div id="coaching-panel">
-                <CoachingPanel orgId={orgId} range={range} />
-              </div>
 
               {sectionHeader("F · Attribution")}
               <AttributionPathPanel
@@ -3243,19 +3265,6 @@ function Closer() {
           );
         })()}
 
-        {/* G · Secondary stats. Closer scorecard moved into "E · Team &
-            coaching" above; Follow-up pipeline (summary tiles + table)
-            moved into "B · Pipeline & outcome" above — neither is
-            duplicated here anymore. */}
-        <div className="mt-6 mb-1 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
-          G · Secondary stats
-        </div>
-        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-lg border border-border/70 bg-card p-3">
-            <div className="text-3xs uppercase tracking-wider text-muted-foreground">Downsells</div>
-            <div className="mt-1 font-mono text-lg font-semibold">{downsells}</div>
-          </div>
-        </div>
         <Tabs defaultValue="objections">
           <TabsList>
             <TabsTrigger value="objections">Objection frequency</TabsTrigger>

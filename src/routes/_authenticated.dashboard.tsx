@@ -6,7 +6,7 @@ import { mockDashboardStats } from "@/lib/dev-mock-data";
 import { PlatformIcon } from "@/components/platform-icon";
 import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowUpRight,
   Sparkles,
@@ -44,6 +44,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { useCountUp } from "@/hooks/use-count-up";
+import { useMoney } from "@/hooks/use-money";
 import { KpiBand } from "@/components/kpi-band";
 import { KpiCard } from "@/components/kpi-card";
 import { InteractiveSparkline } from "@/components/interactive-sparkline";
@@ -104,8 +105,6 @@ import {
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: Dashboard });
 
 const fmt = (n: number) => new Intl.NumberFormat("en-US").format(Math.round(n));
-const money = (c: number) =>
-  "$" + new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(c / 100));
 const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%");
 
 interface HubCloserPerson {
@@ -127,7 +126,12 @@ interface HubSetterPerson {
 // Top Setters ranks by Sets / Cash Collected / Revenue Generated. Same
 // RepMetricOption/RepLeaderboard pattern the rep dashboards already use, not
 // a new leaderboard, scoped to just these 3 metrics per role per the brief.
-const HUB_CLOSER_METRICS: RepMetricOption<HubCloserPerson>[] = [
+// Factories (not module-scope constants) because their dollar formatting now
+// comes from the display-currency-aware `money` returned by useMoney(),
+// which only exists inside a component.
+const buildHubCloserMetrics = (
+  money: (c: number) => string,
+): RepMetricOption<HubCloserPerson>[] => [
   {
     key: "closes",
     label: "Closes",
@@ -153,7 +157,9 @@ const HUB_CLOSER_METRICS: RepMetricOption<HubCloserPerson>[] = [
     rankBy: (p) => p.revenue,
   },
 ];
-const HUB_SETTER_METRICS: RepMetricOption<HubSetterPerson>[] = [
+const buildHubSetterMetrics = (
+  money: (c: number) => string,
+): RepMetricOption<HubSetterPerson>[] => [
   {
     key: "sets",
     label: "Sets",
@@ -316,7 +322,7 @@ type FunnelRecord = {
   date: string | null;
   cashCents: number | null;
 };
-const FUNNEL_RECORD_COLUMNS: DetailColumn<FunnelRecord>[] = [
+const buildFunnelRecordColumns = (money: (c: number) => string): DetailColumn<FunnelRecord>[] => [
   { key: "primary", label: "Record", render: (r) => r.primary },
   { key: "detail", label: "Detail", render: (r) => r.detail },
   {
@@ -337,8 +343,35 @@ function Dashboard() {
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
   const { range } = useDateRange();
+  const navigate = useNavigate();
+  const money = useMoney();
   const [socialPlatform, setSocialPlatform] = useState<SocialPlatform | "all">("all");
   const [acquisitionSource, setAcquisitionSource] = useState<AcquisitionSource | "all">("all");
+  const HUB_CLOSER_METRICS = buildHubCloserMetrics(money);
+  const HUB_SETTER_METRICS = buildHubSetterMetrics(money);
+  const FUNNEL_RECORD_COLUMNS = buildFunnelRecordColumns(money);
+
+  // Active-by-tier portfolio counts (executive KPI row below). Deliberately
+  // keyed only on orgId, not the page's date range — an "Active" count is a
+  // current-state snapshot, not a historical figure that should shrink just
+  // because the user narrows the date filter.
+  const { data: activeTierCounts } = useQuery({
+    queryKey: ["hub-active-tier-counts", orgId, devBypass],
+    enabled: !!orgId,
+    queryFn: async () => {
+      if (devBypass) return { low: 0, high: 0, unclassified: 0, total: 0 };
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id, leads(ticket_tier)")
+        .eq("org_id", orgId!)
+        .eq("status", "active");
+      if (error) throw error;
+      const rows = (data ?? []) as Array<{ leads: { ticket_tier: string | null } | null }>;
+      const low = rows.filter((r) => r.leads?.ticket_tier === "low").length;
+      const high = rows.filter((r) => r.leads?.ticket_tier === "high").length;
+      return { low, high, unclassified: rows.length - low - high, total: rows.length };
+    },
+  });
 
   const {
     data: stats,
@@ -1127,7 +1160,16 @@ function Dashboard() {
       working: funnelSelectedIndex === 0 ? NO_UPSTREAM : funnelWorking,
       emptyRowsLabel,
     };
-  }, [funnelSelectedIndex, funnelStages, capStages, funnelWorking, minCapSample, c, range]);
+  }, [
+    funnelSelectedIndex,
+    funnelStages,
+    capStages,
+    funnelWorking,
+    minCapSample,
+    c,
+    range,
+    FUNNEL_RECORD_COLUMNS,
+  ]);
 
   const attribSelected = hubSelected?.kind === "attribution" ? hubSelected : null;
   const attributionPanel = useMemo(() => {
@@ -1167,7 +1209,7 @@ function Dashboard() {
       working: NOT_A_FUNNEL_STAGE_WORKING,
       emptyRowsLabel: "No closed calls resolved to this content for this model.",
     };
-  }, [attribSelected, attribution, attributionModel, range]);
+  }, [attribSelected, attribution, attributionModel, range, money]);
 
   return (
     <>
@@ -1244,6 +1286,53 @@ function Dashboard() {
           </div>
         )}
 
+        {/* Executive portfolio row — money + portfolio state, above everything
+            else on the page. One home for each of these 5 figures: Cash
+            Collected/Revenue Generated aren't repeated as plain KpiCards
+            anywhere else on Main Hub (the CashHero below is a distinct hero
+            visualization, not a duplicate KPI card), and the old "Contract
+            Value / Cash" Company KPIs entry was removed in favor of this row. */}
+        {!!stats && (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <KpiCard
+              label="Total Cash Collected"
+              value={money(c?.cash ?? 0)}
+              spectrum="hot"
+              supporting={formatRangeLabel(range)}
+            />
+            <KpiCard
+              label="Total Revenue Generated"
+              value={money(c?.contractValue ?? 0)}
+              spectrum="hot"
+              supporting={formatRangeLabel(range)}
+            />
+            <KpiCard
+              label="MRR — Low Ticket"
+              value="Not tracked"
+              supporting="Requires a client-level recurring-revenue field this schema doesn't have yet."
+              className="opacity-70"
+            />
+            <KpiCard
+              label="Low Ticket Active"
+              value={fmt(activeTierCounts?.low ?? 0)}
+              supporting={
+                activeTierCounts ? `of ${fmt(activeTierCounts.total)} active clients` : undefined
+              }
+              spectrum="cold"
+              onClick={() => navigate({ to: "/clients" } as never)}
+            />
+            <KpiCard
+              label="High Ticket Active"
+              value={fmt(activeTierCounts?.high ?? 0)}
+              supporting={
+                activeTierCounts ? `of ${fmt(activeTierCounts.total)} active clients` : undefined
+              }
+              spectrum="mid"
+              onClick={() => navigate({ to: "/clients" } as never)}
+            />
+          </div>
+        )}
+
         {/* Cash Collected mega-hero (Phase 4) — the page's one hero moment (B1): mega
             number + count-up, daily-cash area chart as an ambient background, delta vs
             prior period, and month-end pace folded in. Replaces the standalone PaceCard
@@ -1287,25 +1376,14 @@ function Dashboard() {
           </>
         )}
 
-        {/* Company KPIs stay focused on four executive-level measures. Detailed
-            funnel stages remain in Level 3 and are not duplicated here. */}
+        {/* Company KPIs stay focused on executive-level measures. Detailed
+            funnel stages remain in Level 3 and are not duplicated here.
+            Revenue Generated (formerly labeled "Contract Value / Cash" here)
+            moved to the top executive KPI row below — one home, not two. */}
         {!!stats && (
           <KpiBand
             title="Company KPIs"
             items={[
-              {
-                key: "contractValue",
-                label: "Contract Value / Cash",
-                value: money(c?.contractValue ?? 0),
-                spectrum: "hot",
-                featured: true,
-                spark: stats.series.map((point) => point.contractValue),
-                sparkLabels: stats.series.map((point) => point.d),
-                deltaPct: pctDelta(c?.contractValue ?? 0, p?.contractValue ?? 0),
-                priorValue: money(p?.contractValue ?? 0),
-                empty: !c?.contractValue,
-                emptyHint: "Contract value shows up once a deal closes.",
-              },
               {
                 key: "newLeads",
                 label: "New Leads",
@@ -1664,6 +1742,7 @@ function MoneyHeroTooltip({
   payload?: Array<{ payload: MoneyPoint }>;
   label?: string;
 }) {
+  const money = useMoney();
   if (!active || !payload?.length) return null;
   const point = payload[0]?.payload;
   if (!point) return null;
@@ -1709,6 +1788,7 @@ function CashHero({
   prevCashRatePct?: number;
 }) {
   const animated = useCountUp(curr ?? 0, 700);
+  const money = useMoney();
   const hasDelta = curr !== undefined && prev !== undefined;
   const delta =
     hasDelta && prev! > 0 ? ((curr! - prev!) / prev!) * 100 : hasDelta && curr! > 0 ? 100 : 0;
@@ -1870,6 +1950,7 @@ function PaceTallCard({
   pace?: PaceStats;
   targetProgress?: TargetProgress | null;
 }) {
+  const money = useMoney();
   if (!pace) return null;
   const progress = Math.min(100, (pace.dayOfMonth / pace.daysInMonth) * 100);
   const remaining = Math.max(0, pace.daysInMonth - pace.dayOfMonth);

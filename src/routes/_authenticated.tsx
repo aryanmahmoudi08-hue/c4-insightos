@@ -4,6 +4,7 @@ import { MotionConfig } from "motion/react";
 import { useAuth } from "@/hooks/use-auth";
 import { AppSidebar } from "@/components/app-sidebar";
 import { DateRangeProvider } from "@/hooks/use-date-range";
+import { DisplayCurrencyProvider } from "@/hooks/use-display-currency";
 import { SidebarCollapsedProvider, useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { LiveTicker } from "@/components/live-ticker";
 import { CommandPalette } from "@/components/command-palette";
@@ -26,15 +27,17 @@ function AuthedLayout() {
   }
   return (
     <DateRangeProvider>
-      <SidebarCollapsedProvider>
-        {/* Systemic prefers-reduced-motion gate (B5) — every `motion.*` component
-            under here (sidebar's sliding indicator, command palette entrance,
-            BentoGrid, future page work) automatically respects it without each
-            one needing its own useReducedMotion() check. */}
-        <MotionConfig reducedMotion="user">
-          <AuthedShell />
-        </MotionConfig>
-      </SidebarCollapsedProvider>
+      <DisplayCurrencyProvider>
+        <SidebarCollapsedProvider>
+          {/* Systemic prefers-reduced-motion gate (B5) — every `motion.*` component
+              under here (sidebar's sliding indicator, command palette entrance,
+              BentoGrid, future page work) automatically respects it without each
+              one needing its own useReducedMotion() check. */}
+          <MotionConfig reducedMotion="user">
+            <AuthedShell />
+          </MotionConfig>
+        </SidebarCollapsedProvider>
+      </DisplayCurrencyProvider>
     </DateRangeProvider>
   );
 }

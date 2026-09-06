@@ -17,7 +17,11 @@ import { test, expect } from "./fixtures";
  * stops short of the container's right edge is exactly what a visible gap
  * looks like, regardless of which column-span combination caused it.
  */
-async function assertFirstRowFillsWidth(page: import("@playwright/test").Page, containerSelector: string, label: string) {
+async function assertFirstRowFillsWidth(
+  page: import("@playwright/test").Page,
+  containerSelector: string,
+  label: string,
+) {
   const result = await page.evaluate((sel) => {
     const container = document.querySelector(sel);
     if (!container) return { error: `container not found: ${sel}` };
@@ -40,22 +44,34 @@ async function assertFirstRowFillsWidth(page: import("@playwright/test").Page, c
   if ("error" in result) throw new Error(`${label}: ${result.error}`);
   // Small tolerance for sub-pixel rounding across the grid gap math — not a
   // fudge for a real gap, real gaps here are tens to hundreds of px.
-  expect(result.rowRight, `${label}: first row (${result.rowCount} of ${result.totalChildren} cards) should reach the container's right edge, not stop short leaving a visible gap`).toBeGreaterThan(result.containerRight - 8);
+  expect(
+    result.rowRight,
+    `${label}: first row (${result.rowCount} of ${result.totalChildren} cards) should reach the container's right edge, not stop short leaving a visible gap`,
+  ).toBeGreaterThan(result.containerRight - 8);
 }
 
-test("dashboard: Cash Collected + Month-End Pace row has no trailing gap at 1920px", async ({ page }) => {
+test("dashboard: Cash Collected + Month-End Pace row has no trailing gap at 1920px", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1920, height: 1200 });
   await page.goto("/dashboard", { waitUntil: "load" });
   await expect(page.locator("h1")).toContainText("Executive Command Center", { timeout: 20_000 });
 
   // The hero BentoGrid — first grid on the page after the title block.
-  await assertFirstRowFillsWidth(page, "main .grid.grid-cols-1", "Cash Collected / Month-End Pace bento row");
+  await assertFirstRowFillsWidth(
+    page,
+    "main .grid.grid-cols-1",
+    "Cash Collected / Month-End Pace bento row",
+  );
 });
 
 test("dashboard: Company KPIs band has no trailing gap at 1920px", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1200 });
   await page.goto("/dashboard", { waitUntil: "load" });
-  await expect(page.getByText("Contract Value", { exact: true })).toBeVisible({ timeout: 20_000 });
+  // Command-center follow-up pass: "Contract Value / Cash" was promoted to a
+  // top-of-page executive card (renamed "Revenue Generated") and removed from
+  // this band to avoid a duplicate — "New Leads" is now this band's anchor.
+  await expect(page.getByText("New Leads", { exact: true })).toBeVisible({ timeout: 20_000 });
 
   // Part 7 replaced the old 2-grid DeltaKpi layout (4-card row + 3-card row,
   // grid-cols-4/grid-cols-3) with the shared KpiBand component, whose grid
@@ -63,5 +79,9 @@ test("dashboard: Company KPIs band has no trailing gap at 1920px", async ({ page
   // "half-empty row" bug class this file exists to catch (auto-fit always
   // stretches to fill the row, no fixed column count to divide unevenly).
   // Still assert it directly rather than assuming the component is correct.
-  await assertFirstRowFillsWidth(page, "main .hover-lift .grid.overflow-hidden.rounded-lg", "Company KPIs band");
+  await assertFirstRowFillsWidth(
+    page,
+    "main .hover-lift .grid.overflow-hidden.rounded-lg",
+    "Company KPIs band",
+  );
 });

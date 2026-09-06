@@ -1,13 +1,20 @@
 import { test, expect, realErrors } from "./fixtures";
 
 /**
- * Regression for the Closer page reorganization: sections A-G render in
+ * Regression for the Closer page reorganization: sections A-F render in
  * order with no duplicate cards, and "Deals Expected to Close" (previously
  * hardcoded to a rolling 7-day window regardless of the selected date
  * range, and buried inside a nested "Follow-up pipeline" tab) now respects
  * the page's date range, shows a dynamic label, and opens a real drilldown.
+ *
+ * Command-center follow-up pass: C-E were promoted above the old B (Pipeline
+ * & outcome), with the Leaderboard/Heat Map/Closer scorecard carved out of
+ * the old E and rejoined to B — now "E · Pipeline & team visibility". The
+ * old "G · Secondary stats" (Downsells-only) wrapper was deleted; Downsells
+ * now lives inside "B · Payment quality" instead. Sections are re-lettered
+ * A-F sequentially to match.
  */
-test("closer: sections render in A-G order, no duplicate cards, Deals Expected to Close is clickable", async ({
+test("closer: sections render in A-F order, no duplicate cards, Deals Expected to Close is clickable", async ({
   page,
   consoleErrors,
 }) => {
@@ -23,11 +30,11 @@ test("closer: sections render in A-G order, no duplicate cards, Deals Expected t
   const headerTexts = await page.evaluate(() =>
     Array.from(document.querySelectorAll("div"))
       .map((el) => el.textContent?.trim())
-      .filter((t) => t && /^[A-G] · /.test(t)),
+      .filter((t) => t && /^[A-F] · /.test(t)),
   );
   // Every lettered section header from the spec must appear, in order.
   const letters = headerTexts.map((t) => t![0]);
-  expect(letters).toEqual(["A", "B", "C", "D", "E", "F", "G"]);
+  expect(letters).toEqual(["A", "B", "C", "D", "E", "F"]);
 
   // No duplicate cards: each of these labels must render exactly once.
   for (const label of [
