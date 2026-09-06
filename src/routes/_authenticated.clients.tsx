@@ -53,6 +53,8 @@ import {
 } from "@/lib/mentee-payments";
 import { AttributionEvidencePanel } from "@/components/attribution-evidence-panel";
 import { AttributionPathPanel, type AttributionPath } from "@/components/attribution-path-panel";
+import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
+import type { Derivation } from "@/lib/funnel-derivation";
 import { MenteeOperationsPanel } from "@/components/mentee-operations-panel";
 import { CollectionsChart } from "@/components/mentee-collections-chart";
 import { MenteeScheduledComms } from "@/components/mentee-scheduled-comms";
@@ -430,6 +432,11 @@ function MenteeLifecycleEvidence({
     </div>
   );
 }
+
+const NOT_A_ROSTER_METRIC: Derivation = {
+  status: "insufficient_data",
+  sentence: "A mentee/payment roster, not a funnel stage — no upstream constraint to derive.",
+};
 
 function Mentees() {
   const { data: org } = useCurrentOrg();
@@ -867,6 +874,199 @@ function Mentees() {
     return m;
   }, [view]);
 
+  // StatCard drilldowns — every metric filters the SAME real arrays already
+  // used to compute the number itself (never a parallel/re-derived
+  // population), mapped into one shared display-row shape so the panel below
+  // has a single concrete type regardless of which metric was clicked. These
+  // are financial/roster snapshots, not funnel stages, so cap/working always
+  // carry the same honest "not a funnel stage" Derivation.
+  type MenteeMetric =
+    | "active"
+    | "renewalsDue"
+    | "atRisk"
+    | "paidCollections"
+    | "openPlans"
+    | "forecast30d"
+    | "outstanding"
+    | "collectedMtd"
+    | "dueNext7d"
+    | "failedPayments"
+    | "collectionRate"
+    | "atRiskFutureCash";
+  const [selectedMetric, setSelectedMetric] = useState<MenteeMetric | null>(null);
+  const moneyStr = (cents: number | null | undefined) =>
+    cents == null ? "—" : `$${Math.round(cents / 100).toLocaleString()}`;
+  type MenteeDetailRow = { id: string; c1: string; c2: string; c3: string; c4: string };
+  const menteePanel = useMemo(() => {
+    if (!selectedMetric) return null;
+    const clientRow = (c: ClientRow, c2: string, c3: string, c4: string): MenteeDetailRow => ({
+      id: c.id,
+      c1: c.full_name,
+      c2,
+      c3,
+      c4,
+    });
+    let title = "";
+    let headers: [string, string, string, string] = ["Name", "", "", ""];
+    let rows: MenteeDetailRow[] = [];
+    switch (selectedMetric) {
+      case "active":
+        title = "Active mentees";
+        headers = ["Name", "Status", "Contract", "Renewal"];
+        rows = (clients ?? [])
+          .filter((c) => c.status === "active")
+          .map((c) =>
+            clientRow(c, c.status ?? "—", moneyStr(c.contract_value_cents), c.renewal_date ?? "—"),
+          );
+        break;
+      case "renewalsDue":
+        title = `Renewals < ${renewalAtRiskDays}d`;
+        headers = ["Name", "Renewal Date", "Days Until Renewal", "Contract"];
+        rows = (clients ?? [])
+          .filter((c) => {
+            const d = daysUntilDate(c.renewal_date);
+            return d !== null && d >= 0 && d < renewalAtRiskDays;
+          })
+          .map((c) =>
+            clientRow(
+              c,
+              c.renewal_date ?? "—",
+              String(daysUntilDate(c.renewal_date) ?? "—"),
+              moneyStr(c.contract_value_cents),
+            ),
+          );
+        break;
+      case "atRisk":
+      case "atRiskFutureCash":
+        title = selectedMetric === "atRisk" ? "At-risk mentees" : "At-risk future cash";
+        headers = ["Name", "Reason", "Renewal Date", "At-risk Amount"];
+        rows = atRisk.map(({ c, reason }) =>
+          clientRow(
+            c,
+            reason ?? "—",
+            c.renewal_date ?? "—",
+            moneyStr(Math.max((c.contract_value_cents ?? 0) - (c.invested_to_date_cents ?? 0), 0)),
+          ),
+        );
+        break;
+      case "paidCollections":
+      case "collectedMtd": {
+        title = selectedMetric === "paidCollections" ? "Paid collections" : "Collected cash MTD";
+        headers = ["Mentee", "Amount", "Date", "Status"];
+        const base = deduplicatePaymentRecords(payments.filter((p) => p.status === "paid"));
+        const filtered =
+          selectedMetric === "collectedMtd"
+            ? base.filter((p) => new Date(p.collected_at) >= monthStart)
+            : base;
+        rows = filtered.map((p) => ({
+          id: p.id,
+          c1: clients?.find((c) => c.id === p.client_id)?.full_name ?? "—",
+          c2: moneyStr(p.amount_cents),
+          c3: new Date(p.collected_at).toLocaleDateString(),
+          c4: p.status,
+        }));
+        break;
+      }
+      case "openPlans":
+        title = "Open payment plans";
+        headers = ["Name", "Installments Remaining", "Installment Amount", "Contract"];
+        rows = (clients ?? [])
+          .filter((c) => c.payment_plan && (c.installments_remaining ?? 0) > 0)
+          .map((c) =>
+            clientRow(
+              c,
+              String(c.installments_remaining ?? 0),
+              moneyStr(c.installment_amount_cents),
+              moneyStr(c.contract_value_cents),
+            ),
+          );
+        break;
+      case "forecast30d":
+      case "dueNext7d": {
+        const windowDays = selectedMetric === "forecast30d" ? 30 : 7;
+        title = selectedMetric === "forecast30d" ? "Forecast · next 30d" : "Due next 7d";
+        headers = ["Name", "Expected Payment Date", "Expected Amount", "Contract"];
+        rows = (clients ?? [])
+          .filter((c) => {
+            const days = daysUntilDate(c.expected_next_payment_date);
+            return days !== null && days >= 0 && days <= windowDays;
+          })
+          .map((c) =>
+            clientRow(
+              c,
+              c.expected_next_payment_date ?? "—",
+              moneyStr(c.expected_next_payment_cents),
+              moneyStr(c.contract_value_cents),
+            ),
+          );
+        break;
+      }
+      case "outstanding":
+        title = "Outstanding balance";
+        headers = ["Name", "Contract", "Invested to Date", "Outstanding"];
+        rows = (clients ?? [])
+          .filter((c) => (c.contract_value_cents ?? 0) - (c.invested_to_date_cents ?? 0) > 0)
+          .map((c) =>
+            clientRow(
+              c,
+              moneyStr(c.contract_value_cents),
+              moneyStr(c.invested_to_date_cents),
+              moneyStr(
+                Math.max((c.contract_value_cents ?? 0) - (c.invested_to_date_cents ?? 0), 0),
+              ),
+            ),
+          );
+        break;
+      case "failedPayments":
+        title = "Failed / retry-pending payments";
+        headers = ["Mentee", "Amount", "Date", "Status"];
+        rows = payments
+          .filter((p) => p.status === "failed")
+          .map((p) => ({
+            id: p.id,
+            c1: clients?.find((c) => c.id === p.client_id)?.full_name ?? "—",
+            c2: moneyStr(p.amount_cents),
+            c3: new Date(p.collected_at).toLocaleDateString(),
+            c4: p.status,
+          }));
+        break;
+      case "collectionRate":
+        title = "Collection rate — scheduled payment items";
+        headers = ["Mentee", "Due Date", "Amount", "Status"];
+        rows = effectiveScheduleItems.map((s) => ({
+          id: s.id,
+          c1: clients?.find((c) => c.id === s.client_id)?.full_name ?? "—",
+          c2: s.due_date,
+          c3: moneyStr(s.amount_cents),
+          c4: s.status,
+        }));
+        break;
+    }
+    const columns: DetailColumn<MenteeDetailRow>[] = [
+      { key: "c1", label: headers[0], render: (r) => r.c1 },
+      { key: "c2", label: headers[1], render: (r) => r.c2 },
+      { key: "c3", label: headers[2], render: (r) => r.c3, align: "right" },
+      { key: "c4", label: headers[3], render: (r) => r.c4, align: "right" },
+    ];
+    return {
+      title,
+      columns,
+      rows,
+      rowKey: (r: MenteeDetailRow) => r.id,
+      cap: NOT_A_ROSTER_METRIC,
+      working: NOT_A_ROSTER_METRIC,
+      emptyRowsLabel: "No records for this metric in the current data.",
+    };
+  }, [
+    selectedMetric,
+    clients,
+    payments,
+    atRisk,
+    effectiveScheduleItems,
+    renewalAtRiskDays,
+    monthStart,
+  ]);
+
   return (
     <>
       <TopBar title="Mentees & Renewals" subtitle="Collected LTV, health, and renewal pipeline" />
@@ -895,12 +1095,14 @@ function Mentees() {
             value={active}
             spectrum="hot"
             icon={<BadgeCheck className="h-4 w-4" />}
+            onClick={() => setSelectedMetric("active")}
           />
           <StatCard
             label={`Renewals <${renewalAtRiskDays}d`}
             value={renewalsDue}
             accent={renewalsDue ? "warning" : "primary"}
             icon={<Repeat className="h-4 w-4" />}
+            onClick={() => setSelectedMetric("renewalsDue")}
           />
           <StatCard
             label="At-risk"
@@ -908,6 +1110,7 @@ function Mentees() {
             accent={atRisk.length ? "destructive" : "primary"}
             icon={<AlertTriangle className="h-4 w-4" />}
             hint="Auto-flagged"
+            onClick={() => setSelectedMetric("atRisk")}
           />
           <StatCard
             label="Paid collections"
@@ -919,6 +1122,7 @@ function Mentees() {
                 ? "Loading ledger"
                 : `${payments.filter((p) => p.status === "paid").length} payments`
             }
+            onClick={() => setSelectedMetric("paidCollections")}
           />
           <StatCard
             label="Open payment plans"
@@ -926,6 +1130,7 @@ function Mentees() {
             spectrum="mid"
             icon={<Repeat className="h-4 w-4" />}
             hint="Installments remaining"
+            onClick={() => setSelectedMetric("openPlans")}
           />
           <StatCard
             label="Forecast · next 30d"
@@ -933,6 +1138,7 @@ function Mentees() {
             spectrum="mid"
             icon={<Repeat className="h-4 w-4" />}
             hint="Scheduled payment events"
+            onClick={() => setSelectedMetric("forecast30d")}
           />
           <StatCard
             label="Outstanding balance"
@@ -940,6 +1146,7 @@ function Mentees() {
             spectrum="hot"
             icon={<AlertTriangle className="h-4 w-4" />}
             hint="Contracted less invested"
+            onClick={() => setSelectedMetric("outstanding")}
           />
           <StatCard
             label="Collected cash MTD"
@@ -947,18 +1154,21 @@ function Mentees() {
             spectrum="hot"
             icon={<BadgeCheck className="h-4 w-4" />}
             hint="Month-to-date, distinct from all-time"
+            onClick={() => setSelectedMetric("collectedMtd")}
           />
           <StatCard
             label="Due next 7d"
             value={`$${(dueNext7dCents / 100).toLocaleString()}`}
             spectrum="mid"
             icon={<Repeat className="h-4 w-4" />}
+            onClick={() => setSelectedMetric("dueNext7d")}
           />
           <StatCard
             label="Failed / retry-pending"
             value={failedPaymentsCount}
             accent={failedPaymentsCount ? "destructive" : "primary"}
             icon={<AlertTriangle className="h-4 w-4" />}
+            onClick={() => setSelectedMetric("failedPayments")}
           />
           <StatCard
             label="Collection rate"
@@ -970,12 +1180,14 @@ function Mentees() {
                 ? "No scheduled payments logged yet"
                 : "Paid / due schedule items"
             }
+            onClick={() => setSelectedMetric("collectionRate")}
           />
           <StatCard
             label="At-risk future cash"
             value={`$${(atRiskFutureCashCents / 100).toLocaleString()}`}
             accent={atRiskFutureCashCents ? "destructive" : "primary"}
             icon={<AlertTriangle className="h-4 w-4" />}
+            onClick={() => setSelectedMetric("atRiskFutureCash")}
           />
         </div>
 
@@ -1175,7 +1387,14 @@ function Mentees() {
                 </thead>
                 <tbody>
                   {atRisk.map(({ c, reason }) => (
-                    <tr key={c.id} className="border-t border-border/70 hover:bg-muted/20">
+                    <tr
+                      key={c.id}
+                      className="cursor-pointer border-t border-border/70 hover:bg-muted/20"
+                      onClick={() => {
+                        setEditing(c);
+                        setPlanChecked(!!c.payment_plan);
+                      }}
+                    >
                       <td className="p-3">
                         <div className="font-medium">{c.full_name}</div>
                         <div className="text-2xs text-muted-foreground">{c.email}</div>
@@ -1270,6 +1489,13 @@ function Mentees() {
               clients={view}
               payments={payments}
               renewalAtRiskDays={renewalAtRiskDays}
+              onOpenMentee={(mc) => {
+                const full = view.find((v) => v.id === mc.id);
+                if (full) {
+                  setEditing(full);
+                  setPlanChecked(!!full.payment_plan);
+                }
+              }}
             />
             <MenteeScheduledComms orgId={orgId} clients={view} />
           </TabsContent>
@@ -1480,6 +1706,19 @@ function Mentees() {
           </DialogContent>
         </Dialog>
       </div>
+      {menteePanel && (
+        <MetricDetailPanel
+          open={!!selectedMetric}
+          onOpenChange={(v) => !v && setSelectedMetric(null)}
+          title={menteePanel.title}
+          columns={menteePanel.columns}
+          rows={menteePanel.rows}
+          rowKey={menteePanel.rowKey}
+          cap={menteePanel.cap}
+          working={menteePanel.working}
+          emptyRowsLabel={menteePanel.emptyRowsLabel}
+        />
+      )}
     </>
   );
 }

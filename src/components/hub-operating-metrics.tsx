@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
+import type { Derivation } from "@/lib/funnel-derivation";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { useDateRange } from "@/hooks/use-date-range";
@@ -30,6 +32,11 @@ const SAFE_SPECTRUM_VAR = {
   cold: SPECTRUM_VAR?.cold ?? "#06b6d4",
   mid: SPECTRUM_VAR?.mid ?? "#a855f7",
   hot: SPECTRUM_VAR?.hot ?? "#ec4899",
+};
+
+const CLIENT_ROSTER_DERIVATION: Derivation = {
+  status: "insufficient_data",
+  sentence: "A client roster, not a funnel stage — no upstream constraint to derive.",
 };
 
 const fmt = (n: number) => new Intl.NumberFormat("en-US").format(Math.round(n));
@@ -530,6 +537,7 @@ export function HubOperatingMetrics() {
           prevTotals,
           activeClients,
           avgHealth,
+          clientRows: mockClientRows,
           actSeries: dailySeries(actRows, range.from, range.to, (r) => r.activity_date, {
             dials: (r) => r.dials ?? 0,
             connections: (r) => r.connections ?? 0,
@@ -605,7 +613,7 @@ export function HubOperatingMetrics() {
           .eq("org_id", orgId!)
           .gte("win_date", range.from)
           .lte("win_date", range.to),
-        supabase.from("clients").select("id, status, health_score").eq("org_id", orgId!),
+        supabase.from("clients").select("id, full_name, status, health_score").eq("org_id", orgId!),
         supabase
           .from("setter_activity")
           .select(
@@ -673,6 +681,7 @@ export function HubOperatingMetrics() {
         ),
         activeClients,
         avgHealth,
+        clientRows,
         actSeries: dailySeries(actRows, range.from, range.to, (r) => r.activity_date, {
           dials: (r) => r.dials ?? 0,
           connections: (r) => r.connections ?? 0,
@@ -700,6 +709,10 @@ export function HubOperatingMetrics() {
 
   const t = data?.totals;
   const p = data?.prevTotals;
+
+  // Client Momentum drilldown — Active Clients / Client Health open the real
+  // client roster behind the count, never a fabricated record set.
+  const [showClientRoster, setShowClientRoster] = useState(false);
 
   const rateCharts: RateChartSpec[] = useMemo(() => {
     if (!data) return [];
@@ -914,6 +927,7 @@ export function HubOperatingMetrics() {
       label: "Active Clients",
       value: fmt(data.activeClients),
       spectrum: "mid",
+      onClick: () => setShowClientRoster(true),
     },
     {
       key: "avgHealth",
@@ -922,6 +936,7 @@ export function HubOperatingMetrics() {
       spectrum: data.avgHealth > 0 && data.avgHealth < 60 ? "cold" : "mid",
       empty: !data.avgHealth,
       emptyHint: "No client health scores logged yet.",
+      onClick: () => setShowClientRoster(true),
     },
     {
       key: "wLogs",
@@ -979,6 +994,29 @@ export function HubOperatingMetrics() {
       </div>
       <InboundVelocityCard totals={t} series={inboundSeries} />
       <KpiBand title="Client Momentum" items={clientItems} />
+      <MetricDetailPanel
+        open={showClientRoster}
+        onOpenChange={setShowClientRoster}
+        title="Active Clients"
+        subtitle={`${data.activeClients} active of ${(data.clientRows ?? []).length} total`}
+        columns={
+          [
+            { key: "name", label: "Name", render: (c) => c.full_name ?? "—" },
+            { key: "status", label: "Status", render: (c) => c.status ?? "—" },
+            {
+              key: "health",
+              label: "Health",
+              align: "right",
+              render: (c) => (c.health_score ? String(c.health_score) : "—"),
+            },
+          ] satisfies DetailColumn<NonNullable<typeof data.clientRows>[number]>[]
+        }
+        rows={data.clientRows ?? []}
+        rowKey={(c) => c.id}
+        cap={CLIENT_ROSTER_DERIVATION}
+        working={CLIENT_ROSTER_DERIVATION}
+        emptyRowsLabel="No clients on record."
+      />
     </div>
   );
 }

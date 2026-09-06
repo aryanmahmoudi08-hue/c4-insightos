@@ -203,7 +203,7 @@ const DISPOSITION_OPTIONS = [
   { value: "no_decision", label: "No Decision" },
   { value: "price", label: "Price" },
   { value: "timing", label: "Timing" },
-  { value: "partner_spouse", label: "Partner / Spouse" },
+  { value: "partner_spouse", label: "Partner/Spouse" },
   { value: "upsell", label: "Upsell" },
   { value: "unqualified", label: "Unqualified" },
   { value: "competitor", label: "Competitor" },
@@ -274,6 +274,19 @@ function Closer() {
     | { kind: "noshow"; index: 0 | 1 | 2 | 3 }
     | { kind: "attribution"; stageKey: string; sourceValue?: string }
     | { kind: "disposition"; source: "status" | "manual"; value: string; label: string }
+    | {
+        kind: "payment";
+        metric:
+          | "deposits"
+          | "depositConversion"
+          | "averageDepositPct"
+          | "paymentPlanUptake"
+          | "onTimeRate"
+          | "failedPaymentRate"
+          | "recoveredFailedPayments"
+          | "depositToFullPayment"
+          | "futureScheduledCash";
+      }
     | null
   >(null);
 
@@ -979,16 +992,22 @@ function Closer() {
       );
       if (recoveredLater) recoveredCalls.add(failedPayment.call_id);
     }
+    const futureScheduledCallIds = paymentPlanCalls
+      .filter((c) => (c.contract_value_cents ?? 0) - (collectedByCall.get(c.id) ?? 0) > 0)
+      .map((c) => c.id);
     return {
       total,
       failedCount: failed,
       onTimeRatePct: total ? (onTime / total) * 100 : null,
       failedRatePct: total ? (failed / total) * 100 : null,
       recoveredFailedCount: recoveredCalls.size,
+      recoveredCallIds: Array.from(recoveredCalls),
       depositToFullPaymentPct: depositedCalls.length
         ? (fullyPaid.length / depositedCalls.length) * 100
         : null,
+      depositedCallIds: depositedCalls.map((c) => c.id),
       futureScheduledCents,
+      futureScheduledCallIds,
     };
   }, [callPayments, list]);
 
@@ -2242,6 +2261,163 @@ function Closer() {
                   "A disposition breakdown, not a funnel stage — no prior-period comparison to derive.",
               },
             };
+          } else if (selected?.kind === "payment") {
+            const leadOfPayment = (c: CallRow) => c.lead_email ?? c.leads?.full_name ?? "—";
+            const dateOfPayment = (c: CallRow) =>
+              c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—";
+            const noUpstream = {
+              status: "insufficient_data" as const,
+              sentence:
+                "A payment-quality metric, not a funnel stage — no prior-stage constraint to derive.",
+            };
+            const noPriorPeriod = {
+              status: "insufficient_data" as const,
+              sentence:
+                "A payment-quality metric, not a funnel stage — no prior-period comparison to derive.",
+            };
+            if (selected.metric === "deposits" || selected.metric === "averageDepositPct") {
+              const rows = list.filter((c) => (c.deposit_cents ?? 0) > 0);
+              panel = {
+                title: selected.metric === "deposits" ? "Deposits" : "Avg Deposit %",
+                columns: [
+                  { key: "lead", label: "Lead", render: leadOfPayment },
+                  { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                  { key: "date", label: "Date", render: dateOfPayment },
+                  {
+                    key: "deposit",
+                    label: "Deposit",
+                    align: "right",
+                    render: (c) => fmtMoney(c.deposit_cents ?? 0),
+                  },
+                  {
+                    key: "contract",
+                    label: "Contract Value",
+                    align: "right",
+                    render: (c) => fmtMoney(c.contract_value_cents ?? 0),
+                  },
+                ],
+                rows,
+                cap: noUpstream,
+                working: noPriorPeriod,
+              };
+            } else if (selected.metric === "depositConversion") {
+              const rows = list.filter((c) => (c.deposit_cents ?? 0) > 0);
+              panel = {
+                title: "Deposit → Close",
+                columns: [
+                  { key: "lead", label: "Lead", render: leadOfPayment },
+                  { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                  { key: "date", label: "Date", render: dateOfPayment },
+                  { key: "closed", label: "Closed", render: (c) => (c.closed ? "Yes" : "No") },
+                ],
+                rows,
+                cap: noUpstream,
+                working: noPriorPeriod,
+              };
+            } else if (selected.metric === "paymentPlanUptake") {
+              panel = {
+                title: "Payment Plan Uptake",
+                columns: [
+                  { key: "lead", label: "Lead", render: leadOfPayment },
+                  { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                  { key: "date", label: "Date", render: dateOfPayment },
+                  {
+                    key: "contract",
+                    label: "Contract Value",
+                    align: "right",
+                    render: (c) => fmtMoney(c.contract_value_cents ?? 0),
+                  },
+                ],
+                rows: list.filter((c) => c.payment_plan === true),
+                cap: noUpstream,
+                working: noPriorPeriod,
+              };
+            } else if (
+              selected.metric === "onTimeRate" ||
+              selected.metric === "failedPaymentRate"
+            ) {
+              const status = selected.metric === "onTimeRate" ? "paid" : "failed";
+              const rows = list.filter((c) =>
+                callPayments.some((p) => p.call_id === c.id && p.status === status),
+              );
+              panel = {
+                title:
+                  selected.metric === "onTimeRate"
+                    ? "Payment Success Rate"
+                    : "Failed / Default Rate",
+                columns: [
+                  { key: "lead", label: "Lead", render: leadOfPayment },
+                  { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                  { key: "date", label: "Date", render: dateOfPayment },
+                  {
+                    key: "amount",
+                    label: "Payment Amount",
+                    align: "right",
+                    render: (c) => {
+                      const p = callPayments.find(
+                        (pp) => pp.call_id === c.id && pp.status === status,
+                      );
+                      return fmtMoney(p?.amount_cents ?? 0);
+                    },
+                  },
+                ],
+                rows,
+                cap: noUpstream,
+                working: noPriorPeriod,
+              };
+            } else if (selected.metric === "recoveredFailedPayments") {
+              panel = {
+                title: "Recovered Failed Payments (inferred)",
+                columns: [
+                  { key: "lead", label: "Lead", render: leadOfPayment },
+                  { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                  { key: "date", label: "Date", render: dateOfPayment },
+                ],
+                rows: list.filter((c) => paymentQualityStats.recoveredCallIds.includes(c.id)),
+                cap: noUpstream,
+                working: {
+                  status: "insufficient_data",
+                  sentence:
+                    "Inferred from a later successful payment on the same call — not a direct retry record, so there's no prior-period comparison to derive.",
+                },
+              };
+            } else if (selected.metric === "depositToFullPayment") {
+              panel = {
+                title: "Deposit → Full Payment",
+                columns: [
+                  { key: "lead", label: "Lead", render: leadOfPayment },
+                  { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                  { key: "date", label: "Date", render: dateOfPayment },
+                  {
+                    key: "contract",
+                    label: "Contract Value",
+                    align: "right",
+                    render: (c) => fmtMoney(c.contract_value_cents ?? 0),
+                  },
+                ],
+                rows: list.filter((c) => paymentQualityStats.depositedCallIds.includes(c.id)),
+                cap: noUpstream,
+                working: noPriorPeriod,
+              };
+            } else if (selected.metric === "futureScheduledCash") {
+              panel = {
+                title: "Future Scheduled Cash",
+                columns: [
+                  { key: "lead", label: "Lead", render: leadOfPayment },
+                  { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                  { key: "date", label: "Date", render: dateOfPayment },
+                  {
+                    key: "contract",
+                    label: "Contract Value",
+                    align: "right",
+                    render: (c) => fmtMoney(c.contract_value_cents ?? 0),
+                  },
+                ],
+                rows: list.filter((c) => paymentQualityStats.futureScheduledCallIds.includes(c.id)),
+                cap: noUpstream,
+                working: noPriorPeriod,
+              };
+            }
           } else if (selected) {
             const stage = closeStages[selected.index];
             const kind = ["oncal", "showed", "offers", "closes"][selected.index];
@@ -2690,6 +2866,7 @@ function Closer() {
                     spectrum: "mid",
                     empty: !avgCashPerBooked,
                     emptyHint: "No booked-call cash in this range.",
+                    onClick: () => setSelected({ kind: "close", index: 0 }),
                   },
                   {
                     key: "avgCashShowed",
@@ -2698,6 +2875,7 @@ function Closer() {
                     spectrum: "mid",
                     empty: !avgCashPerShowed,
                     emptyHint: "No showed-call cash in this range.",
+                    onClick: () => setSelected({ kind: "close", index: 1 }),
                   },
                   {
                     key: "avgCashClosed",
@@ -2706,6 +2884,7 @@ function Closer() {
                     spectrum: "hot",
                     empty: !avgCashPerClosed,
                     emptyHint: "No closed-call cash in this range.",
+                    onClick: () => setSelected({ kind: "close", index: 3 }),
                   },
                   {
                     key: "deposits",
@@ -2714,6 +2893,7 @@ function Closer() {
                     spectrum: "hot",
                     empty: !depositCount,
                     emptyHint: "No deposits logged in this range.",
+                    onClick: () => setSelected({ kind: "payment", metric: "deposits" }),
                   },
                   {
                     key: "depositAmount",
@@ -2722,6 +2902,7 @@ function Closer() {
                     spectrum: "hot",
                     empty: !depositAmountCents,
                     emptyHint: "No deposit amount logged in this range.",
+                    onClick: () => setSelected({ kind: "payment", metric: "deposits" }),
                   },
                   {
                     key: "depositConversion",
@@ -2731,6 +2912,7 @@ function Closer() {
                     spectrum: "hot",
                     empty: depositConversionPct == null,
                     emptyHint: "Requires a closed call and a logged deposit.",
+                    onClick: () => setSelected({ kind: "payment", metric: "depositConversion" }),
                   },
                   {
                     key: "averageDepositPct",
@@ -2739,6 +2921,7 @@ function Closer() {
                     spectrum: "mid",
                     empty: averageDepositPct == null,
                     emptyHint: "Requires deposit and contract values.",
+                    onClick: () => setSelected({ kind: "payment", metric: "averageDepositPct" }),
                   },
                   {
                     key: "paymentPlanUptake",
@@ -2749,17 +2932,25 @@ function Closer() {
                     spectrum: "mid",
                     empty: !list.length,
                     emptyHint: "No calls in this date range.",
+                    onClick: () => setSelected({ kind: "payment", metric: "paymentPlanUptake" }),
                   },
                   {
                     key: "onTimeRate",
-                    label: "On-Time Payment Rate",
+                    // Renamed from "On-Time Payment Rate" — payments has no
+                    // due_date column anywhere in the schema, so this can
+                    // only ever measure paid-vs-not, never genuine timing.
+                    label: "Payment Success Rate",
                     value:
                       paymentQualityStats.onTimeRatePct == null
                         ? "Unavailable"
                         : `${paymentQualityStats.onTimeRatePct.toFixed(1)}%`,
                     spectrum: "mid",
                     empty: paymentQualityStats.onTimeRatePct == null,
-                    emptyHint: "No payment records for these calls yet.",
+                    emptyHint:
+                      paymentQualityStats.onTimeRatePct == null
+                        ? "No payment records for these calls yet."
+                        : "Share of payments that came through, not pending/failed — not a due-date timing measure.",
+                    onClick: () => setSelected({ kind: "payment", metric: "onTimeRate" }),
                   },
                   {
                     key: "failedPaymentRate",
@@ -2771,6 +2962,7 @@ function Closer() {
                     spectrum: "hot",
                     empty: paymentQualityStats.failedRatePct == null,
                     emptyHint: "No payment records for these calls yet.",
+                    onClick: () => setSelected({ kind: "payment", metric: "failedPaymentRate" }),
                   },
                   {
                     key: "failedPaymentCount",
@@ -2779,6 +2971,7 @@ function Closer() {
                     spectrum: "hot",
                     empty: paymentQualityStats.total === 0,
                     emptyHint: "No payment records for these calls yet.",
+                    onClick: () => setSelected({ kind: "payment", metric: "failedPaymentRate" }),
                   },
                   {
                     key: "recoveredFailedPayments",
@@ -2790,6 +2983,8 @@ function Closer() {
                       paymentQualityStats.failedCount === 0
                         ? "No failed payments in this range."
                         : "Inferred from a later successful payment on the same call — not a direct retry record.",
+                    onClick: () =>
+                      setSelected({ kind: "payment", metric: "recoveredFailedPayments" }),
                   },
                   {
                     key: "depositToFullPayment",
@@ -2801,6 +2996,7 @@ function Closer() {
                     spectrum: "hot",
                     empty: paymentQualityStats.depositToFullPaymentPct == null,
                     emptyHint: "Requires a deposit and payment records for these calls.",
+                    onClick: () => setSelected({ kind: "payment", metric: "depositToFullPayment" }),
                   },
                   {
                     key: "futureScheduledCash",
@@ -2809,6 +3005,7 @@ function Closer() {
                     spectrum: "mid",
                     empty: paymentQualityStats.futureScheduledCents === 0,
                     emptyHint: "No outstanding payment-plan balance in this range.",
+                    onClick: () => setSelected({ kind: "payment", metric: "futureScheduledCash" }),
                   },
                 ]}
               />
@@ -3006,10 +3203,20 @@ function Closer() {
                     spectrum: "hot",
                     empty: coachingReviewCount === 0,
                     emptyHint: "No coaching reviews logged in this range.",
+                    // The real reviewed-call records are already rendered
+                    // unconditionally in CoachingPanel just below — jump
+                    // there instead of opening a second panel that would
+                    // just duplicate the same rows.
+                    onClick: () =>
+                      document
+                        .getElementById("coaching-panel")
+                        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
                   },
                 ]}
               />
-              <CoachingPanel orgId={orgId} range={range} />
+              <div id="coaching-panel">
+                <CoachingPanel orgId={orgId} range={range} />
+              </div>
 
               {sectionHeader("F · Attribution")}
               <AttributionPathPanel

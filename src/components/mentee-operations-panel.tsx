@@ -58,11 +58,18 @@ export function MenteeOperationsPanel({
   clients,
   payments,
   renewalAtRiskDays,
+  onOpenMentee,
 }: {
   orgId: string | undefined;
   clients: MenteeOperationsClient[];
   payments: MenteeOperationsPayment[];
   renewalAtRiskDays: number;
+  /** Opens the mentee's real profile/financial-timeline dialog in the parent
+   * page — omitted, the name renders as static text (no dead click). Only
+   * `id` is required since the parent looks the full row up itself; both
+   * `RecoveryQueueClient` (recovery-queue rows) and `MenteeOperationsClient`
+   * (renewal-workflow rows) satisfy this. */
+  onOpenMentee?: (client: { id: string }) => void;
 }) {
   const qc = useQueryClient();
   const [bucketFilter, setBucketFilter] = useState<RecoveryBucketKey | "all">("all");
@@ -279,9 +286,19 @@ export function MenteeOperationsPanel({
                 className="rounded-lg border border-border/60 bg-muted/10 p-3"
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                    {row.client.full_name}
-                  </span>
+                  {onOpenMentee ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenMentee(row.client)}
+                      className="min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground hover:text-primary hover:underline"
+                    >
+                      {row.client.full_name}
+                    </button>
+                  ) : (
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                      {row.client.full_name}
+                    </span>
+                  )}
                   <Badge variant="outline" className="text-[10px]">
                     {RECOVERY_BUCKET_LABELS[row.bucket]}
                   </Badge>
@@ -364,9 +381,19 @@ export function MenteeOperationsPanel({
             return (
               <div key={client.id} className="rounded-lg border border-border/60 bg-muted/10 p-3">
                 <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                    {client.full_name}
-                  </span>
+                  {onOpenMentee ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenMentee(client)}
+                      className="min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground hover:text-primary hover:underline"
+                    >
+                      {client.full_name}
+                    </button>
+                  ) : (
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                      {client.full_name}
+                    </span>
+                  )}
                   <Badge variant="outline" className="text-[10px]">
                     {days! < 0 ? `${Math.abs(days!)}d overdue` : `in ${days}d`}
                   </Badge>

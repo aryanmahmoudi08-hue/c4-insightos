@@ -301,10 +301,15 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const { devBypass } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<{
-    kind: "reach" | "close" | "money";
-    index: number;
-  } | null>(null);
+  const [selected, setSelected] = useState<
+    | { kind: "reach" | "close" | "money"; index: number }
+    // Daily aggregate rows (setter_activity/inbound_dialer), not per-message
+    // records — this schema has no per-DM/per-link row, only day-level
+    // rollups, so the drilldown honestly shows which days contributed to the
+    // count rather than fabricating individual message records.
+    | { kind: "activity"; field: string; label: string }
+    | null
+  >(null);
 
   const settingsFn = useServerFn(getWorkspaceSettingsFn);
   const { data: workspaceSettings } = useQuery({
@@ -505,6 +510,24 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         .order("sort_order");
       if (error) throw error;
       return (data ?? []) as { key: string; label: string; sort_order: number }[];
+    },
+  });
+  // Resolves lead.assigned_setter_id (a team_members.id UUID) to a real
+  // human name for the "Active leads available to dial" drilldown, which
+  // previously showed a raw truncated UUID — org-wide, not role-scoped,
+  // since an assigning setter isn't necessarily this page's own role.
+  const { data: repNamesById = {} } = useQuery({
+    queryKey: ["team-member-names", orgId],
+    enabled: isDialer && !!orgId && !devBypass,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("team_members" as never)
+        .select("id, name")
+        .eq("org_id", orgId!);
+      if (error) throw error;
+      return Object.fromEntries(
+        ((data ?? []) as { id: string; name: string }[]).map((m) => [m.id, m.name]),
+      ) as Record<string, string>;
     },
   });
   const ticketTierSplit = useMemo(() => {
@@ -1005,6 +1028,11 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const prevDownsells = prevSum("downsells");
   const prevCashCents = prevSum("cash_collected_cents");
   const prevRevCents = prevSum("total_revenue_cents");
+  // Same optional-column gate as inboundDms/outboundDms/replies above,
+  // applied to the prior period for the Reply Performance deltas below.
+  const prevOptionalMetric = (k: string) => (observed(k) ? prevSum(k) : null);
+  const prevReplies = prevOptionalMetric("replies");
+  const prevOutboundDms = prevOptionalMetric("outbound_dms_sent");
 
   const daySeries = useMemo(
     () =>
@@ -1804,7 +1832,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                   key: "assigned",
                   label: "Assigned rep",
                   render: (l) =>
-                    l.assigned_setter_id ? `Rep ${l.assigned_setter_id.slice(0, 8)}` : "Unassigned",
+                    l.assigned_setter_id
+                      ? (repNamesById[l.assigned_setter_id] ??
+                        `Rep ${l.assigned_setter_id.slice(0, 8)}`)
+                      : "Unassigned",
                 },
                 {
                   key: "nextFollowUp",
@@ -1839,6 +1870,79 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         )}
         {!isDialer && (
           <KpiBand
+            title="Reply Performance"
+            items={[
+              {
+                key: "replies",
+                label: "Replies",
+                value: replies == null ? "Unavailable" : fmtN0(replies),
+                spectrum: "hot",
+                deltaPct:
+                  replies == null || prevReplies == null
+                    ? undefined
+                    : pctDelta(replies, prevReplies),
+                priorValue: replies == null || prevReplies == null ? undefined : fmtN0(prevReplies),
+                empty: replies == null,
+                emptyHint: "Requires connected message events.",
+                onClick:
+                  replies == null
+                    ? undefined
+                    : () => setSelected({ kind: "activity", field: "replies", label: "Replies" }),
+              },
+              {
+                key: "reply-rate",
+                label: "Reply Rate",
+                value:
+                  replies == null || !outboundDms
+                    ? "Unavailable"
+                    : `${((replies / outboundDms) * 100).toFixed(1)}%`,
+                spectrum: "hot",
+                deltaPct:
+                  replies == null || !outboundDms || prevReplies == null || !prevOutboundDms
+                    ? undefined
+                    : pctDelta(
+                        (replies / outboundDms) * 100,
+                        (prevReplies / prevOutboundDms) * 100,
+                      ),
+                empty: replies == null || !outboundDms,
+                emptyHint: "Log Outbound DMs Sent and Replies to see reply rate.",
+                onClick:
+                  replies == null
+                    ? undefined
+                    : () =>
+                        setSelected({ kind: "activity", field: "replies", label: "Reply Rate" }),
+              },
+              {
+                key: "qualified-convo-rate",
+                label: "Qualified Convo Rate",
+                value: contacted ? `${((qualified / contacted) * 100).toFixed(1)}%` : "Unavailable",
+                spectrum: "mid",
+                deltaPct:
+                  contacted && prevContacted
+                    ? pctDelta((qualified / contacted) * 100, (prevQualified / prevContacted) * 100)
+                    : undefined,
+                empty: !contacted,
+                emptyHint: "Log Leads Contacted and Qualified Conversations to see this rate.",
+                onClick: () =>
+                  setSelected({
+                    kind: "activity",
+                    field: "qualified_convos",
+                    label: "Qualified Conversations",
+                  }),
+              },
+              {
+                key: "positive-intent",
+                label: "Positive-Intent Replies",
+                value: "Not Tracked",
+                spectrum: "cold",
+                empty: true,
+                emptyHint: "No reply-outcome/sentiment field exists in the data model yet.",
+              },
+            ]}
+          />
+        )}
+        {!isDialer && (
+          <KpiBand
             title="DM Setter · Primary Activity"
             items={[
               {
@@ -1854,6 +1958,15 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 spectrum: "mid",
                 empty: inboundDms == null,
                 emptyHint: "Requires connected message events.",
+                onClick:
+                  inboundDms == null
+                    ? undefined
+                    : () =>
+                        setSelected({
+                          kind: "activity",
+                          field: "inbound_dms_sent",
+                          label: "Inbound DMs Sent",
+                        }),
               },
               {
                 key: "outbound-dms",
@@ -1862,17 +1975,15 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 spectrum: "mid",
                 empty: outboundDms == null,
                 emptyHint: "Requires connected message events.",
-              },
-              {
-                key: "reply-rate",
-                label: "Reply Rate",
-                value:
-                  replies == null || !outboundDms
-                    ? "Unavailable"
-                    : `${((replies / outboundDms) * 100).toFixed(1)}%`,
-                spectrum: "hot",
-                empty: replies == null || !outboundDms,
-                emptyHint: "Log Outbound DMs Sent and Replies to see reply rate.",
+                onClick:
+                  outboundDms == null
+                    ? undefined
+                    : () =>
+                        setSelected({
+                          kind: "activity",
+                          field: "outbound_dms_sent",
+                          label: "Outbound DMs Sent",
+                        }),
               },
               {
                 key: "followups",
@@ -1881,8 +1992,24 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 spectrum: "mid",
                 empty: followupsSent == null,
                 emptyHint: "Requires connected message events.",
+                onClick:
+                  followupsSent == null
+                    ? undefined
+                    : () =>
+                        setSelected({
+                          kind: "activity",
+                          field: "followups_sent",
+                          label: "Follow-ups Sent",
+                        }),
               },
-              { key: "links-sent", label: "Links Sent", value: fmtN0(linksSent), spectrum: "mid" },
+              {
+                key: "links-sent",
+                label: "Links Sent",
+                value: fmtN0(linksSent),
+                spectrum: "mid",
+                onClick: () =>
+                  setSelected({ kind: "activity", field: "links_sent", label: "Links Sent" }),
+              },
               {
                 key: "links-clicked",
                 label: "Links Clicked",
@@ -1890,6 +2017,15 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 spectrum: "mid",
                 empty: linksClicked == null,
                 emptyHint: "Requires connected link events.",
+                onClick:
+                  linksClicked == null
+                    ? undefined
+                    : () =>
+                        setSelected({
+                          kind: "activity",
+                          field: "links_clicked",
+                          label: "Links Clicked",
+                        }),
               },
               {
                 key: "post-booking",
@@ -2349,7 +2485,15 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                                   )}
                                 </td>
                                 <td className="py-2 pr-3 font-mono">
-                                  {c.due_at ? new Date(c.due_at).toLocaleString() : "—"}
+                                  <span className="inline-flex items-center gap-1.5">
+                                    {c.due_at ? new Date(c.due_at).toLocaleString() : "—"}
+                                    {c.due_at?.slice(0, 10) ===
+                                      new Date().toISOString().slice(0, 10) && (
+                                      <span className="rounded-full bg-spectrum-hot/15 px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wide text-spectrum-hot">
+                                        Due today
+                                      </span>
+                                    )}
+                                  </span>
                                 </td>
                                 <td className="py-2 pr-3 uppercase">{c.state}</td>
                                 <td className="py-2">
@@ -2793,6 +2937,19 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 minCapSample,
                 fmtMoney,
               ),
+            };
+          } else if (selected?.kind === "activity") {
+            const notAFunnelStage = {
+              status: "insufficient_data" as const,
+              sentence:
+                "Daily aggregate activity, not a funnel stage — no upstream constraint to derive.",
+            };
+            panel = {
+              title: selected.label,
+              columns: activityColumns(selected.field, selected.label),
+              rows: activityRowsBy(selected.field),
+              cap: notAFunnelStage,
+              working: notAFunnelStage,
             };
           } else if (selected) {
             const stages = selected.kind === "reach" ? reachStages : closeStages;

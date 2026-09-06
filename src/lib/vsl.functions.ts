@@ -430,10 +430,32 @@ Produce the JSON.`;
 // ------ VSL funnel: real joins only (no fabricated stage values) ------
 export const getVslFunnelData = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { vsl_id: string }) => input)
+  .inputValidator((input: { vsl_id: string; from?: string; to?: string }) => input)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const org_id = await getOrgId(supabase, userId);
+    // Leads/calls tagged to this VSL are scoped to the caller's selected
+    // date range when provided — the Wistia snapshot (page loads/plays/
+    // milestones/CTA) stays a single latest point-in-time reading either
+    // way, since a snapshot isn't itself a per-day series to filter.
+    const fromISO = data.from ? `${data.from}T00:00:00` : null;
+    const toISO = data.to ? `${data.to}T23:59:59` : null;
+    let leadsQuery = supabase
+      .from("leads")
+      .select("id, full_name, email, created_at")
+      .eq("org_id", org_id)
+      .eq("source_vsl_id", data.vsl_id);
+    let callsQuery = supabase
+      .from("calls")
+      .select(
+        "id, lead_id, lead_email, closer_name, scheduled_for, showed, closed, cash_collected_cents",
+      )
+      .eq("org_id", org_id)
+      .eq("source_vsl_id", data.vsl_id);
+    if (fromISO && toISO) {
+      leadsQuery = leadsQuery.gte("created_at", fromISO).lte("created_at", toISO);
+      callsQuery = callsQuery.gte("scheduled_for", fromISO).lte("scheduled_for", toISO);
+    }
     const [{ data: vsl }, { data: latestSnap }, { data: leads }, { data: calls }] =
       await Promise.all([
         supabase.from("vsls").select("wistia_video_id").eq("id", data.vsl_id).maybeSingle(),
@@ -444,23 +466,20 @@ export const getVslFunnelData = createServerFn({ method: "POST" })
           .order("captured_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
-        supabase.from("leads").select("id").eq("org_id", org_id).eq("source_vsl_id", data.vsl_id),
-        supabase
-          .from("calls")
-          .select("id, showed, closed, cash_collected_cents")
-          .eq("org_id", org_id)
-          .eq("source_vsl_id", data.vsl_id),
+        leadsQuery,
+        callsQuery,
       ]);
+    const leadRows = leads ?? [];
     const callRows = calls ?? [];
     // A resolved query — even one that matches zero rows — is a confirmed
     // real count, not "unavailable." Only the Wistia-snapshot fields below
     // stay nullable, since those genuinely don't exist without a snapshot.
-    const applicationCount = (leads ?? []).length;
-    const showCount = callRows.filter((c) => c.showed).length;
-    const closeCount = callRows.filter((c) => c.closed).length;
-    const cashCents = callRows
-      .filter((c) => c.closed)
-      .reduce((sum, c) => sum + (c.cash_collected_cents ?? 0), 0);
+    const applicationCount = leadRows.length;
+    const showedCalls = callRows.filter((c) => c.showed);
+    const closedCalls = callRows.filter((c) => c.closed);
+    const showCount = showedCalls.length;
+    const closeCount = closedCalls.length;
+    const cashCents = closedCalls.reduce((sum, c) => sum + (c.cash_collected_cents ?? 0), 0);
     return {
       pageLoads: latestSnap?.page_loads ?? null,
       totalPlays: latestSnap?.total_plays ?? null,
@@ -480,6 +499,12 @@ export const getVslFunnelData = createServerFn({ method: "POST" })
           ? ("csv" as const)
           : ("manual" as const)
         : null,
+      // Row-level records behind the CRM/cash stages, for the funnel's
+      // click-to-drill panel — never returned for the Wistia-native stages,
+      // which have no per-record join.
+      applicationRows: leadRows,
+      showRows: showedCalls,
+      closeRows: closedCalls,
     };
   });
 

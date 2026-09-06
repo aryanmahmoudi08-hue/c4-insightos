@@ -346,9 +346,23 @@ function MoneyOriginSection({
             ],
             ["Closes", fmt(attributionSummary.closes)],
             ["Contract value", money(attributionSummary.contractValueCents)],
-            ["Cash collected", money(attributionSummary.cashCollectedCents)],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-lg border border-border/60 bg-background/40 p-2">
+            [
+              "Cash collected",
+              money(attributionSummary.cashCollectedCents),
+              // This is every closed call in range, regardless of attribution
+              // model — a deliberately different, wider number than the
+              // money-flow diagram/table below, whose total is scoped to
+              // whichever model is selected (and can be smaller when that
+              // model can't resolve a content_id for every call). Not a
+              // discrepancy — two intentionally different totals.
+              "All closed calls, every source — independent of the attribution model selected below",
+            ],
+          ].map(([label, value, tooltip]) => (
+            <div
+              key={label}
+              className="rounded-lg border border-border/60 bg-background/40 p-2"
+              title={tooltip}
+            >
               <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
               <div className="mt-0.5 font-mono text-sm font-semibold">{value}</div>
             </div>
@@ -827,12 +841,21 @@ export function ContentCommandCenter({
           icon={<UserRound className="h-4 w-4" />}
           muted={!stats.hasFollowers}
         />
+        {/* stats.cash/stats.closes sum content_metrics.cash_collected_cents/
+            .closes, which have no write path anywhere in the app (same dead
+            field the Sankey above was already corrected to stop reading —
+            see the Priority 2/3 comment on MoneyOriginSection). Showing
+            money(0)/fmt(0) here would read as "this content made zero cash,"
+            which is a different claim than "this isn't tracked" — render the
+            honest state instead. Remove this override once a real write path
+            to these two columns exists. */}
         <CommandKpi
           label="Cash attributed"
-          value={money(stats.cash)}
-          sub={`${fmt(stats.leads)} leads · ${fmt(stats.closes)} closes · ${filteredCanonicalPaths.length} canonical paths`}
+          value="Not tracked"
+          sub={`${fmt(stats.leads)} leads · content_metrics cash/closes fields aren't logged — see canonical paths below`}
           spectrum="hot"
           icon={<Layers3 className="h-4 w-4" />}
+          muted
         />
       </div>
 
@@ -1192,7 +1215,12 @@ export function ContentCommandCenter({
                     <th className="px-3 py-3 text-right font-medium">Engagement</th>
                     <th className="px-3 py-3 text-right font-medium">Watch / retention</th>
                     <th className="px-3 py-3 text-right font-medium">Replay</th>
-                    <th className="px-4 py-3 text-right font-medium md:px-5">Cash</th>
+                    <th
+                      className="px-4 py-3 text-right font-medium md:px-5"
+                      title="content_metrics.cash_collected_cents isn't logged anywhere — see the Canonical Content → Cash table above for real, attributed cash"
+                    >
+                      Cash
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1266,8 +1294,10 @@ export function ContentCommandCenter({
                         <td className="px-3 py-3 text-right font-mono text-xs">
                           {replay != null ? `${replay.toFixed(2)}×` : "—"}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-xs md:px-5">
-                          {money(metric.cash_collected_cents ?? 0)}
+                        {/* content_metrics.cash_collected_cents has no write path — see the
+                            "Cash attributed" CommandKpi above for the same override. */}
+                        <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground md:px-5">
+                          Not tracked
                         </td>
                       </tr>
                     );

@@ -49,6 +49,14 @@ import { calculateAcquisitionMetrics, type AcquisitionSpendRecord } from "@/lib/
 import { createMockWebinarFixture } from "@/lib/webinar-mock-data";
 import { webinarProfit } from "@/lib/operating-workflows";
 import { SPECTRUM_VAR } from "@/lib/spectrum";
+import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
+import type { Derivation } from "@/lib/funnel-derivation";
+
+const WEBINAR_NOT_A_FUNNEL_STAGE: Derivation = {
+  status: "insufficient_data",
+  sentence:
+    "A webinar event count, not a rate-comparison funnel — no upstream constraint to derive.",
+};
 
 export const Route = createFileRoute("/_authenticated/webinar-analytics")({
   component: WebinarAnalyticsPage,
@@ -85,6 +93,13 @@ function WebinarAnalyticsPage() {
   const orgId = (org as { org_id?: string } | undefined)?.org_id;
   const [selectedId, setSelectedIdRaw] = useState(devBypass ? "mock-webinar-a" : "all");
   const [comparisonId, setComparisonId] = useState(devBypass ? "mock-webinar-b" : "none");
+  // Only "Live at Pitch" has a real per-lead join available (webinar_events,
+  // via lead_id) — every other Executive KPI is an aggregate webinar_metrics
+  // column with no row-level population to drill into. Gated on real event
+  // rows actually existing for this webinar, not just the metric being
+  // event-derived in general (a webinar with zero pitch events still has to
+  // fall back to the aggregate column, which has no records behind it).
+  const [showPitchEvents, setShowPitchEvents] = useState(false);
   // A webinar can't be compared against itself — if the primary selection
   // changes to match the current comparison choice, drop the comparison
   // back to "none" rather than silently comparing a webinar with itself.
@@ -303,7 +318,10 @@ function WebinarAnalyticsPage() {
                   </>
                 )}
               </div>
-              <div className="mt-1 truncate text-base font-semibold tracking-tight text-foreground">
+              <div
+                className="mt-1 truncate text-base font-semibold tracking-tight text-foreground"
+                title={selected?.name ?? "Webinar workspace"}
+              >
                 {selected?.name ?? "Webinar workspace"}
               </div>
             </div>
@@ -369,6 +387,15 @@ function WebinarAnalyticsPage() {
                     value: number(summary.webinar.pitchAttendees),
                     spectrum: "mid",
                     icon: <BarChart3 className="h-4 w-4" />,
+                    // Real per-lead records (webinar_events, event_type
+                    // "pitch") exist only when this webinar has any
+                    // connected event telemetry at all — every other KPI on
+                    // this page is an aggregate webinar_metrics column with
+                    // no row-level population, so they stay non-interactive.
+                    onClick:
+                      webinarEvents.filter((e) => e.event_type === "pitch").length > 0
+                        ? () => setShowPitchEvents(true)
+                        : undefined,
                   },
                   {
                     key: "totalRevenue",
@@ -393,6 +420,41 @@ function WebinarAnalyticsPage() {
                   },
                 ]}
               />
+              {showPitchEvents &&
+                (() => {
+                  const pitchRows = webinarEvents.filter((e) => e.event_type === "pitch");
+                  const columns: DetailColumn<WebinarEventRow>[] = [
+                    {
+                      key: "lead",
+                      label: "Lead",
+                      render: (e) => (e.lead_id ? `#${e.lead_id.slice(0, 8)}` : "—"),
+                    },
+                    {
+                      key: "source",
+                      label: "Source",
+                      render: (e) => e.source_platform ?? e.registration_source ?? "—",
+                    },
+                    {
+                      key: "date",
+                      label: "Occurred",
+                      render: (e) => new Date(e.occurred_at).toLocaleString(),
+                    },
+                  ];
+                  return (
+                    <MetricDetailPanel
+                      open={showPitchEvents}
+                      onOpenChange={setShowPitchEvents}
+                      title="Live at Pitch"
+                      subtitle="Real webinar_events rows (event_type = pitch) for this webinar"
+                      columns={columns}
+                      rows={pitchRows}
+                      rowKey={(e) => e.id ?? `${e.lead_id}-${e.occurred_at}`}
+                      cap={WEBINAR_NOT_A_FUNNEL_STAGE}
+                      working={WEBINAR_NOT_A_FUNNEL_STAGE}
+                      emptyRowsLabel="No pitch events recorded for this webinar in range."
+                    />
+                  );
+                })()}
               <section className="space-y-3">
                 <SectionTitle
                   title="Acquisition efficiency"
@@ -580,7 +642,7 @@ function WebinarAnalyticsPage() {
                       : `${summary.revenue.roas.toFixed(2)}x`,
                   ],
                   [
-                    "Net profit (core offer revenue basis)",
+                    "Net profit (core offer revenue basis — excludes refunds & non-ad costs)",
                     profit.netProfitCents == null
                       ? "Unavailable — cost data not connected"
                       : currency(profit.netProfitCents),

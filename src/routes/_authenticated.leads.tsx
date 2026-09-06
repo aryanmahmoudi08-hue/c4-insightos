@@ -392,6 +392,7 @@ function AvailableToCallDrawer({
                   <th className="p-2 text-left">Created / Age</th>
                   <th className="p-2 text-left">Stage</th>
                   <th className="p-2 text-left">Setter</th>
+                  <th className="p-2 text-left">Closer</th>
                   <th className="p-2 text-left">Availability</th>
                 </tr>
               </thead>
@@ -434,6 +435,7 @@ function AvailableToCallDrawer({
                         </span>
                       </td>
                       <td className="p-2">{setterName}</td>
+                      <td className="p-2">{l.closerName ?? "—"}</td>
                       <td className="p-2">
                         <div className="font-medium">{availability?.headline ?? "—"}</div>
                         {availability?.detail && (
@@ -447,7 +449,7 @@ function AvailableToCallDrawer({
                 })}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={9} className="p-6 text-center text-muted-foreground">
                       No leads available to call in the current range/filters.
                     </td>
                   </tr>
@@ -484,7 +486,7 @@ function Leads() {
   const [platformFilter, setPlatformFilter] = useState("all");
   const [offerFilter, setOfferFilter] = useState("all");
   const [detailKind, setDetailKind] = useState<
-    "total" | "booked" | "closed" | "available" | "stage" | null
+    "total" | "booked" | "closed" | "available" | "diamond" | "stage" | null
   >(null);
   const [detailStageFilter, setDetailStageFilter] = useState<string | null>(null);
 
@@ -930,6 +932,10 @@ function Leads() {
             value={stats.diamond}
             icon={<Gem className="h-3 w-3" />}
             spectrum="hot"
+            onClick={() => {
+              setDetailStageFilter(null);
+              setDetailKind("diamond");
+            }}
           />
         </div>
 
@@ -1214,8 +1220,12 @@ function Leads() {
                       </td>
                     )}
                     <td className="p-2.5 text-xs text-muted-foreground">{l.email ?? "—"}</td>
-                    <td className="p-2.5 text-xs text-muted-foreground">Unavailable</td>
-                    <td className="p-2.5 text-xs text-muted-foreground">Unavailable</td>
+                    <td className="p-2.5 text-xs text-muted-foreground">
+                      {l.assigned_setter_id
+                        ? (setterProfiles[l.assigned_setter_id] ?? "Unknown")
+                        : "—"}
+                    </td>
+                    <td className="p-2.5 text-xs text-muted-foreground">{l.closerName ?? "—"}</td>
                     <td className="p-2.5 text-xs text-muted-foreground whitespace-nowrap">
                       {l.phone ?? "—"}
                     </td>
@@ -1291,7 +1301,11 @@ function Leads() {
                   ? view.filter((l) => l.status === "closed")
                   : kind === "available"
                     ? view.filter((l) => availabilityByLeadId.get(l.id)?.bucket !== "unavailable")
-                    : view.filter((l) => pipelineStageInfo(l.status).label === detailStageFilter);
+                    : kind === "diamond"
+                      ? view.filter(
+                          (l) => l.priority === "diamond" || l.pipeline_stage === "diamond",
+                        )
+                      : view.filter((l) => pipelineStageInfo(l.status).label === detailStageFilter);
           const title =
             kind === "total"
               ? "Total leads"
@@ -1301,7 +1315,9 @@ function Leads() {
                   ? "Closed"
                   : kind === "available"
                     ? "Available to call"
-                    : `Stage: ${detailStageFilter}`;
+                    : kind === "diamond"
+                      ? "💎 Diamond leads"
+                      : `Stage: ${detailStageFilter}`;
           const cap =
             kind === "booked"
               ? bookedCapDerivation

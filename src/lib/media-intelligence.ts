@@ -214,6 +214,11 @@ export type VslFunnelStage = {
    * "live" unless metricIngestionSource is genuinely "live_api". */
   ingestionSource: VslMetricIngestionSource | null;
   detail: string;
+  /** Opens a records drilldown for this stage — only set on stages with a
+   * real per-record join (application/show/close/cash); Wistia-native
+   * stages have no row-level data behind them, so they stay non-interactive
+   * rather than a dead click. */
+  onOpenRecords?: () => void;
 };
 
 export type VslFunnelInput = {
@@ -240,9 +245,38 @@ export type VslFunnelInput = {
   /** How the latest snapshot's numbers were ingested; null when there is no
    * snapshot at all. */
   metricIngestionSource: VslMetricIngestionSource | null;
+  /** Row-level records behind the CRM/cash stages — only present when the
+   * caller fetched them for a records drilldown. */
+  applicationRows?: {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    created_at: string;
+  }[];
+  showRows?: {
+    id: string;
+    lead_email: string | null;
+    closer_name: string | null;
+    scheduled_for: string | null;
+  }[];
+  closeRows?: {
+    id: string;
+    lead_email: string | null;
+    closer_name: string | null;
+    scheduled_for: string | null;
+    cash_collected_cents: number | null;
+  }[];
 };
 
-export function buildVslFunnel(input: VslFunnelInput): VslFunnelStage[] {
+export function buildVslFunnel(
+  input: VslFunnelInput,
+  onOpenRecords?: {
+    application?: () => void;
+    show?: () => void;
+    close?: () => void;
+    cash?: () => void;
+  },
+): VslFunnelStage[] {
   const ingestionLabel =
     input.metricIngestionSource === "csv"
       ? "Wistia metric · CSV import"
@@ -264,6 +298,7 @@ export function buildVslFunnel(input: VslFunnelInput): VslFunnelStage[] {
     source: VslFunnelDataSource,
     connectedDetail: string,
     disconnectedDetail: string,
+    onOpenRecords?: () => void,
   ): VslFunnelStage => ({
     key,
     label,
@@ -272,6 +307,7 @@ export function buildVslFunnel(input: VslFunnelInput): VslFunnelStage[] {
     ingestionSource:
       value != null && source === "wistia_native" ? input.metricIngestionSource : null,
     detail: value == null ? disconnectedDetail : connectedDetail,
+    onOpenRecords: value != null ? onOpenRecords : undefined,
   });
   return [
     stage(
@@ -345,6 +381,7 @@ export function buildVslFunnel(input: VslFunnelInput): VslFunnelStage[] {
       "crm",
       "Leads tagged to this VSL (source_vsl_id).",
       "No leads are tagged to this VSL yet.",
+      onOpenRecords?.application,
     ),
     stage(
       "show",
@@ -353,6 +390,7 @@ export function buildVslFunnel(input: VslFunnelInput): VslFunnelStage[] {
       "crm",
       "Calls tagged to this VSL that showed.",
       "No tagged calls have shown yet.",
+      onOpenRecords?.show,
     ),
     stage(
       "close",
@@ -361,6 +399,7 @@ export function buildVslFunnel(input: VslFunnelInput): VslFunnelStage[] {
       "crm",
       "Calls tagged to this VSL that closed.",
       "No tagged calls have closed yet.",
+      onOpenRecords?.close,
     ),
     stage(
       "cash",
@@ -369,6 +408,7 @@ export function buildVslFunnel(input: VslFunnelInput): VslFunnelStage[] {
       "cash",
       "Cash collected on tagged, closed calls.",
       "No cash collected on tagged calls yet.",
+      onOpenRecords?.cash,
     ),
   ];
 }

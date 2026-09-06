@@ -11,6 +11,7 @@ export function StatCard({
   hint,
   icon,
   chart,
+  onClick,
 }: {
   label: string;
   value: ReactNode;
@@ -20,6 +21,7 @@ export function StatCard({
   hint?: ReactNode;
   icon?: ReactNode;
   chart?: ReactNode;
+  onClick?: () => void;
 }) {
   const accentMap: Record<string, string> = {
     primary: "var(--primary)",
@@ -39,6 +41,7 @@ export function StatCard({
       accentColor={spectrum ? undefined : accentMap[accent]}
       icon={icon}
       chart={chart}
+      onClick={onClick}
     />
   );
 }

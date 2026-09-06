@@ -964,8 +964,18 @@ function ContentIntel() {
                     <th className="text-center p-3">Link</th>
                     <th className="text-right p-3 font-mono">Views</th>
                     <th className="text-right p-3 font-mono">Leads</th>
-                    <th className="text-right p-3 font-mono">Closes</th>
-                    <th className="text-right p-3 font-mono">Cash</th>
+                    <th
+                      className="text-right p-3 font-mono"
+                      title="content_metrics.closes has no write path anywhere in the app"
+                    >
+                      Closes
+                    </th>
+                    <th
+                      className="text-right p-3 font-mono"
+                      title="content_metrics.cash_collected_cents has no write path anywhere in the app — see the Attribution tab's Canonical Content → Cash table for real, attributed cash"
+                    >
+                      Cash
+                    </th>
                     <th className="text-right p-3 font-mono">Retention</th>
                     <th className="text-right p-3"></th>
                   </tr>
@@ -1037,11 +1047,14 @@ function ContentIntel() {
                             {m?.views?.toLocaleString() ?? "—"}
                           </td>
                           <td className="p-3 text-right font-mono">{m?.leads_generated ?? "—"}</td>
-                          <td className="p-3 text-right font-mono">{m?.closes ?? "—"}</td>
-                          <td className="p-3 text-right font-mono">
-                            {m?.cash_collected_cents
-                              ? "$" + Math.round(m.cash_collected_cents / 100)
-                              : "—"}
+                          {/* closes/cash_collected_cents default to 0 in the DB and have no
+                              write path — a literal 0/"$0" here would misread as "zero
+                              closes/cash" rather than "not tracked." */}
+                          <td className="p-3 text-right font-mono text-muted-foreground">
+                            Not tracked
+                          </td>
+                          <td className="p-3 text-right font-mono text-muted-foreground">
+                            Not tracked
                           </td>
                           <td className="p-3 text-right font-mono">
                             {m?.hook_retention_pct ? m.hook_retention_pct + "%" : "—"}
@@ -2154,11 +2167,11 @@ function OverviewPanel({
           {[
             ["Views", m?.views?.toLocaleString() ?? "—"],
             ["Leads", m?.leads_generated ?? "—"],
-            ["Closes", m?.closes ?? "—"],
-            [
-              "Cash",
-              m?.cash_collected_cents ? "$" + Math.round(m.cash_collected_cents / 100) : "—",
-            ],
+            // closes/cash_collected_cents default to 0 in the DB and have no write
+            // path anywhere in the app — an honest "Not tracked" instead of a
+            // literal 0/"$0" that would misread as "this piece made zero cash."
+            ["Closes", "Not tracked"],
+            ["Cash", "Not tracked"],
             ["Retention", m?.hook_retention_pct ? m.hook_retention_pct + "%" : "—"],
           ].map(([k, v]) => (
             <div key={k as string} className="rounded border border-border bg-card/40 p-2">

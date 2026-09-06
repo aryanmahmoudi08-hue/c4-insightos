@@ -70,6 +70,7 @@ import {
   buildRecommendationEvidence,
   buildVslFunnel,
   deriveLargestLeak,
+  type VslFunnelInput,
 } from "@/lib/media-intelligence";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -89,6 +90,8 @@ import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { VideoEmbed } from "@/components/video-embed";
 import { VideoActionQueue, type VideoActionQueueItem } from "@/components/video-action-queue";
 import { AttributionPathPanel, type AttributionPath } from "@/components/attribution-path-panel";
+import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
+import type { Derivation } from "@/lib/funnel-derivation";
 
 export const Route = createFileRoute("/_authenticated/vsl")({ component: VslPage });
 
@@ -131,16 +134,39 @@ function mmss(sec: number) {
  * ever populated from an inferred or estimated figure. A stage with no
  * connected data renders "Unavailable" rather than a zero.
  */
+const vslMoney = (cents: number) =>
+  "$" +
+  new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(cents / 100));
+
+const VSL_NOT_A_FUNNEL_RATE: Derivation = {
+  status: "insufficient_data",
+  sentence:
+    "A VSL funnel stage view, not a rate-comparison funnel — no upstream constraint to derive.",
+};
+
 function VslFunnelPanel({ vsl }: { vsl: any }) {
   const { devBypass } = useAuth();
+  // The Wistia-native stages (landing/play/milestones/CTA) reflect a single
+  // latest snapshot regardless of range — only the CRM/cash stages
+  // (application/show/close/cash), tagged via source_vsl_id, are scoped to
+  // it. Both facts are surfaced in the subtitle so nothing here is
+  // misleading about what "the range" actually filters.
+  const { range } = useDateRange();
   const loadFunnel = useServerFn(getVslFunnelData);
   const { data: funnelInput } = useQuery({
-    queryKey: ["vsl_funnel", vsl.id, devBypass],
-    queryFn: () =>
-      devBypass ? Promise.resolve(mockVslFunnel(vsl.id)) : loadFunnel({ data: { vsl_id: vsl.id } }),
+    queryKey: ["vsl_funnel", vsl.id, devBypass, range.from, range.to],
+    queryFn: (): Promise<VslFunnelInput> =>
+      devBypass
+        ? Promise.resolve(mockVslFunnel(vsl.id))
+        : loadFunnel({ data: { vsl_id: vsl.id, from: range.from, to: range.to } }),
   });
+  const [selectedStage, setSelectedStage] = useState<"application" | "show" | "close" | null>(null);
   if (!funnelInput) return null;
-  const stages = buildVslFunnel(funnelInput);
+  const stages = buildVslFunnel(funnelInput, {
+    application: () => setSelectedStage("application"),
+    show: () => setSelectedStage("show"),
+    close: () => setSelectedStage("close"),
+  });
   const leak = deriveLargestLeak(stages);
   const path: AttributionPath = {
     id: `vsl-funnel-${vsl.id}`,
@@ -150,19 +176,65 @@ function VslFunnelPanel({ vsl }: { vsl: any }) {
       label: s.label,
       value: s.value,
       detail: s.detail,
+      onOpenRecords: s.onOpenRecords,
     })),
   };
+
+  type VslRecordRow = { id: string; primary: string; detail: string; date: string | null };
+  const recordColumns: DetailColumn<VslRecordRow>[] = [
+    { key: "primary", label: "Record", render: (r) => r.primary },
+    { key: "detail", label: "Detail", render: (r) => r.detail },
+    {
+      key: "date",
+      label: "Date",
+      render: (r) => (r.date ? new Date(r.date).toLocaleDateString() : "—"),
+    },
+  ];
+  const recordPanel =
+    selectedStage === "application"
+      ? {
+          title: "Application / Booking",
+          rows: (funnelInput.applicationRows ?? []).map((l) => ({
+            id: l.id,
+            primary: l.full_name || l.email || "—",
+            detail: "Lead tagged to this VSL",
+            date: l.created_at,
+          })),
+        }
+      : selectedStage === "show"
+        ? {
+            title: "Show",
+            rows: (funnelInput.showRows ?? []).map((c) => ({
+              id: c.id,
+              primary: c.lead_email ?? "—",
+              detail: c.closer_name ?? "—",
+              date: c.scheduled_for,
+            })),
+          }
+        : selectedStage === "close"
+          ? {
+              title: "Close",
+              rows: (funnelInput.closeRows ?? []).map((c) => ({
+                id: c.id,
+                primary: c.lead_email ?? "—",
+                detail: `${c.closer_name ?? "—"} · ${vslMoney(c.cash_collected_cents ?? 0)}`,
+                date: c.scheduled_for,
+              })),
+            }
+          : null;
+
   return (
     <div className="border-t border-border p-4 space-y-3">
       <AttributionPathPanel
         title="Full funnel"
-        subtitle="Wistia metric, page-event, CRM, and cash data are labeled separately at each stage — none of it is a live Wistia API sync"
+        subtitle="Wistia snapshot (landing/play/milestones/CTA) is a single latest reading; application/show/close/cash reflect leads and calls tagged to this VSL within your selected date range — none of it is a live Wistia API sync"
         paths={[path]}
       />
       <p className="text-3xs text-muted-foreground">
         Application/booking, show, close, and cash stages reflect leads and calls tagged to this VSL
-        (source_vsl_id). No booking flow currently writes that tag automatically — a real 0 here
-        means "checked, none tagged yet," not that the funnel is broken.
+        (source_vsl_id) within {range.label.toLowerCase()}. No booking flow currently writes that
+        tag automatically — a real 0 here means "checked, none tagged yet," not that the funnel is
+        broken.
       </p>
       {leak && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs">
@@ -175,6 +247,20 @@ function VslFunnelPanel({ vsl }: { vsl: any }) {
           </div>
           <div className="mt-1 text-muted-foreground">→ {leak.recommendedTest}</div>
         </div>
+      )}
+      {recordPanel && (
+        <MetricDetailPanel
+          open={!!selectedStage}
+          onOpenChange={(v) => !v && setSelectedStage(null)}
+          title={recordPanel.title}
+          subtitle={range.label}
+          columns={recordColumns}
+          rows={recordPanel.rows}
+          rowKey={(r) => r.id}
+          cap={VSL_NOT_A_FUNNEL_RATE}
+          working={VSL_NOT_A_FUNNEL_RATE}
+          emptyRowsLabel="No records tagged to this VSL in range."
+        />
       )}
     </div>
   );

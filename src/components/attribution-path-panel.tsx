@@ -83,15 +83,21 @@ export function AttributionPathPanel({
                   <div className="flex flex-col gap-2 md:shrink-0 md:flex-row md:items-center">
                     {/* Real per-source breakdown, stacked vertically, merging
                         into stages[0] — never one flat "Channel: N" number
-                        standing in for several actually-distinct sources. */}
-                    <div className="flex flex-col gap-1 md:w-40">
+                        standing in for several actually-distinct sources.
+                        Widened from w-40 and given a title attribute (the
+                        native tooltip survives our truncation) so a long
+                        source label — e.g. a full UTM/campaign name — is
+                        never silently cut off with no way to read it. */}
+                    <div className="flex flex-col gap-1 md:w-48">
                       {path.sources.map((src) => (
                         <button
                           key={src.key}
                           type="button"
                           onClick={src.onOpenRecords}
                           disabled={!src.onOpenRecords}
-                          title={src.onOpenRecords ? "Click to see records" : undefined}
+                          title={
+                            src.onOpenRecords ? `${src.label} — click to see records` : src.label
+                          }
                           className="flex w-full items-center gap-1.5 rounded-md border border-border/70 bg-muted/20 px-2 py-1 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/40 disabled:cursor-default disabled:hover:border-border/70 disabled:hover:bg-muted/20"
                         >
                           <PlatformIcon
@@ -124,13 +130,20 @@ export function AttributionPathPanel({
                       }
                       title={
                         stage.onOpenRecords
-                          ? `${stage.detail} — click to see records`
-                          : stage.detail
+                          ? `${stage.label} — ${stage.detail} — click to see records`
+                          : `${stage.label} — ${stage.detail}`
                       }
-                      className={`w-full min-w-0 rounded-md border border-border/70 bg-muted/20 p-2 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/40 md:w-36 ${stage.onOpenRecords ? "ring-1 ring-inset ring-spectrum-mid/20" : ""}`}
+                      // Widened from w-36 and the label switched from a
+                      // single-line truncate to a 2-line clamp (matching the
+                      // detail text below it) so a genuinely long stage name
+                      // (VSL's retention-percent stages, DM/Inbound's longer
+                      // funnel labels) wraps instead of silently cutting off
+                      // — the title attribute above still gives the full text
+                      // on hover either way.
+                      className={`w-full min-w-0 rounded-md border border-border/70 bg-muted/20 p-2 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/40 md:w-40 ${stage.onOpenRecords ? "ring-1 ring-inset ring-spectrum-mid/20" : ""}`}
                     >
-                      <div className="flex items-center justify-between gap-1">
-                        <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <div className="flex items-start justify-between gap-1">
+                        <div className="line-clamp-2 text-[10px] uppercase tracking-wider text-muted-foreground">
                           {stage.label}
                         </div>
                         {stage.onOpenRecords && (
