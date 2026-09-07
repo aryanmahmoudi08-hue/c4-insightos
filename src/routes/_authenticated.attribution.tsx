@@ -5,6 +5,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { useDateRange } from "@/hooks/use-date-range";
 import { useMoney } from "@/hooks/use-money";
+import { useDemoMode } from "@/hooks/use-demo-mode";
+import { buildDemoAttributionDataset } from "@/lib/demo-fixtures";
+import { DemoModeBanner } from "@/components/demo-mode-banner";
 import { TopBar } from "@/components/app-sidebar";
 import { KpiBand, type KpiBandItem } from "@/components/kpi-band";
 import { GlassTableShell, FilterPills } from "@/components/glass-table";
@@ -22,7 +25,11 @@ import {
   identifyTopAttributionJourneys,
 } from "@/lib/content-attribution";
 import { normalizeAcquisitionSource, acquisitionSourceOptions } from "@/lib/acquisition-source";
-import { socialPlatformOptions, type SocialPlatform } from "@/lib/social-platform";
+import {
+  socialPlatformOptions,
+  normalizeSocialPlatform,
+  type SocialPlatform,
+} from "@/lib/social-platform";
 import type { AttributionModel, CanonicalLifecycleAttributionPath } from "@/lib/acquisition";
 
 /** All-optional so every other page can deep-link with only the params it
@@ -105,59 +112,115 @@ function AttributionCommandCenter() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const { demoMode } = useDemoMode();
+
   const { data, isLoading } = useQuery({
-    queryKey: ["attribution-command-center", orgId, range.from, range.to],
+    queryKey: ["attribution-command-center", orgId, range.from, range.to, demoMode],
     enabled: !!orgId,
     queryFn: async () => {
-      const [leadsRes, callsRes, touchesRes, contentRes, trafficRes] = await Promise.all([
-        supabase
-          .from("leads")
-          .select("id, created_at, source_content_id, first_touch_content_id, traffic_source_id")
-          .eq("org_id", orgId!)
-          .gte("created_at", fromISO)
-          .lte("created_at", toISO),
-        supabase
-          .from("calls")
-          .select(
-            "id, lead_id, created_at, closed, source_content_id, contract_value_cents, cash_collected_cents, setter_id, closer_id, showed",
-          )
-          .eq("org_id", orgId!)
-          .gte("created_at", fromISO)
-          .lte("created_at", toISO),
-        supabase
-          .from("lead_content_touches")
-          .select("id, lead_id, content_id, touched_at")
-          .eq("org_id", orgId!)
-          .gte("touched_at", fromISO)
-          .lte("touched_at", toISO),
-        supabase.from("content_pieces").select("id, title, platform").eq("org_id", orgId!),
-        supabase.from("traffic_sources").select("id, category").eq("org_id", orgId!),
-      ]);
+      // Demo / Preview Data mode: a deterministic in-memory fixture dataset
+      // fed through the exact same code below (canonical engine included) —
+      // never a second engine, never a Supabase read/write. Every other
+      // page in the app ignores this flag and always queries real data.
+      let leadRows: Array<{
+        id: string;
+        created_at: string;
+        source_content_id: string | null;
+        first_touch_content_id: string | null;
+        traffic_source_id: string | null;
+      }>;
+      let callRows: Array<{
+        id: string;
+        lead_id: string | null;
+        created_at: string | null;
+        closed: boolean | null;
+        source_content_id: string | null;
+        contract_value_cents: number | null;
+        cash_collected_cents: number | null;
+        setter_id: string | null;
+        closer_id: string | null;
+        showed: boolean | null;
+      }>;
+      let touchRows: Array<{ id: string; lead_id: string; content_id: string; touched_at: string }>;
+      let contentRows: Array<{
+        id: string;
+        title: string | null;
+        platform: string | null;
+        source_platform: string | null;
+      }>;
+      let trafficRows: Array<{ id: string; category: string }>;
+      let repNameById: Record<string, string>;
 
-      const leadRows = leadsRes.data ?? [];
-      const callRows = callsRes.data ?? [];
-      const touchRows = touchesRes.data ?? [];
-      const contentRows = contentRes.data ?? [];
-      const trafficRows = trafficRes.data ?? [];
-      const closedRows = callRows.filter((c) => c.closed);
+      if (demoMode) {
+        const demo = buildDemoAttributionDataset();
+        leadRows = demo.leadRows;
+        callRows = demo.callRows;
+        touchRows = demo.touchRows;
+        contentRows = demo.contentRows;
+        trafficRows = demo.trafficRows;
+        repNameById = demo.repNameById;
+      } else {
+        const [leadsRes, callsRes, touchesRes, contentRes, trafficRes] = await Promise.all([
+          supabase
+            .from("leads")
+            .select("id, created_at, source_content_id, first_touch_content_id, traffic_source_id")
+            .eq("org_id", orgId!)
+            .gte("created_at", fromISO)
+            .lte("created_at", toISO),
+          supabase
+            .from("calls")
+            .select(
+              "id, lead_id, created_at, closed, source_content_id, contract_value_cents, cash_collected_cents, setter_id, closer_id, showed",
+            )
+            .eq("org_id", orgId!)
+            .gte("created_at", fromISO)
+            .lte("created_at", toISO),
+          supabase
+            .from("lead_content_touches")
+            .select("id, lead_id, content_id, touched_at")
+            .eq("org_id", orgId!)
+            .gte("touched_at", fromISO)
+            .lte("touched_at", toISO),
+          supabase
+            .from("content_pieces")
+            .select("id, title, platform, source_platform")
+            .eq("org_id", orgId!),
+          supabase.from("traffic_sources").select("id, category").eq("org_id", orgId!),
+        ]);
 
-      const repIds = Array.from(
-        new Set(
-          [...callRows.map((c) => c.setter_id), ...callRows.map((c) => c.closer_id)].filter(
-            (v): v is string => !!v,
+        leadRows = leadsRes.data ?? [];
+        callRows = callsRes.data ?? [];
+        touchRows = touchesRes.data ?? [];
+        contentRows = contentRes.data ?? [];
+        trafficRows = trafficRes.data ?? [];
+
+        const repIds = Array.from(
+          new Set(
+            [...callRows.map((c) => c.setter_id), ...callRows.map((c) => c.closer_id)].filter(
+              (v): v is string => !!v,
+            ),
           ),
-        ),
-      );
-      const profilesRes = repIds.length
-        ? await supabase.from("profiles").select("id, display_name").in("id", repIds)
-        : { data: [] as Array<{ id: string; display_name: string | null }> };
-      const repNameById: Record<string, string> = {};
-      for (const p of profilesRes.data ?? []) repNameById[p.id] = p.display_name ?? p.id;
+        );
+        const profilesRes = repIds.length
+          ? await supabase.from("profiles").select("id, display_name").in("id", repIds)
+          : { data: [] as Array<{ id: string; display_name: string | null }> };
+        repNameById = {};
+        for (const p of profilesRes.data ?? []) repNameById[p.id] = p.display_name ?? p.id;
+      }
+
+      const closedRows = callRows.filter((c) => c.closed);
 
       const platformByContentId: Record<string, string | null> = {};
       const titleByContentId: Record<string, string> = {};
       for (const c of contentRows) {
-        platformByContentId[c.id] = c.platform ?? null;
+        // `content_pieces.platform` is actually a FORMAT enum
+        // (reel/tiktok/youtube/carousel/...), not a platform name —
+        // `source_platform` carries the real platform-name evidence.
+        // Resolve through the same `normalizeSocialPlatform(platform,
+        // source_platform)` call content-command-center.tsx's
+        // `pieceSocialPlatform` already uses, so this page's platform
+        // filter/pills match the same real values everywhere else in the app.
+        platformByContentId[c.id] = normalizeSocialPlatform(c.platform, c.source_platform);
         titleByContentId[c.id] = c.title ?? "(untitled)";
       }
 
@@ -329,12 +392,17 @@ function AttributionCommandCenter() {
     }
     return buckets;
   }, [data]);
-  const organicCash = cashByAcquisitionSource["Organic"] ?? 0;
-  const referralCash = cashByAcquisitionSource["Referral"] ?? 0;
+  // The standardized taxonomy (acquisition-source.ts) is channel-level
+  // (Meta Ads, TikTok, Instagram, YouTube, LinkedIn, Google, Email,
+  // Referral / Partner, Direct / Organic, Other) rather than a paid/organic/
+  // referral macro-split — a TikTok or Instagram lead could genuinely be
+  // either paid or organic and this data model doesn't distinguish that per
+  // channel, so "Paid" here only counts the two channels that are
+  // unambiguously ad-spend by name; it is not a full paid-media total.
+  const organicCash = cashByAcquisitionSource["Direct / Organic"] ?? 0;
+  const referralCash = cashByAcquisitionSource["Referral / Partner"] ?? 0;
   const paidCash =
-    (cashByAcquisitionSource["Meta Ads"] ?? 0) +
-    (cashByAcquisitionSource["Google Ads"] ?? 0) +
-    (cashByAcquisitionSource["TikTok Ads"] ?? 0);
+    (cashByAcquisitionSource["Meta Ads"] ?? 0) + (cashByAcquisitionSource["Google"] ?? 0);
 
   const kpiItems: KpiBandItem[] = [
     {
@@ -501,6 +569,7 @@ function AttributionCommandCenter() {
         showDateRange
       />
       <div className="space-y-6 p-6">
+        <DemoModeBanner demoMode={demoMode} />
         <KpiBand title="Overview" items={kpiItems} />
 
         {/* B. Model + global filters */}

@@ -1,21 +1,12 @@
 import { test, expect, realErrors } from "./fixtures";
 
 /**
- * Regression for two new drilldown surfaces on Closer:
- *  - No-show recovery (section C): all cards were static; each now opens
- *    the real underlying calls, with rate-based cards showing both the
- *    numerator and denominator records so the arithmetic is visible.
- *  - Lifecycle attribution (section F): each node in "Original Channel →
- *    campaign → capture → setter/dialer → booked → offer → payment → cash"
- *    now opens the real calls behind that node, respecting the fact this is
- *    a read of the same call set along a lifecycle axis, not a funnel.
- *
- * Priority 5 update: "Original Channel" is no longer a single aggregate
- * "distinct platform count" stage — it's real per-platform source nodes
- * (Instagram/TikTok/YouTube/...) merging into the rest of the sequence, so
- * this test now clicks one of those real source nodes instead.
+ * Regression for the No-show recovery drilldown surface on Closer (section
+ * C): all cards were static; each now opens the real underlying calls, with
+ * rate-based cards showing both the numerator and denominator records so
+ * the arithmetic is visible.
  */
-test("closer: no-show recovery and attribution nodes open real record drilldowns", async ({
+test("closer: no-show recovery cards open real record drilldowns", async ({
   page,
   consoleErrors,
 }) => {
@@ -51,34 +42,29 @@ test("closer: no-show recovery and attribution nodes open real record drilldowns
   expect(closeRows).toBeGreaterThan(0);
   await page.keyboard.press("Escape");
 
-  await expect(page.getByText("F · Attribution")).toBeVisible();
-  const channelSourceBtn = page
-    .locator("button", {
-      hasText:
-        /^(Instagram|TikTok|YouTube|Facebook|LinkedIn|X \/ Twitter|Meta|Email|Referral|Other|Unknown \/ Unattributed)/,
-    })
-    .first();
-  await channelSourceBtn.click();
-  await expect(
-    page.getByRole("dialog").getByRole("heading", { name: /^Original Channel:/ }),
-  ).toBeVisible({ timeout: 10_000 });
-  const channelRows = await page.getByRole("dialog").locator("tbody tr").count();
-  expect(channelRows).toBeGreaterThan(0);
-  await page.keyboard.press("Escape");
+  expect(realErrors(consoleErrors)).toEqual([]);
+});
 
-  const cashStageBtn = page.getByRole("button", { name: /Cash Collected/ }).last();
-  await cashStageBtn.click();
-  await expect(
-    page.getByRole("dialog").getByRole("heading", { name: "Cash Collected" }),
-  ).toBeVisible({
-    timeout: 10_000,
-  });
-  await page.keyboard.press("Escape");
+/**
+ * Attribution Architecture Consolidation pass: section F's old per-node
+ * clickable lifecycle panel (Original Channel → campaign → ... → cash, each
+ * stage independently opening a drilldown) was replaced with a compact
+ * "Revenue Source Mix" table (same real per-channel data, no per-node
+ * click-through anymore — the numbers are already visible in the table) plus
+ * a "View Full Attribution →" deep link into the master Attribution Command
+ * Center, which owns the full lifecycle drilldown surface now.
+ */
+test("closer: F · Attribution shows Revenue Source Mix and links to the master Attribution page", async ({
+  page,
+  consoleErrors,
+}) => {
+  await page.goto("/closer", { waitUntil: "load" });
+  await expect(page.getByText("F · Attribution")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Revenue Source Mix", { exact: true })).toBeVisible();
 
-  // Retention/Refund has no row-level join on calls — it must stay a plain,
-  // non-interactive stat rather than a dead click or a fabricated drilldown.
-  const retentionButtons = page.getByRole("button", { name: /Retention \/ Refund/ });
-  await expect(retentionButtons.first()).toBeVisible();
+  const link = page.getByRole("link", { name: "View Full Attribution →" });
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute("href", /\/attribution/);
 
   expect(realErrors(consoleErrors)).toEqual([]);
 });

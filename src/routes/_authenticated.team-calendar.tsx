@@ -41,6 +41,7 @@ import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { avatarColorFor } from "@/lib/avatar-color";
 import { TeamMemberPicker, type TeamRole } from "@/components/team-member-picker";
+import { CallsOnCalendar } from "@/components/calls-on-calendar";
 
 export const Route = createFileRoute("/_authenticated/team-calendar")({
   component: TeamCalendarPage,
@@ -271,6 +272,23 @@ function TeamCalendarPage() {
         subtitle="Closer + setter availability — one view for the whole team. Work blocks live in Google Calendar."
       />
       <div className="p-4 md:p-6 space-y-5">
+        {/* Calls on Calendar — sales-call-specific timeline, kept inside Team
+            Calendars (not a top-level nav item, not part of Inbound Dialer)
+            per the corrected information architecture: this section answers
+            "what sales calls need attention today?", the Live Team Calendar
+            section below answers "what's happening across the broader team
+            calendar?". */}
+        <section className="space-y-2">
+          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            What sales calls need attention today?
+          </div>
+          <CallsOnCalendar />
+        </section>
+
+        {/* Live Team Calendar — existing functionality, unchanged. */}
+        <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          What's happening across the broader team calendar?
+        </div>
         {/* Combined Google Calendar */}
         <section className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">

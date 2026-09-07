@@ -41,74 +41,79 @@ test("Content Command Center: money-origin attribution renders with a real attri
   expect(realErrors(consoleErrors)).toEqual([]);
 });
 
-test("Closer lifecycle attribution: real per-platform sources merge into the shared downstream sequence", async ({
+// Attribution Architecture Consolidation pass: the large per-role
+// AttributionPathPanel stage/arrow panels below were replaced with compact
+// "Revenue Source Mix" / "Inbound Lead Sources" / "DM Source Mix" tables
+// plus a "View Full Attribution →" deep link into the master Attribution
+// Command Center (/attribution) — same underlying real per-platform data,
+// consolidated presentation. These tests now assert the new structure.
+
+test("Closer: Revenue Source Mix renders real per-platform rows and deep-links to the master Attribution page", async ({
   page,
   consoleErrors,
 }) => {
   await page.goto("/closer", { waitUntil: "load" });
-  const section = page.getByText("Closer lifecycle attribution", { exact: true });
+  const section = page.getByText("Revenue Source Mix", { exact: true });
   await section.scrollIntoViewIfNeeded();
   await expect(section).toBeVisible();
 
-  // At least one real source node renders (branching/merging) — never one
-  // flat aggregate "Channel: N" number standing in for several real sources.
-  const sourceButtons = page.locator("button", {
-    hasText:
-      /^(Instagram|TikTok|YouTube|Facebook|LinkedIn|X \/ Twitter|Meta|Email|Referral|Other|Unknown \/ Unattributed)/,
-  });
-  expect(await sourceButtons.count()).toBeGreaterThanOrEqual(1);
-
-  // The merge connector into the shared downstream stages is present.
-  await expect(page.getByText("Campaign / Content", { exact: false })).toBeVisible();
+  const link = page.getByRole("link", { name: "View Full Attribution →" });
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute("href", /\/attribution/);
 
   expect(realErrors(consoleErrors)).toEqual([]);
 });
 
-test("Closer lifecycle attribution: clicking a source node opens the real filtered records, preserving the selected date range", async ({
-  page,
-  consoleErrors,
-}) => {
-  await page.goto("/closer", { waitUntil: "load" });
-  await page.getByRole("button", { name: "30d", exact: true }).first().click();
-  const section = page.getByText("Closer lifecycle attribution", { exact: true });
-  await section.scrollIntoViewIfNeeded();
-
-  const anySource = page
-    .locator("button", { hasText: /Instagram|TikTok|YouTube|Referral/ })
-    .first();
-  await anySource.click();
-
-  const panel = page.getByRole("dialog");
-  await expect(panel.getByText("Original Channel:", { exact: false })).toBeVisible();
-  await expect(panel.getByText("What produced this", { exact: true })).toBeVisible();
-  const rowCount = await panel.locator("table tbody tr").count();
-  expect(rowCount).toBeGreaterThan(0);
-
-  expect(realErrors(consoleErrors)).toEqual([]);
-});
-
-test("Inbound Dialer attribution: real per-platform sources render from lead_response_events, distinct from the aggregate Setter stage", async ({
+test("Inbound Dialer: Inbound Lead Sources table renders and deep-links to the master Attribution page", async ({
   page,
   consoleErrors,
 }) => {
   await page.goto("/inbound-dialer", { waitUntil: "load" });
-  const section = page.getByText("Inbound Dialer attribution", { exact: true });
+  const section = page.getByText("Inbound Lead Sources", { exact: true });
   await section.scrollIntoViewIfNeeded();
   await expect(section).toBeVisible();
 
-  const sourceButtons = page.locator("button", { hasText: /^(Instagram|TikTok|YouTube)/ });
-  expect(await sourceButtons.count()).toBeGreaterThanOrEqual(1);
-  await expect(page.getByText("Dialer", { exact: true }).first()).toBeVisible();
+  const link = page.getByRole("link", { name: "View Full Attribution →" });
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute("href", /\/attribution/);
 
   expect(realErrors(consoleErrors)).toEqual([]);
 });
 
-test("DM Setter attribution is unchanged (no real per-lead platform join exists for this role, so it correctly stays an honest aggregate rollup)", async ({
+test("DM Setter: DM Source Mix table renders and deep-links to the master Attribution page", async ({
   page,
+  consoleErrors,
 }) => {
   await page.goto("/dm-setter", { waitUntil: "load" });
-  await expect(page.getByText("DM Setter attribution", { exact: true })).toBeVisible();
-  await expect(
-    page.getByText("No verified platform join in aggregate activity", { exact: true }),
-  ).toBeVisible();
+  const section = page.getByText("DM Source Mix", { exact: true });
+  await section.scrollIntoViewIfNeeded();
+  await expect(section).toBeVisible();
+
+  const link = page.getByRole("link", { name: "View Full Attribution →" });
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute("href", /\/attribution/);
+
+  expect(realErrors(consoleErrors)).toEqual([]);
+});
+
+test("Master Attribution Command Center: all five models are selectable and Coverage & Confidence is honest", async ({
+  page,
+  consoleErrors,
+}) => {
+  await page.goto("/attribution", { waitUntil: "load" });
+  await expect(page.getByText("Attribution model", { exact: false })).toBeVisible({
+    timeout: 10_000,
+  });
+  for (const label of [
+    "First touch",
+    "Lead source",
+    "Booking source",
+    "Last touch",
+    "Assisted touch",
+  ]) {
+    await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+  }
+  await expect(page.getByText("Coverage", { exact: false })).toBeVisible();
+
+  expect(realErrors(consoleErrors)).toEqual([]);
 });

@@ -1,10 +1,27 @@
+/**
+ * Standardized acquisition-source taxonomy (the top-level dimension in the
+ * lifecycle hierarchy: Acquisition Source → Campaign → Content → Placement/
+ * Format → Capture Mechanism → Setter/Dialer → Booked Call → ... → Cash).
+ * These are WHERE a lead actually originated — never a sales-activity/
+ * capture-mechanism concept like "Outbound DM"/"Inbound DM"/"Application"/
+ * "Phone call", which are separate, lower-level fields.
+ *
+ * "Unknown / Unattributed" is not one of the 10 standardized categories
+ * itself — it's the required honest fallback for real data that doesn't map
+ * to any of them (same precedent as SOCIAL_PLATFORMS in social-platform.ts),
+ * so a source is never guessed into a named category it doesn't have
+ * evidence for.
+ */
 export const ACQUISITION_SOURCES = [
   "Meta Ads",
-  "Google Ads",
-  "TikTok Ads",
-  "Organic",
-  "Referral",
-  "Direct",
+  "TikTok",
+  "Instagram",
+  "YouTube",
+  "LinkedIn",
+  "Google",
+  "Email",
+  "Referral / Partner",
+  "Direct / Organic",
   "Other",
   "Unknown / Unattributed",
 ] as const;
@@ -18,8 +35,9 @@ const normalize = (value: string | null | undefined) =>
     .replace(/[\s_-]+/g, " ");
 
 /**
- * Only explicit acquisition evidence is promoted into a filterable source.
- * A social platform is never treated as Meta Ads by inference.
+ * Only explicit acquisition evidence is promoted into a filterable source —
+ * a platform name is only ever assigned when the raw source/platform field
+ * genuinely says so, never guessed from unrelated signals.
  */
 export function normalizeAcquisitionSource(
   sourceType?: string | null,
@@ -30,12 +48,27 @@ export function normalizeAcquisitionSource(
   const type = normalize(sourceType);
   const providerName = normalize(provider);
   const candidate = explicit || providerName;
-  if (candidate === "meta ads" || candidate === "meta") return "Meta Ads";
-  if (candidate === "google ads" || candidate === "google") return "Google Ads";
-  if (candidate === "tiktok ads" || candidate === "tiktok") return "TikTok Ads";
-  if (type === "organic") return "Organic";
-  if (type === "referral") return "Referral";
-  if (type === "direct") return "Direct";
+
+  if (candidate === "meta ads" || candidate === "meta" || candidate.includes("facebook ads"))
+    return "Meta Ads";
+  if (candidate === "tiktok" || candidate === "tiktok ads" || candidate.includes("tiktok"))
+    return "TikTok";
+  if (candidate === "instagram" || candidate.includes("instagram")) return "Instagram";
+  if (candidate === "youtube" || candidate.includes("youtube")) return "YouTube";
+  if (candidate === "linkedin" || candidate.includes("linkedin")) return "LinkedIn";
+  if (candidate === "google" || candidate === "google ads" || candidate.includes("google"))
+    return "Google";
+  if (candidate === "email" || candidate.includes("email")) return "Email";
+  if (
+    candidate === "referral" ||
+    candidate === "partner" ||
+    candidate.includes("referral") ||
+    candidate.includes("partner") ||
+    type === "referral"
+  )
+    return "Referral / Partner";
+  if (candidate === "direct" || candidate === "organic" || type === "direct" || type === "organic")
+    return "Direct / Organic";
   if (explicit === "other") return "Other";
   return "Unknown / Unattributed";
 }

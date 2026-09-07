@@ -809,7 +809,7 @@ function Dashboard() {
           .lte("created_at", toISO),
         supabase
           .from("content_metrics")
-          .select("content_id, views, content_pieces!inner(title, platform)")
+          .select("content_id, views, content_pieces!inner(title, platform, source_platform)")
           .eq("org_id", orgId!)
           .gte("captured_at", fromISO)
           .lte("captured_at", toISO),
@@ -843,7 +843,12 @@ function Dashboard() {
         const existing = contentMeta.get(m.content_id);
         contentMeta.set(m.content_id, {
           title: cp?.title ?? "(untitled)",
-          platform: cp?.platform ?? "Unknown",
+          // `content_pieces.platform` is a content-FORMAT enum
+          // (reel/tiktok/youtube/carousel/...), not a platform name —
+          // resolved through the same normalizeSocialPlatform(platform,
+          // source_platform) call used everywhere else this app derives a
+          // real channel name from a content piece.
+          platform: normalizeSocialPlatform(cp?.platform, cp?.source_platform),
           views: (existing?.views ?? 0) + (m.views ?? 0),
         });
       }

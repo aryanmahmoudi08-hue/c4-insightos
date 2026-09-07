@@ -55,7 +55,6 @@ import { MoneyInstrument, type MoneyPoint } from "@/components/money-instrument"
 import { KpiBand, type KpiBandItem } from "@/components/kpi-band";
 import { OperationalWorkflowPanel } from "@/components/operational-workflow-panel";
 import { groupBySourcePlatform } from "@/lib/attribution-flow";
-import { CallsOnCalendar } from "@/components/calls-on-calendar";
 import { RateSmallMultiples, type RateChartSpec } from "@/components/rate-small-multiples";
 import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
 import {
@@ -2967,7 +2966,6 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             />
           </div>
         )}
-        {isDialer && <CallsOnCalendar />}
         <OperationalWorkflowPanel
           role={role}
           qualified={qualified}
@@ -3114,7 +3112,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             <button
               type="button"
               onClick={() => setCallbackDrawerOpen(true)}
-              aria-label="Log a callback"
+              aria-label="Log Callback"
               title="Log a Callback"
               className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-border bg-primary text-primary-foreground shadow-lg transition hover:scale-105 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             >

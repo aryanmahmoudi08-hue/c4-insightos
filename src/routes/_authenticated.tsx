@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { DateRangeProvider } from "@/hooks/use-date-range";
 import { DisplayCurrencyProvider } from "@/hooks/use-display-currency";
 import { DisplayTimezoneProvider } from "@/hooks/use-display-timezone";
+import { DemoModeProvider } from "@/hooks/use-demo-mode";
 import { SidebarCollapsedProvider, useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { LiveTicker } from "@/components/live-ticker";
 import { CommandPalette } from "@/components/command-palette";
@@ -30,15 +31,17 @@ function AuthedLayout() {
     <DateRangeProvider>
       <DisplayCurrencyProvider>
         <DisplayTimezoneProvider>
-          <SidebarCollapsedProvider>
-            {/* Systemic prefers-reduced-motion gate (B5) — every `motion.*` component
+          <DemoModeProvider>
+            <SidebarCollapsedProvider>
+              {/* Systemic prefers-reduced-motion gate (B5) — every `motion.*` component
                 under here (sidebar's sliding indicator, command palette entrance,
                 BentoGrid, future page work) automatically respects it without each
                 one needing its own useReducedMotion() check. */}
-            <MotionConfig reducedMotion="user">
-              <AuthedShell />
-            </MotionConfig>
-          </SidebarCollapsedProvider>
+              <MotionConfig reducedMotion="user">
+                <AuthedShell />
+              </MotionConfig>
+            </SidebarCollapsedProvider>
+          </DemoModeProvider>
         </DisplayTimezoneProvider>
       </DisplayCurrencyProvider>
     </DateRangeProvider>

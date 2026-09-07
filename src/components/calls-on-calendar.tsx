@@ -7,7 +7,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { useRole } from "@/hooks/use-role";
 import { useDisplayTimezone, DISPLAY_TIMEZONES } from "@/hooks/use-display-timezone";
+import { useDemoMode } from "@/hooks/use-demo-mode";
+import { buildDemoCalendarDataset, type DemoCalendarDataset } from "@/lib/demo-fixtures";
+import { DemoModeBanner } from "@/components/demo-mode-banner";
 import { deriveLeadQuality, LEAD_QUALITY_TONE, type LeadQuality } from "@/lib/lead-quality";
+import { normalizeAcquisitionSource, acquisitionSourceOptions } from "@/lib/acquisition-source";
 import {
   TOUCHPOINT_LABELS,
   deriveTouchpointStatus,
@@ -148,11 +152,24 @@ export function CallsOnCalendar() {
   const { isAdmin } = useRole();
   const { timezone, setTimezone } = useDisplayTimezone();
   const queryClient = useQueryClient();
+  const { demoMode } = useDemoMode();
 
   const getConfirmations = useServerFn(getConfirmationsForCallsFn);
   const markTouchpoint = useServerFn(markTouchpointFn);
   const setConfirmationStatus = useServerFn(setConfirmationStatusFn);
   const setConfirmationPolicy = useServerFn(setConfirmationPolicyFn);
+
+  // Demo / Preview Data mode: a local, mutable, deterministic fixture
+  // dataset — actions in demo mode update this in-memory state directly and
+  // NEVER call a server fn or touch Supabase, so nothing can ever write
+  // demo data into a real org's tables. Regenerated fresh each time demo
+  // mode is turned on (so re-entering demo mode always shows the same
+  // starting scenario, not whatever a prior demo session mutated it into).
+  const [demoDataset, setDemoDataset] = useState<DemoCalendarDataset | null>(null);
+  useEffect(() => {
+    if (demoMode) setDemoDataset(buildDemoCalendarDataset());
+    else setDemoDataset(null);
+  }, [demoMode]);
 
   const [view, setView] = useState<"day" | "week">("day");
   const [anchorDate, setAnchorDate] = useState(() => new Date());
@@ -160,6 +177,7 @@ export function CallsOnCalendar() {
   const [repFilter, setRepFilter] = useState<string>("all");
   const [closerFilter, setCloserFilter] = useState<string>("all");
   const [qualityFilter, setQualityFilter] = useState<string>("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [now, setNow] = useState(() => new Date());
@@ -184,9 +202,9 @@ export function CallsOnCalendar() {
   }, [anchorDate, view]);
   const rangeEnd = useMemo(() => addDays(rangeStart, view === "day" ? 3 : 9), [rangeStart, view]);
 
-  const { data, isLoading } = useQuery({
+  const { data: realData, isLoading: realLoading } = useQuery({
     queryKey: ["calls-on-calendar", orgId, rangeStart.toISOString(), rangeEnd.toISOString()],
-    enabled: !!orgId,
+    enabled: !!orgId && !demoMode,
     queryFn: async () => {
       // `meeting_link` is a real column (added by this same feature's
       // migration) but isn't in the generated Supabase types yet — same
@@ -257,6 +275,9 @@ export function CallsOnCalendar() {
     },
   });
 
+  const data = demoMode ? demoDataset : realData;
+  const isLoading = demoMode ? !demoDataset : realLoading;
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["calls-on-calendar"] });
 
   const enriched = useMemo(() => {
@@ -282,6 +303,7 @@ export function CallsOnCalendar() {
         : "No action required";
       const checklist = buildPreCallChecklist(confirmation, !!lead?.precall_video_watched);
       const checklistDone = checklist.filter((c) => c.done).length;
+      const source = normalizeAcquisitionSource(null, lead?.source_platform);
       return {
         call,
         lead,
@@ -291,6 +313,7 @@ export function CallsOnCalendar() {
         nextAction,
         checklist,
         checklistDone,
+        source,
       };
     });
   }, [data, now]);
@@ -301,9 +324,10 @@ export function CallsOnCalendar() {
       if (repFilter !== "all" && e.call.setter_id !== repFilter) return false;
       if (closerFilter !== "all" && e.call.closer_id !== closerFilter) return false;
       if (qualityFilter !== "all" && e.quality !== qualityFilter) return false;
+      if (sourceFilter !== "all" && e.source !== sourceFilter) return false;
       return true;
     });
-  }, [enriched, statusFilter, repFilter, closerFilter, qualityFilter]);
+  }, [enriched, statusFilter, repFilter, closerFilter, qualityFilter, sourceFilter]);
 
   const visibleDayKeys = useMemo(() => {
     const anchorKey = dayKey(anchorDate, timezone);
@@ -386,6 +410,7 @@ export function CallsOnCalendar() {
 
   return (
     <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
+      <DemoModeBanner demoMode={demoMode} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -424,6 +449,13 @@ export function CallsOnCalendar() {
             isAdmin={isAdmin}
             policy={data?.policy}
             onSave={async (patch) => {
+              if (demoMode) {
+                setDemoDataset((prev) =>
+                  prev ? { ...prev, policy: { ...prev.policy, ...patch } } : prev,
+                );
+                toast.success("Confirmation policy updated (demo data)");
+                return;
+              }
               try {
                 await setConfirmationPolicy({ data: { org_id: orgId!, ...patch } });
                 toast.success("Confirmation policy updated");
@@ -510,6 +542,19 @@ export function CallsOnCalendar() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={sourceFilter} onValueChange={setSourceFilter}>
+          <SelectTrigger className="h-8 w-[170px] text-xs">
+            <SelectValue placeholder="Source: All" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Source: All</SelectItem>
+            {acquisitionSourceOptions().map((s) => (
+              <SelectItem key={s} value={s}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <div className="flex items-center gap-1">
           <Button
             variant="outline"
@@ -565,6 +610,44 @@ export function CallsOnCalendar() {
           repNameById={data?.repNameById ?? {}}
           onClose={() => setSelectedCallId(null)}
           onMarkTouchpoint={async (touchpoint, extra) => {
+            if (demoMode) {
+              setDemoDataset((prev) => {
+                if (!prev) return prev;
+                const next = new Map(prev.confirmationByCallId);
+                const existing = next.get(selected.call.id);
+                if (!existing) return prev;
+                const nowIso = new Date().toISOString();
+                const patched = { ...existing };
+                if (touchpoint === "night_before") patched.night_before_sent_at = nowIso;
+                if (touchpoint === "morning") {
+                  patched.morning_sent_at = nowIso;
+                  if (extra?.morning_reason_for_change !== undefined)
+                    patched.morning_reason_for_change = extra.morning_reason_for_change;
+                  if (extra?.morning_goal_1 !== undefined)
+                    patched.morning_goal_1 = extra.morning_goal_1;
+                  if (extra?.morning_goal_2 !== undefined)
+                    patched.morning_goal_2 = extra.morning_goal_2;
+                  if (extra?.morning_goal_3 !== undefined)
+                    patched.morning_goal_3 = extra.morning_goal_3;
+                  if (extra?.morning_response_notes !== undefined)
+                    patched.morning_response_notes = extra.morning_response_notes;
+                  patched.morning_responded_at = nowIso;
+                }
+                if (touchpoint === "one_hour") patched.one_hour_sent_at = nowIso;
+                if (touchpoint === "thirty_min") {
+                  patched.thirty_min_sent_at = nowIso;
+                  if (extra?.thirty_min_confirmed) {
+                    patched.thirty_min_confirmed = true;
+                    patched.thirty_min_confirmed_at = nowIso;
+                  }
+                }
+                if (touchpoint === "ten_min") patched.ten_min_sent_at = nowIso;
+                next.set(selected.call.id, patched);
+                return { ...prev, confirmationByCallId: next };
+              });
+              toast.success(`${TOUCHPOINT_LABELS[touchpoint]} marked sent (demo data)`);
+              return;
+            }
             try {
               await markTouchpoint({
                 data: { call_id: selected.call.id, org_id: orgId!, touchpoint, ...extra },
@@ -576,6 +659,33 @@ export function CallsOnCalendar() {
             }
           }}
           onSetStatus={async (status, cancelledReason) => {
+            if (demoMode) {
+              setDemoDataset((prev) => {
+                if (!prev) return prev;
+                const nextConfirmations = new Map(prev.confirmationByCallId);
+                const existing = nextConfirmations.get(selected.call.id);
+                if (existing) {
+                  const nowIso = new Date().toISOString();
+                  nextConfirmations.set(selected.call.id, {
+                    ...existing,
+                    overall_status: status,
+                    confirmed_at: status === "confirmed" ? nowIso : existing.confirmed_at,
+                    cancelled_reason:
+                      status === "cancelled"
+                        ? (cancelledReason ?? "Cancelled by rep")
+                        : existing.cancelled_reason,
+                  });
+                }
+                const nextCalls = prev.calls.map((c) =>
+                  c.id === selected.call.id && status === "cancelled"
+                    ? { ...c, cancelled: true }
+                    : c,
+                );
+                return { ...prev, calls: nextCalls, confirmationByCallId: nextConfirmations };
+              });
+              toast.success("Status updated (demo data)");
+              return;
+            }
             try {
               await setConfirmationStatus({
                 data: {
@@ -592,6 +702,19 @@ export function CallsOnCalendar() {
             }
           }}
           onReschedule={async (isoDate) => {
+            if (demoMode) {
+              setDemoDataset((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  calls: prev.calls.map((c) =>
+                    c.id === selected.call.id ? { ...c, scheduled_for: isoDate } : c,
+                  ),
+                };
+              });
+              toast.success("Call rescheduled (demo data)");
+              return;
+            }
             const { error } = await supabase
               .from("calls")
               .update({ scheduled_for: isoDate })
@@ -603,6 +726,17 @@ export function CallsOnCalendar() {
             }
           }}
           onToggleShowed={async (showed) => {
+            if (demoMode) {
+              setDemoDataset((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  calls: prev.calls.map((c) => (c.id === selected.call.id ? { ...c, showed } : c)),
+                };
+              });
+              toast.success("Updated (demo data)");
+              return;
+            }
             const { error } = await supabase
               .from("calls")
               .update({ showed })
@@ -999,6 +1133,7 @@ function CallDetailDrawer({
     quality: LeadQuality;
     nextAction: string;
     checklist: Array<{ label: string; done: boolean }>;
+    source: string;
   };
   timezone: string;
   policy?: {
@@ -1024,7 +1159,7 @@ function CallDetailDrawer({
   onReschedule: (isoDate: string) => void;
   onToggleShowed: (showed: boolean) => void;
 }) {
-  const { call, lead, confirmation, overallStatus, quality, nextAction, checklist } = entry;
+  const { call, lead, confirmation, overallStatus, quality, nextAction, checklist, source } = entry;
   const [reasonForChange, setReasonForChange] = useState(
     confirmation?.morning_reason_for_change ?? "",
   );
@@ -1105,7 +1240,7 @@ function CallDetailDrawer({
             <div className="text-xs">
               Quality: <span className="font-medium">{quality}</span>
             </div>
-            <div className="text-xs">Source: {lead?.source_platform ?? "Unknown"}</div>
+            <div className="text-xs">Acquisition source: {source}</div>
             <div className="text-xs">
               Qualification: {lead?.qualification_notes || "No notes logged"}
             </div>
@@ -1303,6 +1438,7 @@ function CallDetailDrawer({
               search={{
                 setterId: call.setter_id ?? undefined,
                 closerId: call.closer_id ?? undefined,
+                source: source !== "Unknown / Unattributed" ? source : undefined,
               }}
               className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
             >
