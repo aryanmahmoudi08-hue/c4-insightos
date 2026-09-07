@@ -13,6 +13,9 @@ test("inbound-dialer: callback scheduling shows the browser's time zone and an h
   consoleErrors,
 }) => {
   await page.goto("/inbound-dialer", { waitUntil: "load" });
+  // Command-center follow-up pass: the inline "Log a Callback" section
+  // became a right-side drawer opened via a "Log Callback" trigger button.
+  await page.getByRole("button", { name: "Log Callback" }).click();
   await expect(page.getByText("Log a callback")).toBeVisible({ timeout: 10_000 });
 
   await expect(page.getByText(/Lead time zone:/)).toBeVisible();

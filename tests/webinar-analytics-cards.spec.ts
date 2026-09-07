@@ -19,8 +19,10 @@ test("webinar analytics: canonical KpiBand cards, full labels, real comparison n
   await expect(page.getByText("Paid vs. organic").first()).toBeVisible();
 
   // Full, untruncated labels — the old ExecutiveKpiCard clipped these.
+  // Command-center follow-up pass: "Show-up Rate" now states its denominator
+  // inline ("Live ÷ Registered") so the percentage is never ambiguous.
   await expect(page.getByText("Total Leads", { exact: true })).toBeVisible();
-  await expect(page.getByText("Show-up Rate", { exact: true })).toBeVisible();
+  await expect(page.getByText("Show-up Rate (Live ÷ Registered)", { exact: true })).toBeVisible();
   await expect(page.getByText("ROAS (Acquisition)", { exact: true })).toBeVisible();
   await expect(page.getByText(/TOTAL L\.\.\./)).toHaveCount(0);
   await expect(page.getByText(/SHOW-UP R\.\.\./)).toHaveCount(0);

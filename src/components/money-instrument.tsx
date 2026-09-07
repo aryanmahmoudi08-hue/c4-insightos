@@ -1,4 +1,14 @@
-import { ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Area,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts";
+import { ChartTooltip } from "@/components/chart-tooltip";
 
 export interface MoneyPoint {
   d: string;
@@ -14,7 +24,12 @@ export interface MoneyPoint {
  * this chart — this component's job is purely the shape over time.
  */
 export function MoneyInstrument({
-  series, payoutPct, payoutCents, cashRatePct, onCashClick, fmtMoney,
+  series,
+  payoutPct,
+  payoutCents,
+  cashRatePct,
+  onCashClick,
+  fmtMoney,
 }: {
   series: MoneyPoint[];
   /** Omit both when there's no single payout rate to show (e.g. a company-wide
@@ -39,11 +54,19 @@ export function MoneyInstrument({
           disabled={!onCashClick}
           className={onCashClick ? "cursor-pointer text-left" : "text-left"}
         >
-          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Cash Collected vs Revenue Generated</div>
+          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Cash Collected vs Revenue Generated
+          </div>
         </button>
         <div className="flex items-center gap-3 text-3xs text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="h-1.5 w-3 rounded-full bg-spectrum-hot" />Cash</span>
-          <span className="flex items-center gap-1"><span className="h-0 w-3 border-t border-dashed border-muted-foreground" />Revenue</span>
+          <span className="flex items-center gap-1">
+            <span className="h-1.5 w-3 rounded-full bg-spectrum-hot" />
+            Cash
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-0 w-3 border-t border-dashed border-muted-foreground" />
+            Revenue
+          </span>
         </div>
       </div>
       <div className="relative h-56">
@@ -56,33 +79,76 @@ export function MoneyInstrument({
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="2 4" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="d" stroke="var(--muted-foreground)" fontSize={10} tickLine={false} axisLine={{ stroke: "var(--border)" }} minTickGap={24} />
+            <XAxis
+              dataKey="d"
+              stroke="var(--muted-foreground)"
+              fontSize={10}
+              tickLine={false}
+              axisLine={{ stroke: "var(--border)" }}
+              minTickGap={24}
+            />
             <YAxis
-              stroke="var(--muted-foreground)" fontSize={10} tickLine={false} axisLine={false} width={52}
+              stroke="var(--muted-foreground)"
+              fontSize={10}
+              tickLine={false}
+              axisLine={false}
+              width={52}
               domain={domainMax ? [0, domainMax] : undefined}
               tickFormatter={(v: number) => "$" + Math.round(v / 100).toLocaleString()}
             />
             <Tooltip
-              contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, padding: "6px 10px", boxShadow: "var(--shadow-md)" }}
-              labelStyle={{ color: "var(--muted-foreground)", fontSize: 10, marginBottom: 2 }}
-              formatter={(v: number, name: string) => [fmtMoney(v), name === "cash" ? "Cash" : "Revenue"]}
+              content={
+                <ChartTooltip
+                  contentStyle={{ padding: "6px 10px" }}
+                  labelStyle={{ color: "var(--muted-foreground)", fontSize: 10, marginBottom: 2 }}
+                  formatter={(v: number, name: string) => [
+                    fmtMoney(v),
+                    name === "cash" ? "Cash" : "Revenue",
+                  ]}
+                />
+              }
             />
-            <Area type="monotone" dataKey="cash" name="cash" stroke="var(--spectrum-hot)" fill="url(#moneyCashGrad)" strokeWidth={2} isAnimationActive={false} />
-            <Line type="monotone" dataKey="revenue" name="revenue" stroke="var(--muted-foreground)" strokeDasharray="4 3" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+            <Area
+              type="monotone"
+              dataKey="cash"
+              name="cash"
+              stroke="var(--spectrum-hot)"
+              fill="url(#moneyCashGrad)"
+              strokeWidth={2}
+              isAnimationActive={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="revenue"
+              name="revenue"
+              stroke="var(--muted-foreground)"
+              strokeDasharray="4 3"
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
+            />
           </ComposedChart>
         </ResponsiveContainer>
         {allZero && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <span className="rounded-full border border-border bg-card/90 px-3 py-1 text-2xs text-muted-foreground">No data in range</span>
+            <span className="rounded-full border border-border bg-card/90 px-3 py-1 text-2xs text-muted-foreground">
+              No data in range
+            </span>
           </div>
         )}
       </div>
       <div className="relative mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-border/60 pt-2 text-2xs text-muted-foreground">
         {cashRatePct !== undefined && (
-          <span>Cash collected rate: <span className="font-mono text-foreground">{cashRatePct.toFixed(1)}%</span></span>
+          <span>
+            Cash collected rate:{" "}
+            <span className="font-mono text-foreground">{cashRatePct.toFixed(1)}%</span>
+          </span>
         )}
         {payoutPct !== undefined && payoutCents !== undefined && (
-          <span>Payout owed ({payoutPct}%): <span className="font-mono text-foreground">{fmtMoney(payoutCents)}</span></span>
+          <span>
+            Payout owed ({payoutPct}%):{" "}
+            <span className="font-mono text-foreground">{fmtMoney(payoutCents)}</span>
+          </span>
         )}
       </div>
     </div>

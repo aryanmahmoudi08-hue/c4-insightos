@@ -100,6 +100,7 @@ import {
 } from "@/lib/kpi-targets";
 import { actualFromCalls, sliceCallsToWindow, type CallActualRow } from "@/lib/rep-kpi-actuals";
 import { useMoney } from "@/hooks/use-money";
+import { ChartTooltip } from "@/components/chart-tooltip";
 
 export const Route = createFileRoute("/_authenticated/closer")({ component: Closer });
 
@@ -3355,15 +3356,7 @@ function Closer() {
                       <CartesianGrid stroke="var(--border)" />
                       <XAxis dataKey="date" stroke="var(--muted-foreground)" fontSize={11} />
                       <YAxis stroke="var(--muted-foreground)" fontSize={11} />
-                      <Tooltip
-                        contentStyle={{
-                          background: "var(--popover)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 8,
-                          fontSize: 12,
-                          boxShadow: "var(--shadow-md)",
-                        }}
-                      />
+                      <Tooltip content={<ChartTooltip />} />
                       <Line
                         type="monotone"
                         dataKey="avgMin"

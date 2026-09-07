@@ -11,6 +11,7 @@ import {
   Legend,
 } from "recharts";
 import { expectedVsActualSeries } from "@/lib/mentee-payments";
+import { ChartTooltip } from "@/components/chart-tooltip";
 
 type Range = "7d" | "30d" | "mtd" | "quarter" | "custom";
 
@@ -141,12 +142,12 @@ export function CollectionsChart({
               <XAxis dataKey="date" fontSize={10} stroke="var(--muted-foreground)" />
               <YAxis fontSize={10} stroke="var(--muted-foreground)" />
               <Tooltip
-                contentStyle={{
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
-                  fontSize: 12,
-                }}
-                formatter={(value: number) => `$${value.toLocaleString()}`}
+                content={
+                  <ChartTooltip
+                    contentStyle={{ background: "var(--card)" }}
+                    formatter={(value: number) => `$${value.toLocaleString()}`}
+                  />
+                }
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="Expected" fill="var(--spectrum-mid)" opacity={0.4} />

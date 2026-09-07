@@ -41,6 +41,7 @@ import {
 import { normalizeSocialPlatform } from "@/lib/social-platform";
 import { PlatformIcon } from "@/components/platform-icon";
 import { useMoney } from "@/hooks/use-money";
+import { ChartTooltip } from "@/components/chart-tooltip";
 
 export type ContentCommandMetric = {
   captured_at?: string | null;
@@ -403,7 +404,7 @@ function MoneyOriginSection({
                     link={{ stroke: "var(--spectrum-hot)", strokeOpacity: 0.25 }}
                     node={<MoneySankeyNode onSelect={handleNodeSelect} />}
                   >
-                    <Tooltip formatter={(v: number) => money(v)} />
+                    <Tooltip content={<ChartTooltip formatter={(v: number) => money(v)} />} />
                   </Sankey>
                 </ResponsiveContainer>
               </div>
@@ -1075,16 +1076,14 @@ export function ContentCommandCenter({
                     tickFormatter={(value) => fmt(value)}
                   />
                   <Tooltip
-                    contentStyle={{
-                      background: "var(--popover)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                    formatter={(value: number, name: string) => [
-                      fmt(value),
-                      name === "views" ? "Views" : name === "reach" ? "Reach" : "Interactions",
-                    ]}
+                    content={
+                      <ChartTooltip
+                        formatter={(value: number, name: string) => [
+                          fmt(value),
+                          name === "views" ? "Views" : name === "reach" ? "Reach" : "Interactions",
+                        ]}
+                      />
+                    }
                   />
                   <Area
                     type="monotone"
@@ -1153,13 +1152,7 @@ export function ContentCommandCenter({
                     axisLine={false}
                   />
                   <Tooltip
-                    contentStyle={{
-                      background: "var(--popover)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                    formatter={(value: number) => [fmt(value), "Views"]}
+                    content={<ChartTooltip formatter={(value: number) => [fmt(value), "Views"]} />}
                   />
                   <Bar dataKey="views" fill={SPECTRUM_VAR.mid} radius={[0, 4, 4, 0]} barSize={16} />
                 </BarChart>

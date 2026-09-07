@@ -39,6 +39,7 @@ import { toast } from "sonner";
 import { GlassTableShell } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
+import { ChartTooltip } from "@/components/chart-tooltip";
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import {
   DropdownMenu,
@@ -449,7 +450,9 @@ function Traffic() {
                           <Cell key={b.id} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
                         ))}
                       </Pie>
-                      <RechartsTooltip formatter={(v: number) => `${v} leads`} />
+                      <RechartsTooltip
+                        content={<ChartTooltip formatter={(v: number) => `${v} leads`} />}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>

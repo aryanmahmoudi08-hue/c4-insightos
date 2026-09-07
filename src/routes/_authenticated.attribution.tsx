@@ -11,6 +11,7 @@ import { Route as RouteIcon, Plus } from "lucide-react";
 import { GlassTableShell, FilterPills } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
+import { ChartTooltip } from "@/components/chart-tooltip";
 import { Sankey, Tooltip, ResponsiveContainer, Rectangle, Layer } from "recharts";
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
@@ -232,7 +233,9 @@ function Attribution() {
                       link={{ stroke: "var(--spectrum-hot)", strokeOpacity: 0.25 }}
                       node={<SankeyNodeLabel />}
                     >
-                      <Tooltip formatter={(v: number) => money(v * 100)} />
+                      <Tooltip
+                        content={<ChartTooltip formatter={(v: number) => money(v * 100)} />}
+                      />
                     </Sankey>
                   </ResponsiveContainer>
                 ) : (

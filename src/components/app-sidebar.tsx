@@ -363,23 +363,34 @@ export function AppSidebar() {
       >
         <div
           className={cn(
-            "flex items-center gap-2 border-b border-sidebar-border py-3.5",
-            !showExpanded ? "px-2.5 justify-center" : "px-4",
+            "flex items-center gap-2 border-b border-sidebar-border transition-[padding] duration-200",
+            !showExpanded ? "px-2.5 py-3.5 justify-center" : "px-4 py-4",
           )}
         >
           {/* Two real theme-specific assets (not a CSS invert approximation)
               — .theme-logo-dark shows by default, .theme-logo-light shows
               only under .light (styles.css), so the swap is pure CSS/SSR-
-              safe with no theme-detection flash. */}
+              safe with no theme-detection flash. `w-auto` (not a fixed
+              square box) lets the wordmark's real ~1.5:1 aspect ratio
+              render at full size instead of being letterboxed inside a
+              square — collapsed stays compact (fits the narrow icon rail
+              without clipping), expanded is a substantially larger, real
+              brand mark rather than a tiny icon. */}
           <img
             src={c4OsWhite}
             alt="C4 OS"
-            className="theme-logo-dark h-9 w-9 shrink-0 object-contain"
+            className={cn(
+              "theme-logo-dark shrink-0 object-contain transition-[height] duration-200",
+              !showExpanded ? "h-9 w-9" : "h-14 w-auto",
+            )}
           />
           <img
             src={c4OsBlack}
             alt="C4 OS"
-            className="theme-logo-light h-9 w-9 shrink-0 object-contain"
+            className={cn(
+              "theme-logo-light shrink-0 object-contain transition-[height] duration-200",
+              !showExpanded ? "h-9 w-9" : "h-14 w-auto",
+            )}
           />
           {showExpanded && (
             <button type="button" className="group min-w-0 flex-1 text-left" title="Workspace">

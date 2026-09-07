@@ -45,6 +45,7 @@ import { Button } from "@/components/ui/button";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { useCountUp } from "@/hooks/use-count-up";
 import { useMoney } from "@/hooks/use-money";
+import { FollowCursorTooltip } from "@/components/chart-tooltip";
 import { KpiBand } from "@/components/kpi-band";
 import { KpiCard } from "@/components/kpi-card";
 import { InteractiveSparkline } from "@/components/interactive-sparkline";
@@ -1753,22 +1754,24 @@ function MoneyHeroTooltip({
     year: "numeric",
   });
   return (
-    <div className="rounded-lg border border-border bg-popover/95 px-3 py-2 text-xs shadow-xl">
-      <div className="mb-1.5 text-2xs font-medium text-muted-foreground">{date || label}</div>
-      <div className="space-y-0.5 font-mono tabular-nums">
-        <div className="flex items-center justify-between gap-5">
-          <span className="text-spectrum-hot">Cash Collected</span>
-          <span className="text-spectrum-hot">{money(point.cash)}</span>
-        </div>
-        <div className="flex items-center justify-between gap-5">
-          <span className="text-foreground">Revenue Generated</span>
-          <span className="text-foreground">{money(point.revenue)}</span>
-        </div>
-        <div className="mt-1 border-t border-border/60 pt-1 text-muted-foreground">
-          Cash collected rate: <span className="text-foreground">{rate.toFixed(1)}%</span>
+    <FollowCursorTooltip active={active}>
+      <div className="rounded-lg border border-border bg-popover/95 px-3 py-2 text-xs shadow-xl">
+        <div className="mb-1.5 text-2xs font-medium text-muted-foreground">{date || label}</div>
+        <div className="space-y-0.5 font-mono tabular-nums">
+          <div className="flex items-center justify-between gap-5">
+            <span className="text-spectrum-hot">Cash Collected</span>
+            <span className="text-spectrum-hot">{money(point.cash)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-5">
+            <span className="text-foreground">Revenue Generated</span>
+            <span className="text-foreground">{money(point.revenue)}</span>
+          </div>
+          <div className="mt-1 border-t border-border/60 pt-1 text-muted-foreground">
+            Cash collected rate: <span className="text-foreground">{rate.toFixed(1)}%</span>
+          </div>
         </div>
       </div>
-    </div>
+    </FollowCursorTooltip>
   );
 }
 

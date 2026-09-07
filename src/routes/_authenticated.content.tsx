@@ -81,6 +81,7 @@ import { buildAttributionPathsForModel, ATTRIBUTION_MODELS } from "@/lib/content
 import { computeChannelRevenue } from "@/lib/traffic-channel-revenue";
 import { SOCIAL_PLATFORMS } from "@/lib/social-platform";
 import { PlatformIcon } from "@/components/platform-icon";
+import { ChartTooltip } from "@/components/chart-tooltip";
 
 type Platform = Database["public"]["Enums"]["content_platform"];
 type Angle = Database["public"]["Enums"]["content_angle"];
@@ -2003,14 +2004,7 @@ function SlidesPanel({
               <LineChart data={chartData}>
                 <XAxis dataKey="slide" stroke="var(--muted-foreground)" fontSize={11} />
                 <YAxis stroke="var(--muted-foreground)" fontSize={11} />
-                <Tooltip
-                  contentStyle={{
-                    background: "var(--popover)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                />
+                <Tooltip content={<ChartTooltip />} />
                 <Line type="monotone" dataKey="views" stroke="var(--chart-1)" strokeWidth={2} />
                 <Line type="monotone" dataKey="exits" stroke="var(--destructive)" strokeWidth={2} />
               </LineChart>

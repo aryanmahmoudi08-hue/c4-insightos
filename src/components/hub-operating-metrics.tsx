@@ -19,6 +19,7 @@ import { type RateChartSpec } from "@/components/rate-small-multiples";
 import { Activity, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SPECTRUM_VAR } from "@/lib/spectrum";
+import { ChartTooltip } from "@/components/chart-tooltip";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   dailySeries,
@@ -308,13 +309,12 @@ function InboundVelocityCard({
                   minTickGap={24}
                 />
                 <Tooltip
-                  contentStyle={{
-                    background: "var(--popover)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    fontSize: 11,
-                  }}
-                  labelStyle={{ color: "var(--foreground)" }}
+                  content={
+                    <ChartTooltip
+                      contentStyle={{ fontSize: 11 }}
+                      labelStyle={{ color: "var(--foreground)" }}
+                    />
+                  }
                 />
                 <Line
                   type="monotone"

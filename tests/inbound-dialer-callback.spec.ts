@@ -16,6 +16,10 @@ test("inbound-dialer: callback lead search finds, selects, and logs a real Legac
 }) => {
   await page.goto("/inbound-dialer", { waitUntil: "load" });
 
+  // Command-center follow-up pass: the inline "Log a Callback" section
+  // became a right-side drawer opened via a "Log Callback" trigger button.
+  await page.getByRole("button", { name: "Log Callback" }).click();
+
   const leadInput = page.getByPlaceholder("Search a Legacy Lead by name, handle, or email");
   await expect(leadInput).toBeVisible({ timeout: 10_000 });
   await leadInput.click();

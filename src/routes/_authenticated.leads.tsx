@@ -43,6 +43,7 @@ import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { DateRangePicker, RANGES, type DateRange } from "@/components/date-range-picker";
 import { PlatformIcon } from "@/components/platform-icon";
+import { ChartTooltip } from "@/components/chart-tooltip";
 import { normalizeSocialPlatform } from "@/lib/social-platform";
 import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
 import {
@@ -1419,7 +1420,9 @@ function LeadsPipelineDonut({
                       <RechartsCell key={d.label} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
                     ))}
                   </Pie>
-                  <RechartsTooltip formatter={(v: number) => `${v} leads`} />
+                  <RechartsTooltip
+                    content={<ChartTooltip formatter={(v: number) => `${v} leads`} />}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>

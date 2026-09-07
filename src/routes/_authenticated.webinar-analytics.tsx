@@ -52,6 +52,7 @@ import { SPECTRUM_VAR } from "@/lib/spectrum";
 import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
 import type { Derivation } from "@/lib/funnel-derivation";
 import { useMoney } from "@/hooks/use-money";
+import { ChartTooltip } from "@/components/chart-tooltip";
 
 const WEBINAR_NOT_A_FUNNEL_STAGE: Derivation = {
   status: "insufficient_data",
@@ -376,7 +377,7 @@ function WebinarAnalyticsPage() {
                   },
                   {
                     key: "showUpRate",
-                    label: "Show-up Rate",
+                    label: "Show-up Rate (Live ÷ Registered)",
                     value:
                       summary.webinar.showUpRate == null
                         ? "Unavailable"
@@ -621,85 +622,84 @@ function WebinarAnalyticsPage() {
                 retentionRate={summary.webinar.retentionUntilPitch}
               />
             </section>
-            {/* xl:grid-cols-3 with the retention panel spanning 2 cols/2 rows keeps
-                the two compact analytics cards stacked in the remaining column —
-                at 2 cols the 3rd item used to wrap alone, leaving the opposite
-                cell in that row empty (the reported bottom-right dead space). */}
-            <section className="grid gap-4 xl:grid-cols-3">
-              <div className="xl:col-span-2 xl:row-span-2">
-                <RetentionPanel
-                  retention={retention}
-                  registered={summary.webinar.registered}
-                  liveAttendees={summary.webinar.liveAttendees}
-                  pitchAttendees={summary.webinar.pitchAttendees}
-                  retentionRate={summary.webinar.retentionUntilPitch}
-                />
-              </div>
-              <div className="flex flex-col gap-4">
-                <AnalyticsPanel
-                  title="Closing and return"
-                  description="Checkout conversion, sales, core offer revenue, refunds, and ROAS"
-                  values={[
-                    ["Deposits", number(summary.salesSetting.deposits)],
-                    ["Sales", number(summary.revenue.totalSales)],
-                    ["Contracted revenue", currency(summary.revenue.totalRevenueCents)],
-                    ["Core offer revenue", currency(summary.closing.coreRevenueCents)],
-                    ["Refunds", currency(summary.closing.refundsCents)],
-                    ["Order bump revenue", currency(summary.closing.orderBumpRevenueCents)],
-                    ["Upsell revenue", currency(summary.closing.upsellRevenueCents)],
-                    [
-                      "ROAS (core + bump + upsell revenue)",
-                      summary.revenue.roas == null
-                        ? "Unavailable without legitimate spend"
-                        : `${summary.revenue.roas.toFixed(2)}x`,
-                    ],
-                    [
-                      "Net profit (core offer revenue basis — excludes refunds & non-ad costs)",
-                      profit.netProfitCents == null
-                        ? "Unavailable — cost data not connected"
-                        : currency(profit.netProfitCents),
-                    ],
-                  ]}
-                />
-                <AnalyticsPanel
-                  title="During-pitch vs. after-pitch"
-                  description="Direct in-webinar checkouts vs. sales-team call outcomes, from the real event stream"
-                  values={[
-                    ["During-pitch sales", number(pitchSplit.duringPitchSales)],
-                    [
-                      "During-pitch revenue",
-                      pitchSplit.duringPitchRevenueCents == null
-                        ? `Unavailable — 0 of ${pitchSplit.duringPitchSales} sale event(s) carry an amount`
-                        : currency(pitchSplit.duringPitchRevenueCents),
-                    ],
-                    ["After-pitch sales (booked calls)", number(pitchSplit.afterPitchSales)],
-                    [
-                      "After-pitch revenue",
-                      pitchSplit.afterPitchRevenueCents == null
-                        ? `Unavailable — 0 of ${pitchSplit.afterPitchSales} sale event(s) carry an amount`
-                        : currency(pitchSplit.afterPitchRevenueCents),
-                    ],
-                    [
-                      "After-pitch conversion (of classified sales)",
-                      pitchSplit.afterPitchSales + pitchSplit.duringPitchSales > 0
-                        ? `${((pitchSplit.afterPitchSales / (pitchSplit.afterPitchSales + pitchSplit.duringPitchSales)) * 100).toFixed(1)}%`
-                        : "Unavailable",
-                    ],
-                    [
-                      "Unclassified sales (no lead ID)",
-                      pitchSplit.unclassifiedSales > 0
-                        ? `${number(pitchSplit.unclassifiedSales)} — can't tell during vs. after-pitch without a lead ID`
-                        : number(pitchSplit.unclassifiedSales),
-                    ],
-                    [
-                      "Unclassified revenue",
-                      pitchSplit.unclassifiedRevenueCents == null
-                        ? "Unavailable"
-                        : currency(pitchSplit.unclassifiedRevenueCents),
-                    ],
-                  ]}
-                />
-              </div>
+            {/* Row 1: Audience Retention spans the full content width — it's
+                the primary visual and reads best wide, not squeezed into a
+                partial column. Row 2: Closing-and-return + During-pitch-vs-
+                after-pitch sit side by side, equal width, directly beneath —
+                no leftover dead space since both rows are fully occupied. */}
+            <section className="grid gap-4">
+              <RetentionPanel
+                retention={retention}
+                registered={summary.webinar.registered}
+                liveAttendees={summary.webinar.liveAttendees}
+                pitchAttendees={summary.webinar.pitchAttendees}
+                retentionRate={summary.webinar.retentionUntilPitch}
+              />
+            </section>
+            <section className="grid gap-4 lg:grid-cols-2">
+              <AnalyticsPanel
+                title="Closing and return"
+                description="Checkout conversion, sales, core offer revenue, refunds, and ROAS"
+                values={[
+                  ["Deposits", number(summary.salesSetting.deposits)],
+                  ["Sales", number(summary.revenue.totalSales)],
+                  ["Contracted revenue", currency(summary.revenue.totalRevenueCents)],
+                  ["Core offer revenue", currency(summary.closing.coreRevenueCents)],
+                  ["Refunds", currency(summary.closing.refundsCents)],
+                  ["Order bump revenue", currency(summary.closing.orderBumpRevenueCents)],
+                  ["Upsell revenue", currency(summary.closing.upsellRevenueCents)],
+                  [
+                    "ROAS (core + bump + upsell revenue)",
+                    summary.revenue.roas == null
+                      ? "Unavailable without legitimate spend"
+                      : `${summary.revenue.roas.toFixed(2)}x`,
+                  ],
+                  [
+                    "Net profit (core offer revenue basis — excludes refunds & non-ad costs)",
+                    profit.netProfitCents == null
+                      ? "Unavailable — cost data not connected"
+                      : currency(profit.netProfitCents),
+                  ],
+                ]}
+              />
+              <AnalyticsPanel
+                title="During-pitch vs. after-pitch"
+                description="Direct in-webinar checkouts vs. sales-team call outcomes, from the real event stream"
+                values={[
+                  ["During-pitch sales", number(pitchSplit.duringPitchSales)],
+                  [
+                    "During-pitch revenue",
+                    pitchSplit.duringPitchRevenueCents == null
+                      ? `Unavailable — 0 of ${pitchSplit.duringPitchSales} sale event(s) carry an amount`
+                      : currency(pitchSplit.duringPitchRevenueCents),
+                  ],
+                  ["After-pitch sales (booked calls)", number(pitchSplit.afterPitchSales)],
+                  [
+                    "After-pitch revenue",
+                    pitchSplit.afterPitchRevenueCents == null
+                      ? `Unavailable — 0 of ${pitchSplit.afterPitchSales} sale event(s) carry an amount`
+                      : currency(pitchSplit.afterPitchRevenueCents),
+                  ],
+                  [
+                    "After-pitch conversion (of classified sales)",
+                    pitchSplit.afterPitchSales + pitchSplit.duringPitchSales > 0
+                      ? `${((pitchSplit.afterPitchSales / (pitchSplit.afterPitchSales + pitchSplit.duringPitchSales)) * 100).toFixed(1)}%`
+                      : "Unavailable",
+                  ],
+                  [
+                    "Unclassified sales (no lead ID)",
+                    pitchSplit.unclassifiedSales > 0
+                      ? `${number(pitchSplit.unclassifiedSales)} — can't tell during vs. after-pitch without a lead ID`
+                      : number(pitchSplit.unclassifiedSales),
+                  ],
+                  [
+                    "Unclassified revenue",
+                    pitchSplit.unclassifiedRevenueCents == null
+                      ? "Unavailable"
+                      : currency(pitchSplit.unclassifiedRevenueCents),
+                  ],
+                ]}
+              />
             </section>
             <section className="space-y-3">
               <SectionTitle
@@ -983,25 +983,23 @@ function RetentionPanel({
                 tickFormatter={(v: number) => `${v}%`}
               />
               <RechartsTooltip
-                contentStyle={{
-                  background: "var(--popover)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  fontSize: 12,
-                  padding: "8px 12px",
-                }}
-                labelStyle={{ color: "var(--foreground)", fontWeight: 600, marginBottom: 4 }}
-                formatter={(_value: number, _name: string, item) => {
-                  const point = item.payload as (typeof chartData)[number];
-                  return [
-                    `${point.audience.toLocaleString()} audience${
-                      point.pct == null ? "" : ` · ${point.pct.toFixed(1)}% of registered`
-                    }`,
-                    point.dropOff == null
-                      ? "Baseline"
-                      : `${(point.dropOff * 100).toFixed(1)}% drop-off`,
-                  ];
-                }}
+                content={
+                  <ChartTooltip
+                    contentStyle={{ padding: "8px 12px" }}
+                    labelStyle={{ color: "var(--foreground)", fontWeight: 600, marginBottom: 4 }}
+                    formatter={(_value: number, _name: string, item) => {
+                      const point = item.payload as (typeof chartData)[number];
+                      return [
+                        `${point.audience.toLocaleString()} audience${
+                          point.pct == null ? "" : ` · ${point.pct.toFixed(1)}% of registered`
+                        }`,
+                        point.dropOff == null
+                          ? "Baseline"
+                          : `${(point.dropOff * 100).toFixed(1)}% drop-off`,
+                      ];
+                    }}
+                  />
+                }
               />
               <Area
                 type="monotone"
@@ -1033,17 +1031,18 @@ function RetentionPanel({
         <RetentionStat label="Live attendees" value={number(liveAttendees)} />
         <RetentionStat label="At pitch" value={number(pitchAttendees)} />
         <RetentionStat
-          label="Retention"
+          label="Retention (Pitch ÷ Live)"
           value={retentionRate == null ? "Unavailable" : `${(retentionRate * 100).toFixed(1)}%`}
+          hint="Attendees still present at the pitch, as a share of live attendees — not of total registered."
         />
       </div>
     </div>
   );
 }
 
-function RetentionStat({ label, value }: { label: string; value: string }) {
+function RetentionStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-lg border border-border/70 bg-background/40 p-2">
+    <div className="rounded-lg border border-border/70 bg-background/40 p-2" title={hint}>
       <div className="text-3xs uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
       <div className="mt-1 font-mono text-sm">{value}</div>
     </div>

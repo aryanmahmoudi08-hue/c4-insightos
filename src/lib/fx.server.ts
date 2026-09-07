@@ -23,11 +23,16 @@ export async function getDisplayFxRates(): Promise<
   const today = new Date().toISOString().slice(0, 10);
   const result: Record<string, FxRateInfo | null> = { CAD: null, EUR: null, GBP: null };
 
-  const { data: cached } = await fxRatesTable()
+  // Cache read is best-effort: a failure (unreachable DB, table not migrated
+  // yet) falls straight through to the live Frankfurter fetch below rather
+  // than surfacing as an error — a slow/broken cache must never block a
+  // real rate that's otherwise available.
+  const { data: cached, error: cacheError } = await fxRatesTable()
     .select("quote_currency, rate, rate_date, source")
     .eq("base_currency", "USD")
     .eq("rate_date", today)
     .in("quote_currency", DISPLAY_QUOTE_CURRENCIES as unknown as string[]);
+  if (cacheError) console.error("[fx] cache read failed (non-fatal):", cacheError.message);
 
   for (const row of cached ?? []) {
     result[row.quote_currency] = {
@@ -52,12 +57,18 @@ export async function getDisplayFxRates(): Promise<
       source: "frankfurter",
     }));
     if (rows.length > 0) {
-      await fxRatesTable().upsert(rows, { onConflict: "base_currency,quote_currency,rate_date" });
+      // Best-effort cache write — a failure here (e.g. the cache table
+      // unreachable) must not block returning the real rate we already have.
+      const { error: upsertError } = await fxRatesTable().upsert(rows, {
+        onConflict: "base_currency,quote_currency,rate_date",
+      });
+      if (upsertError) console.error("[fx] cache upsert failed (non-fatal):", upsertError.message);
     }
     for (const row of rows) {
       result[row.quote_currency] = { rate: row.rate, date: row.rate_date, source: row.source };
     }
-  } catch {
+  } catch (e) {
+    console.error("[fx] Frankfurter fetch failed:", e);
     // Network/provider failure — leave missing entries null ("unavailable"),
     // never invent a rate.
   }
