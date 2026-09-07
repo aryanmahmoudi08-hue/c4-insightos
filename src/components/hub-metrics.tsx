@@ -9,6 +9,7 @@ import { Link } from "@tanstack/react-router";
 import { Eye, PlayCircle, PhoneCall, FileText, Trophy, Gauge, Users, ArrowUpRight, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { scaleIntentScore } from "@/lib/lead-quality";
 
 const fmt = (n: number) => new Intl.NumberFormat("en-US").format(Math.round(n));
 const rate = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "—");
@@ -83,7 +84,7 @@ export function HubMetrics() {
       const quality = apps.length
         ? apps.reduce((s, l) => {
             const intent = Number(l.intent_score ?? 0);
-            if (intent > 0) return s + Math.max(1, Math.min(5, intent > 5 ? intent / 20 : intent));
+            if (intent > 0) return s + scaleIntentScore(intent);
             const d = (l.application_data ?? {}) as Record<string, unknown>;
             const answered = Object.values(d).filter(v => String(v ?? "").trim().length > 0).length;
             const base = 1 + Math.min(3, (answered / APP_FIELDS.length) * 3);

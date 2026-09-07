@@ -54,8 +54,8 @@ import { FunnelInstrument } from "@/components/funnel-instrument";
 import { MoneyInstrument, type MoneyPoint } from "@/components/money-instrument";
 import { KpiBand, type KpiBandItem } from "@/components/kpi-band";
 import { OperationalWorkflowPanel } from "@/components/operational-workflow-panel";
-import { AttributionPathPanel, type AttributionPath } from "@/components/attribution-path-panel";
 import { groupBySourcePlatform } from "@/lib/attribution-flow";
+import { CallsOnCalendar } from "@/components/calls-on-calendar";
 import { RateSmallMultiples, type RateChartSpec } from "@/components/rate-small-multiples";
 import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
 import {
@@ -2967,6 +2967,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             />
           </div>
         )}
+        {isDialer && <CallsOnCalendar />}
         <OperationalWorkflowPanel
           role={role}
           qualified={qualified}
@@ -2978,298 +2979,152 @@ export function ActivityModule({ role, title, subtitle }: Props) {
           connectorAvailable={false}
         />
         {(() => {
+          // Compact replacement for the old per-path AttributionPathPanel
+          // blocks — same underlying real counts (groupBySourcePlatform over
+          // speedEvents, callbackFunnel, appointmentQuality), presented as a
+          // small table + stat row instead of large stage/arrow panels. Full
+          // model-based attribution now lives on the master Attribution
+          // Command Center (deep-linked below with whatever real
+          // rep/platform filter is currently active on this page).
           const platformSources = groupBySourcePlatform(speedEvents, (e: any) => e.source_platform);
-          const setterPaths: AttributionPath[] = [
-            {
-              id: "dm-lifecycle",
-              label: "Path 1 · DM → reply → qualified → booked → showed → closed → cash",
-              stages: [
-                {
-                  key: "outbound",
-                  label: "Outbound DMs",
-                  value: outboundDms,
-                  detail: "Verified daily activity",
-                },
-                {
-                  key: "inbound",
-                  label: "Inbound DMs",
-                  value: inboundDms,
-                  detail: "Verified daily activity",
-                },
-                {
-                  key: "replies",
-                  label: "Replies",
-                  value: replies,
-                  detail: "Verified message replies",
-                },
-                {
-                  key: "qualified",
-                  label: "Qualified",
-                  value: qualified,
-                  detail: "Qualified conversations",
-                },
-                { key: "booked", label: "Booked", value: onCalendar, detail: "Calls on calendar" },
-                { key: "showed", label: "Showed", value: showed, detail: "Live calls" },
-                { key: "closed", label: "Closed", value: closes, detail: "Closed calls" },
-                {
-                  key: "cash",
-                  label: "Cash",
-                  value: cashCents ? Math.round(cashCents / 100) : 0,
-                  detail: `${money(cashCents)} collected`,
-                },
-              ],
-            },
-            {
-              id: "content-mechanism",
-              label: "Path 2 · format/content → conversation → booked → cash",
-              stages: [
-                {
-                  key: "format",
-                  label: "Format / content",
-                  value: null,
-                  detail: "No verified content-touch join in daily activity",
-                },
-                {
-                  key: "conversation",
-                  label: "Conversation",
-                  value: replies,
-                  detail: "Verified replies when available",
-                },
-                { key: "booked", label: "Booked", value: onCalendar, detail: "Calls on calendar" },
-                {
-                  key: "cash",
-                  label: "Cash",
-                  value: cashCents ? Math.round(cashCents / 100) : 0,
-                  detail: `${money(cashCents)} collected`,
-                },
-              ],
-            },
-            {
-              id: "vsl-flow",
-              label: "Path 3 · platform → first touch → content/campaign → setter/VSL → outcome",
-              // Dialer only: lead_response_events (speedEvents, already fetched
-              // for the Speed-to-Lead section above) carries a real per-lead
-              // source_platform — a genuine branching breakdown replacing the
-              // "no verified platform join" placeholder stage, rather than one
-              // flat unavailable number implying nothing is known. DM Setter's
-              // aggregate daily activity has no equivalent per-lead join, so it
-              // keeps the honest "unavailable" stage instead.
-              sources: platformSources.length
-                ? platformSources.map((s) => ({ key: s.label, label: s.label, value: s.count }))
-                : undefined,
-              stages: [
-                ...(platformSources.length
-                  ? []
-                  : [
-                      {
-                        key: "platform",
-                        label: "Platform",
-                        value: null,
-                        detail: "No verified platform join in aggregate activity",
-                      },
-                    ]),
-                {
-                  key: "touch",
-                  label: "First touch",
-                  value: null,
-                  detail: "No verified content touchpoint join",
-                },
-                {
-                  key: "setter",
-                  label: isDialer ? "Dialer" : "DM Setter",
-                  value: isDialer ? dials : contacted,
-                  detail: "Current role activity",
-                },
-                {
-                  key: "qualified",
-                  label: "Qualified",
-                  value: qualified,
-                  detail: "Qualified conversations",
-                },
-                { key: "booked", label: "Booked", value: onCalendar, detail: "Calls on calendar" },
-                {
-                  key: "cash",
-                  label: "Cash",
-                  value: cashCents ? Math.round(cashCents / 100) : 0,
-                  detail: `${money(cashCents)} collected`,
-                },
-              ],
-            },
-            {
-              id: "dm-vsl-flow",
-              label:
-                "DM Setter → VSL → post-booking → testimonial → FAQ/objection → booking → cash",
-              stages: [
-                { key: "dm", label: "DM Setter", value: contacted, detail: "Leads contacted" },
-                {
-                  key: "vsl",
-                  label: "VSL",
-                  value: null,
-                  detail: "VSL identity/event join not connected",
-                },
-                {
-                  key: "post-booking",
-                  label: "Post-booking page",
-                  value: postBookingVisits,
-                  detail: "Verified page visits when connected",
-                },
-                {
-                  key: "testimonial",
-                  label: "Testimonial videos",
-                  value: preCallWatches,
-                  detail: "Pre-call watches; video identity unavailable",
-                },
-                {
-                  key: "faq",
-                  label: "FAQ / objections",
-                  value: null,
-                  detail: "No verified FAQ-video event source",
-                },
-                { key: "booked", label: "Booking", value: onCalendar, detail: "Calls on calendar" },
-                {
-                  key: "cash",
-                  label: "Cash",
-                  value: cashCents ? Math.round(cashCents / 100) : 0,
-                  detail: `${money(cashCents)} collected`,
-                },
-              ],
-            },
-          ];
-          if (isDialer) {
-            return (
-              <>
-                <AttributionPathPanel
-                  title="Inbound Dialer attribution"
-                  subtitle="Source → capture → connection → qualified → booked → showed → closed → cash"
-                  paths={[setterPaths[2]]}
-                />
-                <AttributionPathPanel
-                  title="Dialer callbacks & appointment quality"
-                  subtitle="Callbacks Requested → Due Today → Completed Today → Booked → Closed → Cash"
-                  paths={[
-                    {
-                      id: "callbacks",
-                      label: "Callback workflow",
-                      stages: [
-                        {
-                          key: "requested",
-                          label: "Callbacks Requested",
-                          value: callbackFunnel.requested,
-                          detail: "Logged in this range",
-                        },
-                        {
-                          key: "due",
-                          label: "Due Today",
-                          value: callbackFunnel.dueToday,
-                          detail: "due_at falls today",
-                        },
-                        {
-                          key: "completed",
-                          label: "Completed Today",
-                          value: callbackFunnel.completedToday,
-                          detail: "Marked completed today",
-                        },
-                        {
-                          key: "booked",
-                          label: "Calls Booked",
-                          value: onCalendar,
-                          detail: "Verified calls on calendar",
-                        },
-                        {
-                          key: "closed",
-                          label: "Closed",
-                          value: closes,
-                          detail: "Verified closes",
-                        },
-                        {
-                          key: "cash",
-                          label: "Cash",
-                          value: cashCents ? Math.round(cashCents / 100) : 0,
-                          detail: `${money(cashCents)} collected`,
-                        },
-                      ],
-                    },
-                    {
-                      id: "appointment-quality",
-                      label: "Appointment quality",
-                      stages: [
-                        {
-                          key: "cancel",
-                          label: "Cancellation Rate",
-                          value:
-                            appointmentQuality.cancellationRate == null
-                              ? null
-                              : Math.round(appointmentQuality.cancellationRate),
-                          detail: appointmentQuality.total
-                            ? `${appointmentQuality.total} scheduled calls in range`
-                            : "No scheduled calls in range",
-                        },
-                        {
-                          key: "reschedule",
-                          label: "Reschedule Rate",
-                          value:
-                            appointmentQuality.rescheduleRate == null
-                              ? null
-                              : Math.round(appointmentQuality.rescheduleRate),
-                          detail: appointmentQuality.total
-                            ? `${appointmentQuality.total} scheduled calls in range`
-                            : "No scheduled calls in range",
-                        },
-                        {
-                          key: "no-show",
-                          label: "No-show Rate",
-                          value:
-                            appointmentQuality.noShowRate == null
-                              ? null
-                              : Math.round(appointmentQuality.noShowRate),
-                          detail: appointmentQuality.total
-                            ? `${appointmentQuality.total} scheduled calls in range`
-                            : "No scheduled calls in range",
-                        },
-                        {
-                          key: "recovery",
-                          label: "No-show Recovery",
-                          value:
-                            appointmentQuality.noShowRecoveryRate == null
-                              ? null
-                              : Math.round(appointmentQuality.noShowRecoveryRate),
-                          detail: "% of no-shows later marked recovered on a follow-up call",
-                        },
-                      ],
-                    },
-                  ]}
-                />
-              </>
+          const sourceMixRows = platformSources.map((s) => {
+            const rowsForPlatform = speedEvents.filter(
+              (e: any) => normalizeSocialPlatform(e.source_platform) === s.label,
             );
+            return {
+              label: s.label,
+              conversations: rowsForPlatform.length,
+              qualified: rowsForPlatform.filter((e: any) => e.qualified).length,
+              booked: rowsForPlatform.filter((e: any) => e.set || e.booked_call).length,
+              shows: rowsForPlatform.filter((e: any) => e.showed).length,
+              closes: rowsForPlatform.filter((e: any) => e.closed).length,
+            };
+          });
+          const attributionDeepLinkSearch: Record<string, string> = {};
+          if (member !== ALL_MEMBERS) {
+            if (isDialer) attributionDeepLinkSearch.dialerId = member;
+            else attributionDeepLinkSearch.setterId = member;
           }
+          if (platformFilter !== "all") attributionDeepLinkSearch.platform = platformFilter;
+
           return (
-            <AttributionPathPanel
-              title="DM Setter attribution"
-              subtitle="Distinct DM, content, platform, and VSL paths; aggregate rows stay evidence-scoped"
-              paths={setterPaths}
-            />
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+              <div className="mb-3 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                {isDialer ? "Inbound Lead Sources" : "DM Source Mix"}
+              </div>
+              {sourceMixRows.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="text-3xs uppercase tracking-wider text-muted-foreground">
+                      <tr>
+                        <th className="p-1.5 text-left">{isDialer ? "Source" : "Platform"}</th>
+                        <th className="p-1.5 text-right font-mono">
+                          {isDialer ? "Leads" : "Conversations"}
+                        </th>
+                        <th className="p-1.5 text-right font-mono">Qualified</th>
+                        <th className="p-1.5 text-right font-mono">Booked</th>
+                        <th className="p-1.5 text-right font-mono">Shows</th>
+                        <th className="p-1.5 text-right font-mono">Closes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sourceMixRows.map((r) => (
+                        <tr key={r.label} className="border-t border-border/50">
+                          <td className="p-1.5 font-medium">
+                            <span className="flex items-center gap-1.5">
+                              <PlatformIcon
+                                platform={r.label as (typeof SOCIAL_PLATFORMS)[number]}
+                                className="h-3 w-3"
+                              />
+                              {r.label}
+                            </span>
+                          </td>
+                          <td className="p-1.5 text-right font-mono">{r.conversations}</td>
+                          <td className="p-1.5 text-right font-mono">{r.qualified}</td>
+                          <td className="p-1.5 text-right font-mono">{r.booked}</td>
+                          <td className="p-1.5 text-right font-mono">{r.shows}</td>
+                          <td className="p-1.5 text-right font-mono text-spectrum-hot">
+                            {r.closes}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-3xs text-muted-foreground">
+                  No source-level activity in range yet.
+                </div>
+              )}
+              {isDialer && (
+                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border/50 pt-3 sm:grid-cols-6">
+                  {(
+                    [
+                      ["Callbacks Requested", String(callbackFunnel.requested)],
+                      ["Due Today", String(callbackFunnel.dueToday)],
+                      ["Completed Today", String(callbackFunnel.completedToday)],
+                      [
+                        "Cancel Rate",
+                        appointmentQuality.cancellationRate == null
+                          ? "—"
+                          : `${Math.round(appointmentQuality.cancellationRate)}%`,
+                      ],
+                      [
+                        "No-show Rate",
+                        appointmentQuality.noShowRate == null
+                          ? "—"
+                          : `${Math.round(appointmentQuality.noShowRate)}%`,
+                      ],
+                      [
+                        "No-show Recovery",
+                        appointmentQuality.noShowRecoveryRate == null
+                          ? "—"
+                          : `${Math.round(appointmentQuality.noShowRecoveryRate)}%`,
+                      ],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-lg border border-border/50 bg-background/40 p-2"
+                    >
+                      <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                        {label}
+                      </div>
+                      <div className="mt-0.5 font-mono text-sm font-semibold">{value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Link
+                to="/attribution"
+                search={attributionDeepLinkSearch}
+                className="mt-3 inline-block text-xs text-primary hover:underline"
+              >
+                View Full Attribution →
+              </Link>
+            </div>
           );
         })()}
-        {/* Log a Callback — a right-side drawer (§15), not a large inline
-            section: the trigger stays on the page, the entire form + pending
-            list live in the Sheet. Logic/data unchanged, presentation only. */}
+        {/* Log a Callback — a floating action button instead of an inline
+            trigger card, so it doesn't reserve page layout space. Same
+            onClick, same Sheet/form/lead-selector/save logic below,
+            completely unchanged — presentation-only swap. */}
         {isDialer && (
           <>
-            <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <div>
-                <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Callbacks
-                </div>
-                <div className="mt-1 text-sm text-foreground">
-                  {callbacks.filter((c) => c.state !== "completed").length} pending callback
-                  {callbacks.filter((c) => c.state !== "completed").length === 1 ? "" : "s"}
-                </div>
-              </div>
-              <Button size="sm" onClick={() => setCallbackDrawerOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Log Callback
-              </Button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setCallbackDrawerOpen(true)}
+              aria-label="Log a callback"
+              title="Log a Callback"
+              className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-border bg-primary text-primary-foreground shadow-lg transition hover:scale-105 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            >
+              <PhoneIncoming className="h-5 w-5" />
+              {callbacks.filter((c) => c.state !== "completed").length > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full border border-border bg-destructive px-1 text-3xs font-semibold text-destructive-foreground">
+                  {callbacks.filter((c) => c.state !== "completed").length}
+                </span>
+              )}
+            </button>
             <Sheet open={callbackDrawerOpen} onOpenChange={setCallbackDrawerOpen}>
               <SheetContent className="w-full overflow-y-auto sm:max-w-md">
                 <SheetHeader>

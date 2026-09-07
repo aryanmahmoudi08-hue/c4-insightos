@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- legacy VSL and Supabase payloads are dynamic until generated types are expanded */
-import { createFileRoute, useSearch } from "@tanstack/react-router";
+import { createFileRoute, useSearch, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
@@ -223,6 +223,15 @@ function VslFunnelPanel({ vsl }: { vsl: any }) {
 
   return (
     <div className="border-t border-border p-4 space-y-3">
+      <div className="flex justify-end">
+        <Link
+          to="/attribution"
+          search={{ vslId: vsl.id }}
+          className="text-xs text-primary hover:underline"
+        >
+          Explore Full Attribution →
+        </Link>
+      </div>
       <AttributionPathPanel
         title="Full funnel"
         subtitle="Wistia snapshot (landing/play/milestones/CTA) is a single latest reading; application/show/close/cash reflect leads and calls tagged to this VSL within your selected date range — none of it is a live Wistia API sync"

@@ -51,8 +51,6 @@ import {
   collectionRatePct,
   effectiveScheduleStatus,
 } from "@/lib/mentee-payments";
-import { AttributionEvidencePanel } from "@/components/attribution-evidence-panel";
-import { AttributionPathPanel, type AttributionPath } from "@/components/attribution-path-panel";
 import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
 import type { Derivation } from "@/lib/funnel-derivation";
 import { MenteeOperationsPanel } from "@/components/mentee-operations-panel";
@@ -234,71 +232,61 @@ function MenteeLifecycleEvidence({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const lifecyclePath: AttributionPath[] = [
+  // Compact lifecycle strip: Original Source → Setter/Dialer → Closer → Offer →
+  // Payment Plan → Cash. Only offer/payment-plan/cash resolve today because
+  // this mentee record is not joined back to its originating lead — the rest
+  // honestly render "Not Connected" rather than guessing.
+  const lifecycleSegments: { label: string; value: string | null; fallback: string }[] = [
+    { label: "Original Source", value: null, fallback: "Not Connected" },
+    { label: "Setter / Dialer", value: null, fallback: "Not Connected" },
+    { label: "Closer", value: null, fallback: "Not Connected" },
+    { label: "Offer", value: client.offer_name, fallback: "Unavailable" },
     {
-      id: "mentee-lifecycle",
-      label:
-        "Source/campaign → capture mechanism → setter/dialer → closer → offer → payment plan → cash → health → outcome",
-      stages: [
-        {
-          key: "source",
-          label: "Source / Campaign",
-          value: null,
-          detail: "No verified lead join stored on the mentee record",
-        },
-        {
-          key: "capture",
-          label: "Capture Mechanism",
-          value: null,
-          detail: "Not connected — lives on the originating lead, not the mentee",
-        },
-        {
-          key: "rep",
-          label: "Setter / Dialer / Closer",
-          value: null,
-          detail: "Not connected — join via lead_id → calls when available",
-        },
-        {
-          key: "offer",
-          label: "Offer",
-          value: client.offer_name ? 1 : 0,
-          detail: client.offer_name ?? "No offer recorded",
-        },
-        {
-          key: "plan",
-          label: "Payment Plan",
-          value: client.payment_plan ? 1 : 0,
-          detail: client.payment_plan ? `${schedule.length} scheduled` : "Paid in full",
-        },
-        {
-          key: "cash",
-          label: "Cash Collected",
-          value: Math.round(collectedCents / 100),
-          detail: money(collectedCents),
-        },
-        {
-          key: "health",
-          label: "Health",
-          value: health?.score ?? null,
-          detail: health?.status ?? "unavailable",
-        },
-        {
-          key: "outcome",
-          label: "Renewal / Upgrade / Churn",
-          value: null,
-          detail: stageLabel(client.renewal_stage),
-        },
-      ],
+      label: "Payment Plan",
+      value: client.payment_plan ? `${schedule.length} scheduled` : "Paid in full",
+      fallback: "Unavailable",
     },
+    { label: "Cash", value: money(collectedCents), fallback: "Unavailable" },
   ];
 
   return (
     <div className="space-y-4 rounded-xl border border-border/70 bg-muted/10 p-4">
-      <AttributionEvidencePanel
-        evidence={evidence}
-        title={`Lifecycle evidence · ${client.full_name}`}
-        unavailableMessage="No verified acquisition-to-retention relationship is available for this mentee."
-      />
+      <div className="rounded-lg border border-border/60 bg-card/60 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Lifecycle attribution
+          </div>
+          <Link
+            to="/attribution"
+            search={{ menteeId: client.id } as never}
+            className="text-3xs font-medium text-spectrum-mid hover:underline"
+          >
+            View Full Attribution →
+          </Link>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {lifecycleSegments.map((seg, i) => (
+            <div key={seg.label} className="flex items-center gap-1.5">
+              {i > 0 && <span className="text-muted-foreground/40">→</span>}
+              <div className="rounded-md border border-border/50 bg-muted/20 px-2 py-1">
+                <div className="text-4xs uppercase tracking-wider text-muted-foreground">
+                  {seg.label}
+                </div>
+                <div
+                  className={`font-mono text-2xs ${seg.value ? "text-foreground" : "text-muted-foreground italic"}`}
+                >
+                  {seg.value ?? seg.fallback}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 text-3xs text-muted-foreground">
+          <span className="font-medium capitalize text-foreground">{evidence.coverage}</span>{" "}
+          attribution · <span className="capitalize">{evidence.strength}</span> confidence ·{" "}
+          {evidence.knownTouchpoints} touchpoint{evidence.knownTouchpoints === 1 ? "" : "s"}
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
           ["Contracted", money(client.contract_value_cents ?? 0)],
@@ -387,12 +375,6 @@ function MenteeLifecycleEvidence({
           <div className="mt-1 text-xs text-muted-foreground">No payment records yet.</div>
         )}
       </div>
-
-      <AttributionPathPanel
-        title="Mentee lifecycle attribution"
-        subtitle="Original source through to renewal/upgrade/churn — stages without a verified join show Not Connected, never guessed"
-        paths={lifecyclePath}
-      />
 
       <div className="rounded-lg border border-border/60 bg-card/60 p-3">
         <div className="text-3xs uppercase tracking-wider text-muted-foreground">

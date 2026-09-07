@@ -218,6 +218,119 @@ export function aggregateCashByContent(
   return Array.from(byContent.entries()).map(([contentId, v]) => ({ contentId, ...v }));
 }
 
+export type PlatformCashAggregate = {
+  platform: string;
+  cashCents: number;
+  callCount: number;
+};
+
+/**
+ * Channel -> Cash, same shape/guarantees as `aggregateCashByContent` (see its
+ * doc comment for the double-counting analysis — identical here, just grouped
+ * by platform instead of contentId). `buildAttributionPathsForModel` never
+ * populates `path.platform` itself (confirmed: every call site passes it as
+ * null) — platform lives on `content_pieces`, so callers resolve it via a
+ * contentId->platform map exactly like content-command-center.tsx's own
+ * `platformByContentId` already does. This function takes that same
+ * pre-built map rather than re-deriving it, so there is one join, not two.
+ */
+export function aggregateCashByPlatform(
+  paths: CanonicalLifecycleAttributionPath[],
+  callCashCentsById: Record<string, number | null | undefined>,
+  platformByContentId: Record<string, string | null | undefined>,
+): PlatformCashAggregate[] {
+  const byPlatform = new Map<string, { cashCents: number; callCount: number }>();
+  for (const path of paths) {
+    if (!path.callId) continue;
+    const platform = path.platform ?? (path.contentId ? platformByContentId[path.contentId] : null);
+    if (!platform) continue;
+    const cash = callCashCentsById[path.callId];
+    if (cash == null || cash <= 0) continue;
+    const cur = byPlatform.get(platform) ?? { cashCents: 0, callCount: 0 };
+    cur.cashCents += cash;
+    cur.callCount += 1;
+    byPlatform.set(platform, cur);
+  }
+  return Array.from(byPlatform.entries()).map(([platform, v]) => ({ platform, ...v }));
+}
+
+export type AttributionJourney = {
+  key: string;
+  platform: string | null;
+  source: string | null;
+  setterOrDialerId: string | null;
+  closerId: string | null;
+  offerId: string | null;
+  callCount: number;
+  cashCents: number;
+  contractValueCents: number;
+  showCount: number;
+  refundCount: number;
+};
+
+/**
+ * Groups the SAME canonical paths from `buildAttributionPathsForModel` into
+ * recurring journeys (spec: "Top Converting Customer Journeys") — a derived
+ * view over existing attribution output, not a new attribution computation.
+ * `callMeta` supplies the per-call fields the engine itself doesn't carry
+ * (setter/dialer/closer, contract value, show/refund state), joined by
+ * `path.callId` the same way content-command-center.tsx joins platform by
+ * `path.contentId` — one external map, not a second engine.
+ */
+export function identifyTopAttributionJourneys(
+  paths: CanonicalLifecycleAttributionPath[],
+  callMeta: Record<
+    string,
+    {
+      cashCents: number | null;
+      contractValueCents: number | null;
+      setterId: string | null;
+      dialerId: string | null;
+      closerId: string | null;
+      showed: boolean | null;
+      refunded: boolean | null;
+    }
+  >,
+  platformByContentId: Record<string, string | null | undefined>,
+): AttributionJourney[] {
+  const byKey = new Map<string, AttributionJourney>();
+  for (const path of paths) {
+    if (!path.callId) continue;
+    const meta = callMeta[path.callId];
+    if (!meta) continue;
+    const platform =
+      path.platform ?? (path.contentId ? (platformByContentId[path.contentId] ?? null) : null);
+    const setterOrDialerId = meta.setterId ?? meta.dialerId ?? null;
+    const key = [
+      platform ?? "unknown",
+      path.source ?? "unknown",
+      setterOrDialerId ?? "unknown",
+      meta.closerId ?? "unknown",
+      path.offerId ?? "unknown",
+    ].join("|");
+    const cur = byKey.get(key) ?? {
+      key,
+      platform,
+      source: path.source,
+      setterOrDialerId,
+      closerId: meta.closerId,
+      offerId: path.offerId,
+      callCount: 0,
+      cashCents: 0,
+      contractValueCents: 0,
+      showCount: 0,
+      refundCount: 0,
+    };
+    cur.callCount += 1;
+    cur.cashCents += meta.cashCents ?? 0;
+    cur.contractValueCents += meta.contractValueCents ?? 0;
+    if (meta.showed) cur.showCount += 1;
+    if (meta.refunded) cur.refundCount += 1;
+    byKey.set(key, cur);
+  }
+  return Array.from(byKey.values()).sort((a, b) => b.cashCents - a.cashCents);
+}
+
 export const ATTRIBUTION_MODEL_LABELS: Record<AttributionModel, string> = {
   first_touch: "First touch",
   lead_source: "Lead source",

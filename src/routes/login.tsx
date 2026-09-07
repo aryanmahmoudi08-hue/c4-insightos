@@ -66,12 +66,12 @@ function LoginPage() {
         <img
           src={c4OsWhite}
           alt="C4 OS"
-          className="theme-logo-dark h-9 w-auto shrink-0 object-contain"
+          className="theme-logo-dark h-16 w-auto shrink-0 object-contain"
         />
         <img
           src={c4OsBlack}
           alt="C4 OS"
-          className="theme-logo-light h-9 w-auto shrink-0 object-contain"
+          className="theme-logo-light h-16 w-auto shrink-0 object-contain"
         />
       </Link>
       <div className="flex w-full items-center justify-center">

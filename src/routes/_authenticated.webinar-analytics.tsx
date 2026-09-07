@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import {
@@ -364,6 +364,15 @@ function WebinarAnalyticsPage() {
               <SectionTitle
                 title={selected?.name ?? "Webinar detail"}
                 subtitle="Executive KPI layer · metrics remain unavailable until a legitimate source is connected."
+                right={
+                  <Link
+                    to="/attribution"
+                    search={{ webinarId: selectedId }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Explore Full Attribution →
+                  </Link>
+                }
               />
               <KpiBand
                 title="Executive KPIs"
@@ -915,11 +924,22 @@ function WebinarAnalyticsOverview({
   );
 }
 
-function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
+function SectionTitle({
+  title,
+  subtitle,
+  right,
+}: {
+  title: string;
+  subtitle: string;
+  right?: ReactNode;
+}) {
   return (
-    <div>
-      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-      <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+      {right && <div className="shrink-0">{right}</div>}
     </div>
   );
 }

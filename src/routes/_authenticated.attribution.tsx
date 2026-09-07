@@ -1,351 +1,709 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
-import { mockAttributionPaths } from "@/lib/dev-mock-data";
-import { evaluateAttributionEvidence } from "@/lib/acquisition";
-import { TopBar } from "@/components/app-sidebar";
+import { useCurrentOrg } from "@/hooks/use-auth";
 import { useDateRange } from "@/hooks/use-date-range";
-import { StatCard } from "@/components/stat-card";
-import { Route as RouteIcon, Plus } from "lucide-react";
+import { useMoney } from "@/hooks/use-money";
+import { TopBar } from "@/components/app-sidebar";
+import { KpiBand, type KpiBandItem } from "@/components/kpi-band";
 import { GlassTableShell, FilterPills } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
-import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { ChartTooltip } from "@/components/chart-tooltip";
+import { PlatformIcon } from "@/components/platform-icon";
 import { Sankey, Tooltip, ResponsiveContainer, Rectangle, Layer } from "recharts";
-import { Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { Route as RouteIcon, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  buildAttributionPathsForModel,
+  ATTRIBUTION_MODELS,
+  ATTRIBUTION_MODEL_LABELS,
+  aggregateCashByContent,
+  aggregateCashByPlatform,
+  identifyTopAttributionJourneys,
+} from "@/lib/content-attribution";
+import { normalizeAcquisitionSource, acquisitionSourceOptions } from "@/lib/acquisition-source";
+import { socialPlatformOptions, type SocialPlatform } from "@/lib/social-platform";
+import type { AttributionModel, CanonicalLifecycleAttributionPath } from "@/lib/acquisition";
 
-export const Route = createFileRoute("/_authenticated/attribution")({ component: Attribution });
+/** All-optional so every other page can deep-link with only the params it
+ * actually has a real value for (e.g. `search={{ vslId }}`) without being
+ * forced to fabricate the rest. */
+export type AttributionSearch = {
+  model?: string;
+  platform?: string;
+  source?: string;
+  campaign?: string;
+  contentId?: string;
+  setterId?: string;
+  dialerId?: string;
+  closerId?: string;
+  offerId?: string;
+  webinarId?: string;
+  vslId?: string;
+  menteeId?: string;
+};
 
-const money = (cents: number) => "$" + Math.round(cents / 100).toLocaleString();
+export const Route = createFileRoute("/_authenticated/attribution")({
+  component: AttributionCommandCenter,
+  validateSearch: (s: Record<string, unknown>): AttributionSearch => ({
+    model: typeof s.model === "string" ? s.model : undefined,
+    platform: typeof s.platform === "string" ? s.platform : undefined,
+    source: typeof s.source === "string" ? s.source : undefined,
+    campaign: typeof s.campaign === "string" ? s.campaign : undefined,
+    contentId: typeof s.contentId === "string" ? s.contentId : undefined,
+    setterId: typeof s.setterId === "string" ? s.setterId : undefined,
+    dialerId: typeof s.dialerId === "string" ? s.dialerId : undefined,
+    closerId: typeof s.closerId === "string" ? s.closerId : undefined,
+    offerId: typeof s.offerId === "string" ? s.offerId : undefined,
+    webinarId: typeof s.webinarId === "string" ? s.webinarId : undefined,
+    vslId: typeof s.vslId === "string" ? s.vslId : undefined,
+    menteeId: typeof s.menteeId === "string" ? s.menteeId : undefined,
+  }),
+});
 
-function Attribution() {
+const MODEL_EXPLANATIONS: Record<AttributionModel, string> = {
+  first_touch: "The earliest known acquisition touchpoint.",
+  lead_source: "The source credited with creating the lead.",
+  booking_source: "The source credited with generating the booked call.",
+  last_touch: "The most recent qualifying touchpoint before conversion.",
+  assisted_touch:
+    "Additional known touchpoints that contributed to the journey but are not receiving direct single-touch credit.",
+};
+
+const isValidModel = (m: string | undefined): m is AttributionModel =>
+  !!m && (ATTRIBUTION_MODELS as string[]).includes(m);
+
+function AttributionCommandCenter() {
+  const search = Route.useSearch();
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
-  const { devBypass } = useAuth();
   const { range } = useDateRange();
+  const money = useMoney();
   const fromISO = `${range.from}T00:00:00`;
   const toISO = `${range.to}T23:59:59`;
-  const [platformFilter, setPlatformFilter] = useState<string>("all");
 
-  const { data } = useQuery({
-    queryKey: ["attr", orgId, range.from, range.to, devBypass],
+  const [model, setModel] = useState<AttributionModel>(
+    isValidModel(search.model) ? search.model : "first_touch",
+  );
+  const [platformFilter, setPlatformFilter] = useState<string>(search.platform ?? "all");
+  const [sourceFilter, setSourceFilter] = useState<string>(search.source ?? "all");
+  const [setterFilter, setSetterFilter] = useState<string>(
+    search.setterId ?? search.dialerId ?? "all",
+  );
+  const [closerFilter, setCloserFilter] = useState<string>(search.closerId ?? "all");
+  const [recordsOpen, setRecordsOpen] = useState(false);
+
+  // Seed local filter state from an incoming deep link exactly once — every
+  // other page in this app links here with real, already-resolved values
+  // (never fabricated), so it's safe to trust them as the initial state.
+  useEffect(() => {
+    if (isValidModel(search.model)) setModel(search.model);
+    if (search.platform) setPlatformFilter(search.platform);
+    if (search.source) setSourceFilter(search.source);
+    if (search.setterId || search.dialerId) setSetterFilter(search.setterId ?? search.dialerId!);
+    if (search.closerId) setCloserFilter(search.closerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["attribution-command-center", orgId, range.from, range.to],
     enabled: !!orgId,
     queryFn: async () => {
-      // Confirmed real conflict (found while adding the date-range regression
-      // test below): a full devBypass short-circuit here would skip every
-      // Supabase call, including the one that test verifies actually re-fires
-      // with new range bounds. So the real requests still always fire — same
-      // per-query mocking pattern team.tsx already established (some queries
-      // mocked, the range-tested one left real) — only `paths` (which needs a
-      // real session to read content_pieces/content_metrics) falls back to a
-      // mock when the real join comes back empty under devBypass.
-      const [touches, leads, closed, contentPaths] = await Promise.all([
-        supabase
-          .from("lead_content_touches")
-          .select("id")
-          .eq("org_id", orgId!)
-          .gte("touched_at", fromISO)
-          .lte("touched_at", toISO),
+      const [leadsRes, callsRes, touchesRes, contentRes, trafficRes] = await Promise.all([
         supabase
           .from("leads")
-          .select("id, first_touch_content_id")
+          .select("id, created_at, source_content_id, first_touch_content_id, traffic_source_id")
           .eq("org_id", orgId!)
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
         supabase
           .from("calls")
-          .select("id, contract_value_cents, cash_collected_cents, lead_id")
-          .eq("org_id", orgId!)
-          .eq("closed", true)
-          .gte("created_at", fromISO)
-          .lte("created_at", toISO),
-        // Top performing content paths — inner-joins content_metrics so only
-        // pieces with metrics logged inside the selected range are counted.
-        supabase
-          .from("content_pieces")
           .select(
-            "id, title, platform, content_metrics!inner(views, leads_generated, closes, cash_collected_cents, captured_at)",
+            "id, lead_id, created_at, closed, source_content_id, contract_value_cents, cash_collected_cents, setter_id, closer_id, showed",
           )
           .eq("org_id", orgId!)
-          .gte("content_metrics.captured_at", fromISO)
-          .lte("content_metrics.captured_at", toISO)
-          .limit(100),
+          .gte("created_at", fromISO)
+          .lte("created_at", toISO),
+        supabase
+          .from("lead_content_touches")
+          .select("id, lead_id, content_id, touched_at")
+          .eq("org_id", orgId!)
+          .gte("touched_at", fromISO)
+          .lte("touched_at", toISO),
+        supabase.from("content_pieces").select("id, title, platform").eq("org_id", orgId!),
+        supabase.from("traffic_sources").select("id, category").eq("org_id", orgId!),
       ]);
 
-      // Aggregate per content
-      const realPaths = (contentPaths.data ?? [])
-        .map((c) => {
-          const metrics = Array.isArray(c.content_metrics) ? c.content_metrics : [];
-          const views = metrics.reduce((s: number, m) => s + (m.views ?? 0), 0);
-          const leads = metrics.reduce((s: number, m) => s + (m.leads_generated ?? 0), 0);
-          const closes = metrics.reduce((s: number, m) => s + (m.closes ?? 0), 0);
-          const cash = metrics.reduce((s: number, m) => s + (m.cash_collected_cents ?? 0), 0);
-          return {
-            id: c.id,
-            title: c.title ?? "(untitled)",
-            platform: c.platform,
-            views,
-            leads,
-            closes,
-            cash,
-          };
-        })
-        .filter((p) => p.cash > 0 || p.leads > 0)
-        .sort((a, b) => b.cash - a.cash);
-      const paths = devBypass && realPaths.length === 0 ? mockAttributionPaths() : realPaths;
+      const leadRows = leadsRes.data ?? [];
+      const callRows = callsRes.data ?? [];
+      const touchRows = touchesRes.data ?? [];
+      const contentRows = contentRes.data ?? [];
+      const trafficRows = trafficRes.data ?? [];
+      const closedRows = callRows.filter((c) => c.closed);
+
+      const repIds = Array.from(
+        new Set(
+          [...callRows.map((c) => c.setter_id), ...callRows.map((c) => c.closer_id)].filter(
+            (v): v is string => !!v,
+          ),
+        ),
+      );
+      const profilesRes = repIds.length
+        ? await supabase.from("profiles").select("id, display_name").in("id", repIds)
+        : { data: [] as Array<{ id: string; display_name: string | null }> };
+      const repNameById: Record<string, string> = {};
+      for (const p of profilesRes.data ?? []) repNameById[p.id] = p.display_name ?? p.id;
+
+      const platformByContentId: Record<string, string | null> = {};
+      const titleByContentId: Record<string, string> = {};
+      for (const c of contentRows) {
+        platformByContentId[c.id] = c.platform ?? null;
+        titleByContentId[c.id] = c.title ?? "(untitled)";
+      }
+
+      const trafficCategoryByLeadId: Record<string, string | null> = {};
+      const trafficCategoryById: Record<string, string> = {};
+      for (const t of trafficRows) trafficCategoryById[t.id] = t.category;
+      for (const l of leadRows) {
+        trafficCategoryByLeadId[l.id] = l.traffic_source_id
+          ? (trafficCategoryById[l.traffic_source_id] ?? null)
+          : null;
+      }
+
+      const modelInput = {
+        leads: leadRows.map((l) => ({
+          id: l.id,
+          created_at: l.created_at,
+          source_content_id: l.source_content_id,
+        })),
+        calls: closedRows.map((c) => ({
+          id: c.id,
+          lead_id: c.lead_id,
+          created_at: c.created_at,
+          closed: true,
+          source_content_id: c.source_content_id,
+        })),
+        touches: touchRows,
+        sampleSize: closedRows.length,
+      };
+      const pathsByModel = Object.fromEntries(
+        ATTRIBUTION_MODELS.map((m) => [m, buildAttributionPathsForModel(m, modelInput)]),
+      ) as Record<AttributionModel, CanonicalLifecycleAttributionPath[]>;
+
+      const callCashById: Record<string, number> = {};
+      const callContractById: Record<string, number> = {};
+      // Not tracked anywhere in this schema today — `calls` has no source
+      // for the acquisition channel a call closed against; only content has
+      // a source_content_id. Honestly null rather than guessed.
+      const callSourceCategory: Record<string, string | null> = {};
+      const callMetaById: Record<
+        string,
+        {
+          cashCents: number | null;
+          contractValueCents: number | null;
+          setterId: string | null;
+          dialerId: string | null;
+          closerId: string | null;
+          showed: boolean | null;
+          refunded: boolean | null;
+        }
+      > = {};
+      for (const c of callRows) {
+        if (c.cash_collected_cents != null) callCashById[c.id] = c.cash_collected_cents;
+        if (c.contract_value_cents != null) callContractById[c.id] = c.contract_value_cents;
+        callSourceCategory[c.id] = c.lead_id ? (trafficCategoryByLeadId[c.lead_id] ?? null) : null;
+        callMetaById[c.id] = {
+          cashCents: c.cash_collected_cents ?? null,
+          contractValueCents: c.contract_value_cents ?? null,
+          // This schema has one rep column ("setter_id") shared by DM Setter
+          // and Inbound Dialer bookings — there is no separate dialer_id
+          // column, so a "dialerId" filter/deep-link is matched against the
+          // same field rather than fabricating a second one.
+          setterId: c.setter_id,
+          dialerId: c.setter_id,
+          closerId: c.closer_id,
+          showed: c.showed,
+          // No refund/default/chargeback signal exists on `calls` — honestly
+          // null, never inferred from payment-plan or other unrelated state.
+          refunded: null,
+        };
+      }
 
       return {
-        touches: touches.data?.length ?? 0,
-        leads: leads.data?.length ?? 0,
-        attributed: leads.data?.filter((l) => l.first_touch_content_id).length ?? 0,
-        closes: closed.data?.length ?? 0,
-        cash: (closed.data ?? []).reduce((s, c) => s + (c.contract_value_cents ?? 0), 0),
-        cashCollected: (closed.data ?? []).reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0),
-        paths,
+        leadRows,
+        callRows,
+        closedRows,
+        pathsByModel,
+        callCashById,
+        callContractById,
+        callSourceCategory,
+        callMetaById,
+        platformByContentId,
+        titleByContentId,
+        repNameById,
       };
     },
   });
 
-  const attrRate = (data?.leads ?? 0) > 0 ? (data!.attributed / data!.leads) * 100 : 0;
+  const currentPaths = useMemo(() => data?.pathsByModel[model] ?? [], [data, model]);
 
-  const platforms = useMemo(
-    () => Array.from(new Set((data?.paths ?? []).map((p) => p.platform).filter(Boolean))).sort(),
-    [data?.paths],
-  );
-  const filteredPaths = useMemo(
-    () =>
-      platformFilter === "all"
-        ? (data?.paths ?? [])
-        : (data?.paths ?? []).filter((p) => p.platform === platformFilter),
-    [data?.paths, platformFilter],
-  );
+  // Resolve each path's platform/source/setter/closer via the external join
+  // maps above — buildAttributionPathsForModel never populates these fields
+  // itself (confirmed: every call site leaves them null), matching the same
+  // platformByContentId pattern content-command-center.tsx already uses.
+  const resolvedPaths = useMemo(() => {
+    if (!data) return [];
+    return currentPaths.map((p) => {
+      const platform = p.contentId ? (data.platformByContentId[p.contentId] ?? null) : null;
+      const meta = p.callId ? data.callMetaById[p.callId] : undefined;
+      const sourceCategory = p.callId ? data.callSourceCategory[p.callId] : null;
+      return {
+        path: p,
+        platform,
+        source: normalizeAcquisitionSource(sourceCategory),
+        setterId: meta?.setterId ?? null,
+        dialerId: meta?.dialerId ?? null,
+        closerId: meta?.closerId ?? null,
+      };
+    });
+  }, [data, currentPaths]);
 
-  // Content → Cash Sankey (Sales Tracking Part 5) — confirmed no Sankey/
-  // alluvial component existed anywhere in this codebase; recharts already
-  // ships one (this app's existing chart library), so this reuses it rather
-  // than a hand-rolled river of styled divs or a new charting dependency.
-  // Three-tier flow: top content pieces → their platform → total cash
-  // collected, so filtering by platform above visibly reshapes the diagram.
+  const filteredPaths = useMemo(() => {
+    return resolvedPaths.filter((r) => {
+      if (platformFilter !== "all" && r.platform !== platformFilter) return false;
+      if (sourceFilter !== "all" && r.source !== sourceFilter) return false;
+      if (setterFilter !== "all" && r.setterId !== setterFilter && r.dialerId !== setterFilter)
+        return false;
+      if (
+        closerFilter !== "all" &&
+        r.closerId !== closerFilter &&
+        (data?.repNameById[r.closerId ?? ""] ?? "") !== closerFilter
+      )
+        return false;
+      return true;
+    });
+  }, [resolvedPaths, platformFilter, sourceFilter, setterFilter, closerFilter, data]);
+  const filteredCanonicalPaths = useMemo(() => filteredPaths.map((r) => r.path), [filteredPaths]);
+
+  const platformOptions = useMemo(
+    () => Array.from(new Set(resolvedPaths.map((r) => r.platform).filter(Boolean))) as string[],
+    [resolvedPaths],
+  );
+  const setterOptions = useMemo(() => {
+    if (!data) return [];
+    const ids = new Set<string>();
+    for (const c of data.callRows) if (c.setter_id) ids.add(c.setter_id);
+    return Array.from(ids).map((id) => ({ id, name: data.repNameById[id] ?? id }));
+  }, [data]);
+  const closerOptions = useMemo(() => {
+    if (!data) return [];
+    const ids = new Set<string>();
+    for (const c of data.callRows) if (c.closer_id) ids.add(c.closer_id);
+    return Array.from(ids).map((id) => ({ id, name: data.repNameById[id] ?? id }));
+  }, [data]);
+
+  // --- A. Overview KPIs (ground truth, independent of the selected model) ---
+  const totalCashCents = (data?.closedRows ?? []).reduce(
+    (s, c) => s + (c.cash_collected_cents ?? 0),
+    0,
+  );
+  const totalContractCents = (data?.closedRows ?? []).reduce(
+    (s, c) => s + (c.contract_value_cents ?? 0),
+    0,
+  );
+  const attributedCallIds = useMemo(
+    () => new Set(currentPaths.map((p) => p.callId).filter(Boolean)),
+    [currentPaths],
+  );
+  const attributedCashCents = (data?.closedRows ?? [])
+    .filter((c) => attributedCallIds.has(c.id))
+    .reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
+  const unattributedCashCents = Math.max(0, totalCashCents - attributedCashCents);
+
+  const cashByAcquisitionSource = useMemo(() => {
+    const buckets: Record<string, number> = {};
+    for (const c of data?.closedRows ?? []) {
+      const category = c.lead_id ? (data?.callSourceCategory[c.id] ?? null) : null;
+      const bucket = normalizeAcquisitionSource(category);
+      buckets[bucket] = (buckets[bucket] ?? 0) + (c.cash_collected_cents ?? 0);
+    }
+    return buckets;
+  }, [data]);
+  const organicCash = cashByAcquisitionSource["Organic"] ?? 0;
+  const referralCash = cashByAcquisitionSource["Referral"] ?? 0;
+  const paidCash =
+    (cashByAcquisitionSource["Meta Ads"] ?? 0) +
+    (cashByAcquisitionSource["Google Ads"] ?? 0) +
+    (cashByAcquisitionSource["TikTok Ads"] ?? 0);
+
+  const kpiItems: KpiBandItem[] = [
+    {
+      key: "leads",
+      label: "Total Leads",
+      value: (data?.leadRows.length ?? 0).toLocaleString(),
+      spectrum: "cold",
+    },
+    {
+      key: "booked",
+      label: "Booked Calls",
+      value: (data?.callRows.length ?? 0).toLocaleString(),
+      spectrum: "cold",
+    },
+    {
+      key: "shows",
+      label: "Shows",
+      value: (data?.callRows.filter((c) => c.showed).length ?? 0).toLocaleString(),
+      spectrum: "mid",
+    },
+    {
+      key: "closes",
+      label: "Closes",
+      value: (data?.closedRows.length ?? 0).toLocaleString(),
+      spectrum: "hot",
+    },
+    {
+      key: "revenue",
+      label: "Revenue Generated",
+      value: money(totalContractCents),
+      spectrum: "hot",
+    },
+    { key: "cash", label: "Cash Collected", value: money(totalCashCents), spectrum: "hot" },
+    {
+      key: "attributed",
+      label: "Attributed Cash",
+      value: money(attributedCashCents),
+      spectrum: "mid",
+      emptyHint: `${ATTRIBUTION_MODEL_LABELS[model]} basis`,
+    },
+    {
+      key: "unattributed",
+      label: "Unattributed Cash",
+      value: money(unattributedCashCents),
+      spectrum: "cold",
+      empty: totalCashCents === 0,
+      emptyHint: "No closed-call cash in range",
+    },
+    { key: "organic", label: "Organic Cash", value: money(organicCash), spectrum: "cold" },
+    { key: "paid", label: "Paid Cash", value: money(paidCash), spectrum: "hot" },
+    { key: "referral", label: "Referral Cash", value: money(referralCash), spectrum: "mid" },
+  ];
+
+  // --- C. Master Attribution Flow (Sankey) ---
   const sankeyData = useMemo(() => {
-    const top = [...filteredPaths].sort((a, b) => b.cash - a.cash).slice(0, 8);
-    if (top.length === 0) return null;
-    const platformNames = Array.from(new Set(top.map((p) => String(p.platform ?? "unknown"))));
+    const rows = filteredPaths.filter((r) => r.path.callId && data?.callCashById[r.path.callId!]);
+    if (!rows.length) return null;
+    const platformNames = Array.from(new Set(rows.map((r) => r.platform ?? "Unknown")));
+    const closerNames = Array.from(
+      new Set(
+        rows.map((r) => (r.closerId ? (data?.repNameById[r.closerId] ?? r.closerId) : "Unknown")),
+      ),
+    );
     const nodes = [
-      ...top.map((p) => ({ name: p.title.length > 24 ? p.title.slice(0, 24) + "…" : p.title })),
-      ...platformNames.map((pl) => ({ name: pl })),
+      ...platformNames.map((n) => ({ name: n })),
+      ...closerNames.map((n) => ({ name: n })),
       { name: "Cash Collected" },
     ];
-    const platformIndex = (pl: string) => top.length + platformNames.indexOf(pl);
-    const cashNodeIndex = nodes.length - 1;
-    const links = [
-      ...top.map((p, i) => ({
-        source: i,
-        target: platformIndex(p.platform ?? "unknown"),
-        value: Math.max(1, Math.round(p.cash / 100)),
-      })),
-      ...platformNames.map((pl) => ({
-        source: platformIndex(pl),
-        target: cashNodeIndex,
-        value: Math.max(
-          1,
-          Math.round(
-            top.filter((p) => (p.platform ?? "unknown") === pl).reduce((s, p) => s + p.cash, 0) /
-              100,
-          ),
-        ),
-      })),
-    ];
+    const platformIndex = (n: string) => platformNames.indexOf(n);
+    const closerIndex = (n: string) => platformNames.length + closerNames.indexOf(n);
+    const cashIndex = nodes.length - 1;
+    const linkMap = new Map<string, number>();
+    for (const r of rows) {
+      const cash = data!.callCashById[r.path.callId!] ?? 0;
+      if (cash <= 0) continue;
+      const platform = r.platform ?? "Unknown";
+      const closer = r.closerId ? (data?.repNameById[r.closerId] ?? r.closerId) : "Unknown";
+      const k1 = `${platformIndex(platform)}>${closerIndex(closer)}`;
+      linkMap.set(k1, (linkMap.get(k1) ?? 0) + cash);
+      const k2 = `${closerIndex(closer)}>${cashIndex}`;
+      linkMap.set(k2, (linkMap.get(k2) ?? 0) + cash);
+    }
+    const links = Array.from(linkMap.entries()).map(([k, value]) => {
+      const [source, target] = k.split(">").map(Number);
+      return { source, target, value };
+    });
+    if (!links.length) return null;
     return { nodes, links };
+  }, [filteredPaths, data]);
+
+  // --- D. Channel -> Cash ---
+  const channelRows = useMemo(() => {
+    if (!data) return [];
+    const cashAgg = aggregateCashByPlatform(
+      filteredCanonicalPaths,
+      data.callCashById,
+      data.platformByContentId,
+    );
+    const contractAgg = aggregateCashByPlatform(
+      filteredCanonicalPaths,
+      data.callContractById,
+      data.platformByContentId,
+    );
+    const contractByPlatform = new Map(contractAgg.map((r) => [r.platform, r.cashCents]));
+    return cashAgg
+      .map((r) => {
+        const rowsForPlatform = filteredPaths.filter((fp) => fp.platform === r.platform);
+        const strengths = rowsForPlatform.map((fp) => fp.path.evidence.strength);
+        const modalStrength =
+          strengths.sort(
+            (a, b) =>
+              strengths.filter((s) => s === b).length - strengths.filter((s) => s === a).length,
+          )[0] ?? "unknown";
+        return {
+          platform: r.platform,
+          cashCents: r.cashCents,
+          contractCents: contractByPlatform.get(r.platform) ?? 0,
+          closes: r.callCount,
+          strength: modalStrength,
+        };
+      })
+      .sort((a, b) => b.cashCents - a.cashCents);
+  }, [data, filteredCanonicalPaths, filteredPaths]);
+
+  // --- E. Content -> Cash ---
+  const contentRows = useMemo(() => {
+    if (!data) return [];
+    return aggregateCashByContent(filteredCanonicalPaths, data.callCashById)
+      .map((r) => ({ ...r, title: data.titleByContentId[r.contentId] ?? r.contentId }))
+      .sort((a, b) => b.cashCents - a.cashCents);
+  }, [data, filteredCanonicalPaths]);
+
+  // --- F. Top Customer Journeys ---
+  const journeyRows = useMemo(() => {
+    if (!data) return [];
+    return identifyTopAttributionJourneys(
+      filteredCanonicalPaths,
+      data.callMetaById,
+      data.platformByContentId,
+    ).slice(0, 15);
+  }, [data, filteredCanonicalPaths]);
+
+  // --- G. Coverage & Confidence ---
+  const coverageBreakdown = useMemo(() => {
+    const buckets: Record<string, number> = {};
+    for (const r of filteredPaths)
+      buckets[r.path.evidence.coverage] = (buckets[r.path.evidence.coverage] ?? 0) + 1;
+    return buckets;
   }, [filteredPaths]);
+  const strengthBreakdown = useMemo(() => {
+    const buckets: Record<string, number> = {};
+    for (const r of filteredPaths)
+      buckets[r.path.evidence.strength] = (buckets[r.path.evidence.strength] ?? 0) + 1;
+    return buckets;
+  }, [filteredPaths]);
+
+  const repLabel = (id: string | null) => (id ? (data?.repNameById[id] ?? id) : "Unknown");
 
   return (
     <>
-      <TopBar title="Lead Attribution" subtitle="Content → lead → call → cash" showDateRange />
-      <div className="p-6 space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-spectrum-mid/30 bg-spectrum-mid/5 px-3 py-2 text-xs">
-          <span className="text-muted-foreground">
-            This intelligence is now consolidated into Content Command Center's Unified money-origin
-            attribution section — with a selectable attribution model and platform icons. This page
-            stays available but won't gain new depth going forward.
-          </span>
-          <Link to="/content" className="shrink-0 font-medium text-primary hover:underline">
-            Open Content Command Center →
-          </Link>
-        </div>
-        <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
-          <StatCard
-            label="Content touches"
-            value={(data?.touches ?? 0).toLocaleString()}
-            spectrum="cold"
-          />
-          <StatCard label="Leads" value={(data?.leads ?? 0).toLocaleString()} spectrum="cold" />
-          <StatCard
-            label="Attributed"
-            value={`${attrRate.toFixed(0)}%`}
-            spectrum="mid"
-            hint={`${data?.attributed ?? 0} of ${data?.leads ?? 0}`}
-          />
-          <StatCard label="Closes" value={(data?.closes ?? 0).toLocaleString()} spectrum="hot" />
-          <StatCard
-            label="Contract value"
-            value={"$" + Math.round((data?.cash ?? 0) / 100).toLocaleString()}
-            spectrum="hot"
-          />
-        </div>
+      <TopBar
+        title="Attribution Command Center"
+        subtitle="Every dollar's real, model-consistent origin — content, channel, and rep"
+        showDateRange
+      />
+      <div className="space-y-6 p-6">
+        <KpiBand title="Overview" items={kpiItems} />
 
-        {platforms.length > 0 && (
-          <FilterPills
-            options={[
-              { key: "all", label: "All platforms", count: (data?.paths ?? []).length },
-              ...platforms.map((pl) => ({ key: pl, label: pl })),
-            ]}
-            value={platformFilter}
-            onChange={setPlatformFilter}
-          />
-        )}
-
-        {/* Content → Cash Sankey — the page's hero moment (B1), replacing the
-            old hand-rolled div "river" with a real flow diagram (recharts'
-            own Sankey, this app's existing chart library — no new dependency,
-            no hand-rolled SVG). Reshapes live with the platform filter above. */}
-        <BentoGrid cols={2} rowHeight="9.5rem">
-          <BentoCell span="hero">
-            <div className="hover-lift relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-5">
-              <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
-              <div className="relative mb-2">
-                <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Content → Cash Flow
-                </div>
-                <div className="display-serif mt-0.5 text-2xl">
-                  Top content, by platform, into cash collected
-                </div>
-              </div>
-              <div className="relative flex-1">
-                {sankeyData ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <Sankey
-                      data={sankeyData}
-                      nodePadding={20}
-                      nodeWidth={10}
-                      linkCurvature={0.5}
-                      link={{ stroke: "var(--spectrum-hot)", strokeOpacity: 0.25 }}
-                      node={<SankeyNodeLabel />}
-                    >
-                      <Tooltip
-                        content={<ChartTooltip formatter={(v: number) => money(v * 100)} />}
-                      />
-                    </Sankey>
-                  </ResponsiveContainer>
-                ) : (
-                  <EmptyState
-                    icon={<RouteIcon className="h-4 w-4" />}
-                    title="No attributed content yet"
-                    description="Log content_metrics rows with leads_generated + cash_collected_cents to populate this."
-                    action={
-                      <Link to="/content" className="text-xs text-primary hover:underline">
-                        Open Content →
-                      </Link>
-                    }
-                  />
-                )}
-              </div>
+        {/* B. Model + global filters */}
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="mb-3">
+            <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Attribution model
             </div>
-          </BentoCell>
-        </BentoGrid>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              {ATTRIBUTION_MODELS.map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setModel(m)}
+                  className={`rounded-xl border p-2.5 text-left transition ${
+                    model === m
+                      ? "border-primary bg-primary/10"
+                      : "border-border/60 bg-background/40 hover:border-border"
+                  }`}
+                >
+                  <div className="text-xs font-semibold">{ATTRIBUTION_MODEL_LABELS[m]}</div>
+                  <div className="mt-0.5 text-3xs text-muted-foreground">
+                    {MODEL_EXPLANATIONS[m]}
+                  </div>
+                </button>
+              ))}
+            </div>
+            {model === "assisted_touch" && (
+              <p className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 text-3xs text-amber-300">
+                Assisted credit is inferred, not direct: the same call's cash can be attributed to
+                more than one assisting piece here, so totals will legitimately exceed a single
+                call's real amount. Never presented as a clean aggregate.
+              </p>
+            )}
+          </div>
 
-        {/* Top content paths */}
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <div className="mb-1 text-3xs uppercase tracking-wider text-muted-foreground">
+                Platform
+              </div>
+              <FilterPills
+                options={[
+                  { key: "all", label: "All platforms" },
+                  ...(socialPlatformOptions() as SocialPlatform[])
+                    .filter((p) => platformOptions.includes(p))
+                    .map((p) => ({ key: p, label: p })),
+                ]}
+                value={platformFilter}
+                onChange={setPlatformFilter}
+              />
+            </div>
+            <div>
+              <div className="mb-1 text-3xs uppercase tracking-wider text-muted-foreground">
+                Acquisition source
+              </div>
+              <FilterPills
+                options={[
+                  { key: "all", label: "All sources" },
+                  ...acquisitionSourceOptions().map((s) => ({ key: s, label: s })),
+                ]}
+                value={sourceFilter}
+                onChange={setSourceFilter}
+              />
+            </div>
+            {setterOptions.length > 0 && (
+              <div>
+                <div className="mb-1 text-3xs uppercase tracking-wider text-muted-foreground">
+                  Setter / Dialer
+                </div>
+                <FilterPills
+                  options={[
+                    { key: "all", label: "All reps" },
+                    ...setterOptions.map((o) => ({ key: o.id, label: o.name })),
+                  ]}
+                  value={setterFilter}
+                  onChange={setSetterFilter}
+                />
+              </div>
+            )}
+            {closerOptions.length > 0 && (
+              <div>
+                <div className="mb-1 text-3xs uppercase tracking-wider text-muted-foreground">
+                  Closer
+                </div>
+                <FilterPills
+                  options={[
+                    { key: "all", label: "All closers" },
+                    ...closerOptions.map((o) => ({ key: o.id, label: o.name })),
+                  ]}
+                  value={closerFilter}
+                  onChange={setCloserFilter}
+                />
+              </div>
+            )}
+          </div>
+          {(search.campaign ||
+            search.offerId ||
+            search.webinarId ||
+            search.vslId ||
+            search.menteeId) && (
+            <p className="mt-3 text-3xs text-muted-foreground">
+              This view arrived with additional context (
+              {[
+                search.campaign && "campaign",
+                search.offerId && "offer",
+                search.webinarId && "webinar",
+                search.vslId && "VSL",
+                search.menteeId && "mentee",
+              ]
+                .filter(Boolean)
+                .join(", ")}
+              ) that isn't tracked as a dedicated filter dimension in this data model yet — not
+              fabricated to avoid dropping it silently.
+            </p>
+          )}
+        </div>
+
+        {/* C. Master Attribution Flow */}
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
+          <div className="mb-2">
+            <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Master Attribution Flow — {ATTRIBUTION_MODEL_LABELS[model]} basis
+            </div>
+            <div className="mt-0.5 text-base font-semibold">Platform → Closer → Cash</div>
+          </div>
+          <div className="h-72">
+            {sankeyData ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <Sankey
+                  data={sankeyData}
+                  nodePadding={18}
+                  nodeWidth={10}
+                  linkCurvature={0.5}
+                  link={{ stroke: "var(--spectrum-hot)", strokeOpacity: 0.25 }}
+                  node={<FlowNodeLabel />}
+                >
+                  <Tooltip content={<ChartTooltip formatter={(v: number) => money(v)} />} />
+                </Sankey>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyState
+                icon={<RouteIcon className="h-4 w-4" />}
+                title="No attributed cash for this model/filter combination"
+                description="Widen the date range or clear a filter to see the flow."
+              />
+            )}
+          </div>
+        </div>
+
+        {/* D. Channel -> Cash */}
         <GlassTableShell
           toolbar={
-            <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
-              Top revenue-driving content paths
+            <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Channel → Cash
             </div>
           }
         >
           <table className="w-full text-sm">
             <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="text-left p-3">#</th>
-                <th className="text-left p-3">Content</th>
-                <th className="text-left p-3">Platform</th>
-                <th className="text-right p-3 font-mono">Views</th>
-                <th className="text-right p-3 font-mono">Leads</th>
-                <th className="text-right p-3 font-mono">Closes</th>
-                <th className="text-right p-3 font-mono">Cash</th>
-                <th className="text-left p-3 w-52">Attribution confidence</th>
+                <th className="p-3 text-left">Channel</th>
+                <th className="p-3 text-right font-mono">Closes</th>
+                <th className="p-3 text-right font-mono">Revenue</th>
+                <th className="p-3 text-right font-mono">Cash</th>
+                <th className="p-3 text-right font-mono">Collection Rate</th>
+                <th className="p-3 text-left">Attribution Strength</th>
               </tr>
             </thead>
             <tbody>
-              {filteredPaths.slice(0, 20).map((p, i) => {
-                const w = Math.max(
-                  4,
-                  Math.round((p.cash / Math.max(1, filteredPaths[0].cash)) * 100),
-                );
-                const evidence = evaluateAttributionEvidence({
-                  model: "first_touch",
-                  supportingEvents: ["content_metrics"],
-                  sampleSize: p.closes,
-                  directOutcomeLinked: false,
-                  drilldownKey: p.id,
-                });
-                return (
-                  <tr key={p.id} className="border-t border-border/70 hover:bg-muted/20">
-                    <td className="p-3 font-mono text-xs text-muted-foreground">{i + 1}</td>
-                    <td className="p-3 font-medium">{p.title}</td>
-                    <td className="p-3 text-xs uppercase">{p.platform}</td>
-                    <td className="p-3 text-right font-mono">{p.views.toLocaleString()}</td>
-                    <td className="p-3 text-right font-mono text-spectrum-cold">{p.leads}</td>
-                    <td className="p-3 text-right font-mono text-spectrum-mid">{p.closes}</td>
-                    <td className="p-3 text-right font-mono text-spectrum-hot">
-                      ${Math.round(p.cash / 100).toLocaleString()}
-                    </td>
-                    <td className="p-3">
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between gap-2 text-3xs uppercase tracking-wider">
-                          <span className="text-spectrum-hot">{evidence.coverage}</span>
-                          <span className="text-muted-foreground">
-                            {evidence.model.replaceAll("_", " ")}
-                          </span>
-                        </div>
-                        <div className="h-2 overflow-hidden rounded bg-muted">
-                          <div className="h-full bg-spectrum-hot" style={{ width: `${w}%` }} />
-                        </div>
-                        <div className="text-3xs text-muted-foreground">
-                          {evidence.knownTouchpoints} known touchpoint
-                          {evidence.knownTouchpoints === 1 ? "" : "s"}
-                          {evidence.sampleWarning ? ` · ${evidence.sampleWarning}` : ""}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredPaths.length === 0 && (
+              {channelRows.map((r) => (
+                <tr
+                  key={r.platform}
+                  className="cursor-pointer border-t border-border/70 hover:bg-muted/20"
+                  onClick={() => setPlatformFilter(r.platform)}
+                >
+                  <td className="p-3">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <PlatformIcon
+                        platform={r.platform as SocialPlatform}
+                        className="h-3.5 w-3.5"
+                      />
+                      {r.platform}
+                    </span>
+                  </td>
+                  <td className="p-3 text-right font-mono">{r.closes}</td>
+                  <td className="p-3 text-right font-mono">{money(r.contractCents)}</td>
+                  <td className="p-3 text-right font-mono text-spectrum-hot">
+                    {money(r.cashCents)}
+                  </td>
+                  <td className="p-3 text-right font-mono">
+                    {r.contractCents > 0
+                      ? `${Math.round((r.cashCents / r.contractCents) * 100)}%`
+                      : "—"}
+                  </td>
+                  <td className="p-3 text-2xs uppercase text-muted-foreground">{r.strength}</td>
+                </tr>
+              ))}
+              {channelRows.length === 0 && (
                 <tr>
-                  <td colSpan={8}>
+                  <td colSpan={6}>
                     <EmptyState
                       icon={<RouteIcon className="h-4 w-4" />}
-                      title={
-                        platformFilter === "all"
-                          ? "No attributed content yet"
-                          : `No attributed content for ${platformFilter}`
-                      }
-                      description="Log content_metrics rows with leads_generated + cash_collected_cents to populate this."
-                      action={
-                        platformFilter !== "all" ? (
-                          <button
-                            onClick={() => setPlatformFilter("all")}
-                            className="flex items-center gap-1 text-xs text-primary hover:underline"
-                          >
-                            <Plus className="h-3 w-3 rotate-45" /> Clear filter
-                          </button>
-                        ) : (
-                          <Link to="/content" className="text-xs text-primary hover:underline">
-                            Open Content →
-                          </Link>
-                        )
-                      }
+                      title="No channel-level cash for this model/filter combination"
                     />
                   </td>
                 </tr>
@@ -353,23 +711,202 @@ function Attribution() {
             </tbody>
           </table>
         </GlassTableShell>
+
+        {/* E. Content -> Cash */}
+        <GlassTableShell
+          toolbar={
+            <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Content → Cash
+            </div>
+          }
+        >
+          <table className="w-full text-sm">
+            <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="p-3 text-left">Content</th>
+                <th className="p-3 text-right font-mono">Closes</th>
+                <th className="p-3 text-right font-mono">Cash</th>
+              </tr>
+            </thead>
+            <tbody>
+              {contentRows.slice(0, 20).map((r) => (
+                <tr key={r.contentId} className="border-t border-border/70 hover:bg-muted/20">
+                  <td className="p-3 font-medium">{r.title}</td>
+                  <td className="p-3 text-right font-mono">{r.callCount}</td>
+                  <td className="p-3 text-right font-mono text-spectrum-hot">
+                    {money(r.cashCents)}
+                  </td>
+                </tr>
+              ))}
+              {contentRows.length === 0 && (
+                <tr>
+                  <td colSpan={3}>
+                    <EmptyState
+                      icon={<RouteIcon className="h-4 w-4" />}
+                      title="No content-level cash for this model/filter combination"
+                    />
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </GlassTableShell>
+
+        {/* F. Top Customer Journeys */}
+        <GlassTableShell
+          toolbar={
+            <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Top Customer Journeys
+            </div>
+          }
+        >
+          <table className="w-full text-sm">
+            <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="p-3 text-left">Platform</th>
+                <th className="p-3 text-left">Source</th>
+                <th className="p-3 text-left">Rep</th>
+                <th className="p-3 text-left">Closer</th>
+                <th className="p-3 text-right font-mono">Calls</th>
+                <th className="p-3 text-right font-mono">Revenue</th>
+                <th className="p-3 text-right font-mono">Cash</th>
+                <th className="p-3 text-right font-mono">Collection Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {journeyRows.map((r) => (
+                <tr key={r.key} className="border-t border-border/70 hover:bg-muted/20">
+                  <td className="p-3">{r.platform ?? "Unknown"}</td>
+                  <td className="p-3">{r.source ?? "Unknown"}</td>
+                  <td className="p-3">{repLabel(r.setterOrDialerId)}</td>
+                  <td className="p-3">{repLabel(r.closerId)}</td>
+                  <td className="p-3 text-right font-mono">{r.callCount}</td>
+                  <td className="p-3 text-right font-mono">{money(r.contractValueCents)}</td>
+                  <td className="p-3 text-right font-mono text-spectrum-hot">
+                    {money(r.cashCents)}
+                  </td>
+                  <td className="p-3 text-right font-mono">
+                    {r.contractValueCents > 0
+                      ? `${Math.round((r.cashCents / r.contractValueCents) * 100)}%`
+                      : "—"}
+                  </td>
+                </tr>
+              ))}
+              {journeyRows.length === 0 && (
+                <tr>
+                  <td colSpan={8}>
+                    <EmptyState
+                      icon={<RouteIcon className="h-4 w-4" />}
+                      title="No recurring journeys for this model/filter combination"
+                    />
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </GlassTableShell>
+
+        {/* G. Coverage & Confidence */}
+        <div className="grid gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:grid-cols-2">
+          <div>
+            <div className="mb-2 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Coverage — {ATTRIBUTION_MODEL_LABELS[model]}
+            </div>
+            <div className="space-y-1.5">
+              {(["direct", "partial", "inferred", "unavailable"] as const).map((c) => (
+                <div key={c} className="flex items-center justify-between text-xs">
+                  <span className="capitalize text-muted-foreground">{c}</span>
+                  <span className="font-mono">{coverageBreakdown[c] ?? 0}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between border-t border-border/60 pt-1.5 text-xs">
+                <span className="text-muted-foreground">Unattributed (no path)</span>
+                <span className="font-mono">
+                  {(data?.closedRows.length ?? 0) - attributedCallIds.size}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div className="mb-2 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Strength
+            </div>
+            <div className="space-y-1.5">
+              {(["high", "medium", "low", "unknown"] as const).map((s) => (
+                <div key={s} className="flex items-center justify-between text-xs">
+                  <span className="capitalize text-muted-foreground">{s}</span>
+                  <span className="font-mono">{strengthBreakdown[s] ?? 0}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* H. Detailed records */}
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <button
+            onClick={() => setRecordsOpen((v) => !v)}
+            className="flex w-full items-center justify-between text-left"
+          >
+            <span className="text-sm font-semibold">Detailed records ({filteredPaths.length})</span>
+            {recordsOpen ? (
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
+          </button>
+          {recordsOpen && (
+            <div className="mt-3">
+              <GlassTableShell maxHeight="420px">
+                <table className="w-full text-xs">
+                  <thead className="sticky-thead bg-muted/40 text-3xs uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="p-2 text-left">Content</th>
+                      <th className="p-2 text-left">Platform</th>
+                      <th className="p-2 text-left">Rep</th>
+                      <th className="p-2 text-left">Closer</th>
+                      <th className="p-2 text-right font-mono">Cash</th>
+                      <th className="p-2 text-left">Coverage</th>
+                      <th className="p-2 text-left">Strength</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPaths.slice(0, 200).map((r, i) => (
+                      <tr
+                        key={`${r.path.callId}:${r.path.contentId}:${i}`}
+                        className="border-t border-border/70"
+                      >
+                        <td className="p-2">
+                          {r.path.contentId
+                            ? (data?.titleByContentId[r.path.contentId] ?? r.path.contentId)
+                            : "Unattributed"}
+                        </td>
+                        <td className="p-2">{r.platform ?? "Unknown"}</td>
+                        <td className="p-2">{repLabel(r.setterId)}</td>
+                        <td className="p-2">{repLabel(r.closerId)}</td>
+                        <td className="p-2 text-right font-mono">
+                          {money(r.path.callId ? (data?.callCashById[r.path.callId] ?? 0) : 0)}
+                        </td>
+                        <td className="p-2 capitalize">{r.path.evidence.coverage}</td>
+                        <td className="p-2 capitalize">{r.path.evidence.strength}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </GlassTableShell>
+            </div>
+          )}
+        </div>
+
+        {isLoading && (
+          <div className="text-center text-xs text-muted-foreground">Loading attribution data…</div>
+        )}
       </div>
     </>
   );
 }
 
-/** Custom Sankey node — recharts' default node has no text, just a bare
- * rectangle; this labels each node with its name so the diagram is readable
- * without a legend.
- *
- * Confirmed real bug while verifying: recharts' Sankey does NOT pass a
- * `containerWidth` prop to custom node renderers (only x/y/width/height/
- * index/payload — checked against the installed recharts source directly),
- * so a `containerWidth`-based side heuristic always evaluated against
- * `undefined` and silently clipped the terminal "Cash Collected" label off
- * the right edge. Fixed by keying the label side off the known terminal
- * node name instead of a prop that was never actually there. */
-function SankeyNodeLabel(props: unknown) {
+function FlowNodeLabel(props: unknown) {
   const { x, y, width, height, payload } = props as {
     x: number;
     y: number;

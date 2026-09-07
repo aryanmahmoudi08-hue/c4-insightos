@@ -381,7 +381,7 @@ export function AppSidebar() {
             alt="C4 OS"
             className={cn(
               "theme-logo-dark shrink-0 object-contain transition-[height] duration-200",
-              !showExpanded ? "h-9 w-9" : "h-14 w-auto",
+              !showExpanded ? "h-9 w-9" : "h-16 w-auto",
             )}
           />
           <img
@@ -389,7 +389,7 @@ export function AppSidebar() {
             alt="C4 OS"
             className={cn(
               "theme-logo-light shrink-0 object-contain transition-[height] duration-200",
-              !showExpanded ? "h-9 w-9" : "h-14 w-auto",
+              !showExpanded ? "h-9 w-9" : "h-16 w-auto",
             )}
           />
           {showExpanded && (

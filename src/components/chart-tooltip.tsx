@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 
 // Module-level (not component-level) cursor tracker: Recharts only mounts a
@@ -56,10 +63,23 @@ type RechartsPayloadEntry = {
  * clamping. Any custom tooltip content component (generic or bespoke) can
  * portal itself to `document.body` at this position instead of rendering
  * in-place — that's the actual fix, not just a style tweak.
+ *
+ * Edge-clamp sizing is a genuine two-pass problem: both consumers below
+ * render `null` (never attaching `nodeRef`) until `style` is non-null, so a
+ * clamp that only trusted a *measured* `nodeRef.current` could never
+ * bootstrap — the node doesn't exist yet on the render that would decide to
+ * show it. The first render below clamps against an estimated 160×60 box
+ * (same fallback as before) so the node actually mounts; a `useLayoutEffect`
+ * then re-measures the real, just-committed node via
+ * `getBoundingClientRect()` and — if it differs from the estimate — corrects
+ * the clamp through state before the browser paints, so any tooltip content
+ * meaningfully wider/taller than the estimate never shows a wrongly clamped
+ * or clipped first frame.
  */
 export function useFollowCursorTooltipPosition(active: boolean | undefined) {
   const [cursor, setCursor] = useState(lastCursor);
   const nodeRef = useRef<HTMLDivElement>(null);
+  const [measured, setMeasured] = useState<{ w: number; h: number } | null>(null);
 
   useEffect(() => {
     const onUpdate = () => setCursor(lastCursor);
@@ -70,22 +90,32 @@ export function useFollowCursorTooltipPosition(active: boolean | undefined) {
     };
   }, []);
 
-  if (!active || !cursor) return { nodeRef, style: null as CSSProperties | null };
+  const style = (() => {
+    if (!active || !cursor) return null as CSSProperties | null;
+    const margin = 14;
+    const w = measured?.w ?? nodeRef.current?.offsetWidth ?? 160;
+    const h = measured?.h ?? nodeRef.current?.offsetHeight ?? 60;
+    let left = cursor.x + margin;
+    let top = cursor.y + margin;
+    if (left + w > window.innerWidth - 8) left = cursor.x - w - margin;
+    if (top + h > window.innerHeight - 8) top = cursor.y - h - margin;
+    left = Math.max(8, left);
+    top = Math.max(8, top);
+    return { position: "fixed", left, top, zIndex: 9999, pointerEvents: "none" } as CSSProperties;
+  })();
 
-  const margin = 14;
-  const w = nodeRef.current?.offsetWidth ?? 160;
-  const h = nodeRef.current?.offsetHeight ?? 60;
-  let left = cursor.x + margin;
-  let top = cursor.y + margin;
-  if (left + w > window.innerWidth - 8) left = cursor.x - w - margin;
-  if (top + h > window.innerHeight - 8) top = cursor.y - h - margin;
-  left = Math.max(8, left);
-  top = Math.max(8, top);
+  useLayoutEffect(() => {
+    if (!active || !nodeRef.current) return;
+    const rect = nodeRef.current.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    if (rect.width === measured?.w && rect.height === measured?.h) return;
+    setMeasured({ w: rect.width, h: rect.height });
+    // Only the node's real size should trigger a re-measure — re-running on
+    // every cursor move would just re-measure the same unchanged node.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, style?.left, style?.top]);
 
-  return {
-    nodeRef,
-    style: { position: "fixed", left, top, zIndex: 9999, pointerEvents: "none" } as CSSProperties,
-  };
+  return { nodeRef, style };
 }
 
 /**

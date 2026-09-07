@@ -1,4 +1,4 @@
-import { createFileRoute, useSearch, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useSearch, useNavigate, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
@@ -1150,6 +1150,39 @@ function Closer() {
       },
     ],
     [list, paymentPlanCount, cashCents, channelSources, fmtMoney],
+  );
+  // Revenue Source Mix (Section F) — the same per-channel groups as
+  // channelSources above, read as a money-first table instead of a lifecycle
+  // path. No new query: every figure below is derived from `list`, the same
+  // calls already driving every other number on this page. `calls` has no
+  // refund/default column (see supabase/migrations), so that column is
+  // honestly reported as untracked rather than backed into from payment
+  // status, which would conflate a different concept (payment-plan failure).
+  const revenueSourceMix = useMemo(
+    () =>
+      channelSources.map((s) => {
+        const rows = list.filter(
+          (c) => c.source_platform && normalizeSocialPlatform(c.source_platform) === s.label,
+        );
+        const shows = rows.filter((c) => c.showed).length;
+        const qualified = rows.filter((c) => c.showed && c.status !== "disqualified").length;
+        const offersForSource = rows.filter((c) => c.offer_made).length;
+        const closesForSource = rows.filter((c) => c.closed || c.status === "closed").length;
+        const contractedCents = rows.reduce((sum, c) => sum + (c.contract_value_cents ?? 0), 0);
+        const cashForSource = rows.reduce((sum, c) => sum + (c.cash_collected_cents ?? 0), 0);
+        return {
+          label: s.label,
+          shows,
+          qualified,
+          offers: offersForSource,
+          closes: closesForSource,
+          closeRatePct: shows ? (closesForSource / shows) * 100 : null,
+          contractedCents,
+          cashCollectedCents: cashForSource,
+          collectionRatePct: contractedCents ? (cashForSource / contractedCents) * 100 : null,
+        };
+      }),
+    [list, channelSources],
   );
   const avgCashPerBooked = onCalendar ? cashCents / onCalendar : 0;
   const avgCashPerShowed = showed ? cashCents / showed : 0;
@@ -3242,11 +3275,76 @@ function Closer() {
               </GlassTableShell>
 
               {sectionHeader("F · Attribution")}
-              <AttributionPathPanel
-                title="Closer lifecycle attribution"
-                subtitle="Same calls as everywhere else on this page, read along one lifecycle axis — not an additional revenue source"
-                paths={closerLifecyclePath}
-              />
+              <GlassTableShell
+                toolbar={
+                  <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
+                    Revenue Source Mix
+                  </div>
+                }
+              >
+                <table className="w-full text-sm">
+                  <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="text-left p-3">Source</th>
+                      <th className="text-right p-3 font-mono">Shows</th>
+                      <th className="text-right p-3 font-mono">Qualified Opps</th>
+                      <th className="text-right p-3 font-mono">Offers</th>
+                      <th className="text-right p-3 font-mono">Closes</th>
+                      <th className="text-right p-3 font-mono">Close Rate</th>
+                      <th className="text-right p-3 font-mono">Contracted Revenue</th>
+                      <th className="text-right p-3 font-mono">Cash Collected</th>
+                      <th className="text-right p-3 font-mono">Collection Rate</th>
+                      <th className="text-right p-3 font-mono">Refund/Default Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {revenueSourceMix.map((s) => (
+                      <tr key={s.label} className="border-t border-border/70 hover:bg-muted/20">
+                        <td className="p-3 font-medium">{s.label}</td>
+                        <td className="p-3 text-right font-mono">{s.shows}</td>
+                        <td className="p-3 text-right font-mono">{s.qualified}</td>
+                        <td className="p-3 text-right font-mono">{s.offers}</td>
+                        <td className="p-3 text-right font-mono">{s.closes}</td>
+                        <td className="p-3 text-right font-mono">
+                          {s.closeRatePct == null ? "—" : `${s.closeRatePct.toFixed(1)}%`}
+                        </td>
+                        <td className="p-3 text-right font-mono">{fmtMoney(s.contractedCents)}</td>
+                        <td className="p-3 text-right font-mono text-[color:var(--color-success)]">
+                          {fmtMoney(s.cashCollectedCents)}
+                        </td>
+                        <td className="p-3 text-right font-mono">
+                          {s.collectionRatePct == null ? "—" : `${s.collectionRatePct.toFixed(1)}%`}
+                        </td>
+                        <td className="p-3 text-right font-mono text-muted-foreground">
+                          Not tracked
+                        </td>
+                      </tr>
+                    ))}
+                    {revenueSourceMix.length === 0 && (
+                      <tr>
+                        <td colSpan={10}>
+                          <EmptyState
+                            icon={<Trophy className="h-4 w-4" />}
+                            title="No attributed sources in range"
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </GlassTableShell>
+              <div className="mt-2">
+                <Link
+                  to="/attribution"
+                  search={{
+                    ...(platformFilter !== "all" ? { platform: platformFilter } : {}),
+                    ...(member !== ALL_MEMBERS ? { closerId: member } : {}),
+                  }}
+                  className="text-xs text-primary hover:underline"
+                >
+                  View Full Attribution →
+                </Link>
+              </div>
 
               {panel && (
                 <MetricDetailPanel

@@ -256,6 +256,7 @@ function MoneyOriginSection({
   pieces,
   onFilterContent,
   onFilterPlatform,
+  exploreAttributionSearch,
 }: {
   attributionSummary?: ContentAttributionSummary;
   traffic?: ContentTrafficSummary;
@@ -265,6 +266,10 @@ function MoneyOriginSection({
   pieces: ContentCommandPiece[];
   onFilterContent: (contentId: string) => void;
   onFilterPlatform: (platform: string) => void;
+  /** Current content/platform/campaign filters (from pathFilters), reused
+   * as-is for the deep link into the Attribution Command Center — never a
+   * separate filter state. */
+  exploreAttributionSearch: { contentId?: string; platform?: string; campaign?: string };
 }) {
   const money = useMoney();
   const pieceById = useMemo(() => new Map(pieces.map((p) => [p.id, p])), [pieces]);
@@ -373,14 +378,26 @@ function MoneyOriginSection({
 
       <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr]">
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <div>
+              <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Unified money-origin attribution — {ATTRIBUTION_MODEL_LABELS[attributionModel]}{" "}
+                basis
+              </div>
+              <div className="mt-0.5 text-base font-semibold">
+                Content → platform → cash collected
+              </div>
+            </div>
+            <Link
+              to="/attribution"
+              search={exploreAttributionSearch}
+              className="shrink-0 whitespace-nowrap text-xs text-primary hover:underline"
+            >
+              Explore Full Attribution →
+            </Link>
+          </div>
           <div className="mb-2">
-            <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Unified money-origin attribution — {ATTRIBUTION_MODEL_LABELS[attributionModel]} basis
-            </div>
-            <div className="mt-0.5 text-base font-semibold">
-              Content → platform → cash collected
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Reshapes with the attribution model selected below. Click a content or platform node
               to filter the table.
             </p>
@@ -1023,6 +1040,11 @@ export function ContentCommandCenter({
         pieces={pieces}
         onFilterContent={(contentId) => setPathFilters((prev) => ({ ...prev, content: contentId }))}
         onFilterPlatform={(platform) => setPathFilters((prev) => ({ ...prev, platform }))}
+        exploreAttributionSearch={{
+          contentId: pathFilters.content !== "all" ? pathFilters.content : undefined,
+          platform: pathFilters.platform !== "all" ? pathFilters.platform : undefined,
+          campaign: pathFilters.campaign !== "all" ? pathFilters.campaign : undefined,
+        }}
       />
 
       <div className="grid gap-3 xl:grid-cols-[1.45fr_0.75fr]">

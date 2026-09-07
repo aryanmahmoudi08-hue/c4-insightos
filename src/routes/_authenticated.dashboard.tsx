@@ -61,12 +61,9 @@ import {
   type Derivation,
 } from "@/lib/funnel-derivation";
 import {
-  AttributionPathPanel,
-  type AttributionSourceNode,
-} from "@/components/attribution-path-panel";
-import {
   buildAttributionPathsForModel,
   aggregateCashByContent,
+  aggregateCashByPlatform,
   ATTRIBUTION_MODEL_LABELS,
   ATTRIBUTION_MODELS,
 } from "@/lib/content-attribution";
@@ -1074,31 +1071,62 @@ function Dashboard() {
       .slice(0, 8);
   }, [attribution, attributionModel]);
 
-  // Branching visual (Priority 5) — real per-platform sources merging into
-  // this model's aggregate outcome stages. Omitted (unavailable) when there's
-  // nothing resolved for this model yet.
-  const attributionSources: AttributionSourceNode[] = useMemo(() => {
-    const byPlatform = new Map<string, number>();
-    for (const row of attributionRows) {
-      byPlatform.set(row.platform, (byPlatform.get(row.platform) ?? 0) + row.leads);
+  // Revenue by Source — top channels (grouped by platform) for the selected
+  // attribution model, replacing the old "Money-origin flow" path panel with
+  // a compact executive summary. Uses the same canonical paths + cash/revenue
+  // maps as attributionRows above (never a second attribution engine) via the
+  // shared aggregateCashByPlatform helper. Platform is resolved off the same
+  // contentMeta lookup the per-content table already builds (content_pieces
+  // join via content_metrics) — no new query. Attribution strength per
+  // channel is the modal (most common) evidence.strength across that
+  // channel's own paths — read off each path, never recomputed.
+  type SourceStrength = "high" | "medium" | "low" | "unknown";
+  const revenueBySourceRows = useMemo(() => {
+    const paths = attribution?.pathsByModel?.[attributionModel] ?? [];
+    const cashById: Record<string, number | null | undefined> = {};
+    const revenueById: Record<string, number | null | undefined> = {};
+    for (const c2 of attribution?.closedCalls ?? []) {
+      if (c2.id) {
+        cashById[c2.id] = c2.cash_collected_cents;
+        revenueById[c2.id] = c2.contract_value_cents;
+      }
     }
-    return Array.from(byPlatform.entries())
-      .filter(([, v]) => v > 0)
-      .sort((a, b) => b[1] - a[1])
-      .map(([label, value]) => ({ key: label, label, value }));
-  }, [attributionRows]);
-  const attributionTotals = useMemo(
-    () =>
-      attributionRows.reduce(
-        (acc, r) => ({
-          leads: acc.leads + r.leads,
-          closes: acc.closes + r.closes,
-          cashCents: acc.cashCents + r.cashCents,
-        }),
-        { leads: 0, closes: 0, cashCents: 0 },
-      ),
-    [attributionRows],
-  );
+    const platformByContentId: Record<string, string | null | undefined> = {};
+    attribution?.contentMeta.forEach((meta, contentId) => {
+      platformByContentId[contentId] = meta.platform;
+    });
+    const cashByPlatform = aggregateCashByPlatform(paths, cashById, platformByContentId);
+    const revenueByPlatform = aggregateCashByPlatform(paths, revenueById, platformByContentId);
+    const revenueByPlatformMap = new Map(revenueByPlatform.map((r) => [r.platform, r.cashCents]));
+    const strengthCountsByPlatform = new Map<string, Record<SourceStrength, number>>();
+    for (const path of paths) {
+      const platform =
+        path.platform ?? (path.contentId ? platformByContentId[path.contentId] : null);
+      if (!platform) continue;
+      const bucket =
+        strengthCountsByPlatform.get(platform) ??
+        ({ high: 0, medium: 0, low: 0, unknown: 0 } as Record<SourceStrength, number>);
+      bucket[path.evidence.strength] += 1;
+      strengthCountsByPlatform.set(platform, bucket);
+    }
+    const modalStrength = (platform: string): SourceStrength => {
+      const bucket = strengthCountsByPlatform.get(platform);
+      if (!bucket) return "unknown";
+      return (Object.entries(bucket) as [SourceStrength, number][]).sort(
+        (a, b) => b[1] - a[1],
+      )[0][0];
+    };
+    return cashByPlatform
+      .map((row) => ({
+        platform: row.platform,
+        cashCents: row.cashCents,
+        revenueCents: revenueByPlatformMap.get(row.platform) ?? 0,
+        closes: row.callCount,
+        strength: modalStrength(row.platform),
+      }))
+      .sort((a, b) => b.cashCents - a.cashCents)
+      .slice(0, 5);
+  }, [attribution, attributionModel]);
 
   // Two independently-typed panels (rather than one union-typed panel) so
   // each MetricDetailPanel<T> instantiation below infers its own concrete T
@@ -1447,40 +1475,66 @@ function Dashboard() {
             </Select>
           </label>
         </div>
-        {/* Where did the money come from? Real branching sources (platforms)
-            merging into this model's outcome stages, then a compact
-            executive table per content piece — the same canonical
-            multi-touch engine Content Command Center runs (never a second
-            attribution engine), just scoped to the Main Hub's own range. */}
-        <AttributionPathPanel
-          title="Money-origin flow"
-          subtitle={`${ATTRIBUTION_MODEL_LABELS[attributionModel]} basis${attributionModel === "assisted_touch" ? " — assisted credit, not direct revenue credit" : ""}`}
-          paths={[
-            {
-              id: "content-to-cash",
-              label: "Sources → Attributed outcome",
-              sources: attributionSources.length > 0 ? attributionSources : undefined,
-              stages: [
-                {
-                  key: "leads",
-                  label: "Leads",
-                  value: attributionTotals.leads,
-                  detail: "Distinct leads with a resolvable content attribution for this model.",
-                },
-                {
-                  key: "closes",
-                  label: "Closed",
-                  value: attributionTotals.closes,
-                  detail: "Closed calls resolved to a content source under this model.",
-                },
-              ],
-              unavailable:
-                attributionRows.length === 0
-                  ? "No leads/closes have a resolvable content attribution for this model in range."
-                  : undefined,
-            },
-          ]}
-        />
+        {/* Where did the money come from? Compact top-channels summary — same
+            canonical paths as the per-content table below (never a second
+            attribution engine), grouped by platform. "Explore Attribution →"
+            deep-links to the master Attribution page on this same model. */}
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-foreground">Revenue by Source</div>
+              <div className="text-2xs text-muted-foreground">
+                {`${ATTRIBUTION_MODEL_LABELS[attributionModel]} basis${attributionModel === "assisted_touch" ? " — assisted credit, not direct revenue credit" : ""}`}
+              </div>
+            </div>
+            <Link
+              to="/attribution"
+              search={{ model: attributionModel }}
+              className="shrink-0 whitespace-nowrap text-xs text-primary hover:underline"
+            >
+              Explore Attribution →
+            </Link>
+          </div>
+          {revenueBySourceRows.length === 0 ? (
+            <div className="py-4 text-center text-xs text-muted-foreground">
+              No attributed revenue by source for this model in range.
+            </div>
+          ) : (
+            <div className="divide-y divide-border/70">
+              {revenueBySourceRows.map((row) => (
+                <div
+                  key={row.platform}
+                  className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <PlatformIcon
+                      platform={row.platform}
+                      className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                    />
+                    <span className="truncate text-sm font-medium">{row.platform}</span>
+                    <span
+                      className={cn(
+                        "shrink-0 text-3xs font-semibold uppercase tracking-wider",
+                        row.strength === "high"
+                          ? "text-spectrum-hot"
+                          : row.strength === "medium"
+                            ? "text-spectrum-mid"
+                            : "text-muted-foreground",
+                      )}
+                    >
+                      {row.strength} confidence
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-4 font-mono text-xs tabular-nums">
+                    <span className="text-muted-foreground">{fmt(row.closes)} closes</span>
+                    <span className="text-muted-foreground">{money(row.revenueCents)} rev</span>
+                    <span className="font-semibold text-foreground">{money(row.cashCents)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
