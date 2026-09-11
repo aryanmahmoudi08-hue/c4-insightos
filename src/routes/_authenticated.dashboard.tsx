@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { mockDashboardStats } from "@/lib/dev-mock-data";
+import { useDemoMode } from "@/hooks/use-demo-mode";
+import { buildDemoCoreDataset, buildDemoAttributionDataset } from "@/lib/demo-fixtures";
 import { PlatformIcon } from "@/components/platform-icon";
 import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
@@ -21,6 +23,7 @@ import {
   Flame,
   CheckCircle2,
   Lightbulb,
+  ShieldAlert,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -80,6 +83,7 @@ import {
   type TargetProgress,
 } from "@/lib/kpi-targets";
 import { pctDelta, formatRangeLabel } from "@/lib/trend";
+import { disqualifiedLeadCount, computeDisqualified } from "@/lib/disqualification";
 import { SPECTRUM_VAR, type SpectrumPosition } from "@/lib/spectrum";
 import type { DateRange } from "@/components/date-range-picker";
 import {
@@ -189,70 +193,135 @@ async function fetchPeriod(
   from: string,
   to: string,
   filters: { socialPlatform: SocialPlatform | "all"; acquisitionSource: AcquisitionSource | "all" },
+  demoMode = false,
 ) {
   const fromISO = `${from}T00:00:00`;
   const toISO = `${to}T23:59:59`;
-  const [pays, leads, calls, content, setters] = await Promise.all([
-    supabase
-      .from("payments")
-      .select("amount_cents, collected_at")
-      .eq("org_id", orgId)
-      .gte("collected_at", fromISO)
-      .lte("collected_at", toISO),
-    // full_name/email/lead_email/closer_name/scheduled_for are only read by
-    // the Level 4 funnel drilldown panel (which only ever looks at the
-    // current-period call's leadRows/callRows), but Supabase's typed
-    // `.select()` needs a literal string — not a conditional — to infer row
-    // types, so both periods fetch the same superset of columns.
-    supabase
-      .from("leads")
-      .select("id, created_at, source_platform, source_campaign, full_name, email")
-      .eq("org_id", orgId)
-      .gte("created_at", fromISO)
-      .lte("created_at", toISO),
-    supabase
-      .from("calls")
-      .select(
-        "showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at, source_platform, source_campaign, lead_email, closer_name, scheduled_for",
-      )
-      .eq("org_id", orgId)
-      .gte("created_at", fromISO)
-      .lte("created_at", toISO),
-    supabase
-      .from("content_metrics")
-      .select("views, leads_generated, captured_at")
-      .eq("org_id", orgId)
-      .gte("captured_at", fromISO)
-      .lte("captured_at", toISO),
-    supabase
-      .from("setter_activity")
-      .select(
-        "cash_collected_cents, total_revenue_cents, calls_on_calendar, live_calls, sets, closes, activity_date",
-      )
-      .eq("org_id", orgId)
-      .gte("activity_date", from)
-      .lte("activity_date", to),
-  ]);
-  const payList = pays.data ?? [];
-  const matches = (row: {
-    source_platform?: string | null;
-    source_type?: string | null;
-    source_campaign?: string | null;
-  }) =>
+
+  let payList: { amount_cents: number | null; collected_at: string | null }[];
+  let leadsRaw: {
+    id: string;
+    created_at: string | null;
+    source_platform: string | null;
+    source_campaign: string | null;
+    full_name: string | null;
+    email: string | null;
+    status: string | null;
+  }[];
+  let callsRaw: {
+    id: string;
+    lead_id: string | null;
+    status: string | null;
+    showed: boolean | null;
+    closed: boolean | null;
+    offer_made: boolean | null;
+    contract_value_cents: number | null;
+    cash_collected_cents: number | null;
+    created_at: string | null;
+    source_platform: string | null;
+    source_campaign: string | null;
+    lead_email: string | null;
+    closer_name: string | null;
+    scheduled_for: string | null;
+  }[];
+  let contentRaw: { views: number | null; leads_generated: number | null; captured_at: string }[];
+  let settersRaw: {
+    cash_collected_cents: number | null;
+    total_revenue_cents: number | null;
+    calls_on_calendar: number | null;
+    live_calls: number | null;
+    sets: number | null;
+    closes: number | null;
+    activity_date: string;
+  }[];
+
+  if (demoMode) {
+    // Demo / Preview Data mode (Priority 5) — Main Hub joins the isolated
+    // demo system already used by Attribution/Calls on Calendar. Same
+    // in-memory fixture (buildDemoCoreDataset), filtered to this period the
+    // same way the real branch below filters with `.gte()/.lte()` — nothing
+    // downstream of this branch needs to know the difference.
+    const demo = buildDemoCoreDataset();
+    payList = demo.payments
+      .filter((p) => p.collected_at >= fromISO && p.collected_at <= toISO)
+      .map((p) => ({ amount_cents: p.amount_cents, collected_at: p.collected_at }));
+    leadsRaw = demo.leads.filter((l) => l.created_at >= fromISO && l.created_at <= toISO);
+    callsRaw = demo.calls.filter((c) => c.created_at >= fromISO && c.created_at <= toISO);
+    contentRaw = demo.contentMetrics.filter(
+      (m) => m.captured_at >= fromISO && m.captured_at <= toISO,
+    );
+    settersRaw = demo.setterActivity.filter(
+      (a) => a.activity_date >= from && a.activity_date <= to,
+    );
+  } else {
+    const [pays, leads, calls, content, setters] = await Promise.all([
+      supabase
+        .from("payments")
+        .select("amount_cents, collected_at")
+        .eq("org_id", orgId)
+        .gte("collected_at", fromISO)
+        .lte("collected_at", toISO),
+      // full_name/email/lead_email/closer_name/scheduled_for are only read by
+      // the Level 4 funnel drilldown panel (which only ever looks at the
+      // current-period call's leadRows/callRows), but Supabase's typed
+      // `.select()` needs a literal string — not a conditional — to infer row
+      // types, so both periods fetch the same superset of columns.
+      supabase
+        .from("leads")
+        .select("id, created_at, source_platform, source_campaign, full_name, email, status")
+        .eq("org_id", orgId)
+        .gte("created_at", fromISO)
+        .lte("created_at", toISO),
+      supabase
+        .from("calls")
+        .select(
+          "id, lead_id, status, showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at, source_platform, source_campaign, lead_email, closer_name, scheduled_for",
+        )
+        .eq("org_id", orgId)
+        .gte("created_at", fromISO)
+        .lte("created_at", toISO),
+      supabase
+        .from("content_metrics")
+        .select("views, leads_generated, captured_at")
+        .eq("org_id", orgId)
+        .gte("captured_at", fromISO)
+        .lte("captured_at", toISO),
+      supabase
+        .from("setter_activity")
+        .select(
+          "cash_collected_cents, total_revenue_cents, calls_on_calendar, live_calls, sets, closes, activity_date",
+        )
+        .eq("org_id", orgId)
+        .gte("activity_date", from)
+        .lte("activity_date", to),
+    ]);
+    payList = pays.data ?? [];
+    leadsRaw = leads.data ?? [];
+    callsRaw = calls.data ?? [];
+    contentRaw = content.data ?? [];
+    settersRaw = setters.data ?? [];
+  }
+
+  const matches = (row: { source_platform?: string | null; source_campaign?: string | null }) =>
     (filters.socialPlatform === "all" ||
       normalizeSocialPlatform(row.source_campaign, row.source_platform) ===
         filters.socialPlatform) &&
-    acquisitionSourceMatches(row.source_type, filters.acquisitionSource, row.source_campaign);
-  const leadList = (leads.data ?? []).filter(matches);
-  const callList = (calls.data ?? []).filter(matches);
+    // Priority 7 fix — this previously passed `row.source_campaign` (a
+    // campaign NAME, e.g. "Q4 Instagram Push") as the acquisition-source
+    // evidence, which only ever matched by accidental substring overlap.
+    // `row.source_platform` is the real, same evidence the Platform filter
+    // above already uses — no `traffic_sources.category` join exists at
+    // this query level (unlike Attribution Command Center's dedicated
+    // query), so Acquisition Source and Platform will often agree here;
+    // that's honest given what's actually available, not a fabricated
+    // distinction.
+    acquisitionSourceMatches(null, filters.acquisitionSource, row.source_platform);
+  const leadList = leadsRaw.filter(matches);
+  const callList = callsRaw.filter(matches);
   const contentList =
-    filters.socialPlatform === "all" && filters.acquisitionSource === "all"
-      ? (content.data ?? [])
-      : [];
+    filters.socialPlatform === "all" && filters.acquisitionSource === "all" ? contentRaw : [];
   const setterList =
-    filters.socialPlatform === "all" && filters.acquisitionSource === "all"
-      ? (setters.data ?? [])
-      : [];
+    filters.socialPlatform === "all" && filters.acquisitionSource === "all" ? settersRaw : [];
   const paymentsCash =
     filters.socialPlatform === "all" && filters.acquisitionSource === "all"
       ? payList.reduce((s, p) => s + (p.amount_cents ?? 0), 0)
@@ -284,6 +353,13 @@ async function fetchPeriod(
     contractValue: callList.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0),
     views: contentList.reduce((s, m) => s + (m.views ?? 0), 0),
     contentLeads: contentList.reduce((s, m) => s + (m.leads_generated ?? 0), 0),
+    // Priority 2/3 — canonical disqualification count (leads.status /
+    // calls.status === "disqualified", deduped by lead — see
+    // src/lib/disqualification.ts). unattributed = real disqualification
+    // events with no linked lead record (the free-text EOD flow), surfaced
+    // honestly rather than folded into a "leads" count they don't belong to.
+    disqualified: disqualifiedLeadCount(leadList, callList),
+    disqualifiedUnattributed: computeDisqualified(leadList, callList).unattributed,
     // Row-level data for the Level 4 funnel diagnostic's record drilldowns —
     // only the current-period call renders these, but returning them from
     // both is cheap and keeps fetchPeriod's shape uniform.
@@ -340,6 +416,7 @@ function Dashboard() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
   const { range } = useDateRange();
   const navigate = useNavigate();
   const money = useMoney();
@@ -354,17 +431,28 @@ function Dashboard() {
   // current-state snapshot, not a historical figure that should shrink just
   // because the user narrows the date filter.
   const { data: activeTierCounts } = useQuery({
-    queryKey: ["hub-active-tier-counts", orgId, devBypass],
+    queryKey: ["hub-active-tier-counts", orgId, devBypass, demoMode],
     enabled: !!orgId,
     queryFn: async () => {
       if (devBypass) return { low: 0, high: 0, unclassified: 0, total: 0 };
-      const { data, error } = await supabase
-        .from("clients")
-        .select("id, leads(ticket_tier)")
-        .eq("org_id", orgId!)
-        .eq("status", "active");
-      if (error) throw error;
-      const rows = (data ?? []) as Array<{ leads: { ticket_tier: string | null } | null }>;
+      let rows: Array<{ leads: { ticket_tier: string | null } | null }>;
+      if (demoMode) {
+        const demo = buildDemoCoreDataset();
+        const leadTierById = new Map(demo.leads.map((l) => [l.id, l.ticket_tier]));
+        rows = demo.clients
+          .filter((c) => c.status === "active")
+          .map((c) => ({
+            leads: c.lead_id ? { ticket_tier: leadTierById.get(c.lead_id) ?? null } : null,
+          }));
+      } else {
+        const { data, error } = await supabase
+          .from("clients")
+          .select("id, leads(ticket_tier)")
+          .eq("org_id", orgId!)
+          .eq("status", "active");
+        if (error) throw error;
+        rows = (data ?? []) as Array<{ leads: { ticket_tier: string | null } | null }>;
+      }
       const low = rows.filter((r) => r.leads?.ticket_tier === "low").length;
       const high = rows.filter((r) => r.leads?.ticket_tier === "high").length;
       return { low, high, unclassified: rows.length - low - high, total: rows.length };
@@ -384,6 +472,7 @@ function Dashboard() {
       range.from,
       range.to,
       devBypass,
+      demoMode,
       socialPlatform,
       acquisitionSource,
     ],
@@ -413,56 +502,120 @@ function Dashboard() {
       const daysInMonth = monthEnd.getDate();
       const dayOfMonth = now.getDate();
 
+      // Demo / Preview Data mode (Priority 5) — every raw Supabase call
+      // below is swapped for a filtered slice of the exact same in-memory
+      // fixture (buildDemoCoreDataset), wrapped to look like a Supabase
+      // response ({ data }) so every line below it — grouping, leaderboards,
+      // the daily series, pace — runs completely unchanged either way.
+      // Alerts/AI Insights have no fixture (nothing to fabricate an alert's
+      // text from) and stay honestly empty in demo mode, same as a real org
+      // with no active alerts.
+      const asRes = <T,>(data: T) => Promise.resolve({ data, error: null as null });
+      const demo = demoMode ? buildDemoCoreDataset() : null;
+
       const [curr, prev, monthPays, monthCalls, monthSetters, setterAct, alerts, insights] =
         await Promise.all([
-          fetchPeriod(orgId!, range.from, range.to, { socialPlatform, acquisitionSource }),
-          fetchPeriod(orgId!, prevFrom, prevTo, { socialPlatform, acquisitionSource }),
-          supabase
-            .from("payments")
-            .select("amount_cents")
-            .eq("org_id", orgId!)
-            .gte("collected_at", `${monthStart}T00:00:00`),
-          supabase
-            .from("calls")
-            .select("cash_collected_cents")
-            .eq("org_id", orgId!)
-            .gte("created_at", `${monthStart}T00:00:00`),
-          supabase
-            .from("setter_activity")
-            .select("cash_collected_cents")
-            .eq("org_id", orgId!)
-            .gte("activity_date", monthStart),
-          supabase
-            .from("setter_activity")
-            .select(
-              "team_member_name, role, sets, closes, cash_collected_cents, total_revenue_cents",
-            )
-            .eq("org_id", orgId!)
-            .gte("activity_date", range.from)
-            .lte("activity_date", range.to),
-          supabase
-            .from("alerts")
-            .select("id, severity, title, created_at")
-            .eq("org_id", orgId!)
-            .eq("acknowledged", false)
-            .order("created_at", { ascending: false })
-            .limit(6),
-          supabase
-            .from("ai_insights")
-            .select("id, title, body, module, created_at")
-            .eq("org_id", orgId!)
-            .eq("dismissed", false)
-            .order("created_at", { ascending: false })
-            .limit(4),
+          fetchPeriod(
+            orgId!,
+            range.from,
+            range.to,
+            { socialPlatform, acquisitionSource },
+            demoMode,
+          ),
+          fetchPeriod(orgId!, prevFrom, prevTo, { socialPlatform, acquisitionSource }, demoMode),
+          demo
+            ? asRes(
+                demo.payments
+                  .filter((p) => p.collected_at >= `${monthStart}T00:00:00`)
+                  .map((p) => ({ amount_cents: p.amount_cents })),
+              )
+            : supabase
+                .from("payments")
+                .select("amount_cents")
+                .eq("org_id", orgId!)
+                .gte("collected_at", `${monthStart}T00:00:00`),
+          demo
+            ? asRes(
+                demo.calls
+                  .filter((c) => c.created_at >= `${monthStart}T00:00:00`)
+                  .map((c) => ({ cash_collected_cents: c.cash_collected_cents })),
+              )
+            : supabase
+                .from("calls")
+                .select("cash_collected_cents")
+                .eq("org_id", orgId!)
+                .gte("created_at", `${monthStart}T00:00:00`),
+          demo
+            ? asRes(
+                demo.setterActivity
+                  .filter((a) => a.activity_date >= monthStart)
+                  .map((a) => ({ cash_collected_cents: a.cash_collected_cents })),
+              )
+            : supabase
+                .from("setter_activity")
+                .select("cash_collected_cents")
+                .eq("org_id", orgId!)
+                .gte("activity_date", monthStart),
+          demo
+            ? asRes(
+                demo.setterActivity.filter(
+                  (a) => a.activity_date >= range.from && a.activity_date <= range.to,
+                ),
+              )
+            : supabase
+                .from("setter_activity")
+                .select(
+                  "team_member_name, role, sets, closes, cash_collected_cents, total_revenue_cents",
+                )
+                .eq("org_id", orgId!)
+                .gte("activity_date", range.from)
+                .lte("activity_date", range.to),
+          demo
+            ? asRes([] as { id: string; severity: string; title: string; created_at: string }[])
+            : supabase
+                .from("alerts")
+                .select("id, severity, title, created_at")
+                .eq("org_id", orgId!)
+                .eq("acknowledged", false)
+                .order("created_at", { ascending: false })
+                .limit(6),
+          demo
+            ? asRes(
+                [] as {
+                  id: string;
+                  title: string;
+                  body: string;
+                  module: string;
+                  created_at: string;
+                }[],
+              )
+            : supabase
+                .from("ai_insights")
+                .select("id, title, body, module, created_at")
+                .eq("org_id", orgId!)
+                .eq("dismissed", false)
+                .order("created_at", { ascending: false })
+                .limit(4),
         ]);
 
       // Closer leaderboard from calls
-      const callsForLeaders = await supabase
-        .from("calls")
-        .select("closer_name, closed, cash_collected_cents, contract_value_cents")
-        .eq("org_id", orgId!)
-        .gte("created_at", fromISO)
-        .lte("created_at", toISO);
+      const callsForLeaders = demo
+        ? await asRes(
+            demo.calls
+              .filter((c) => c.created_at >= fromISO && c.created_at <= toISO)
+              .map((c) => ({
+                closer_name: c.closer_name,
+                closed: c.closed,
+                cash_collected_cents: c.cash_collected_cents,
+                contract_value_cents: c.contract_value_cents,
+              })),
+          )
+        : await supabase
+            .from("calls")
+            .select("closer_name, closed, cash_collected_cents, contract_value_cents")
+            .eq("org_id", orgId!)
+            .gte("created_at", fromISO)
+            .lte("created_at", toISO);
       const callList = callsForLeaders.data ?? [];
       const closerMap = new Map<
         string,
@@ -532,43 +685,77 @@ function Dashboard() {
           contractValue: 0,
         });
       }
-      const [seriesPays, seriesLeads, seriesCalls, seriesSetters, seriesContent] =
-        await Promise.all([
-          supabase
-            .from("payments")
-            .select("amount_cents, collected_at")
-            .eq("org_id", orgId!)
-            .gte("collected_at", fromISO)
-            .lte("collected_at", toISO),
-          supabase
-            .from("leads")
-            .select("created_at")
-            .eq("org_id", orgId!)
-            .gte("created_at", fromISO)
-            .lte("created_at", toISO),
-          supabase
-            .from("calls")
-            .select(
-              "showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at",
-            )
-            .eq("org_id", orgId!)
-            .gte("created_at", fromISO)
-            .lte("created_at", toISO),
-          supabase
-            .from("setter_activity")
-            .select(
-              "cash_collected_cents, calls_on_calendar, sets, live_calls, closes, activity_date",
-            )
-            .eq("org_id", orgId!)
-            .gte("activity_date", range.from)
-            .lte("activity_date", range.to),
-          supabase
-            .from("content_metrics")
-            .select("views, captured_at")
-            .eq("org_id", orgId!)
-            .gte("captured_at", fromISO)
-            .lte("captured_at", toISO),
-        ]);
+      const [seriesPays, seriesLeads, seriesCalls, seriesSetters, seriesContent] = demo
+        ? await Promise.all([
+            asRes(
+              demo.payments
+                .filter((p) => p.collected_at >= fromISO && p.collected_at <= toISO)
+                .map((p) => ({ amount_cents: p.amount_cents, collected_at: p.collected_at })),
+            ),
+            asRes(
+              demo.leads
+                .filter((l) => l.created_at >= fromISO && l.created_at <= toISO)
+                .map((l) => ({ created_at: l.created_at })),
+            ),
+            asRes(
+              demo.calls
+                .filter((c) => c.created_at >= fromISO && c.created_at <= toISO)
+                .map((c) => ({
+                  showed: c.showed,
+                  closed: c.closed,
+                  offer_made: c.offer_made,
+                  contract_value_cents: c.contract_value_cents,
+                  cash_collected_cents: c.cash_collected_cents,
+                  created_at: c.created_at,
+                })),
+            ),
+            asRes(
+              demo.setterActivity.filter(
+                (a) => a.activity_date >= range.from && a.activity_date <= range.to,
+              ),
+            ),
+            asRes(
+              demo.contentMetrics
+                .filter((m) => m.captured_at >= fromISO && m.captured_at <= toISO)
+                .map((m) => ({ views: m.views, captured_at: m.captured_at })),
+            ),
+          ])
+        : await Promise.all([
+            supabase
+              .from("payments")
+              .select("amount_cents, collected_at")
+              .eq("org_id", orgId!)
+              .gte("collected_at", fromISO)
+              .lte("collected_at", toISO),
+            supabase
+              .from("leads")
+              .select("created_at")
+              .eq("org_id", orgId!)
+              .gte("created_at", fromISO)
+              .lte("created_at", toISO),
+            supabase
+              .from("calls")
+              .select(
+                "showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at",
+              )
+              .eq("org_id", orgId!)
+              .gte("created_at", fromISO)
+              .lte("created_at", toISO),
+            supabase
+              .from("setter_activity")
+              .select(
+                "cash_collected_cents, calls_on_calendar, sets, live_calls, closes, activity_date",
+              )
+              .eq("org_id", orgId!)
+              .gte("activity_date", range.from)
+              .lte("activity_date", range.to),
+            supabase
+              .from("content_metrics")
+              .select("views, captured_at")
+              .eq("org_id", orgId!)
+              .gte("captured_at", fromISO)
+              .lte("captured_at", toISO),
+          ]);
       const idx = (iso?: string | null) => {
         if (!iso) return -1;
         const k = iso.slice(5, 10);
@@ -681,7 +868,7 @@ function Dashboard() {
   // dashboards use) so overriding the leaderboard's own date range actually
   // refetches scoped data instead of just relabeling the main-range numbers.
   const { data: lbData } = useQuery({
-    queryKey: ["hub-leaderboard", orgId, lbRange.from, lbRange.to, devBypass],
+    queryKey: ["hub-leaderboard", orgId, lbRange.from, lbRange.to, devBypass, demoMode],
     enabled: !!orgId,
     queryFn: async (): Promise<{ closers: HubCloserPerson[]; setters: HubSetterPerson[] }> => {
       if (devBypass) {
@@ -690,20 +877,39 @@ function Dashboard() {
       }
       const fromISO = `${lbRange.from}T00:00:00`;
       const toISO = `${lbRange.to}T23:59:59`;
-      const [callsRes, settersRes] = await Promise.all([
-        supabase
-          .from("calls")
-          .select("closer_name, closed, cash_collected_cents, contract_value_cents")
-          .eq("org_id", orgId!)
-          .gte("created_at", fromISO)
-          .lte("created_at", toISO),
-        supabase
-          .from("setter_activity")
-          .select("team_member_name, sets, closes, cash_collected_cents, total_revenue_cents")
-          .eq("org_id", orgId!)
-          .gte("activity_date", lbRange.from)
-          .lte("activity_date", lbRange.to),
-      ]);
+      const demoLb = demoMode ? buildDemoCoreDataset() : null;
+      const [callsRes, settersRes] = demoLb
+        ? [
+            {
+              data: demoLb.calls
+                .filter((c) => c.created_at >= fromISO && c.created_at <= toISO)
+                .map((c) => ({
+                  closer_name: c.closer_name,
+                  closed: c.closed,
+                  cash_collected_cents: c.cash_collected_cents,
+                  contract_value_cents: c.contract_value_cents,
+                })),
+            },
+            {
+              data: demoLb.setterActivity.filter(
+                (a) => a.activity_date >= lbRange.from && a.activity_date <= lbRange.to,
+              ),
+            },
+          ]
+        : await Promise.all([
+            supabase
+              .from("calls")
+              .select("closer_name, closed, cash_collected_cents, contract_value_cents")
+              .eq("org_id", orgId!)
+              .gte("created_at", fromISO)
+              .lte("created_at", toISO),
+            supabase
+              .from("setter_activity")
+              .select("team_member_name, sets, closes, cash_collected_cents, total_revenue_cents")
+              .eq("org_id", orgId!)
+              .gte("activity_date", lbRange.from)
+              .lte("activity_date", lbRange.to),
+          ]);
       const closerMap = new Map<string, HubCloserPerson>();
       for (const c of callsRes.data ?? []) {
         const name = c.closer_name ?? "Unassigned";
@@ -752,7 +958,7 @@ function Dashboard() {
   // — just a lighter query against the shared model logic.
   const [attributionModel, setAttributionModel] = useState<AttributionModel>("first_touch");
   const { data: attribution } = useQuery({
-    queryKey: ["hub-attribution", orgId, range.from, range.to, devBypass],
+    queryKey: ["hub-attribution", orgId, range.from, range.to, devBypass, demoMode],
     enabled: !!orgId,
     queryFn: async () => {
       if (devBypass) {
@@ -769,6 +975,72 @@ function Dashboard() {
             lead_id: string | null;
             source_content_id: string | null;
           }[],
+        };
+      }
+      // Demo / Preview Data mode (Priority 5) — reuses the Attribution
+      // Command Center's own hand-authored fixture (buildDemoAttributionDataset,
+      // already deliberately branching/merging across content pieces) rather
+      // than a second content-attribution dataset, plus this page's own
+      // content view counts (buildDemoCoreDataset) for the views column.
+      if (demoMode) {
+        const attrDemo = buildDemoAttributionDataset();
+        const coreDemo = buildDemoCoreDataset();
+        const modelInput = {
+          leads: attrDemo.leadRows.map((l) => ({
+            id: l.id,
+            created_at: l.created_at,
+            source_content_id: l.source_content_id,
+          })),
+          calls: attrDemo.callRows
+            .filter((c) => c.closed)
+            .map((c) => ({
+              id: c.id,
+              lead_id: c.lead_id,
+              created_at: c.created_at,
+              closed: true,
+              source_content_id: c.source_content_id,
+            })),
+          touches: attrDemo.touchRows,
+          sampleSize: attrDemo.callRows.filter((c) => c.closed).length,
+        };
+        const pathsByModel = Object.fromEntries(
+          ATTRIBUTION_MODELS.map((model) => [
+            model,
+            buildAttributionPathsForModel(model, modelInput),
+          ]),
+        ) as Record<AttributionModel, CanonicalLifecycleAttributionPath[]>;
+        const contentMeta = new Map<string, { title: string; platform: string; views: number }>();
+        for (const piece of attrDemo.contentRows) {
+          const views = coreDemo.contentMetrics
+            .filter((m) => m.content_id === piece.id)
+            .reduce((s, m) => s + m.views, 0);
+          contentMeta.set(piece.id, {
+            title: piece.title,
+            platform: normalizeSocialPlatform(piece.platform, piece.source_platform),
+            views,
+          });
+        }
+        const bookedByContent = new Map<string, number>();
+        const showedByContent = new Map<string, number>();
+        for (const call of attrDemo.callRows) {
+          if (!call.source_content_id) continue;
+          bookedByContent.set(
+            call.source_content_id,
+            (bookedByContent.get(call.source_content_id) ?? 0) + 1,
+          );
+          if (call.showed) {
+            showedByContent.set(
+              call.source_content_id,
+              (showedByContent.get(call.source_content_id) ?? 0) + 1,
+            );
+          }
+        }
+        return {
+          pathsByModel,
+          contentMeta,
+          bookedByContent,
+          showedByContent,
+          closedCalls: attrDemo.callRows.filter((c) => c.closed),
         };
       }
       const fromISO = `${range.from}T00:00:00`;
@@ -923,7 +1195,8 @@ function Dashboard() {
   // funnel stage or attribution content row was clicked.
   type HubDetailSelection =
     | { kind: "funnel"; index: number }
-    | { kind: "attribution"; contentId: string; label: string };
+    | { kind: "attribution"; contentId: string; label: string }
+    | { kind: "disqualified" };
   const [hubSelected, setHubSelected] = useState<HubDetailSelection | null>(null);
 
   // Level 4 · Funnel diagnostic — reshapes the already-computed funnel counts
@@ -1204,6 +1477,63 @@ function Dashboard() {
     range,
     FUNNEL_RECORD_COLUMNS,
   ]);
+
+  // Priority 2/3 — same canonical leads.status/calls.status === "disqualified"
+  // check as every other dashboard (src/lib/disqualification.ts), not a new
+  // funnel stage (disqualification can happen at any point, not just one
+  // linear step — see FunnelInstrument above, which stays untouched).
+  const disqualifiedPanel = useMemo(() => {
+    if (hubSelected?.kind !== "disqualified") return null;
+    const leadRows = c?.leadRows ?? [];
+    const callRows = c?.callRows ?? [];
+    const { leadIds } = computeDisqualified(leadRows, callRows);
+    const callByLeadId = new Map<string, (typeof callRows)[number]>();
+    for (const call of callRows) {
+      if (call.status === "disqualified" && call.lead_id) callByLeadId.set(call.lead_id, call);
+    }
+    const rows: FunnelRecord[] = [];
+    for (const lead of leadRows) {
+      if (!leadIds.has(lead.id)) continue;
+      const call = callByLeadId.get(lead.id);
+      rows.push({
+        id: lead.id,
+        primary: lead.full_name || lead.email || "—",
+        detail: call ? `Disqualified — logged by ${call.closer_name ?? "closer"}` : "Disqualified",
+        date: call?.scheduled_for ?? call?.created_at ?? lead.created_at ?? null,
+        cashCents: null,
+      });
+    }
+    // Real disqualification events with no linked lead record (only the
+    // free-text EOD Reports flow produces these) — shown, not hidden, but
+    // never counted as a "lead" they can't actually be tied to.
+    for (const call of callRows) {
+      if (call.status !== "disqualified" || call.lead_id) continue;
+      rows.push({
+        id: `unattributed-${call.created_at}-${call.lead_email ?? call.closer_name ?? rows.length}`,
+        primary: call.lead_email ?? "No linked lead record",
+        detail: `Disqualified — logged by ${call.closer_name ?? "closer"} (no lead link)`,
+        date: call.scheduled_for ?? call.created_at ?? null,
+        cashCents: null,
+      });
+    }
+    return {
+      title: "Disqualified Leads",
+      subtitle: formatRangeLabel(range),
+      columns: FUNNEL_RECORD_COLUMNS,
+      rows,
+      rowKey: (r: FunnelRecord) => r.id,
+      cap: {
+        status: "insufficient_data" as const,
+        sentence:
+          "Disqualification can happen at any stage — no single upstream count to derive a loss estimate from.",
+      },
+      working: {
+        status: "insufficient_data" as const,
+        sentence: "A diagnostic count, not a funnel stage — no prior-stage comparison to derive.",
+      },
+      emptyRowsLabel: "No disqualified leads in this date range.",
+    };
+  }, [hubSelected, c, range, FUNNEL_RECORD_COLUMNS]);
 
   const attribSelected = hubSelected?.kind === "attribution" ? hubSelected : null;
   const attributionPanel = useMemo(() => {
@@ -1634,37 +1964,83 @@ function Dashboard() {
           stages={funnelStages}
           onStageClick={(i) => setHubSelected({ kind: "funnel", index: i })}
         />
-        <div className="mt-3 rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            <AlertTriangle className="h-3.5 w-3.5 text-spectrum-mid" /> Largest funnel leak
-          </div>
-          {leakCap ? (
-            <>
-              <p
-                className={cn(
-                  "mt-2 text-sm",
-                  leakCap.status === "insufficient_data"
-                    ? "italic text-muted-foreground"
-                    : "text-foreground",
-                )}
-              >
-                {leakIndex != null
-                  ? `Largest leak: ${funnelStages[leakIndex - 1]?.label} → ${funnelStages[leakIndex]?.label}. `
-                  : ""}
-                {leakCap.sentence}
-              </p>
-              {leakCap.status === "ok" && leakAction && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">Recommended: </span>
-                  {leakAction}
+        {/* Disqualified Leads sits beside the leak card, not inside the
+            funnel stage array — disqualification can happen at any point in
+            the pipeline (Legacy Leads pipeline edit, or a closer's EOD call
+            outcome), not at one fixed linear step, so it isn't a stage with
+            an upstream conversion % (Priority 2/10). */}
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="rounded-lg border border-border bg-card p-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              <AlertTriangle className="h-3.5 w-3.5 text-spectrum-mid" /> Largest funnel leak
+            </div>
+            {leakCap ? (
+              <>
+                <p
+                  className={cn(
+                    "mt-2 text-sm",
+                    leakCap.status === "insufficient_data"
+                      ? "italic text-muted-foreground"
+                      : "text-foreground",
+                  )}
+                >
+                  {leakIndex != null
+                    ? `Largest leak: ${funnelStages[leakIndex - 1]?.label} → ${funnelStages[leakIndex]?.label}. `
+                    : ""}
+                  {leakCap.sentence}
                 </p>
+                {leakCap.status === "ok" && leakAction && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">Recommended: </span>
+                    {leakAction}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="mt-2 text-sm italic text-muted-foreground">
+                Revenue impact unavailable — insufficient connected data.
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setHubSelected({ kind: "disqualified" })}
+            className="rounded-lg border border-border bg-card p-4 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/30"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                <ShieldAlert className="h-3.5 w-3.5 text-spectrum-mid" /> Disqualified leads
+              </div>
+              {c && p && (
+                <span
+                  className={cn(
+                    "text-2xs font-medium",
+                    (c.disqualified ?? 0) > (p.disqualified ?? 0)
+                      ? "text-destructive"
+                      : (c.disqualified ?? 0) < (p.disqualified ?? 0)
+                        ? "text-[color:var(--color-success)]"
+                        : "text-muted-foreground",
+                  )}
+                >
+                  vs {p.disqualified ?? 0} prior
+                </span>
               )}
-            </>
-          ) : (
-            <p className="mt-2 text-sm italic text-muted-foreground">
-              Revenue impact unavailable — insufficient connected data.
+            </div>
+            <div className="mt-2 font-mono text-2xl font-semibold tabular-nums text-foreground">
+              {c ? (c.disqualified ?? 0) : "—"}
+            </div>
+            {/* Rate denominator = total leads org-wide — the population
+                every lead entered and was at risk of being disqualified
+                from, at whatever stage it happened (Priority 3). */}
+            <p className="mt-1 text-xs text-muted-foreground">
+              {c?.newLeads
+                ? `${(((c.disqualified ?? 0) / c.newLeads) * 100).toFixed(1)}% of ${c.newLeads} leads`
+                : "Click to see the underlying leads."}
+              {c?.disqualifiedUnattributed
+                ? ` · +${c.disqualifiedUnattributed} disqualified call${c.disqualifiedUnattributed === 1 ? "" : "s"} with no linked lead`
+                : ""}
             </p>
-          )}
+          </button>
         </div>
 
         <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
@@ -1747,6 +2123,20 @@ function Dashboard() {
           cap={attributionPanel.cap}
           working={attributionPanel.working}
           emptyRowsLabel={attributionPanel.emptyRowsLabel}
+        />
+      )}
+      {disqualifiedPanel && (
+        <MetricDetailPanel
+          open={hubSelected?.kind === "disqualified"}
+          onOpenChange={(v) => !v && setHubSelected(null)}
+          title={disqualifiedPanel.title}
+          subtitle={disqualifiedPanel.subtitle}
+          columns={disqualifiedPanel.columns}
+          rows={disqualifiedPanel.rows}
+          rowKey={disqualifiedPanel.rowKey}
+          cap={disqualifiedPanel.cap}
+          working={disqualifiedPanel.working}
+          emptyRowsLabel={disqualifiedPanel.emptyRowsLabel}
         />
       )}
     </>
@@ -1884,7 +2274,7 @@ function CashHero({
           </span>
         )}
       </div>
-      <div className="relative mt-3 flex flex-wrap items-end gap-3 font-sans tabular-nums">
+      <div className="relative mt-3 flex flex-wrap items-end gap-3 font-mono tabular-nums">
         <div>
           <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Cash Collected
@@ -2031,7 +2421,7 @@ function PaceTallCard({
 
       <div className="flex flex-1 flex-col justify-center gap-2">
         <div>
-          <div className="font-sans text-4xl font-bold tabular-nums tracking-tight text-spectrum-mid">
+          <div className="font-mono text-4xl font-bold tabular-nums tracking-tight text-spectrum-mid">
             {money(pace.projection)}
           </div>
           <div className="mt-0.5 text-3xs uppercase tracking-[0.14em] text-muted-foreground">
@@ -2043,7 +2433,7 @@ function PaceTallCard({
             middle instead of leaving it as dead space. */}
         <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/50 bg-background/35 p-2.5">
           <div>
-            <div className="font-sans text-base font-semibold tabular-nums">
+            <div className="font-mono text-base font-semibold tabular-nums">
               {money(pace.monthCash)}
             </div>
             <div className="mt-0.5 text-3xs uppercase tracking-wide text-muted-foreground">
@@ -2051,7 +2441,7 @@ function PaceTallCard({
             </div>
           </div>
           <div>
-            <div className="font-sans text-base font-semibold tabular-nums">
+            <div className="font-mono text-base font-semibold tabular-nums">
               {money(pace.dailyPace)}
             </div>
             <div className="mt-0.5 text-3xs uppercase tracking-wide text-muted-foreground">
@@ -2074,7 +2464,7 @@ function PaceTallCard({
               </span>
             </div>
             <div className="mt-1 flex items-baseline justify-between">
-              <span className="font-sans text-base font-semibold tabular-nums">
+              <span className="font-mono text-base font-semibold tabular-nums">
                 {money(targetProgress.targetValue ?? 0)}
               </span>
               <span

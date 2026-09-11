@@ -75,7 +75,19 @@ export interface KpiBandItem {
   icon?: React.ReactNode;
   spark?: number[];
   sparkLabels?: string[];
+  /** Every other tile in this band is "more is good" (cash, closes, sets —
+   * up renders success-green, down renders destructive-red). A handful of
+   * metrics (disqualified leads, failed payments, churn) are the opposite —
+   * an increase is the bad direction. Set `invert` so the delta color
+   * follows the metric's real meaning instead of its raw sign; the arrow
+   * itself still points the way the number actually moved. */
+  invert?: boolean;
   sparkVariant?: "line" | "bar";
+  /** Replaces the whole "vs {priorValue} prior" supporting line verbatim —
+   * for a metric whose supporting line needs to carry a rate + its base
+   * (e.g. "12.3% of 24 shows"), not the prior-period comparison. Wins over
+   * `priorValue` when both are set. */
+  supportingOverride?: string;
 }
 
 export function KpiBand({
@@ -96,12 +108,14 @@ export function KpiBand({
           const up = hasDelta && it.deltaPct! > 0.5;
           const down = hasDelta && it.deltaPct! < -0.5;
           const DeltaIcon = up ? TrendingUp : down ? TrendingDown : Minus;
+          const goodDirection = it.invert ? down : up;
+          const badDirection = it.invert ? up : down;
           const trend = hasDelta ? (
             <span
               className={
-                up
+                goodDirection
                   ? "text-[color:var(--color-success)]"
-                  : down
+                  : badDirection
                     ? "text-destructive"
                     : "text-muted-foreground"
               }
@@ -112,6 +126,8 @@ export function KpiBand({
           ) : undefined;
           const supporting = it.empty ? (
             (it.emptyHint ?? "—")
+          ) : it.supportingOverride ? (
+            it.supportingOverride
           ) : it.priorValue ? (
             <>vs {it.priorValue} prior</>
           ) : undefined;

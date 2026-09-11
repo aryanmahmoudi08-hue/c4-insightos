@@ -1,7 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-interface Insight { title: string; body: string; recommendation: string }
+export interface Insight {
+  title: string;
+  body: string;
+  recommendation: string;
+}
 interface Result {
   bottlenecks: Insight[];
   double_down: Insight[];
@@ -17,7 +21,10 @@ async function callGemini(sys: string, userMsg: string): Promise<Result> {
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "google/gemini-2.5-flash",
-      messages: [{ role: "system", content: sys }, { role: "user", content: userMsg }],
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: userMsg },
+      ],
       response_format: { type: "json_object" },
     }),
   });
@@ -29,7 +36,11 @@ async function callGemini(sys: string, userMsg: string): Promise<Result> {
   }
   const json = await res.json();
   const content = json.choices?.[0]?.message?.content ?? "{}";
-  try { return JSON.parse(content); } catch { throw new Error("AI returned invalid JSON"); }
+  try {
+    return JSON.parse(content);
+  } catch {
+    throw new Error("AI returned invalid JSON");
+  }
 }
 
 export const analyzeLeads = createServerFn({ method: "POST" })
@@ -39,7 +50,9 @@ export const analyzeLeads = createServerFn({ method: "POST" })
     const { supabase } = context;
     let q = supabase
       .from("leads")
-      .select("full_name, status, pipeline_stage, priority, application_data, qualification_notes, intent_score, estimated_close_probability, created_at")
+      .select(
+        "full_name, status, pipeline_stage, priority, application_data, qualification_notes, intent_score, estimated_close_probability, created_at",
+      )
       .eq("org_id", data.orgId)
       .order("created_at", { ascending: false })
       .limit(300);

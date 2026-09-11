@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { useDemoMode } from "@/hooks/use-demo-mode";
+import { buildDemoCoreDataset } from "@/lib/demo-fixtures";
 import { mockClients, mockPreCloseSummary, withMockDelay } from "@/lib/dev-mock-data";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
@@ -73,7 +75,11 @@ export const Route = createFileRoute("/_authenticated/clients")({
 const STAGES = [
   { key: "not_started", label: "Not Started", tone: "default" },
   { key: "outreach_started", label: "Outreach Started", tone: "info" },
-  { key: "conversation", label: "Renewal Conversation", tone: "info" },
+  // Post-QA remediation: this column's box/card presentation must show
+  // Renewal Action / Next Step, not a generic "Conversation" box — the
+  // underlying "conversation" stage key/value stays (real workflow state,
+  // still read/written via renewal_conv_started), only the label changes.
+  { key: "conversation", label: "Renewal Action / Next Step", tone: "info" },
   { key: "proposal", label: "Proposal / Payment Link Sent", tone: "warning" },
   { key: "won", label: "Renewed", tone: "success" },
   { key: "churned", label: "Churned", tone: "destructive" },
@@ -84,6 +90,71 @@ const stageLabel = (value: string | null | undefined) =>
   (value || "not_started").replaceAll("_", " ");
 
 type Stage = (typeof STAGES)[number]["key"];
+
+/**
+ * Demo / Preview Data mode (Priority 5) — Mentees & Renewals joins the
+ * isolated demo system, built from the shared `buildDemoCoreDataset()`
+ * fixture rather than a second one. `scheduleItems`/`renewalWorkItems` have
+ * no dedicated fixture table — they're honestly derived from the same
+ * clients/payments the KPI tiles already show (pending payments become
+ * schedule rows, clients with a real renewal_stage become work items), not
+ * separately invented numbers.
+ */
+function demoMenteesDataset() {
+  const demo = buildDemoCoreDataset();
+  const clients: ClientRow[] = demo.clients.map((c) => ({
+    id: c.id,
+    full_name: c.full_name,
+    email: c.email,
+    phone: null,
+    offer_name: c.offer_name,
+    start_date: c.start_date,
+    contract_value_cents: c.contract_value_cents,
+    invested_to_date_cents: c.invested_to_date_cents,
+    expected_next_payment_cents: c.payment_plan ? c.installment_amount_cents : null,
+    expected_next_payment_date: null,
+    payment_plan: c.payment_plan,
+    installments_remaining: c.installments_remaining,
+    installment_amount_cents: c.installment_amount_cents,
+    status: c.status,
+    renewal_date: c.renewal_date,
+    renewal_conv_started: c.renewal_conv_started,
+    renewal_stage: c.renewal_stage,
+    notes: c.notes,
+    pre_close_summary: null,
+  }));
+  const payments: PaymentRow[] = demo.payments.map((p) => ({
+    id: p.id,
+    client_id: p.client_id,
+    amount_cents: p.amount_cents,
+    status: p.status,
+    collected_at: p.collected_at,
+    currency: p.currency,
+  }));
+  const scheduleItems: ScheduleRow[] = demo.payments
+    .filter((p) => p.status === "pending")
+    .map((p) => ({
+      id: `schedule-${p.id}`,
+      client_id: p.client_id,
+      due_date: p.collected_at.slice(0, 10),
+      amount_cents: p.amount_cents,
+      status: "pending",
+    }));
+  const renewalWorkItems: RenewalWorkItemRow[] = demo.clients
+    .filter((c) => c.renewal_stage)
+    .map((c) => ({
+      id: `renewal-${c.id}`,
+      client_id: c.id,
+      owner_id: null,
+      next_action:
+        c.renewal_stage === "overdue" ? "Reach out — renewal overdue" : "Send renewal offer",
+      next_action_at: c.renewal_date,
+      stage: c.renewal_stage!,
+      reason: null,
+      risk: c.status === "at_risk" ? "high" : c.renewal_stage === "overdue" ? "medium" : "low",
+    }));
+  return { clients, payments, scheduleItems, renewalWorkItems };
+}
 
 type PaymentRow = {
   id: string;
@@ -152,7 +223,10 @@ function ClientPortfolioHero({
           <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Contracted LTV
           </div>
-          <div className="display-serif mt-1 text-5xl font-bold tabular-nums text-spectrum-hot md:text-6xl">
+          {/* Priority 8 — font-mono (JetBrains Mono), the canonical numeric
+              typeface app-wide, not the heading serif (this card's other
+              LTV figures in the table below already use font-mono). */}
+          <div className="font-mono mt-1 text-5xl font-bold tabular-nums text-spectrum-hot md:text-6xl">
             ${contractedLtv.toLocaleString()}
           </div>
         </div>
@@ -425,6 +499,7 @@ function Mentees() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ClientRow | null>(null);
@@ -440,10 +515,11 @@ function Mentees() {
   const notifyStageChanged = useServerFn(notifyClientStageChangedFn);
 
   const { data: clients, isLoading: clientsLoading } = useQuery({
-    queryKey: ["clients", orgId, devBypass],
+    queryKey: ["clients", orgId, devBypass, demoMode],
     enabled: !!orgId,
     queryFn: async () => {
       if (devBypass) return mockClients() as unknown as ClientRow[];
+      if (demoMode) return demoMenteesDataset().clients;
       const { data, error } = await supabase
         .from("clients")
         .select(
@@ -469,10 +545,11 @@ function Mentees() {
   }, [openId, clients]);
 
   const { data: payments = [], isLoading: paymentsLoading } = useQuery({
-    queryKey: ["mentee-payments", orgId, devBypass],
+    queryKey: ["mentee-payments", orgId, devBypass, demoMode],
     enabled: !!orgId,
     queryFn: async () => {
       if (devBypass) return [] as PaymentRow[];
+      if (demoMode) return demoMenteesDataset().payments;
       const { data, error } = await supabase
         .from("payments")
         .select("id, client_id, amount_cents, status, collected_at, currency")
@@ -485,9 +562,10 @@ function Mentees() {
   });
 
   const { data: scheduleItems = [] } = useQuery({
-    queryKey: ["payment-schedule-items", orgId, devBypass],
-    enabled: !!orgId && !devBypass,
+    queryKey: ["payment-schedule-items", orgId, devBypass, demoMode],
+    enabled: !!orgId && (!devBypass || demoMode),
     queryFn: async () => {
+      if (demoMode) return demoMenteesDataset().scheduleItems;
       const { data, error } = await supabase
         .from("payment_schedule_items")
         .select("id, client_id, due_date, amount_cents, status")
@@ -499,9 +577,10 @@ function Mentees() {
   });
 
   const { data: renewalWorkItems = [] } = useQuery({
-    queryKey: ["renewal-work-items", orgId],
+    queryKey: ["renewal-work-items", orgId, demoMode],
     enabled: !!orgId,
     queryFn: async () => {
+      if (demoMode) return demoMenteesDataset().renewalWorkItems;
       const { data, error } = await supabase
         .from("renewal_work_items")
         .select("id, client_id, owner_id, next_action, next_action_at, stage, reason, risk")
@@ -1315,6 +1394,15 @@ function Mentees() {
               loading={clientsLoading}
               renderCard={(c) => {
                 const risk = clientAtRiskReason(c, renewalAtRiskDays);
+                const renewal = renewalByClient.get(c.id);
+                const nextActionLine =
+                  c.renewal_stage === "won" || c.renewal_stage === "churned"
+                    ? "Renewal action: Completed"
+                    : `Renewal action: ${renewal?.next_action ?? "Not yet assigned"}${
+                        renewal?.next_action_at
+                          ? ` · ${new Date(renewal.next_action_at).toLocaleDateString()}`
+                          : ""
+                      }`;
                 return (
                   <KanbanCardAnatomy
                     title={
@@ -1331,10 +1419,7 @@ function Mentees() {
                       </button>
                     }
                     warning={risk ?? undefined}
-                    metaLines={[
-                      c.offer_name || "—",
-                      `Next step: ${c.renewal_stage === "won" || c.renewal_stage === "churned" ? "Completed" : "Renewal action required"}`,
-                    ]}
+                    metaLines={[c.offer_name || "—", nextActionLine]}
                     chip={
                       <div className="flex items-center justify-between text-2xs font-mono">
                         <span className="text-muted-foreground">{c.renewal_date ?? "no date"}</span>

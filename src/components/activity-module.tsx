@@ -6,7 +6,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { TopBar } from "@/components/app-sidebar";
 import type { DateRange } from "@/components/date-range-picker";
 import { useDateRange } from "@/hooks/use-date-range";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useSearch, useNavigate, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,6 +74,14 @@ import {
   type SpeedToLeadQueueItem,
 } from "@/lib/speed-to-lead";
 import { dailySeries, seriesValues, seriesRatePoints, priorPeriod, pctDelta } from "@/lib/trend";
+import {
+  computeDisqualified,
+  disqualifiedCountBySetter,
+  type DqLeadRow,
+  type DqCallRow,
+} from "@/lib/disqualification";
+import { useDemoMode } from "@/hooks/use-demo-mode";
+import { buildDemoCoreDataset } from "@/lib/demo-fixtures";
 import {
   deriveCap,
   deriveWorking,
@@ -315,10 +323,43 @@ const buildDialerMetrics = (
   },
 ];
 
+/**
+ * Demo / Preview Data mode (Priority 5) — the `setter_activity` rows this
+ * page's `allRows`/`prevAllRows` queries expect, sliced from the shared
+ * `buildDemoCoreDataset()` fixture rather than a second demo dataset. Only
+ * the columns the real `select("*")` would return that this page actually
+ * reads are populated; anything genuinely connector-gated in real data
+ * (links_clicked, post_booking_page_visits, pre_call_video_watches) stays
+ * `null` here too, same honest "Requires connected X events" state real
+ * data without that connector shows.
+ */
+function demoSetterActivityRows(role: ActivityRole, from: string, to: string) {
+  const demo = buildDemoCoreDataset();
+  return demo.setterActivity
+    .filter((a) => a.role === role && a.activity_date >= from && a.activity_date <= to)
+    .map((a) => ({
+      id: `demo-activity-${a.team_member_name}-${a.activity_date}`,
+      org_id: "demo-org",
+      user_id: null,
+      downsells: 0,
+      rate_today: null,
+      objections: null,
+      notes: null,
+      lead_source: null,
+      links_clicked: null,
+      post_booking_page_visits: null,
+      pre_call_video_watches: null,
+      created_at: `${a.activity_date}T12:00:00.000Z`,
+      updated_at: `${a.activity_date}T12:00:00.000Z`,
+      ...a,
+    }));
+}
+
 export function ActivityModule({ role, title, subtitle }: Props) {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
   const qc = useQueryClient();
   const money = useMoney();
   const [open, setOpen] = useState(false);
@@ -331,6 +372,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     | { kind: "activity"; field: string; label: string }
     | null
   >(null);
+  // Disqualified Leads tile drilldown — separate from `selected` above since
+  // it shows real per-lead rows, not setter_activity day-aggregates, and
+  // needs its own column shape (Priority 2).
+  const [dqPanelOpen, setDqPanelOpen] = useState(false);
 
   const settingsFn = useServerFn(getWorkspaceSettingsFn);
   const { data: workspaceSettings } = useQuery({
@@ -372,9 +417,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   );
 
   const { data: allRows } = useQuery({
-    queryKey: ["activity", role, orgId, range.from, range.to],
+    queryKey: ["activity", role, orgId, range.from, range.to, demoMode],
     enabled: !!orgId,
     queryFn: async () => {
+      if (demoMode) return demoSetterActivityRows(role, range.from, range.to);
       const { data, error } = await supabase
         .from("setter_activity")
         .select("*")
@@ -474,9 +520,35 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     "follow_up",
   ] as const;
   const { data: dialableLeads = [] } = useQuery({
-    queryKey: ["dialable-leads", orgId, devBypass, range.from, range.to],
+    queryKey: ["dialable-leads", orgId, devBypass, demoMode, range.from, range.to],
     enabled: isDialer && !!orgId,
     queryFn: async () => {
+      if (demoMode) {
+        const demo = buildDemoCoreDataset();
+        const dialerIds = new Set(demo.teamMembers.filter((m) => m.role === role).map((m) => m.id));
+        return demo.leads
+          .filter(
+            (l) =>
+              dialerIds.has(l.assigned_setter_id) &&
+              (OPEN_LEAD_STATUSES as readonly string[]).includes(l.status) &&
+              l.created_at >= `${range.from}T00:00:00` &&
+              l.created_at <= `${range.to}T23:59:59`,
+          )
+          .map((l) => ({
+            id: l.id,
+            ticket_tier: l.ticket_tier,
+            status: l.status,
+            full_name: l.full_name,
+            email: l.email,
+            phone: null as string | null,
+            handle: l.handle,
+            created_at: l.created_at,
+            source_platform: l.source_platform,
+            source_campaign: l.source_campaign,
+            assigned_setter_id: l.assigned_setter_id,
+            qualification_notes: null as string | null,
+          }));
+      }
       // Same reasoning as the callback lead search above: dev bypass has no
       // real Supabase session, so this — now an interactive drilldown
       // source, not just a passive count — needs a real filterable/openable
@@ -540,20 +612,131 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   // human name for the "Active leads available to dial" drilldown, which
   // previously showed a raw truncated UUID — org-wide, not role-scoped,
   // since an assigning setter isn't necessarily this page's own role.
-  const { data: repNamesById = {} } = useQuery({
-    queryKey: ["team-member-names", orgId],
-    enabled: isDialer && !!orgId && !devBypass,
+  // Also backs the Disqualified Leads tile's setter attribution (Priority 2)
+  // on both roles, hence `role` is fetched alongside id/name now.
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ["team-member-names", orgId, demoMode],
+    enabled: !!orgId && !devBypass,
     queryFn: async () => {
+      if (demoMode) return buildDemoCoreDataset().teamMembers;
       const { data, error } = await supabase
         .from("team_members" as never)
-        .select("id, name")
+        .select("id, name, role")
         .eq("org_id", orgId!);
       if (error) throw error;
-      return Object.fromEntries(
-        ((data ?? []) as { id: string; name: string }[]).map((m) => [m.id, m.name]),
-      ) as Record<string, string>;
+      return (data ?? []) as { id: string; name: string; role: string | null }[];
     },
   });
+  const repNamesById = useMemo(
+    () => Object.fromEntries(teamMembers.map((m) => [m.id, m.name])) as Record<string, string>,
+    [teamMembers],
+  );
+  // team_members.id -> name, restricted to this page's own role (dm_setter
+  // or inbound_dialer) — the roster whose owned leads count toward this
+  // page's "All" disqualified total, and the name -> id lookup the member
+  // filter uses to scope to one rep.
+  const roleTeamMembers = useMemo(
+    () => teamMembers.filter((m) => m.role === role),
+    [teamMembers, role],
+  );
+  const setterIdsByName = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const m of roleTeamMembers) map.set(m.name, [...(map.get(m.name) ?? []), m.id]);
+    return map;
+  }, [roleTeamMembers]);
+
+  // Disqualified Leads (Priority 2/3) — canonical source is `leads.status`/
+  // `calls.status === "disqualified"` (see src/lib/disqualification.ts), not
+  // a new self-reported setter_activity field (none exists, and a
+  // self-report would double-count against the closer's own real record of
+  // the same lead). Attribution follows `leads.assigned_setter_id` — the
+  // lead's real set/booking owner — not who most recently messaged it.
+  const dqRange = useMemo(() => priorPeriod(range.from, range.to), [range.from, range.to]);
+  const fetchDqPeriod = async (from: string, to: string) => {
+    const fromISO = `${from}T00:00:00`;
+    const toISO = `${to}T23:59:59`;
+    if (demoMode) {
+      const demo = buildDemoCoreDataset();
+      return {
+        leads: demo.leads.filter((l) => l.created_at >= fromISO && l.created_at <= toISO),
+        calls: demo.calls.filter((c) => c.created_at >= fromISO && c.created_at <= toISO),
+      };
+    }
+    const [leadsRes, callsRes] = await Promise.all([
+      supabase
+        .from("leads")
+        .select("id, status, assigned_setter_id, full_name, email, created_at")
+        .eq("org_id", orgId!)
+        .gte("created_at", fromISO)
+        .lte("created_at", toISO),
+      supabase
+        .from("calls")
+        .select("lead_id, status")
+        .eq("org_id", orgId!)
+        .not("lead_id", "is", null)
+        .gte("created_at", fromISO)
+        .lte("created_at", toISO),
+    ]);
+    if (leadsRes.error) throw leadsRes.error;
+    if (callsRes.error) throw callsRes.error;
+    return { leads: leadsRes.data ?? [], calls: callsRes.data ?? [] };
+  };
+  const { data: dqCurr = { leads: [], calls: [] } } = useQuery({
+    queryKey: ["dq-leads", orgId, range.from, range.to, demoMode],
+    enabled: !!orgId && !devBypass,
+    queryFn: () => fetchDqPeriod(range.from, range.to),
+  });
+  const { data: dqPrev = { leads: [], calls: [] } } = useQuery({
+    queryKey: ["dq-leads", orgId, dqRange.from, dqRange.to, demoMode],
+    enabled: !!orgId && !devBypass,
+    queryFn: () => fetchDqPeriod(dqRange.from, dqRange.to),
+  });
+  // This page's own roster (all dm_setter or all inbound_dialer ids) —
+  // "All" sums only leads owned by a rep with this page's role, same as
+  // every other tile on this page never mixes the two rosters together.
+  const roleSetterIds = useMemo(() => new Set(roleTeamMembers.map((m) => m.id)), [roleTeamMembers]);
+  const selectedSetterIds = useMemo(
+    () => (member === ALL_MEMBERS ? null : new Set(setterIdsByName.get(member) ?? [])),
+    [member, setterIdsByName],
+  );
+  const dqCountFor = useCallback(
+    (period: { leads: DqLeadRow[]; calls: DqCallRow[] }) => {
+      const bySetter = disqualifiedCountBySetter(period.leads, period.calls);
+      let total = 0;
+      for (const [setterId, count] of bySetter) {
+        if (selectedSetterIds ? selectedSetterIds.has(setterId) : roleSetterIds.has(setterId)) {
+          total += count;
+        }
+      }
+      return total;
+    },
+    [selectedSetterIds, roleSetterIds],
+  );
+  const dqCount = useMemo(() => dqCountFor(dqCurr), [dqCurr, dqCountFor]);
+  const prevDqCount = useMemo(() => dqCountFor(dqPrev), [dqPrev, dqCountFor]);
+  // Leads owned by this page's roster (or the selected rep) that ended up
+  // disqualified — the real records behind the tile, for the drilldown.
+  const dqLeadRows = useMemo(() => {
+    const { leadIds } = computeDisqualified(dqCurr.leads, dqCurr.calls);
+    return dqCurr.leads.filter((l) => {
+      if (!leadIds.has(l.id)) return false;
+      const setterId = l.assigned_setter_id;
+      if (!setterId) return false;
+      return selectedSetterIds ? selectedSetterIds.has(setterId) : roleSetterIds.has(setterId);
+    });
+  }, [dqCurr, selectedSetterIds, roleSetterIds]);
+  // Rate denominator = leads this roster/rep actually owns in range, never a
+  // blind ÷ total org leads — the population actually eligible to be
+  // disqualified by this setter/dialer specifically.
+  const dqOwnedLeadCount = useMemo(
+    () =>
+      dqCurr.leads.filter((l) => {
+        const setterId = l.assigned_setter_id;
+        if (!setterId) return false;
+        return selectedSetterIds ? selectedSetterIds.has(setterId) : roleSetterIds.has(setterId);
+      }).length,
+    [dqCurr, selectedSetterIds, roleSetterIds],
+  );
   // Real first-dial-attempt state per lead — the same lead_response_events
   // pipeline Speed to Lead uses (Twilio "initiated" -> first_attempt,
   // "answered" -> first_connection). A lead is only removed from the
@@ -629,9 +812,28 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   // (calls have no "booking dialer" column, only closer/setter), scoped to
   // the page's date range via scheduled_for.
   const { data: rangeCalls = [] } = useQuery({
-    queryKey: ["dialer-appointment-quality", orgId, range.from, range.to],
+    queryKey: ["dialer-appointment-quality", orgId, range.from, range.to, demoMode],
     enabled: isDialer && !!orgId,
     queryFn: async () => {
+      if (demoMode) {
+        const demo = buildDemoCoreDataset();
+        return demo.calls
+          .filter(
+            (c) =>
+              c.scheduled_for >= `${range.from}T00:00:00` &&
+              c.scheduled_for <= `${range.to}T23:59:59`,
+          )
+          .map((c) => ({
+            id: c.id,
+            status: c.status,
+            cancelled: false,
+            no_show_recovered: false,
+            recovered_from_call_id: null as string | null,
+            scheduled_for: c.scheduled_for,
+            duration_seconds: c.duration_seconds,
+            talk_seconds: c.talk_seconds,
+          }));
+      }
       const { data, error } = await supabase
         .from("calls")
         .select(
@@ -1066,9 +1268,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   // not the hardcoded decorative arrays this app shipped elsewhere with the visual redesign.
   const prevRange = useMemo(() => priorPeriod(range.from, range.to), [range.from, range.to]);
   const { data: prevAllRows } = useQuery({
-    queryKey: ["activity-prev", role, orgId, prevRange.from, prevRange.to],
+    queryKey: ["activity-prev", role, orgId, prevRange.from, prevRange.to, demoMode],
     enabled: !!orgId,
     queryFn: async () => {
+      if (demoMode) return demoSetterActivityRows(role, prevRange.from, prevRange.to);
       const { data, error } = await supabase
         .from("setter_activity")
         .select("*")
@@ -1839,6 +2042,25 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         onClick: () => setSelected({ kind: "close", index: 2 }),
       },
       {
+        // Priority 2 — canonical source is `leads.status`/`calls.status ===
+        // "disqualified"` for leads owned by this page's own roster (or the
+        // selected rep), via `assigned_setter_id` — the real set/booking
+        // relationship, not whoever last messaged the lead.
+        key: "disqualified",
+        label: "Disqualified Leads",
+        value: fmtN0(dqCount),
+        spectrum: "mid",
+        deltaPct: pctDelta(dqCount, prevDqCount),
+        priorValue: fmtN0(prevDqCount),
+        invert: true,
+        empty: dqCount === 0,
+        emptyHint: "No disqualified leads attributed to this roster yet this range.",
+        supportingOverride: dqOwnedLeadCount
+          ? `${((dqCount / dqOwnedLeadCount) * 100).toFixed(1)}% of ${fmtN0(dqOwnedLeadCount)} owned leads · ${fmtN0(prevDqCount)} prior`
+          : undefined,
+        onClick: () => setDqPanelOpen(true),
+      },
+      {
         key: "cash",
         label: "Cash Collected",
         value: money(cashCents),
@@ -2115,6 +2337,40 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             emptyRowsLabel="No entries in this date range."
           />
         )}
+        <MetricDetailPanel
+          open={dqPanelOpen}
+          onOpenChange={setDqPanelOpen}
+          title="Disqualified Leads"
+          subtitle={`${range.from} → ${range.to}`}
+          columns={[
+            { key: "lead", label: "Lead", render: (r) => r.full_name || r.email || "—" },
+            {
+              key: "setter",
+              label: isDialer ? "Dialer" : "Setter",
+              render: (r) =>
+                (r.assigned_setter_id && repNamesById[r.assigned_setter_id]) ||
+                (r.assigned_setter_id ? `Rep ${r.assigned_setter_id.slice(0, 8)}` : "—"),
+            },
+            {
+              key: "created",
+              label: "Lead created",
+              render: (r) => r.created_at?.slice(0, 10) ?? "—",
+            },
+          ]}
+          rows={dqLeadRows}
+          rowKey={(r) => r.id}
+          cap={{
+            status: "insufficient_data",
+            sentence:
+              "Disqualification can happen at any stage — no single upstream count to derive a loss estimate from.",
+          }}
+          working={{
+            status: "insufficient_data",
+            sentence:
+              "A diagnostic count, not a funnel stage — no prior-stage comparison to derive.",
+          }}
+          emptyRowsLabel="No disqualified leads attributed to this roster in this date range."
+        />
       </>
     );
     return { top, secondary, downsellsCard };
@@ -2169,15 +2425,20 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 ))}
               </SelectContent>
             </Select>
+            {/* Priority 7 — this filters the rep's own logged `lead_source`
+                (a capture-mechanism value like "Instagram Spiderweb"/
+                "Keyword"/"Inbound"), a lower-level dimension than the
+                standardized Acquisition Source taxonomy — labeled "Lead
+                Capture" so it's never mistaken for that. */}
             <Select value={sourceFilter} onValueChange={setSourceFilter}>
               <SelectTrigger className="w-[190px]">
-                <SelectValue placeholder="Source: All" />
+                <SelectValue placeholder="Lead Capture: All" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Source: All</SelectItem>
+                <SelectItem value="all">Lead Capture: All</SelectItem>
                 {LEAD_SOURCES.map((source) => (
                   <SelectItem key={source} value={source}>
-                    Source: {source}
+                    Lead Capture: {source}
                   </SelectItem>
                 ))}
               </SelectContent>

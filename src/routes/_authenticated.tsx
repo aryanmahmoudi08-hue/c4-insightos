@@ -1,8 +1,9 @@
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { MotionConfig } from "motion/react";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { AppSidebar } from "@/components/app-sidebar";
+import { AccessRequired } from "@/components/access-required";
 import { DateRangeProvider } from "@/hooks/use-date-range";
 import { DisplayCurrencyProvider } from "@/hooks/use-display-currency";
 import { DisplayTimezoneProvider } from "@/hooks/use-display-timezone";
@@ -20,6 +21,15 @@ function AuthedLayout() {
   useEffect(() => {
     if (!loading && !user) nav({ to: "/welcome" });
   }, [loading, user, nav]);
+
+  // Server-side access gate: a valid Supabase session alone is not enough
+  // to reach the app shell — the user also needs an approved `memberships`
+  // row (see ensureWorkspaceForUser, which no longer auto-creates one).
+  // `useCurrentOrg()` is only `enabled` once `user` exists, so this never
+  // fires for a signed-out visitor; devBypass always resolves to the fixed
+  // DEV_BYPASS_ORG and is unaffected.
+  const orgQuery = useCurrentOrg();
+
   if (loading || !user) {
     return (
       <div className="grid min-h-screen place-items-center text-sm text-muted-foreground">
@@ -27,6 +37,19 @@ function AuthedLayout() {
       </div>
     );
   }
+
+  if (orgQuery.isPending) {
+    return (
+      <div className="grid min-h-screen place-items-center text-sm text-muted-foreground">
+        Loading workspace…
+      </div>
+    );
+  }
+
+  if (orgQuery.isError || !orgQuery.data?.org_id) {
+    return <AccessRequired email={user.email} />;
+  }
+
   return (
     <DateRangeProvider>
       <DisplayCurrencyProvider>

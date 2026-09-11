@@ -284,7 +284,8 @@ function InboundVelocityCard({
                   <div className="truncate text-3xs uppercase tracking-wide text-muted-foreground">
                     {label}
                   </div>
-                  <div className="mt-1 font-sans text-2xl font-bold tabular-nums text-foreground">
+                  {/* Priority 8 — font-mono, the canonical numeric typeface app-wide */}
+                  <div className="mt-1 font-mono text-2xl font-bold tabular-nums text-foreground">
                     {value}
                   </div>
                   {note && (
@@ -359,7 +360,7 @@ function InboundVelocityCard({
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-3xs text-muted-foreground">{row.label}</span>
                   <span
-                    className="font-sans text-sm font-bold tabular-nums"
+                    className="font-mono text-sm font-bold tabular-nums"
                     style={{ color: row.color }}
                   >
                     {row.value}
@@ -410,7 +411,7 @@ function RateProgress({ chart }: { chart: RateChartSpec }) {
       <div className="flex items-center justify-between gap-3">
         <span className="min-w-0 truncate text-xs font-medium text-foreground">{chart.label}</span>
         <span
-          className="shrink-0 font-sans text-lg font-bold tabular-nums"
+          className="shrink-0 font-mono text-lg font-bold tabular-nums"
           style={{ color: SAFE_SPECTRUM_VAR[chart.spectrum] }}
         >
           {chart.currentPct.toFixed(1)}%

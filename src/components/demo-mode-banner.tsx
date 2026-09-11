@@ -1,46 +1,36 @@
 import { FlaskConical } from "lucide-react";
-import { useDemoMode } from "@/hooks/use-demo-mode";
 import { cn } from "@/lib/utils";
 
 /**
- * Shared toggle + label for the two features that participate in the
- * isolated Demo / Preview Data system (Attribution Command Center, Calls on
- * Calendar). Toggling here flips the SAME app-wide `useDemoMode()` state —
- * every other page ignores it and always shows real data.
+ * Status indicator for the pages that participate in the isolated Demo /
+ * Preview Data system (Attribution Command Center, Calls on Calendar, and
+ * whatever else Priority 5 extends this to). Read-only by design — the
+ * actual ON/OFF switch lives in exactly one place, the sidebar's Dev
+ * Workspace panel (app-sidebar.tsx), gated to admins only (Priority 4).
+ * This banner used to carry its own independent toggle button here; that
+ * gave every viewer of these pages — not just admins — a way to flip the
+ * app-wide `useDemoMode()` state, which is the opposite of "Dev
+ * Workspace-only." Every other page ignores this flag entirely and always
+ * shows real data.
  */
 export function DemoModeBanner({ demoMode }: { demoMode: boolean }) {
-  const { setDemoMode } = useDemoMode();
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs",
+        "flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-xs",
         demoMode
           ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
           : "border-border/60 bg-card text-muted-foreground",
       )}
     >
-      <span className="flex items-center gap-2">
-        <FlaskConical className="h-3.5 w-3.5" />
-        {demoMode ? (
-          <span className="font-semibold">
-            Demo Data Active — everything below is a deterministic fixture, not real data.
-          </span>
-        ) : (
-          <span>Real data. Toggle Demo / Preview Data to see a fully populated example.</span>
-        )}
-      </span>
-      <button
-        type="button"
-        onClick={() => setDemoMode(!demoMode)}
-        className={cn(
-          "rounded-full border px-3 py-1 text-3xs font-semibold uppercase tracking-wider transition",
-          demoMode
-            ? "border-amber-500/50 bg-amber-500/20 text-amber-100 hover:bg-amber-500/30"
-            : "border-border text-muted-foreground hover:bg-muted/40",
-        )}
-      >
-        {demoMode ? "Exit Demo Data" : "Preview Demo Data"}
-      </button>
+      <FlaskConical className="h-3.5 w-3.5 shrink-0" />
+      {demoMode ? (
+        <span className="font-semibold">
+          Demo Data Active — everything below is a deterministic fixture, not real data.
+        </span>
+      ) : (
+        <span>Real data. An admin can preview a fully populated example via Dev Workspace.</span>
+      )}
     </div>
   );
 }

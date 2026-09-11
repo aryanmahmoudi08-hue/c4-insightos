@@ -833,7 +833,9 @@ function AttributionCommandCenter() {
             <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="p-3 text-left">Platform</th>
-                <th className="p-3 text-left">Source</th>
+                {/* Priority 7 — "Acquisition Source", never bare "Source",
+                    sitting right next to the Platform column. */}
+                <th className="p-3 text-left">Acquisition Source</th>
                 <th className="p-3 text-left">Rep</th>
                 <th className="p-3 text-left">Closer</th>
                 <th className="p-3 text-right font-mono">Calls</th>

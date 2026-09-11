@@ -101,7 +101,12 @@ export function MetricCard({
           </div>
           <div
             className={cn(
-              "mt-1.5 font-sans text-3xl font-bold tabular-nums tracking-tight md:text-[2.35rem]",
+              // Priority 8 — the canonical numeric treatment app-wide is
+              // font-mono (JetBrains Mono) + tabular-nums, not font-sans;
+              // this is the single shared component every KpiCard/KpiBand
+              // headline value renders through, so fixing it here is the
+              // one place that standardizes every KPI surface in the app.
+              "mt-1.5 font-mono text-3xl font-bold tabular-nums tracking-tight md:text-[2.35rem]",
               tone === "default" ? "text-foreground" : TONE_TEXT[tone],
             )}
           >

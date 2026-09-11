@@ -206,6 +206,7 @@ export async function setOverallStatus(
   userId: string,
   status: "awaiting" | "confirmed" | "overdue" | "at_risk" | "cancelled" | "rescheduled",
   cancelledReason?: string,
+  rescheduledReason?: string,
 ) {
   const nowIso = new Date().toISOString();
   const patch: Record<string, unknown> = {
@@ -222,6 +223,52 @@ export async function setOverallStatus(
     // the automatic-enforcement path uses.
     await supabaseAdmin.from("calls").update({ cancelled: true }).eq("id", callId);
   }
+  if (status === "rescheduled") {
+    patch.rescheduled_reason = rescheduledReason ?? "Reason not recorded";
+  }
   const { error } = await confirmationsTable().upsert(patch, { onConflict: "call_id" });
   if (error) throw new Error(`Failed to update confirmation status: ${error.message}`);
+}
+
+/**
+ * Corrects an accidental "sent" click — clears the touchpoint's own sent/
+ * response marker(s), never anything a real outbound integration might one
+ * day have actually delivered (this repo has none today; see the module
+ * doc comment). Logged to the existing generic `events` table as a
+ * correction, not a new audit mechanism.
+ */
+export async function unmarkTouchpoint(
+  callId: string,
+  orgId: string,
+  userId: string,
+  touchpoint: "night_before" | "morning" | "one_hour" | "thirty_min" | "ten_min",
+) {
+  const patch: Record<string, unknown> = {
+    updated_by: userId,
+    updated_at: new Date().toISOString(),
+  };
+  if (touchpoint === "night_before") patch.night_before_sent_at = null;
+  if (touchpoint === "morning") {
+    patch.morning_sent_at = null;
+    patch.morning_responded_at = null;
+  }
+  if (touchpoint === "one_hour") patch.one_hour_sent_at = null;
+  if (touchpoint === "thirty_min") {
+    patch.thirty_min_sent_at = null;
+    patch.thirty_min_confirmed = false;
+    patch.thirty_min_confirmed_at = null;
+  }
+  if (touchpoint === "ten_min") patch.ten_min_sent_at = null;
+
+  const { error } = await confirmationsTable().update(patch).eq("call_id", callId);
+  if (error) throw new Error(`Failed to unmark ${touchpoint}: ${error.message}`);
+
+  await supabaseAdmin.from("events").insert({
+    org_id: orgId,
+    event_type: "confirmation_touchpoint_unmarked",
+    actor_user_id: userId,
+    subject_type: "call",
+    subject_id: callId,
+    payload: { touchpoint },
+  });
 }

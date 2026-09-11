@@ -2,6 +2,8 @@ import { createFileRoute, useSearch, useNavigate, Link } from "@tanstack/react-r
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { useDemoMode } from "@/hooks/use-demo-mode";
+import { buildDemoCoreDataset } from "@/lib/demo-fixtures";
 import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
 import { useServerFn } from "@tanstack/react-start";
@@ -269,10 +271,59 @@ const STATUS_TONE_KEY: Record<string, ChipTone> = {
   rescheduled: "warning",
 };
 
+/**
+ * Demo / Preview Data mode (Priority 5) — this page's own real `calls`
+ * query shape, sliced from the shared `buildDemoCoreDataset()` fixture.
+ * Fields the fixture doesn't model (time_to_close_seconds, key_moment,
+ * source_format/content_id, recovered_from_call_id) stay `null`, same
+ * honest state a real call without that data already shows — never
+ * invented to look more complete than the fixture actually is.
+ */
+function demoCloserCalls(from: string, to: string) {
+  const demo = buildDemoCoreDataset();
+  const leadById = new Map(demo.leads.map((l) => [l.id, l]));
+  return demo.calls
+    .filter((c) => c.scheduled_for >= `${from}T00:00:00` && c.scheduled_for <= `${to}T23:59:59`)
+    .map((c) => {
+      const lead = leadById.get(c.lead_id);
+      return {
+        id: c.id,
+        scheduled_for: c.scheduled_for,
+        status: c.status,
+        showed: c.showed,
+        offer_made: c.offer_made,
+        closed: c.closed,
+        contract_value_cents: c.contract_value_cents,
+        cash_collected_cents: c.cash_collected_cents,
+        deposit_cents: c.deposit_cents,
+        payment_plan: c.payment_plan,
+        call_summary: null as string | null,
+        recording_url: null as string | null,
+        closer_name: c.closer_name,
+        lead_email: c.lead_email,
+        time_to_close_seconds: null as number | null,
+        key_moment: null as string | null,
+        disposition: c.disposition,
+        duration_seconds: c.duration_seconds,
+        talk_seconds: c.talk_seconds,
+        recovered_from_call_id: null as string | null,
+        setter_id: c.setter_id,
+        source_platform: c.source_platform,
+        source_format: null as string | null,
+        source_content_id: null as string | null,
+        source_campaign: c.source_campaign,
+        leads: lead
+          ? { id: lead.id, full_name: lead.full_name, handle: lead.handle, email: lead.email }
+          : null,
+      };
+    });
+}
+
 function Closer() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
   const qc = useQueryClient();
   // Shadows the old module-level USD-only helper of the same name — every
   // existing fmtMoney(...) call site below is unchanged, but now resolves
@@ -333,9 +384,10 @@ function Closer() {
   const lbRange = lbOverride ?? range;
 
   const { data: calls } = useQuery({
-    queryKey: ["calls", orgId, range.from, range.to, devBypass],
+    queryKey: ["calls", orgId, range.from, range.to, devBypass, demoMode],
     enabled: !!orgId,
     queryFn: async () => {
+      if (demoMode) return demoCloserCalls(range.from, range.to);
       type MockCallRow = {
         id: string;
         scheduled_for: string | null;
@@ -728,9 +780,24 @@ function Closer() {
   // Pull setter/dialer day-log aggregates so the Closer Dashboard isn't empty
   // when closes & cash are logged through DM Setter / Inbound Dialer daily entries.
   const { data: setterAgg } = useQuery({
-    queryKey: ["closer-setter-agg", orgId, range.from, range.to],
+    queryKey: ["closer-setter-agg", orgId, range.from, range.to, demoMode],
     enabled: !!orgId,
     queryFn: async () => {
+      if (demoMode) {
+        return buildDemoCoreDataset()
+          .setterActivity.filter(
+            (a) => a.activity_date >= range.from && a.activity_date <= range.to,
+          )
+          .map((a) => ({
+            activity_date: a.activity_date,
+            calls_on_calendar: a.calls_on_calendar,
+            live_calls: a.live_calls,
+            closes: a.closes,
+            downsells: 0,
+            cash_collected_cents: a.cash_collected_cents,
+            total_revenue_cents: a.total_revenue_cents,
+          }));
+      }
       const { data } = await supabase
         .from("setter_activity")
         .select(
@@ -748,7 +815,7 @@ function Closer() {
   // decorative arrays this page shipped with during the visual redesign.
   const prevRange = useMemo(() => priorPeriod(range.from, range.to), [range.from, range.to]);
   const { data: prevCalls } = useQuery({
-    queryKey: ["calls-prev", orgId, prevRange.from, prevRange.to, devBypass],
+    queryKey: ["calls-prev", orgId, prevRange.from, prevRange.to, devBypass, demoMode],
     enabled: !!orgId,
     queryFn: async () => {
       if (devBypass)
@@ -763,6 +830,7 @@ function Closer() {
           deposit_cents: number | null;
           scheduled_for: string | null;
         }[];
+      if (demoMode) return demoCloserCalls(prevRange.from, prevRange.to);
       const { data, error } = await supabase
         .from("calls")
         .select(
@@ -777,9 +845,24 @@ function Closer() {
     },
   });
   const { data: prevSetterAgg } = useQuery({
-    queryKey: ["closer-setter-agg-prev", orgId, prevRange.from, prevRange.to],
+    queryKey: ["closer-setter-agg-prev", orgId, prevRange.from, prevRange.to, demoMode],
     enabled: !!orgId,
     queryFn: async () => {
+      if (demoMode) {
+        return buildDemoCoreDataset()
+          .setterActivity.filter(
+            (a) => a.activity_date >= prevRange.from && a.activity_date <= prevRange.to,
+          )
+          .map((a) => ({
+            activity_date: a.activity_date,
+            calls_on_calendar: a.calls_on_calendar,
+            live_calls: a.live_calls,
+            closes: a.closes,
+            downsells: 0,
+            cash_collected_cents: a.cash_collected_cents,
+            total_revenue_cents: a.total_revenue_cents,
+          }));
+      }
       const { data } = await supabase
         .from("setter_activity")
         .select(
@@ -911,6 +994,18 @@ function Closer() {
       count: counts.get(item.value) ?? 0,
     })).filter((item) => item.count > 0 || list.length === 0);
   }, [list]);
+  // Canonical disqualification count (Priority 2) — the exact same
+  // normalizeCloserDisposition("not_qualified") mapping the disposition mix
+  // above already uses for `status === "disqualified"`, so this tile and
+  // that chart can never disagree. No second taxonomy, no new column.
+  // (prevDqCount is computed further below, once prevList exists.)
+  const dqCount = useMemo(
+    () =>
+      list.filter(
+        (c) => normalizeCloserDisposition(c.status, c.closed, c.offer_made) === "not_qualified",
+      ).length,
+    [list],
+  );
   // Closer-logged disposition mix (spec section 5's exact taxonomy) — the
   // closer's own reason for the outcome, separate from the verified
   // status-derived dispositionMix above. "Not logged" covers calls entered
@@ -1201,6 +1296,9 @@ function Closer() {
   const prevCallsShowed = prevList.filter((c) => c.showed).length;
   const prevCallsOffers = prevList.filter((c) => c.offer_made).length;
   const prevCallsClosed = prevList.filter((c) => c.closed || c.status === "closed").length;
+  const prevDqCount = prevList.filter(
+    (c) => normalizeCloserDisposition(c.status, c.closed, c.offer_made) === "not_qualified",
+  ).length;
   const prevCallsCash = prevList.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
   const prevCallsRev = prevList.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0);
   const prevDepositCount = prevList.filter((c) => (c.deposit_cents ?? 0) > 0).length;
@@ -2557,6 +2655,38 @@ function Closer() {
               empty: closes === 0,
               emptyHint: "No closes yet this range — they'll show up here.",
               onClick: () => setSelected({ kind: "close", index: 3 }),
+            },
+            {
+              // Priority 2 (disqualification tracking) — canonical source is
+              // `calls.status === "disqualified"`, the closer's own EOD/Log
+              // Call selection (Lead Status "Lost"/"Bad Fit"/"DQ" or the
+              // status dropdown's "DQ"), same value the Post-call disposition
+              // mix below already reports as "Not Qualified". Clicking opens
+              // that exact same drilldown — one canonical event, one place
+              // it's ever filtered or counted.
+              key: "disqualified",
+              label: "Disqualified Leads",
+              value: fmtN0(dqCount),
+              spectrum: "mid",
+              deltaPct: pctDelta(dqCount, prevDqCount),
+              priorValue: fmtN0(prevDqCount),
+              invert: true,
+              empty: dqCount === 0,
+              emptyHint: "No disqualified leads logged yet this range.",
+              // Rate denominator = calls that showed, not total leads — a
+              // closer only disqualifies a call that actually happened
+              // (spec: the denominator must reflect the stage being
+              // measured, never a blind ÷ total leads).
+              supportingOverride: showed
+                ? `${((dqCount / showed) * 100).toFixed(1)}% of ${fmtN0(showed)} shows · ${fmtN0(prevDqCount)} prior`
+                : undefined,
+              onClick: () =>
+                setSelected({
+                  kind: "disposition",
+                  source: "status",
+                  value: "not_qualified",
+                  label: "Disqualified Leads",
+                }),
             },
             {
               key: "oncal",

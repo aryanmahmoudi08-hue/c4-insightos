@@ -40,6 +40,7 @@ const MANAGER_ROLES = new Set(["owner", "admin", "sales_manager"]);
 
 async function crmWorkspaceForUser(userId: string): Promise<CrmWorkspace> {
   const workspace = await ensureWorkspaceForUser(userId);
+  if (!workspace) throw new Error("No workspace — access not yet approved");
   return { orgId: workspace.org_id, role: workspace.role, userId };
 }
 

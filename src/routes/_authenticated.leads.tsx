@@ -2,7 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import type { TablesUpdate } from "@/integrations/supabase/types";
 import { useCurrentOrg, useAuth } from "@/hooks/use-auth";
+import { APPLICATION_FIELD_LABELS } from "@/lib/application-fields";
 import { TopBar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,7 +29,7 @@ import {
 } from "lucide-react";
 import { generatePreCallVideoLinkFn } from "@/lib/pre-call-video.functions";
 import { toast } from "sonner";
-import { analyzeLeads } from "@/lib/lead-insights.functions";
+import { analyzeLeads, type Insight } from "@/lib/lead-insights.functions";
 import { PageHero } from "@/components/page-hero";
 import { MetricCard } from "@/components/metric-card";
 import {
@@ -200,20 +202,10 @@ const tone = (s: string) => STATUS_TONE[s] ?? STATUS_TONE.opt_in;
 // REACHED_CALL_STATUSES-style vocabulary above.
 const REACHED_CALL_REAL_STATUSES = ["call_booked", "showed", "closed", "no_show"];
 
-// Application data keys (match typeform mapping)
-const APP_COLS: { key: string; label: string; width?: string }[] = [
-  { key: "experience", label: "Experience", width: "min-w-[140px]" },
-  { key: "work_school", label: "Work/School", width: "min-w-[140px]" },
-  { key: "focus", label: "Focus", width: "min-w-[140px]" },
-  { key: "goal", label: "Goal", width: "min-w-[110px]" },
-  { key: "candidate_fit", label: "Candidate Fit", width: "min-w-[200px]" },
-  { key: "serious_status", label: "Serious", width: "min-w-[140px]" },
-  { key: "time", label: "Time", width: "min-w-[90px]" },
-  { key: "income", label: "Income", width: "min-w-[110px]" },
-  { key: "capital", label: "Capital", width: "min-w-[110px]" },
-  { key: "credit", label: "Credit", width: "min-w-[100px]" },
-  { key: "commitment", label: "Commit", width: "min-w-[80px]" },
-];
+// Application data keys (match typeform mapping) — canonical list lives in
+// application-fields.ts (shared with Calls on Calendar's Lead Form
+// Responses section) so the two never label the same data differently.
+const APP_COLS = APPLICATION_FIELD_LABELS;
 
 const BUCKET_STATUSES: Record<string, string[]> = {
   active: ["opt_in", "rescheduling", "follow_up_short", "follow_up_long", "deposit"],
@@ -558,7 +550,15 @@ function Leads() {
 
   const updateLead = useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: Record<string, unknown> }) => {
-      const { error } = await (supabase as any).from("leads").update(patch).eq("id", id);
+      // `patch` stays looser than TablesUpdate<"leads"> here — the status
+      // dropdown below writes a legacy vocabulary that only partially
+      // overlaps the real `lead_status` enum (see that dropdown's own
+      // comment); pre-existing, documented behavior, not something this
+      // lint pass changes.
+      const { error } = await supabase
+        .from("leads")
+        .update(patch as TablesUpdate<"leads">)
+        .eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -1480,6 +1480,7 @@ function LeadDetail({
           { key: "low", label: "Low Ticket" },
           { key: "high", label: "High Ticket" },
         ];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- offer_tiers exists in the DB (see supabase/migrations/20260904090000_client_dna_offer_config.sql) but predates the last generated-types.ts refresh, so it's not in the Database type yet.
       const { data, error } = await (supabase as any)
         .from("offer_tiers")
         .select("key, label")
@@ -1533,7 +1534,7 @@ function LeadDetail({
     queryKey: ["lead-notes", lead.id],
     enabled: !!orgId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("lead_notes")
         .select("id, body, kind, created_at, author_id")
         .eq("lead_id", lead.id)
@@ -1546,7 +1547,7 @@ function LeadDetail({
 
   const addNote = useMutation({
     mutationFn: async (body: string) => {
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from("lead_notes")
         .insert({ org_id: orgId!, lead_id: lead.id, body, author_id: user?.id ?? null });
       if (error) throw error;
@@ -1728,7 +1729,14 @@ function LeadDetail({
               <span className="text-muted-foreground">Handle:</span> {lead.handle ?? "—"}
             </div>
             <div>
-              <span className="text-muted-foreground">Source:</span> {lead.source_connector ?? "—"}
+              {/* Priority 7 — `source_connector` is the intake integration
+                  ("typeform", "ingest_api"), never the acquisition channel;
+                  the "Source" label above (real platform, via
+                  normalizeSocialPlatform) already covers that. Labeling
+                  both "Source" would repeat the exact confusion this
+                  priority exists to remove. */}
+              <span className="text-muted-foreground">Captured via:</span>{" "}
+              {lead.source_connector ?? "—"}
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-muted-foreground">Ticket tier:</span>
@@ -1810,7 +1818,7 @@ function LeadDetail({
             </Button>
           </div>
           <div className="space-y-2">
-            {(notes ?? []).map((n: any) => (
+            {(notes ?? []).map((n) => (
               <div key={n.id} className="rounded border border-border bg-card p-3 text-xs">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-3xs uppercase tracking-wider text-muted-foreground">
@@ -1857,7 +1865,7 @@ function LeadDetail({
               <Film className="h-3 w-3" /> Content path (first → last)
             </div>
             <div className="space-y-1.5">
-              {(timeline?.touches ?? []).map((t: any) => {
+              {(timeline?.touches ?? []).map((t) => {
                 const cp = Array.isArray(t.content_pieces) ? t.content_pieces[0] : t.content_pieces;
                 return (
                   <div key={t.id} className="flex items-center gap-2 text-xs">
@@ -1885,7 +1893,7 @@ function LeadDetail({
               <PhoneCall className="h-3 w-3" /> Calls
             </div>
             <div className="space-y-1.5">
-              {(timeline?.calls ?? []).map((c: any) => (
+              {(timeline?.calls ?? []).map((c) => (
                 <div key={c.id} className="rounded border border-border p-2 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="font-medium uppercase text-3xs">{c.status}</span>
@@ -1985,13 +1993,14 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
   const run = useServerFn(analyzeLeads);
   const { devBypass } = useAuth();
   const [data, setData] = useState<{
-    bottlenecks: any[];
-    double_down: any[];
-    priority_leads: any[];
+    bottlenecks: Insight[];
+    double_down: Insight[];
+    priority_leads: { name: string; reason: string }[];
     sampleSize: number;
   } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [range, setRange] = useState<"1d" | "3d" | "7d" | "30d" | "all">("30d");
+  type InsightsRange = "1d" | "3d" | "7d" | "30d" | "all";
+  const [range, setRange] = useState<InsightsRange>("30d");
 
   const generate = async () => {
     if (!orgId) return;
@@ -2012,7 +2021,7 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
       const d = days[range];
       const from = d ? new Date(now.getTime() - d * 86400000).toISOString() : undefined;
       const out = await run({ data: { orgId, from, to: now.toISOString() } });
-      setData(out as any);
+      setData(out);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to generate");
     } finally {
@@ -2036,7 +2045,7 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
           <select
             value={range}
             onChange={(e) => {
-              setRange(e.target.value as any);
+              setRange(e.target.value as InsightsRange);
               setData(null);
             }}
             className="h-8 rounded border border-input bg-background px-2 text-xs"

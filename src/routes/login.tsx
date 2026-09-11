@@ -17,7 +17,6 @@ function LoginPage() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [orgName, setOrgName] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -34,13 +33,10 @@ function LoginPage() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: {
-            emailRedirectTo: window.location.origin,
-            data: { org_name: orgName || "My Workspace" },
-          },
+          options: { emailRedirectTo: window.location.origin },
         });
         if (error) throw error;
-        toast.success("Account created. Welcome to C4.");
+        toast.success("Account created. Request access to a workspace next.");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -62,27 +58,29 @@ function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-6">
+      {/* Priority 9 — sized up to match the sidebar's own increased logo,
+          so the brand mark reads at the same scale everywhere it appears. */}
       <Link to="/welcome" className="mb-8 flex items-center gap-2">
         <img
           src={c4OsWhite}
           alt="C4 OS"
-          className="theme-logo-dark h-16 w-auto shrink-0 object-contain"
+          className="theme-logo-dark h-20 w-auto shrink-0 object-contain"
         />
         <img
           src={c4OsBlack}
           alt="C4 OS"
-          className="theme-logo-light h-16 w-auto shrink-0 object-contain"
+          className="theme-logo-light h-20 w-auto shrink-0 object-contain"
         />
       </Link>
       <div className="flex w-full items-center justify-center">
         <form onSubmit={submit} className="w-full max-w-sm space-y-5">
           <div>
             <h1 className="text-2xl font-semibold">
-              {mode === "signup" ? "Create workspace" : "Welcome back"}
+              {mode === "signup" ? "Create account" : "Welcome back"}
             </h1>
             <p className="text-sm text-muted-foreground">
               {mode === "signup"
-                ? "Spin up your command center."
+                ? "Create your account, then request access to a workspace."
                 : "Sign in to your command center."}
             </p>
           </div>
@@ -98,17 +96,6 @@ function LoginPage() {
           <div className="flex items-center gap-3 text-2xs uppercase tracking-widest text-muted-foreground">
             <div className="h-px flex-1 bg-border" /> or <div className="h-px flex-1 bg-border" />
           </div>
-          {mode === "signup" && (
-            <div className="space-y-1.5">
-              <Label htmlFor="org">Workspace name</Label>
-              <Input
-                id="org"
-                value={orgName}
-                onChange={(e) => setOrgName(e.target.value)}
-                placeholder="Acme Coaching"
-              />
-            </div>
-          )}
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -131,15 +118,21 @@ function LoginPage() {
             />
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "…" : mode === "signup" ? "Create workspace" : "Sign in"}
+            {loading ? "…" : mode === "signup" ? "Create account" : "Sign in"}
           </Button>
           <button
             type="button"
             onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
             className="block w-full text-center text-xs text-muted-foreground hover:text-foreground"
           >
-            {mode === "signup" ? "Have an account? Sign in" : "New to C4? Create a workspace"}
+            {mode === "signup" ? "Have an account? Sign in" : "New to C4? Create an account"}
           </button>
+          <Link
+            to="/request-access"
+            className="block w-full text-center text-xs text-muted-foreground hover:text-foreground"
+          >
+            Already have an account but no workspace? Request access
+          </Link>
           {import.meta.env.DEV && (
             <Button
               type="button"

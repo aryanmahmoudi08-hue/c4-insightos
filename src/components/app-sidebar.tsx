@@ -33,14 +33,24 @@ import {
   Command,
   FileText,
   ClipboardCheck,
+  FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg, disableDevBypass } from "@/hooks/use-auth";
 import { useRole } from "@/hooks/use-role";
+import { useDemoMode } from "@/hooks/use-demo-mode";
 import { ROLE_LABELS, type ManagedRole } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
+import { Switch } from "@/components/ui/switch";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -144,6 +154,7 @@ export function AppSidebar() {
   const loc = useLocation();
   const { data: org } = useCurrentOrg();
   const { canManage, isAdmin, role } = useRole();
+  const { demoMode, setDemoMode } = useDemoMode();
   const { theme, toggle } = useTheme();
   const { collapsed, setCollapsed, toggle: toggleCollapsed } = useSidebarCollapsed();
   const { user, devBypass } = useAuth();
@@ -363,51 +374,107 @@ export function AppSidebar() {
       >
         <div
           className={cn(
-            "flex items-center gap-2 border-b border-sidebar-border transition-[padding] duration-200",
-            !showExpanded ? "px-2.5 py-3.5 justify-center" : "px-4 py-4",
+            "border-b border-sidebar-border transition-[padding] duration-200",
+            !showExpanded ? "px-2.5 py-3.5" : "px-4 pt-4 pb-3",
           )}
         >
-          {/* Two real theme-specific assets (not a CSS invert approximation)
-              — .theme-logo-dark shows by default, .theme-logo-light shows
-              only under .light (styles.css), so the swap is pure CSS/SSR-
-              safe with no theme-detection flash. `w-auto` (not a fixed
-              square box) lets the wordmark's real ~1.5:1 aspect ratio
-              render at full size instead of being letterboxed inside a
-              square — collapsed stays compact (fits the narrow icon rail
-              without clipping), expanded is a substantially larger, real
-              brand mark rather than a tiny icon. */}
-          <img
-            src={c4OsWhite}
-            alt="C4 OS"
+          {/* Priority 9 — the logo now sits on its own row, above the
+              workspace/Dev Workspace control below it (previously side by
+              side with the workspace name, which capped how large either
+              could get without crowding the other). Bigger on its own row
+              reads as real brand presence instead of a small icon glued to
+              a text label. */}
+          <div
             className={cn(
-              "theme-logo-dark shrink-0 object-contain transition-[height] duration-200",
-              !showExpanded ? "h-9 w-9" : "h-16 w-auto",
+              "flex items-center",
+              !showExpanded ? "justify-center" : "justify-between",
             )}
-          />
-          <img
-            src={c4OsBlack}
-            alt="C4 OS"
-            className={cn(
-              "theme-logo-light shrink-0 object-contain transition-[height] duration-200",
-              !showExpanded ? "h-9 w-9" : "h-16 w-auto",
-            )}
-          />
-          {showExpanded && (
-            <button type="button" className="group min-w-0 flex-1 text-left" title="Workspace">
-              <div className="flex items-center gap-1 truncate text-3xs uppercase tracking-wider text-muted-foreground/80">
-                {org?.organizations?.name ?? "Workspace"}
-                <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60 transition-transform group-hover:translate-y-px" />
-              </div>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={closeMobile}
-            className="md:hidden inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-sidebar-accent/60"
-            aria-label="Close menu"
           >
-            <X className="h-4 w-4" />
-          </button>
+            {/* Two real theme-specific assets (not a CSS invert approximation)
+                — .theme-logo-dark shows by default, .theme-logo-light shows
+                only under .light (styles.css), so the swap is pure CSS/SSR-
+                safe with no theme-detection flash. `w-auto` (not a fixed
+                square box) lets the wordmark's real ~1.5:1 aspect ratio
+                render at full size instead of being letterboxed inside a
+                square — collapsed stays exactly at the narrow rail's
+                available width (no more room to grow there without
+                clipping), expanded is a substantially larger, real brand
+                mark rather than a small icon. */}
+            <div className="flex min-w-0 items-center gap-2">
+              <img
+                src={c4OsWhite}
+                alt="C4 OS"
+                className={cn(
+                  "theme-logo-dark shrink-0 object-contain transition-[height] duration-200",
+                  !showExpanded ? "h-9 w-9" : "h-20 w-auto",
+                )}
+              />
+              <img
+                src={c4OsBlack}
+                alt="C4 OS"
+                className={cn(
+                  "theme-logo-light shrink-0 object-contain transition-[height] duration-200",
+                  !showExpanded ? "h-9 w-9" : "h-20 w-auto",
+                )}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={closeMobile}
+              className="md:hidden inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-sidebar-accent/60"
+              aria-label="Close menu"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {showExpanded && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="group mt-2 block w-full min-w-0 text-left"
+                  title="Workspace"
+                >
+                  <div className="flex items-center gap-1 truncate text-3xs uppercase tracking-wider text-muted-foreground/80">
+                    {org?.organizations?.name ?? "Workspace"}
+                    <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60 transition-transform group-hover:translate-y-px" />
+                  </div>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64">
+                <DropdownMenuLabel className="text-3xs uppercase tracking-wider text-muted-foreground">
+                  {org?.organizations?.name ?? "Workspace"}
+                </DropdownMenuLabel>
+                {isAdmin && !devBypass && (
+                  <>
+                    <DropdownMenuSeparator />
+                    {/* Dev Workspace — the one place Mock/Demo Data ever
+                        turns on (Priority 4). Admin-only, and this control
+                        is never rendered at all for anyone else — the
+                        production/public app has no path to it. Extends the
+                        existing useDemoMode()/DemoModeProvider state (see
+                        demo-mode-banner.tsx) rather than a second switch. */}
+                    <div className="px-2 py-2">
+                      <div className="mb-1.5 flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        <FlaskConical className="h-3 w-3" /> Dev Workspace
+                      </div>
+                      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-1 py-1">
+                        <span className="text-xs">
+                          <span className="font-medium text-foreground">Mock Data</span>
+                          <span className="block text-3xs text-muted-foreground">
+                            {demoMode
+                              ? "Demo Data Active — fixtures, not real data"
+                              : "Off — real data only"}
+                          </span>
+                        </span>
+                        <Switch checked={demoMode} onCheckedChange={setDemoMode} />
+                      </label>
+                    </div>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
         <nav className="flex flex-1 flex-col overflow-y-auto p-2 space-y-0.5">
           <div className="px-2.5 pb-1 pt-1 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/50">

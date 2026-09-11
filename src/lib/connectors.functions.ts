@@ -88,6 +88,7 @@ async function getOrgId(supabase: any, userId: string) {
   if (error) throw new Error(error.message);
   if (data?.org_id) return data.org_id as string;
   const workspace = await ensureWorkspaceForUser(userId);
+  if (!workspace) throw new Error("No workspace — access not yet approved");
   return workspace.org_id;
 }
 

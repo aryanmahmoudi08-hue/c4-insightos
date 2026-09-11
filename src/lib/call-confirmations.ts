@@ -69,6 +69,7 @@ export type CallConfirmationRow = {
   overall_status: "awaiting" | "confirmed" | "overdue" | "at_risk" | "cancelled" | "rescheduled";
   confirmed_at: string | null;
   cancelled_reason: string | null;
+  rescheduled_reason: string | null;
 } | null;
 
 const FIELD_MAP: Record<

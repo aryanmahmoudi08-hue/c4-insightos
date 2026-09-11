@@ -856,7 +856,10 @@ function TrafficNode({ icon, label, value }: { icon: ReactNode; label: string; v
         {icon}
         {label}
       </div>
-      <div className="mt-3 text-3xl font-bold tracking-tight text-foreground">{value}</div>
+      {/* Priority 8 — font-mono + tabular-nums, the canonical numeric treatment. */}
+      <div className="mt-3 font-mono text-3xl font-bold tabular-nums tracking-tight text-foreground">
+        {value}
+      </div>
     </div>
   );
 }

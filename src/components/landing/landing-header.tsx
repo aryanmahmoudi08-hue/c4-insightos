@@ -36,19 +36,21 @@ export function LandingHeader() {
       <div
         className={cn(
           "mx-auto flex max-w-6xl items-center justify-between px-4 transition-[height] duration-300 md:px-6",
-          scrolled ? "h-14" : "h-16",
+          // Priority 9 — a small +8px bump in both states (matching the
+          // logo's own increase below) so it never overflows the header bar.
+          scrolled ? "h-16" : "h-[4.5rem]",
         )}
       >
         <a href="#top" className="flex min-w-0 items-center gap-2">
           <img
             src={c4OsWhite}
             alt="C4 OS"
-            className="theme-logo-dark h-12 w-auto shrink-0 object-contain md:h-14"
+            className="theme-logo-dark h-14 w-auto shrink-0 object-contain md:h-16"
           />
           <img
             src={c4OsBlack}
             alt="C4 OS"
-            className="theme-logo-light h-12 w-auto shrink-0 object-contain md:h-14"
+            className="theme-logo-light h-14 w-auto shrink-0 object-contain md:h-16"
           />
         </a>
 

@@ -10,7 +10,23 @@ import { chromium } from "@playwright/test";
  * hoping — a manual re-check against an already-warm server always passed
  * in well under a second.
  */
-const ROUTES = ["/dm-setter", "/inbound-dialer", "/closer", "/team", "/content-signals", "/events", "/outreach", "/insights", "/dashboard", "/leads", "/pcv/warmup-token", "/weekly-report", "/connectors", "/eod-reports"];
+const ROUTES = [
+  "/dm-setter",
+  "/inbound-dialer",
+  "/closer",
+  "/team",
+  "/content-signals",
+  "/events",
+  "/outreach",
+  "/insights",
+  "/dashboard",
+  "/leads",
+  "/pcv/warmup-token",
+  "/weekly-report",
+  "/connectors",
+  "/eod-reports",
+  "/team-calendar",
+];
 
 export default async function globalSetup() {
   const browser = await chromium.launch();
@@ -19,7 +35,9 @@ export default async function globalSetup() {
   for (const route of ROUTES) {
     try {
       await page.goto(`http://localhost:8080${route}`, { waitUntil: "load", timeout: 60_000 });
-      await page.waitForSelector("h1, [class*='display-serif']", { timeout: 60_000 }).catch(() => {});
+      await page
+        .waitForSelector("h1, [class*='display-serif']", { timeout: 60_000 })
+        .catch(() => {});
     } catch {
       // Best-effort warm-up — a miss here just leaves one route cold, not a
       // reason to fail setup; the real test's own timeout is the backstop.

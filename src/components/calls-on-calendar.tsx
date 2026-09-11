@@ -26,12 +26,15 @@ import {
   markTouchpointFn,
   setConfirmationStatusFn,
   setConfirmationPolicyFn,
+  unmarkTouchpointFn,
 } from "@/lib/call-confirmations.functions";
+import { applicationFormResponses } from "@/lib/application-fields";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import {
   Select,
   SelectContent,
@@ -40,7 +43,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/empty-state";
-import { CalendarClock, Clock, ExternalLink, Phone, Settings, User, Video, X } from "lucide-react";
+import {
+  CalendarClock,
+  ChevronDown,
+  Clock,
+  ExternalLink,
+  Phone,
+  Settings,
+  User,
+  Video,
+  X,
+} from "lucide-react";
 
 type CallRow = {
   id: string;
@@ -58,6 +71,8 @@ type CallRow = {
   cancelled: boolean | null;
   meeting_link: string | null;
   recording_url: string | null;
+  calendly_cancel_url: string | null;
+  calendly_reschedule_url: string | null;
 };
 
 type LeadRow = {
@@ -72,6 +87,7 @@ type LeadRow = {
   source_platform: string | null;
   qualification_notes: string | null;
   precall_video_watched: boolean | null;
+  application_data: Record<string, unknown> | null;
 };
 
 const DEFAULT_DURATION_MIN = 30;
@@ -128,6 +144,70 @@ const GRID_START_MIN = 6 * 60; // 6:00am
 const GRID_END_MIN = 22 * 60; // 10:00pm
 const PX_PER_MIN = 1.1;
 
+/**
+ * Standard calendar overlap layout (Priority 6 — two or more calls booked
+ * at the exact same time must render side-by-side, never stacked
+ * invisibly on top of each other or stretched to fake a wider block).
+ *
+ * Groups mutually-overlapping events into clusters (a sweep over start
+ * times: an event joins the current cluster if it starts before the
+ * cluster's latest-running end time), then greedily first-fits each event
+ * in a cluster into the lowest-numbered column whose previous occupant has
+ * already ended — the same algorithm Google Calendar-style grids use.
+ * Every event in a cluster gets `columnCount` = that cluster's total column
+ * count, so a 2-way overlap gets two half-width columns, a 3-way overlap
+ * gets three thirds, etc. Vertical position/height (start time, duration)
+ * is computed entirely separately by the caller — this only ever decides
+ * horizontal placement.
+ */
+export function computeOverlapColumns<T extends { id: string; startMin: number; endMin: number }>(
+  entries: T[],
+): Map<string, { column: number; columnCount: number }> {
+  const layout = new Map<string, { column: number; columnCount: number }>();
+  const sorted = [...entries].sort((a, b) => a.startMin - b.startMin);
+
+  let cluster: T[] = [];
+  let clusterEnd = -Infinity;
+
+  const flushCluster = () => {
+    if (!cluster.length) return;
+    // Greedy first-fit: track each column's current end time; place each
+    // event (in start order) into the first column that's already free.
+    const columnEnds: number[] = [];
+    const columnOf = new Map<string, number>();
+    for (const e of cluster) {
+      let placed = false;
+      for (let col = 0; col < columnEnds.length; col++) {
+        if (columnEnds[col] <= e.startMin) {
+          columnEnds[col] = e.endMin;
+          columnOf.set(e.id, col);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        columnEnds.push(e.endMin);
+        columnOf.set(e.id, columnEnds.length - 1);
+      }
+    }
+    const columnCount = columnEnds.length;
+    for (const e of cluster) {
+      layout.set(e.id, { column: columnOf.get(e.id)!, columnCount });
+    }
+    cluster = [];
+    clusterEnd = -Infinity;
+  };
+
+  for (const e of sorted) {
+    if (cluster.length && e.startMin >= clusterEnd) flushCluster();
+    cluster.push(e);
+    clusterEnd = Math.max(clusterEnd, e.endMin);
+  }
+  flushCluster();
+
+  return layout;
+}
+
 const STATUS_TONE: Record<OverallConfirmationStatus, string> = {
   confirmed: "border-emerald-500/50 bg-emerald-500/10 text-emerald-300",
   awaiting: "border-border/60 bg-muted/20 text-muted-foreground",
@@ -146,6 +226,50 @@ const STATUS_LABEL: Record<OverallConfirmationStatus, string> = {
   rescheduled: "Rescheduled",
 };
 
+// Legend-only presentation (Priority 41) — a solid dot color and a small
+// glyph per status, layered on top of STATUS_TONE/STATUS_LABEL rather than
+// a third parallel status list, so the legend can never say something the
+// actual event blocks don't.
+const LEGEND_DOT: Record<OverallConfirmationStatus, string> = {
+  confirmed: "border-emerald-500 bg-emerald-500",
+  awaiting: "border-muted-foreground/60 bg-muted-foreground/40",
+  overdue: "border-red-500 bg-red-500",
+  at_risk: "border-amber-500 bg-amber-500",
+  cancelled: "border-border bg-transparent",
+  rescheduled: "border-blue-500 bg-blue-500",
+};
+const LEGEND_ICON: Record<OverallConfirmationStatus, string> = {
+  confirmed: "✓",
+  awaiting: "…",
+  overdue: "!",
+  at_risk: "⚠",
+  cancelled: "✕",
+  rescheduled: "↻",
+};
+
+// Structured cancellation/reschedule reasons (Priority 6/48) — a fixed
+// category list plus "Other" with optional notes, never free text alone.
+// Existing records from before this taxonomy existed show "Reason not
+// recorded" rather than a guessed category.
+const CANCEL_REASONS = [
+  "Lead cancelled",
+  "Lead no longer interested",
+  "Scheduling conflict",
+  "Unqualified",
+  "Closer unavailable",
+  "Duplicate booking",
+  "No confirmation",
+  "Other",
+] as const;
+const RESCHEDULE_REASONS = [
+  "Lead requested new time",
+  "Closer requested new time",
+  "Scheduling conflict",
+  "Lead not ready",
+  "Technical issue",
+  "Other",
+] as const;
+
 export function CallsOnCalendar() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
@@ -156,6 +280,7 @@ export function CallsOnCalendar() {
 
   const getConfirmations = useServerFn(getConfirmationsForCallsFn);
   const markTouchpoint = useServerFn(markTouchpointFn);
+  const unmarkTouchpoint = useServerFn(unmarkTouchpointFn);
   const setConfirmationStatus = useServerFn(setConfirmationStatusFn);
   const setConfirmationPolicy = useServerFn(setConfirmationPolicyFn);
 
@@ -213,7 +338,7 @@ export function CallsOnCalendar() {
       /* eslint-disable @typescript-eslint/no-explicit-any */
       const { data: calls } = await (supabase.from("calls") as any)
         .select(
-          "id, lead_id, setter_id, closer_id, scheduled_for, status, showed, offer_made, closed, cash_collected_cents, contract_value_cents, duration_seconds, cancelled, meeting_link, recording_url",
+          "id, lead_id, setter_id, closer_id, scheduled_for, status, showed, offer_made, closed, cash_collected_cents, contract_value_cents, duration_seconds, cancelled, meeting_link, recording_url, calendly_cancel_url, calendly_reschedule_url",
         )
         .eq("org_id", orgId!)
         .gte("scheduled_for", rangeStart.toISOString())
@@ -237,7 +362,7 @@ export function CallsOnCalendar() {
           ? supabase
               .from("leads")
               .select(
-                "id, full_name, handle, email, phone, status, intent_score, priority, source_platform, qualification_notes, precall_video_watched",
+                "id, full_name, handle, email, phone, status, intent_score, priority, source_platform, qualification_notes, precall_video_watched, application_data",
               )
               .in("id", leadIds)
           : Promise.resolve({ data: [] as LeadRow[] }),
@@ -542,12 +667,15 @@ export function CallsOnCalendar() {
             ))}
           </SelectContent>
         </Select>
+        {/* Priority 7 — explicitly "Acquisition Source" (the standardized
+            ACQUISITION_SOURCES taxonomy), never bare "Source", so it can't
+            be mistaken for the Platform filter above it. */}
         <Select value={sourceFilter} onValueChange={setSourceFilter}>
-          <SelectTrigger className="h-8 w-[170px] text-xs">
-            <SelectValue placeholder="Source: All" />
+          <SelectTrigger className="h-8 w-[190px] text-xs">
+            <SelectValue placeholder="Acquisition Source: All" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Source: All</SelectItem>
+            <SelectItem value="all">Acquisition Source: All</SelectItem>
             {acquisitionSourceOptions().map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
@@ -583,6 +711,21 @@ export function CallsOnCalendar() {
         </div>
       </div>
 
+      {/* Status legend (Priority 6/41) — built from the same STATUS_TONE/
+          STATUS_LABEL maps every event block and the drawer already use, so
+          it can never drift out of sync with the real taxonomy. Color +
+          icon + text label together, never color alone. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-border/50 bg-background/30 px-3 py-2 text-3xs text-muted-foreground">
+        {(Object.keys(STATUS_LABEL) as OverallConfirmationStatus[]).map((status) => (
+          <span key={status} className="flex items-center gap-1.5">
+            <span className={`h-2 w-2 rounded-full border ${LEGEND_DOT[status]}`} />
+            <span>
+              {LEGEND_ICON[status]} {STATUS_LABEL[status]}
+            </span>
+          </span>
+        ))}
+      </div>
+
       {/* Timeline / agenda */}
       {isMobile ? (
         <AgendaList
@@ -590,6 +733,7 @@ export function CallsOnCalendar() {
             visibleDayKeys.includes(dayKey(new Date(e.call.scheduled_for ?? now), timezone)),
           )}
           timezone={timezone}
+          repNameById={data?.repNameById ?? {}}
           onSelect={setSelectedCallId}
         />
       ) : (
@@ -598,6 +742,7 @@ export function CallsOnCalendar() {
           byDay={byDay}
           timezone={timezone}
           now={now}
+          repNameById={data?.repNameById ?? {}}
           onSelect={setSelectedCallId}
         />
       )}
@@ -658,7 +803,43 @@ export function CallsOnCalendar() {
               toast.error("Could not update touchpoint");
             }
           }}
-          onSetStatus={async (status, cancelledReason) => {
+          onUnmarkTouchpoint={async (touchpoint) => {
+            if (demoMode) {
+              setDemoDataset((prev) => {
+                if (!prev) return prev;
+                const next = new Map(prev.confirmationByCallId);
+                const existing = next.get(selected.call.id);
+                if (!existing) return prev;
+                const patched = { ...existing };
+                if (touchpoint === "night_before") patched.night_before_sent_at = null;
+                if (touchpoint === "morning") {
+                  patched.morning_sent_at = null;
+                  patched.morning_responded_at = null;
+                }
+                if (touchpoint === "one_hour") patched.one_hour_sent_at = null;
+                if (touchpoint === "thirty_min") {
+                  patched.thirty_min_sent_at = null;
+                  patched.thirty_min_confirmed = false;
+                  patched.thirty_min_confirmed_at = null;
+                }
+                if (touchpoint === "ten_min") patched.ten_min_sent_at = null;
+                next.set(selected.call.id, patched);
+                return { ...prev, confirmationByCallId: next };
+              });
+              toast.success(`${TOUCHPOINT_LABELS[touchpoint]} unmarked (demo data)`);
+              return;
+            }
+            try {
+              await unmarkTouchpoint({
+                data: { call_id: selected.call.id, org_id: orgId!, touchpoint },
+              });
+              invalidate();
+              toast.success(`${TOUCHPOINT_LABELS[touchpoint]} unmarked`);
+            } catch {
+              toast.error("Could not unmark touchpoint");
+            }
+          }}
+          onSetStatus={async (status, cancelledReason, rescheduledReason) => {
             if (demoMode) {
               setDemoDataset((prev) => {
                 if (!prev) return prev;
@@ -674,6 +855,10 @@ export function CallsOnCalendar() {
                       status === "cancelled"
                         ? (cancelledReason ?? "Cancelled by rep")
                         : existing.cancelled_reason,
+                    rescheduled_reason:
+                      status === "rescheduled"
+                        ? (rescheduledReason ?? "Reason not recorded")
+                        : existing.rescheduled_reason,
                   });
                 }
                 const nextCalls = prev.calls.map((c) =>
@@ -693,6 +878,7 @@ export function CallsOnCalendar() {
                   org_id: orgId!,
                   status,
                   cancelled_reason: cancelledReason,
+                  rescheduled_reason: rescheduledReason,
                 },
               });
               invalidate();
@@ -701,15 +887,25 @@ export function CallsOnCalendar() {
               toast.error("Could not update status");
             }
           }}
-          onReschedule={async (isoDate) => {
+          onReschedule={async (isoDate, reason) => {
             if (demoMode) {
               setDemoDataset((prev) => {
                 if (!prev) return prev;
+                const nextConfirmations = new Map(prev.confirmationByCallId);
+                const existing = nextConfirmations.get(selected.call.id);
+                if (existing) {
+                  nextConfirmations.set(selected.call.id, {
+                    ...existing,
+                    overall_status: "rescheduled",
+                    rescheduled_reason: reason || "Reason not recorded",
+                  });
+                }
                 return {
                   ...prev,
                   calls: prev.calls.map((c) =>
                     c.id === selected.call.id ? { ...c, scheduled_for: isoDate } : c,
                   ),
+                  confirmationByCallId: nextConfirmations,
                 };
               });
               toast.success("Call rescheduled (demo data)");
@@ -719,11 +915,26 @@ export function CallsOnCalendar() {
               .from("calls")
               .update({ scheduled_for: isoDate })
               .eq("id", selected.call.id);
-            if (error) toast.error("Could not reschedule");
-            else {
-              toast.success("Call rescheduled");
-              invalidate();
+            if (error) {
+              toast.error("Could not reschedule");
+              return;
             }
+            try {
+              await setConfirmationStatus({
+                data: {
+                  call_id: selected.call.id,
+                  org_id: orgId!,
+                  status: "rescheduled",
+                  rescheduled_reason: reason,
+                },
+              });
+            } catch {
+              // The reschedule itself already succeeded (scheduled_for is
+              // updated) — a failure here only means the reason/status
+              // didn't record, which invalidate()+a future edit can still fix.
+            }
+            toast.success("Call rescheduled");
+            invalidate();
           }}
           onToggleShowed={async (showed) => {
             if (demoMode) {
@@ -755,12 +966,14 @@ function TimelineGrid({
   byDay,
   timezone,
   now,
+  repNameById,
   onSelect,
 }: {
   dayKeys: string[];
   byDay: Map<string, ReturnType<typeof Array.prototype.slice>>;
   timezone: string;
   now: Date;
+  repNameById: Record<string, string>;
   onSelect: (id: string) => void;
 }) {
   const hours = Array.from(
@@ -792,6 +1005,20 @@ function TimelineGrid({
         </div>
         {dayKeys.map((key) => {
           const entries = byDay.get(key) ?? [];
+          // Overlap layout (Priority 6) — computed per day, from each
+          // entry's real start/end minute, independent of the vertical
+          // top/height math below.
+          const withTimes = entries
+            .filter((e) => !!e.call.scheduled_for)
+            .map((e) => {
+              const start = new Date(e.call.scheduled_for!);
+              const startMin = minutesIntoDay(start, timezone);
+              const durationMin = e.call.duration_seconds
+                ? e.call.duration_seconds / 60
+                : DEFAULT_DURATION_MIN;
+              return { id: e.call.id, entry: e, startMin, endMin: startMin + durationMin };
+            });
+          const overlapLayout = computeOverlapColumns(withTimes);
           return (
             <div
               key={key}
@@ -817,21 +1044,39 @@ function TimelineGrid({
                     <span className="absolute -top-1.5 left-0 h-3 w-3 rounded-full bg-red-500" />
                   </div>
                 )}
-                {entries.map((e) => {
-                  if (!e.call.scheduled_for) return null;
-                  const start = new Date(e.call.scheduled_for);
-                  const startMin = minutesIntoDay(start, timezone);
+                {withTimes.map(({ id, entry: e, startMin }) => {
                   const durationMin = e.call.duration_seconds
                     ? e.call.duration_seconds / 60
                     : DEFAULT_DURATION_MIN;
+                  // Vertical geometry is exact-duration only — internal
+                  // card padding (CallBlock) never touches this outer
+                  // block's height, so a 30-minute call always occupies
+                  // exactly a 30-minute-tall block regardless of how much
+                  // content is inside it.
                   const top = Math.max(0, (startMin - GRID_START_MIN) * PX_PER_MIN);
                   const height = Math.max(20, durationMin * PX_PER_MIN);
+                  const layout = overlapLayout.get(id) ?? { column: 0, columnCount: 1 };
+                  const widthPct = 100 / layout.columnCount;
+                  const leftPct = layout.column * widthPct;
+                  // A consistent 2px inset on every side of every column
+                  // slot — at columnCount=1 that's the same ~4px total edge
+                  // padding the block always had; at columnCount>1 it also
+                  // becomes the visual gap between adjacent side-by-side
+                  // cards, so overlapping calls never touch edge-to-edge.
                   return (
                     <CallBlock
-                      key={e.call.id}
+                      key={id}
                       entry={e}
                       timezone={timezone}
-                      style={{ position: "absolute", top, left: 4, right: 4, height }}
+                      repNameById={repNameById}
+                      style={{
+                        position: "absolute",
+                        top,
+                        height,
+                        left: `calc(${leftPct}% + 2px)`,
+                        width: `calc(${widthPct}% - 4px)`,
+                        zIndex: layout.column + 1,
+                      }}
                       onSelect={onSelect}
                     />
                   );
@@ -856,6 +1101,7 @@ function statusIcon(status: OverallConfirmationStatus) {
 function CallBlock({
   entry,
   timezone,
+  repNameById,
   style,
   onSelect,
 }: {
@@ -869,6 +1115,7 @@ function CallBlock({
     checklistDone: number;
   };
   timezone: string;
+  repNameById: Record<string, string>;
   style: React.CSSProperties;
   onSelect: (id: string) => void;
 }) {
@@ -881,13 +1128,23 @@ function CallBlock({
         minute: "2-digit",
       }).format(new Date(call.scheduled_for))
     : "";
+  const closerName = call.closer_id ? (repNameById[call.closer_id] ?? "Unassigned") : "Unassigned";
+  // A standard 30-minute block is only ~33px tall at this grid's scale
+  // (Priority 6/37 — that geometry is exact and never inflated to fit more
+  // text). Below ~48px there's only room for two compact lines before text
+  // starts fighting the block's own duration-derived height, so the
+  // quality/checklist/next-action lines only render when the block is
+  // genuinely tall enough (a longer call, or the "auto" height agenda list)
+  // — never by padding the 30-minute block itself.
+  const blockHeight = typeof style.height === "number" ? style.height : Infinity;
+  const roomy = blockHeight >= 48;
 
   if (isCancelled) {
     return (
       <button
         onClick={() => onSelect(call.id)}
         style={style}
-        className="overflow-hidden rounded-md border border-dashed border-border/50 bg-muted/10 p-1.5 text-left text-3xs text-muted-foreground/70"
+        className="overflow-hidden rounded-md border border-dashed border-border/50 bg-muted/10 px-1.5 py-1 text-left text-3xs text-muted-foreground/70"
       >
         <div className="font-medium">Available</div>
         <div>{timeLabel}</div>
@@ -911,20 +1168,26 @@ function CallBlock({
     <button
       onClick={() => onSelect(call.id)}
       style={style}
-      className={`overflow-hidden rounded-md border p-1.5 text-left text-3xs shadow-sm ${toneClass}`}
+      className={`overflow-hidden rounded-md border px-1.5 py-1 text-left text-3xs shadow-sm ${toneClass}`}
     >
       <div className="flex items-center gap-1 font-semibold">
-        <span>{statusIcon(overallStatus)}</span>
-        <span className="truncate">{lead?.full_name ?? lead?.handle ?? "Unknown lead"}</span>
+        <span className="shrink-0">{statusIcon(overallStatus)}</span>
+        <span className="truncate">Lead: {lead?.full_name ?? lead?.handle ?? "Unknown"}</span>
       </div>
-      <div className="text-muted-foreground">{timeLabel}</div>
-      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-muted-foreground">
-        <span>{quality}</span>
-        <span>
-          · {checklistDone}/{checklist.length}
-        </span>
+      <div className="truncate text-muted-foreground">
+        {timeLabel} · Closer: {closerName}
       </div>
-      <div className="mt-0.5 truncate font-medium">{nextAction}</div>
+      {roomy && (
+        <>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1 text-muted-foreground">
+            <span>{quality}</span>
+            <span>
+              · {checklistDone}/{checklist.length}
+            </span>
+          </div>
+          <div className="mt-0.5 truncate font-medium">{nextAction}</div>
+        </>
+      )}
     </button>
   );
 }
@@ -932,6 +1195,7 @@ function CallBlock({
 function AgendaList({
   entries,
   timezone,
+  repNameById,
   onSelect,
 }: {
   entries: Array<{
@@ -944,6 +1208,7 @@ function AgendaList({
     checklistDone: number;
   }>;
   timezone: string;
+  repNameById: Record<string, string>;
   onSelect: (id: string) => void;
 }) {
   const sorted = [...entries].sort((a, b) =>
@@ -961,6 +1226,7 @@ function AgendaList({
           key={e.call.id}
           entry={e}
           timezone={timezone}
+          repNameById={repNameById}
           style={{ position: "relative", height: "auto" }}
           onSelect={onSelect}
         />
@@ -1081,11 +1347,13 @@ function TouchpointRow({
   confirmation,
   scheduledFor,
   onMark,
+  onUnmark,
 }: {
   touchpoint: Touchpoint;
   confirmation: CallConfirmationRow;
   scheduledFor: string;
   onMark: () => void;
+  onUnmark: () => void;
 }) {
   const status = deriveTouchpointStatus(touchpoint, confirmation, scheduledFor);
   const actionable = status === "due" || status === "not_due" || status === "not_sent";
@@ -1098,7 +1366,20 @@ function TouchpointRow({
         </div>
       </div>
       {status === "responded" || status === "manually_sent" ? (
-        <span className="text-3xs text-emerald-400">Done</span>
+        <div className="flex items-center gap-2">
+          <span className="text-3xs text-emerald-400">Done</span>
+          {/* Corrects an accidental click on InsightOS's own state — never
+              claims to undo a message a real integration actually
+              delivered (Priority 6/49). */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-1.5 text-3xs text-muted-foreground hover:text-foreground"
+            onClick={onUnmark}
+          >
+            Unmark as sent
+          </Button>
+        </div>
       ) : (
         <Button
           size="sm"
@@ -1121,6 +1402,7 @@ function CallDetailDrawer({
   repNameById,
   onClose,
   onMarkTouchpoint,
+  onUnmarkTouchpoint,
   onSetStatus,
   onReschedule,
   onToggleShowed,
@@ -1155,8 +1437,13 @@ function CallDetailDrawer({
       thirty_min_confirmed?: boolean;
     },
   ) => void;
-  onSetStatus: (status: OverallConfirmationStatus, cancelledReason?: string) => void;
-  onReschedule: (isoDate: string) => void;
+  onUnmarkTouchpoint: (touchpoint: Touchpoint) => void;
+  onSetStatus: (
+    status: OverallConfirmationStatus,
+    cancelledReason?: string,
+    rescheduledReason?: string,
+  ) => void;
+  onReschedule: (isoDate: string, reason: string) => void;
   onToggleShowed: (showed: boolean) => void;
 }) {
   const { call, lead, confirmation, overallStatus, quality, nextAction, checklist, source } = entry;
@@ -1167,8 +1454,21 @@ function CallDetailDrawer({
   const [goal2, setGoal2] = useState(confirmation?.morning_goal_2 ?? "");
   const [goal3, setGoal3] = useState(confirmation?.morning_goal_3 ?? "");
   const [notes, setNotes] = useState(confirmation?.morning_response_notes ?? "");
-  const [cancelReason, setCancelReason] = useState("Cancelled by rep");
+  const [cancelReasonCategory, setCancelReasonCategory] = useState<string>(CANCEL_REASONS[0]);
+  const [cancelReasonOther, setCancelReasonOther] = useState("");
   const [rescheduleValue, setRescheduleValue] = useState("");
+  const [rescheduleReasonCategory, setRescheduleReasonCategory] = useState<string>(
+    RESCHEDULE_REASONS[0],
+  );
+  const [rescheduleReasonOther, setRescheduleReasonOther] = useState("");
+  const finalCancelReason =
+    cancelReasonCategory === "Other"
+      ? `Other — ${cancelReasonOther || "no notes"}`
+      : cancelReasonCategory;
+  const finalRescheduleReason =
+    rescheduleReasonCategory === "Other"
+      ? `Other — ${rescheduleReasonOther || "no notes"}`
+      : rescheduleReasonCategory;
 
   const dateLabel = call.scheduled_for
     ? new Intl.DateTimeFormat("en-US", {
@@ -1194,15 +1494,18 @@ function CallDetailDrawer({
               Appointment
             </div>
             <div className="flex items-center gap-2 text-xs">
+              <User className="h-3.5 w-3.5 text-muted-foreground" />
+              Lead: {lead?.full_name ?? lead?.handle ?? "Unknown"}
+            </div>
+            <div className="flex items-center gap-2 text-xs">
               <Clock className="h-3.5 w-3.5 text-muted-foreground" /> {dateLabel} ({timezone} —
               display only)
             </div>
             <div className="flex items-center gap-2 text-xs">
               <User className="h-3.5 w-3.5 text-muted-foreground" />
-              Rep: {call.setter_id
-                ? (repNameById[call.setter_id] ?? call.setter_id)
-                : "Unassigned"}{" "}
-              · Closer:{" "}
+              Setter/Dialer:{" "}
+              {call.setter_id ? (repNameById[call.setter_id] ?? call.setter_id) : "Unassigned"} ·
+              Closer:{" "}
               {call.closer_id ? (repNameById[call.closer_id] ?? call.closer_id) : "Unassigned"}
             </div>
             <div className="flex items-center gap-2 text-xs">
@@ -1227,7 +1530,12 @@ function CallDetailDrawer({
             </span>
             {call.cancelled && confirmation?.cancelled_reason && (
               <p className="text-3xs text-muted-foreground">
-                Reason: {confirmation.cancelled_reason}
+                Cancellation reason: {confirmation.cancelled_reason}
+              </p>
+            )}
+            {overallStatus === "rescheduled" && confirmation?.rescheduled_reason && (
+              <p className="text-3xs text-muted-foreground">
+                Reschedule reason: {confirmation.rescheduled_reason}
               </p>
             )}
           </section>
@@ -1256,6 +1564,35 @@ function CallDetailDrawer({
             )}
           </section>
 
+          {/* Lead Form Responses (Priority 6/45) — real Q&A pairs from the
+              lead's application_data, in the same fixed order every other
+              surface (Legacy Leads' Application tab) uses. Never raw JSON,
+              never fabricated when the lead has no application on file. */}
+          <Collapsible className="space-y-1.5">
+            <CollapsibleTrigger className="group flex w-full items-center justify-between text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Lead form responses
+              <ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-2">
+              {(() => {
+                const responses = applicationFormResponses(lead?.application_data);
+                if (!responses.length) {
+                  return (
+                    <p className="text-xs italic text-muted-foreground">
+                      Not connected — no application responses on file for this lead.
+                    </p>
+                  );
+                }
+                return responses.map((r) => (
+                  <div key={r.question} className="rounded-md border border-border/40 p-2">
+                    <div className="text-3xs font-medium text-muted-foreground">{r.question}</div>
+                    <div className="mt-0.5 text-xs">{r.answer}</div>
+                  </div>
+                ));
+              })()}
+            </CollapsibleContent>
+          </Collapsible>
+
           {/* Confirmation sequence */}
           <section className="space-y-2">
             <div className="flex items-center justify-between">
@@ -1282,6 +1619,7 @@ function CallDetailDrawer({
                           tp === "thirty_min" ? { thirty_min_confirmed: true } : undefined,
                         )
                       }
+                      onUnmark={() => onUnmarkTouchpoint(tp)}
                     />
                     {tp === "morning" && (
                       <div className="mt-1.5 space-y-1.5 rounded-lg border border-border/40 bg-background/30 p-2">
@@ -1400,35 +1738,78 @@ function CallDetailDrawer({
                 Mark no-show
               </Button>
             </div>
-            <div className="flex items-center gap-2">
-              <Input
-                type="datetime-local"
-                value={rescheduleValue}
-                onChange={(e) => setRescheduleValue(e.target.value)}
-                className="h-7 text-xs"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 shrink-0 text-xs"
-                disabled={!rescheduleValue}
-                onClick={() => onReschedule(new Date(rescheduleValue).toISOString())}
-              >
-                Reschedule
-              </Button>
+            {/* Reschedule — a structured reason is required alongside the
+                new time (Priority 6/48), same "Other" + notes pattern as
+                cancellation below. */}
+            <div className="space-y-1.5 rounded-lg border border-border/40 bg-background/30 p-2">
+              <div className="flex items-center gap-2">
+                <Input
+                  type="datetime-local"
+                  value={rescheduleValue}
+                  onChange={(e) => setRescheduleValue(e.target.value)}
+                  className="h-7 text-xs"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 shrink-0 text-xs"
+                  disabled={!rescheduleValue}
+                  onClick={() => {
+                    onReschedule(new Date(rescheduleValue).toISOString(), finalRescheduleReason);
+                    setRescheduleValue("");
+                  }}
+                >
+                  Reschedule
+                </Button>
+              </div>
+              <Select value={rescheduleReasonCategory} onValueChange={setRescheduleReasonCategory}>
+                <SelectTrigger className="h-7 text-xs">
+                  <SelectValue placeholder="Reason for rescheduling" />
+                </SelectTrigger>
+                <SelectContent>
+                  {RESCHEDULE_REASONS.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {rescheduleReasonCategory === "Other" && (
+                <Input
+                  placeholder="Notes"
+                  value={rescheduleReasonOther}
+                  onChange={(e) => setRescheduleReasonOther(e.target.value)}
+                  className="h-7 text-xs"
+                />
+              )}
             </div>
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder="Cancellation reason"
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                className="h-7 text-xs"
-              />
+            {/* Cancellation — same structured reason pattern. */}
+            <div className="space-y-1.5 rounded-lg border border-border/40 bg-background/30 p-2">
+              <Select value={cancelReasonCategory} onValueChange={setCancelReasonCategory}>
+                <SelectTrigger className="h-7 text-xs">
+                  <SelectValue placeholder="Reason for cancelling" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CANCEL_REASONS.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {cancelReasonCategory === "Other" && (
+                <Input
+                  placeholder="Notes"
+                  value={cancelReasonOther}
+                  onChange={(e) => setCancelReasonOther(e.target.value)}
+                  className="h-7 text-xs"
+                />
+              )}
               <Button
                 size="sm"
                 variant="destructive"
-                className="h-7 shrink-0 text-xs"
-                onClick={() => onSetStatus("cancelled", cancelReason)}
+                className="h-7 w-full text-xs"
+                onClick={() => onSetStatus("cancelled", finalCancelReason)}
               >
                 <X className="mr-1 h-3 w-3" /> Cancel
               </Button>
@@ -1444,6 +1825,43 @@ function CallDetailDrawer({
             >
               <Phone className="h-3 w-3" /> View Full Attribution →
             </Link>
+          </section>
+
+          {/* Calendly (Priority 6/47) — event-specific links only; never a
+              hardcoded/shared URL. Honest "not connected" when the call has
+              none on file. */}
+          <section className="space-y-1.5">
+            <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Need to make changes to this event?
+            </div>
+            {call.calendly_cancel_url || call.calendly_reschedule_url ? (
+              <div className="flex flex-wrap gap-2">
+                {call.calendly_cancel_url && (
+                  <a
+                    href={call.calendly_cancel_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2.5 py-1 text-xs text-foreground hover:bg-muted/30"
+                  >
+                    Cancel via Calendly <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+                {call.calendly_reschedule_url && (
+                  <a
+                    href={call.calendly_reschedule_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2.5 py-1 text-xs text-foreground hover:bg-muted/30"
+                  >
+                    Reschedule via Calendly <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs italic text-muted-foreground">
+                Calendly links not connected for this appointment.
+              </p>
+            )}
           </section>
         </div>
       </SheetContent>
