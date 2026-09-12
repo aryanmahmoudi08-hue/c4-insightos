@@ -332,7 +332,8 @@ function Closer() {
   const closerMetrics = useMemo(() => buildCloserMetrics(fmtMoney), [fmtMoney]);
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<
-    | { kind: "close" | "money" | "pipeline"; index: number }
+    | { kind: "close" | "pipeline"; index: number; metric?: string }
+    | { kind: "money"; metric?: "cash" | "revenue" | "cashRate" }
     | { kind: "noshow"; index: 0 | 1 | 2 | 3 }
     | { kind: "attribution"; stageKey: string; sourceValue?: string }
     | { kind: "disposition"; source: "status" | "manual"; value: string; label: string }
@@ -340,11 +341,13 @@ function Closer() {
         kind: "payment";
         metric:
           | "deposits"
+          | "depositAmount"
           | "depositConversion"
           | "averageDepositPct"
           | "paymentPlanUptake"
           | "onTimeRate"
           | "failedPaymentRate"
+          | "failedPaymentCount"
           | "recoveredFailedPayments"
           | "depositToFullPayment"
           | "futureScheduledCash";
@@ -709,7 +712,12 @@ function Closer() {
   // never touches the rest of the page.
   const { data: lbCalls } = useQuery({
     queryKey: ["closer-lb-calls", orgId, lbRange.from, lbRange.to, devBypass],
-    enabled: !!orgId,
+    // Mock Data ON must never leave this leaderboard silently showing real
+    // org data next to the page's own demo-gated KPIs (item 14) — dev-mock-
+    // data.ts fixtures are documented dev-bypass-only, so rather than
+    // reusing them here, demo mode just doesn't fetch real rows and the
+    // leaderboard shows an honest "not connected" state instead.
+    enabled: !!orgId && !demoMode,
     queryFn: async () => {
       if (devBypass)
         return mockCalls() as unknown as {
@@ -877,7 +885,9 @@ function Closer() {
 
   const { data: objections } = useQuery({
     queryKey: ["call-objections", orgId, range.from, range.to],
-    enabled: !!orgId,
+    // Same demo-mode isolation as the leaderboard above (item 14) — no
+    // real objection records surfaced while Mock Data is on.
+    enabled: !!orgId && !demoMode,
     queryFn: async () => {
       const { data } = await supabase
         .from("call_objections")
@@ -2013,18 +2023,60 @@ function Closer() {
             if (kind === "offers") return !!c.offer_made;
             if (kind === "closes") return !!(c.closed || c.status === "closed");
             if (kind === "cash") return (c.cash_collected_cents ?? 0) > 0;
+            if (kind === "revenue") return (c.contract_value_cents ?? 0) > 0;
             return true;
           };
           const callRowsFor = (kind: string): CallRow[] => {
             const filtered = list.filter(stageFilter(kind));
-            const byCash = kind === "cash";
             return [...filtered]
-              .sort((a, b) =>
-                byCash
-                  ? (b.cash_collected_cents ?? 0) - (a.cash_collected_cents ?? 0)
-                  : String(b.scheduled_for ?? "").localeCompare(String(a.scheduled_for ?? "")),
-              )
+              .sort((a, b) => {
+                if (kind === "cash") {
+                  return (b.cash_collected_cents ?? 0) - (a.cash_collected_cents ?? 0);
+                }
+                if (kind === "revenue") {
+                  return (b.contract_value_cents ?? 0) - (a.contract_value_cents ?? 0);
+                }
+                return String(b.scheduled_for ?? "").localeCompare(String(a.scheduled_for ?? ""));
+              })
               .slice(0, 50);
+          };
+          // Close-stage KPI cards that share a funnel index (0=oncal,
+          // 1=showed, 2=offers, 3=closes) but each need their own title and
+          // value column instead of the funnel-stage fallback's generic "✓"
+          // (item 2 — a clicked card must show the data that actually
+          // produced IT, not just its stage's raw membership).
+          const CLOSE_METRIC_OVERRIDES: Record<
+            string,
+            { title: string; label: string; render: (c: CallRow) => React.ReactNode }
+          > = {
+            avgContractValue: {
+              title: "Avg Contract Value",
+              label: "Contract value",
+              render: (c) => fmtMoney(c.contract_value_cents ?? 0),
+            },
+            avgCashPerBooked: {
+              title: "Avg Cash / Booked",
+              label: "Cash collected",
+              render: (c) => fmtMoney(c.cash_collected_cents ?? 0),
+            },
+            avgCashPerShowed: {
+              title: "Avg Cash / Showed",
+              label: "Cash collected",
+              render: (c) => fmtMoney(c.cash_collected_cents ?? 0),
+            },
+            avgCashPerClosed: {
+              title: "Avg Cash / Closed",
+              label: "Cash collected",
+              render: (c) => fmtMoney(c.cash_collected_cents ?? 0),
+            },
+            closeRate: { title: "Close Rate", label: "Closed", render: () => "✓" },
+            offerToCloseRate: {
+              title: "Offer → Close Rate",
+              label: "Closed",
+              render: () => "✓",
+            },
+            showRate: { title: "Show Rate", label: "Showed", render: () => "✓" },
+            offerRate: { title: "Offer Rate", label: "Offer made", render: () => "✓" },
           };
           const callColumns = (
             label: string,
@@ -2076,21 +2128,68 @@ function Closer() {
             working: ReturnType<typeof deriveWorking>;
           } | null = null;
           if (selected?.kind === "money") {
-            panel = {
-              title: "Cash Collected",
-              columns: callColumns("Cash", (c) => fmtMoney(c.cash_collected_cents ?? 0)),
-              rows: callRowsFor("cash"),
-              cap: deriveMoneyCap(closes, avgCashPerClosed, cashCents, minCapSample, fmtMoney),
-              working: deriveMoneyWorking(
-                avgCashPerClosed,
-                prevAvgCashPerClosed,
-                closes,
-                prevClosed,
-                minCapSample,
-                fmtMoney,
-              ),
-            };
-          } else if (selected?.kind === "pipeline") {
+            if (selected.metric === "revenue") {
+              const avgRevPerClosed = closes ? revCents / closes : 0;
+              const prevAvgRevPerClosed = prevClosed ? prevRevCents / prevClosed : 0;
+              panel = {
+                title: "Revenue Generated",
+                columns: callColumns("Revenue", (c) => fmtMoney(c.contract_value_cents ?? 0)),
+                rows: callRowsFor("revenue"),
+                cap: deriveMoneyCap(
+                  closes,
+                  avgRevPerClosed,
+                  revCents,
+                  minCapSample,
+                  fmtMoney,
+                  "Revenue Generated",
+                ),
+                working: deriveMoneyWorking(
+                  avgRevPerClosed,
+                  prevAvgRevPerClosed,
+                  closes,
+                  prevClosed,
+                  minCapSample,
+                  fmtMoney,
+                  "revenue",
+                ),
+              };
+            } else if (selected.metric === "cashRate") {
+              panel = {
+                title: "Cash Collection Rate",
+                columns: callColumns(
+                  "Cash / Contract",
+                  (c) =>
+                    `${fmtMoney(c.cash_collected_cents ?? 0)} / ${fmtMoney(c.contract_value_cents ?? 0)}`,
+                ),
+                rows: callRowsFor("cash"),
+                cap: {
+                  status: "insufficient_data",
+                  sentence:
+                    "A ratio of Cash Collected ÷ Revenue Generated, not a funnel stage — no prior-stage constraint to derive.",
+                },
+                working: {
+                  status: "insufficient_data",
+                  sentence:
+                    "A ratio of two other metrics — no prior-period comparison to derive on its own.",
+                },
+              };
+            } else {
+              panel = {
+                title: "Cash Collected",
+                columns: callColumns("Cash", (c) => fmtMoney(c.cash_collected_cents ?? 0)),
+                rows: callRowsFor("cash"),
+                cap: deriveMoneyCap(closes, avgCashPerClosed, cashCents, minCapSample, fmtMoney),
+                working: deriveMoneyWorking(
+                  avgCashPerClosed,
+                  prevAvgCashPerClosed,
+                  closes,
+                  prevClosed,
+                  minCapSample,
+                  fmtMoney,
+                ),
+              };
+            }
+          } else if (selected?.kind === "pipeline" && selected.index === 0) {
             // A pipeline snapshot, not a funnel conversion stage — there's no
             // adjacent-stage constraint to derive "what's capping it" from,
             // so both come back honestly "insufficient_data" rather than
@@ -2110,6 +2209,27 @@ function Closer() {
                 status: "insufficient_data",
                 sentence:
                   "This is a pipeline snapshot, not a funnel stage — no prior-period comparison to derive.",
+              },
+            };
+          } else if (selected?.kind === "pipeline" && selected.index === 1) {
+            // Overdue Follow-ups (the closest existing analog to "Overdue
+            // Payments" — there's no overdue-payment concept in this
+            // schema). Real record-level drilldown, not a placeholder.
+            panel = {
+              title: "Overdue Follow-ups (last touch 7+ days ago)",
+              columns: callColumns("Last scheduled", (c) =>
+                c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—",
+              ),
+              rows: overdueFollowUps,
+              cap: {
+                status: "insufficient_data",
+                sentence:
+                  "A pipeline snapshot, not a funnel stage — no prior-stage constraint to derive.",
+              },
+              working: {
+                status: "insufficient_data",
+                sentence:
+                  "A pipeline snapshot, not a funnel stage — no prior-period comparison to derive.",
               },
             };
           } else if (selected?.kind === "noshow") {
@@ -2417,10 +2537,19 @@ function Closer() {
               sentence:
                 "A payment-quality metric, not a funnel stage — no prior-period comparison to derive.",
             };
-            if (selected.metric === "deposits" || selected.metric === "averageDepositPct") {
+            if (
+              selected.metric === "deposits" ||
+              selected.metric === "depositAmount" ||
+              selected.metric === "averageDepositPct"
+            ) {
               const rows = list.filter((c) => (c.deposit_cents ?? 0) > 0);
               panel = {
-                title: selected.metric === "deposits" ? "Deposits" : "Avg Deposit %",
+                title:
+                  selected.metric === "deposits"
+                    ? "Deposits"
+                    : selected.metric === "depositAmount"
+                      ? "Deposit Amount"
+                      : "Avg Deposit %",
                 columns: [
                   { key: "lead", label: "Lead", render: leadOfPayment },
                   { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
@@ -2476,7 +2605,8 @@ function Closer() {
               };
             } else if (
               selected.metric === "onTimeRate" ||
-              selected.metric === "failedPaymentRate"
+              selected.metric === "failedPaymentRate" ||
+              selected.metric === "failedPaymentCount"
             ) {
               const status = selected.metric === "onTimeRate" ? "paid" : "failed";
               const rows = list.filter((c) =>
@@ -2486,7 +2616,9 @@ function Closer() {
                 title:
                   selected.metric === "onTimeRate"
                     ? "Payment Success Rate"
-                    : "Failed / Default Rate",
+                    : selected.metric === "failedPaymentCount"
+                      ? "Failed Payments"
+                      : "Failed / Default Rate",
                 columns: [
                   { key: "lead", label: "Lead", render: leadOfPayment },
                   { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
@@ -2560,13 +2692,17 @@ function Closer() {
                 working: noPriorPeriod,
               };
             }
-          } else if (selected) {
+          } else if (selected && selected.kind === "close") {
             const stage = closeStages[selected.index];
             const kind = ["oncal", "showed", "offers", "closes"][selected.index];
+            const override = selected.metric ? CLOSE_METRIC_OVERRIDES[selected.metric] : undefined;
             panel = stage
               ? {
-                  title: stage.label,
-                  columns: callColumns(stage.label, () => "✓"),
+                  title: override?.title ?? stage.label,
+                  columns: callColumns(
+                    override?.label ?? stage.label,
+                    override?.render ?? (() => "✓"),
+                  ),
                   rows: callRowsFor(kind),
                   cap: deriveCap(closeStages, selected.index, minCapSample),
                   working: deriveWorking(closeStages, prevCloseStages, minCapSample),
@@ -2601,7 +2737,7 @@ function Closer() {
               priorValue: fmtMoney(prevCashCents),
               empty: cashCents === 0,
               emptyHint: "Log a closed call with cash collected to see this populate.",
-              onClick: () => setSelected({ kind: "money", index: 0 }),
+              onClick: () => setSelected({ kind: "money", metric: "cash" }),
             },
             {
               key: "revenue",
@@ -2614,7 +2750,7 @@ function Closer() {
               priorValue: fmtMoney(prevRevCents),
               empty: revCents === 0,
               emptyHint: "Total contract value shows up once a deal closes.",
-              onClick: () => setSelected({ kind: "money", index: 0 }),
+              onClick: () => setSelected({ kind: "money", metric: "revenue" }),
             },
             {
               key: "cashCollectionRate",
@@ -2628,7 +2764,7 @@ function Closer() {
                   : undefined,
               empty: cashRatePctNow == null,
               emptyHint: "Requires revenue on at least one closed call.",
-              onClick: () => setSelected({ kind: "money", index: 0 }),
+              onClick: () => setSelected({ kind: "money", metric: "cashRate" }),
             },
             {
               key: "avgContractValue",
@@ -2642,7 +2778,7 @@ function Closer() {
                   : undefined,
               empty: avgContractValueCents == null,
               emptyHint: "Revenue ÷ closes — needs at least one close in range.",
-              onClick: () => setSelected({ kind: "close", index: 3 }),
+              onClick: () => setSelected({ kind: "close", index: 3, metric: "avgContractValue" }),
             },
             {
               key: "closes",
@@ -2791,7 +2927,7 @@ function Closer() {
               currentPct: showPct,
               deltaPct: pctDelta(showPct, prevShowPct),
               spectrum: "mid",
-              onClick: () => setSelected({ kind: "close", index: 1 }),
+              onClick: () => setSelected({ kind: "close", index: 1, metric: "showRate" }),
             },
             {
               key: "offerrate",
@@ -2800,7 +2936,7 @@ function Closer() {
               currentPct: offerPct,
               deltaPct: pctDelta(offerPct, prevOfferPct),
               spectrum: "mid",
-              onClick: () => setSelected({ kind: "close", index: 2 }),
+              onClick: () => setSelected({ kind: "close", index: 2, metric: "offerRate" }),
             },
             {
               key: "closerate",
@@ -2809,7 +2945,7 @@ function Closer() {
               currentPct: closeRatePct,
               deltaPct: pctDelta(closeRatePct, prevCloseRatePct),
               spectrum: "hot",
-              onClick: () => setSelected({ kind: "close", index: 3 }),
+              onClick: () => setSelected({ kind: "close", index: 3, metric: "closeRate" }),
             },
             {
               key: "offertoclose",
@@ -2818,7 +2954,7 @@ function Closer() {
               currentPct: offerToClosePct,
               deltaPct: pctDelta(offerToClosePct, prevOfferToClosePct),
               spectrum: "hot",
-              onClick: () => setSelected({ kind: "close", index: 3 }),
+              onClick: () => setSelected({ kind: "close", index: 3, metric: "offerToCloseRate" }),
             },
           ];
 
@@ -2837,7 +2973,7 @@ function Closer() {
                 payoutPct={10}
                 payoutCents={payoutCents}
                 cashRatePct={cashRatePct}
-                onCashClick={() => setSelected({ kind: "money", index: 0 })}
+                onCashClick={() => setSelected({ kind: "money", metric: "cash" })}
                 fmtMoney={fmtMoney}
               />
               <FunnelInstrument
@@ -2859,7 +2995,8 @@ function Closer() {
                     spectrum: "mid",
                     empty: !avgCashPerBooked,
                     emptyHint: "No booked-call cash in this range.",
-                    onClick: () => setSelected({ kind: "close", index: 0 }),
+                    onClick: () =>
+                      setSelected({ kind: "close", index: 0, metric: "avgCashPerBooked" }),
                   },
                   {
                     key: "avgCashShowed",
@@ -2868,7 +3005,8 @@ function Closer() {
                     spectrum: "mid",
                     empty: !avgCashPerShowed,
                     emptyHint: "No showed-call cash in this range.",
-                    onClick: () => setSelected({ kind: "close", index: 1 }),
+                    onClick: () =>
+                      setSelected({ kind: "close", index: 1, metric: "avgCashPerShowed" }),
                   },
                   {
                     key: "avgCashClosed",
@@ -2877,7 +3015,8 @@ function Closer() {
                     spectrum: "hot",
                     empty: !avgCashPerClosed,
                     emptyHint: "No closed-call cash in this range.",
-                    onClick: () => setSelected({ kind: "close", index: 3 }),
+                    onClick: () =>
+                      setSelected({ kind: "close", index: 3, metric: "avgCashPerClosed" }),
                   },
                   {
                     key: "deposits",
@@ -2895,7 +3034,7 @@ function Closer() {
                     spectrum: "hot",
                     empty: !depositAmountCents,
                     emptyHint: "No deposit amount logged in this range.",
-                    onClick: () => setSelected({ kind: "payment", metric: "deposits" }),
+                    onClick: () => setSelected({ kind: "payment", metric: "depositAmount" }),
                   },
                   {
                     key: "depositConversion",
@@ -2964,7 +3103,7 @@ function Closer() {
                     spectrum: "hot",
                     empty: paymentQualityStats.total === 0,
                     emptyHint: "No payment records for these calls yet.",
-                    onClick: () => setSelected({ kind: "payment", metric: "failedPaymentRate" }),
+                    onClick: () => setSelected({ kind: "payment", metric: "failedPaymentCount" }),
                   },
                   {
                     key: "recoveredFailedPayments",
@@ -3026,7 +3165,7 @@ function Closer() {
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                     No-shows in range
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold">
+                  <div className="mt-1 font-sans tabular-nums text-lg font-semibold">
                     {noShowRecovery.noShowCount}
                   </div>
                 </button>
@@ -3039,7 +3178,7 @@ function Closer() {
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                     No-shows Rebooked
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold">
+                  <div className="mt-1 font-sans tabular-nums text-lg font-semibold">
                     {noShowRecovery.rebookedCount}
                   </div>
                   <div className="mt-1 text-3xs text-muted-foreground">
@@ -3055,7 +3194,7 @@ function Closer() {
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                     Recovered Show Rate
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold">
+                  <div className="mt-1 font-sans tabular-nums text-lg font-semibold">
                     {noShowRecovery.recoveredShowRate == null
                       ? "—"
                       : `${noShowRecovery.recoveredShowRate.toFixed(0)}%`}
@@ -3073,7 +3212,7 @@ function Closer() {
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                     Recovered Close Rate
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold">
+                  <div className="mt-1 font-sans tabular-nums text-lg font-semibold">
                     {noShowRecovery.recoveredCloseRate == null
                       ? "—"
                       : `${noShowRecovery.recoveredCloseRate.toFixed(0)}%`}
@@ -3153,7 +3292,7 @@ function Closer() {
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                     Deals Expected to Close · {formatRangeLabel(range)}
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold">
+                  <div className="mt-1 font-sans tabular-nums text-lg font-semibold">
                     {dealsExpectedToClose.length}
                   </div>
                 </button>
@@ -3161,16 +3300,22 @@ function Closer() {
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                     Active Follow-ups
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold">{activeFollowUpsCount}</div>
+                  <div className="mt-1 font-sans tabular-nums text-lg font-semibold">
+                    {activeFollowUpsCount}
+                  </div>
                 </div>
-                <div className="rounded-lg border border-border/70 bg-card p-3">
+                <button
+                  type="button"
+                  onClick={() => setSelected({ kind: "pipeline", index: 1 })}
+                  className="rounded-lg border border-border/70 bg-card p-3 text-left transition hover:border-destructive/50 hover:bg-muted/20"
+                >
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                     Overdue Follow-ups
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold text-destructive">
+                  <div className="mt-1 font-sans tabular-nums text-lg font-semibold text-destructive">
                     {overdueFollowUps.length}
                   </div>
-                </div>
+                </button>
               </div>
               <div className="rounded-xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between gap-3">
@@ -3204,7 +3349,9 @@ function Closer() {
                         <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                           {item.label}
                         </div>
-                        <div className="mt-1 font-mono text-xl font-semibold">{item.count}</div>
+                        <div className="mt-1 font-sans tabular-nums text-xl font-semibold">
+                          {item.count}
+                        </div>
                         <div className="mt-1 text-3xs text-muted-foreground">
                           {pct(item.count, list.length)} of calls
                         </div>
@@ -3246,7 +3393,9 @@ function Closer() {
                         <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                           {item.label}
                         </div>
-                        <div className="mt-1 font-mono text-xl font-semibold">{item.count}</div>
+                        <div className="mt-1 font-sans tabular-nums text-xl font-semibold">
+                          {item.count}
+                        </div>
                         <div className="mt-1 text-3xs text-muted-foreground">
                           {pct(item.count, list.length)} of calls
                         </div>
@@ -3274,7 +3423,7 @@ function Closer() {
                       <th className="text-left p-3">Lead</th>
                       <th className="text-left p-3">Last call</th>
                       <th className="text-left p-3">Summary</th>
-                      <th className="text-right p-3 font-mono">Pending $</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Pending $</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3301,7 +3450,7 @@ function Closer() {
                           <td className="p-3 text-xs text-muted-foreground max-w-[320px] truncate">
                             {c.call_summary || "—"}
                           </td>
-                          <td className="p-3 text-right font-mono">
+                          <td className="p-3 text-right font-sans tabular-nums">
                             {c.contract_value_cents
                               ? "$" + (c.contract_value_cents / 100).toLocaleString()
                               : "—"}
@@ -3330,7 +3479,11 @@ function Closer() {
                   metricKey={lbMetric}
                   onMetricChange={setLbMetric}
                   people={lbPeople}
-                  emptyLabel="No closers in range."
+                  emptyLabel={
+                    demoMode
+                      ? "Demo data not connected for this leaderboard."
+                      : "No closers in range."
+                  }
                   dateRange={lbRange}
                   onDateRangeChange={setLbOverride}
                   overridden={!!lbOverride}
@@ -3362,30 +3515,36 @@ function Closer() {
                   <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                     <tr>
                       <th className="text-left p-3">Closer</th>
-                      <th className="text-right p-3 font-mono">Booked</th>
-                      <th className="text-right p-3 font-mono">Showed</th>
-                      <th className="text-right p-3 font-mono">Closes</th>
-                      <th className="text-right p-3 font-mono">Show %</th>
-                      <th className="text-right p-3 font-mono">Close %</th>
-                      <th className="text-right p-3 font-mono">Offer→Close</th>
-                      <th className="text-right p-3 font-mono">Avg deal</th>
-                      <th className="text-right p-3 font-mono">Cash</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Booked</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Showed</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Closes</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Show %</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Close %</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Offer→Close</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Avg deal</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Cash</th>
                     </tr>
                   </thead>
                   <tbody>
                     {scorecard.map((s) => (
                       <tr key={s.name} className="border-t border-border/70 hover:bg-muted/20">
                         <td className="p-3 font-medium">{s.name}</td>
-                        <td className="p-3 text-right font-mono">{s.booked}</td>
-                        <td className="p-3 text-right font-mono">{s.showed}</td>
-                        <td className="p-3 text-right font-mono">{s.closes}</td>
-                        <td className="p-3 text-right font-mono">{s.showRate.toFixed(1)}%</td>
-                        <td className="p-3 text-right font-mono">{s.closeRate.toFixed(1)}%</td>
-                        <td className="p-3 text-right font-mono">{s.offerToClose.toFixed(1)}%</td>
-                        <td className="p-3 text-right font-mono">
+                        <td className="p-3 text-right font-sans tabular-nums">{s.booked}</td>
+                        <td className="p-3 text-right font-sans tabular-nums">{s.showed}</td>
+                        <td className="p-3 text-right font-sans tabular-nums">{s.closes}</td>
+                        <td className="p-3 text-right font-sans tabular-nums">
+                          {s.showRate.toFixed(1)}%
+                        </td>
+                        <td className="p-3 text-right font-sans tabular-nums">
+                          {s.closeRate.toFixed(1)}%
+                        </td>
+                        <td className="p-3 text-right font-sans tabular-nums">
+                          {s.offerToClose.toFixed(1)}%
+                        </td>
+                        <td className="p-3 text-right font-sans tabular-nums">
                           {s.avgDeal ? fmtMoney(s.avgDeal) : "—"}
                         </td>
-                        <td className="p-3 text-right font-mono text-[color:var(--color-success)]">
+                        <td className="p-3 text-right font-sans tabular-nums text-[color:var(--color-success)]">
                           {fmtMoney(s.cash)}
                         </td>
                       </tr>
@@ -3416,36 +3575,38 @@ function Closer() {
                   <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                     <tr>
                       <th className="text-left p-3">Source</th>
-                      <th className="text-right p-3 font-mono">Shows</th>
-                      <th className="text-right p-3 font-mono">Qualified Opps</th>
-                      <th className="text-right p-3 font-mono">Offers</th>
-                      <th className="text-right p-3 font-mono">Closes</th>
-                      <th className="text-right p-3 font-mono">Close Rate</th>
-                      <th className="text-right p-3 font-mono">Contracted Revenue</th>
-                      <th className="text-right p-3 font-mono">Cash Collected</th>
-                      <th className="text-right p-3 font-mono">Collection Rate</th>
-                      <th className="text-right p-3 font-mono">Refund/Default Rate</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Shows</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Qualified Opps</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Offers</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Closes</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Close Rate</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Contracted Revenue</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Cash Collected</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Collection Rate</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Refund/Default Rate</th>
                     </tr>
                   </thead>
                   <tbody>
                     {revenueSourceMix.map((s) => (
                       <tr key={s.label} className="border-t border-border/70 hover:bg-muted/20">
                         <td className="p-3 font-medium">{s.label}</td>
-                        <td className="p-3 text-right font-mono">{s.shows}</td>
-                        <td className="p-3 text-right font-mono">{s.qualified}</td>
-                        <td className="p-3 text-right font-mono">{s.offers}</td>
-                        <td className="p-3 text-right font-mono">{s.closes}</td>
-                        <td className="p-3 text-right font-mono">
+                        <td className="p-3 text-right font-sans tabular-nums">{s.shows}</td>
+                        <td className="p-3 text-right font-sans tabular-nums">{s.qualified}</td>
+                        <td className="p-3 text-right font-sans tabular-nums">{s.offers}</td>
+                        <td className="p-3 text-right font-sans tabular-nums">{s.closes}</td>
+                        <td className="p-3 text-right font-sans tabular-nums">
                           {s.closeRatePct == null ? "—" : `${s.closeRatePct.toFixed(1)}%`}
                         </td>
-                        <td className="p-3 text-right font-mono">{fmtMoney(s.contractedCents)}</td>
-                        <td className="p-3 text-right font-mono text-[color:var(--color-success)]">
+                        <td className="p-3 text-right font-sans tabular-nums">
+                          {fmtMoney(s.contractedCents)}
+                        </td>
+                        <td className="p-3 text-right font-sans tabular-nums text-[color:var(--color-success)]">
                           {fmtMoney(s.cashCollectedCents)}
                         </td>
-                        <td className="p-3 text-right font-mono">
+                        <td className="p-3 text-right font-sans tabular-nums">
                           {s.collectionRatePct == null ? "—" : `${s.collectionRatePct.toFixed(1)}%`}
                         </td>
-                        <td className="p-3 text-right font-mono text-muted-foreground">
+                        <td className="p-3 text-right font-sans tabular-nums text-muted-foreground">
                           Not tracked
                         </td>
                       </tr>
@@ -3526,7 +3687,7 @@ function Closer() {
                     return (
                       <div key={s.value} className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground">{s.label}</span>
-                        <span className="font-mono">{count}</span>
+                        <span className="font-sans tabular-nums">{count}</span>
                       </div>
                     );
                   })}
@@ -3549,7 +3710,7 @@ function Closer() {
                     return (
                       <div key={c.value} className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground">{c.label}</span>
-                        <span className="font-mono">{count}</span>
+                        <span className="font-sans tabular-nums">{count}</span>
                       </div>
                     );
                   })}
@@ -3629,8 +3790,8 @@ function Closer() {
                 <th className="text-left p-2.5">Call Summary</th>
                 <th className="text-center p-2.5">Offer</th>
                 <th className="text-left p-2.5">Lead Status</th>
-                <th className="text-right p-2.5 font-mono">Cash Collected</th>
-                <th className="text-right p-2.5 font-mono">Total Revenue</th>
+                <th className="text-right p-2.5 font-sans tabular-nums">Cash Collected</th>
+                <th className="text-right p-2.5 font-sans tabular-nums">Total Revenue</th>
                 <th className="text-left p-2.5">Call Recording</th>
               </tr>
             </thead>
@@ -3654,12 +3815,12 @@ function Closer() {
                         normalizeCloserDisposition(c.status, c.closed, c.offer_made)}
                     </span>
                   </td>
-                  <td className="p-2.5 text-right font-mono text-[color:var(--color-success)]">
+                  <td className="p-2.5 text-right font-sans tabular-nums text-[color:var(--color-success)]">
                     {c.cash_collected_cents
                       ? "$" + (c.cash_collected_cents / 100).toLocaleString()
                       : "—"}
                   </td>
-                  <td className="p-2.5 text-right font-mono">
+                  <td className="p-2.5 text-right font-sans tabular-nums">
                     {c.contract_value_cents
                       ? "$" + (c.contract_value_cents / 100).toLocaleString()
                       : "—"}
@@ -3836,7 +3997,7 @@ function CoachingPanel({ orgId, range }: { orgId: string | undefined; range: Dat
               <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                 {g.label}
               </div>
-              <div className="mt-1 font-mono text-xl font-semibold">{g.count}</div>
+              <div className="mt-1 font-sans tabular-nums text-xl font-semibold">{g.count}</div>
               <div className="mt-1 text-3xs text-muted-foreground">recurring gap · this range</div>
             </div>
           ))}

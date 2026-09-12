@@ -66,7 +66,7 @@ export function FunnelInstrument({
                   />
                 </span>
               </span>
-              <span className="shrink-0 font-mono text-2xl font-semibold tabular-nums text-foreground">
+              <span className="shrink-0 font-sans text-2xl font-semibold tabular-nums text-foreground">
                 {stage.value.toLocaleString()}
               </span>
             </button>

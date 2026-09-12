@@ -171,7 +171,7 @@ export function KpiTargetTeamTable({
             <Header label="Rep" sk="rep" />
             <Header label="KPI" sk="kpi" />
             <Header label="Actual" sk="actual" align="right" />
-            <th className="p-3 text-right font-mono">Target</th>
+            <th className="p-3 text-right font-sans tabular-nums">Target</th>
             <Header label="Variance" sk="variance" align="right" />
             <Header label="% to Goal" sk="attainment" align="right" />
             <Header label="Status" sk="status" />
@@ -189,15 +189,15 @@ export function KpiTargetTeamTable({
             >
               <td className="p-3 font-medium">{target.teamMemberName}</td>
               <td className="p-3">{def?.label ?? target.metricKey}</td>
-              <td className="p-3 text-right font-mono">
+              <td className="p-3 text-right font-sans tabular-nums">
                 {progress.actualValue != null
                   ? formatKpiValue(progress.format, progress.actualValue)
                   : "—"}
               </td>
-              <td className="p-3 text-right font-mono text-muted-foreground">
+              <td className="p-3 text-right font-sans tabular-nums text-muted-foreground">
                 {formatKpiValue(progress.format, target.targetValue)}
               </td>
-              <td className="p-3 text-right font-mono">
+              <td className="p-3 text-right font-sans tabular-nums">
                 {progress.varianceVsExpected != null ? (
                   <span
                     className={
@@ -213,7 +213,7 @@ export function KpiTargetTeamTable({
                   "—"
                 )}
               </td>
-              <td className="p-3 text-right font-mono">
+              <td className="p-3 text-right font-sans tabular-nums">
                 {progress.percentOfTarget != null ? `${progress.percentOfTarget.toFixed(0)}%` : "—"}
               </td>
               <td className="p-3">

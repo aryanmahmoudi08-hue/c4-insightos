@@ -1,5 +1,6 @@
 import type { ActivityRole } from "@/components/activity-module";
 import type { TeamRole } from "@/components/team-member-picker";
+import { DISPLAY_CURRENCIES } from "@/lib/currency";
 
 /**
  * Shared schema + payload-building layer for the EOD Reports step-flow.
@@ -47,11 +48,34 @@ export interface EodQuestion {
   teamRole?: TeamRole;
   /** Renders a "$" prefix and formats as currency-shaped input. */
   money?: boolean;
+  /** Renders an inline currency dropdown (EOD_CURRENCY_OPTIONS) beside this
+   * money field, bound to the submission's one shared `original_currency`
+   * value — not a separate question/step. Only meaningful alongside
+   * `money: true`. */
+  currency?: boolean;
 }
 
 export type EodValues = Record<string, string | number | boolean | undefined>;
 
 const today = () => new Date().toISOString().slice(0, 10);
+
+// Currency options for every EOD schema's money fields — same
+// DISPLAY_CURRENCIES list the dashboard-wide currency selector uses
+// (src/lib/currency.ts), not a separate currency system. The picker itself
+// is NOT a standalone question/step — it renders inline within each
+// `money: true` question (see QuestionField's "number" case in
+// eod-step-flow.tsx), all bound to the one shared `original_currency` value
+// on the submission. Defaults to USD so existing behavior is unchanged
+// unless a rep actively picks something else. Cash/revenue are stored in
+// their as-entered currency (see buildSetterActivityPayload/
+// buildClosureCallPayload's `original_currency`) rather than silently
+// converted — this schema doesn't have a live FX lookup available at submit
+// time, so mixed-currency totals stay honestly separated rather than
+// pretending to be directly comparable USD.
+export const EOD_CURRENCY_OPTIONS: EodSelectOption[] = DISPLAY_CURRENCIES.map((c) => ({
+  value: c,
+  label: c,
+}));
 
 // Exact 11-choice list requested for the Closer Post-Call form. Deliberately
 // distinct from calls.status (call_status enum) and calls.disposition (the
@@ -125,6 +149,7 @@ export const INBOUND_DIALER_EOD_SCHEMA: EodQuestion[] = [
     min: 0,
     step: 0.01,
     money: true,
+    currency: true,
     defaultValue: 0,
   },
   {
@@ -135,6 +160,7 @@ export const INBOUND_DIALER_EOD_SCHEMA: EodQuestion[] = [
     min: 0,
     step: 0.01,
     money: true,
+    currency: true,
     defaultValue: 0,
   },
   { key: "rate_today", label: "Rate Today 1-10", type: "scale", required: true, min: 1, max: 10 },
@@ -236,6 +262,7 @@ export const DM_SETTER_EOD_SCHEMA: EodQuestion[] = [
     min: 0,
     step: 0.01,
     money: true,
+    currency: true,
     defaultValue: 0,
   },
   {
@@ -246,6 +273,7 @@ export const DM_SETTER_EOD_SCHEMA: EodQuestion[] = [
     min: 0,
     step: 0.01,
     money: true,
+    currency: true,
     defaultValue: 0,
   },
   { key: "rate_today", label: "Rate Today 1-10", type: "scale", required: true, min: 1, max: 10 },
@@ -293,6 +321,7 @@ export const CLOSER_EOD_SCHEMA: EodQuestion[] = [
     min: 0,
     step: 0.01,
     money: true,
+    currency: true,
     defaultValue: 0,
   },
   {
@@ -303,6 +332,7 @@ export const CLOSER_EOD_SCHEMA: EodQuestion[] = [
     min: 0,
     step: 0.01,
     money: true,
+    currency: true,
     defaultValue: 0,
   },
   {
@@ -333,6 +363,12 @@ export interface SetterActivityPayload {
   downsells: number;
   cash_collected_cents: number;
   total_revenue_cents: number;
+  /** Currency the rep actually entered cash_collected/total_revenue in —
+   * the cents columns above store that amount as-is, never silently
+   * converted (no FX lookup available at submit time), so aggregation
+   * across mixed currencies must treat this as a real dimension, not
+   * assume everything is USD. */
+  original_currency: string;
   dials?: number;
   connections?: number;
   leads_contacted?: number;
@@ -366,6 +402,7 @@ export function buildSetterActivityPayload(
     downsells: NUM(values.downsells),
     cash_collected_cents: Math.round(NUM(values.cash_collected) * 100),
     total_revenue_cents: Math.round(NUM(values.total_revenue) * 100),
+    original_currency: STR(values.original_currency) || "USD",
     // Role-specific fields stay unset (not zeroed) on the other role's rows —
     // this schema's own questions never ask a dialer about DMs/replies or a
     // setter about dials/connections, so those columns should read as "not
@@ -455,6 +492,9 @@ export function buildClosureCallPayload(orgId: string, values: EodValues) {
     deposit_cents: rawStatus === "Deposit" ? cashCollectedCents : 0,
     contract_value_cents: Math.round(NUM(values.total_revenue) * 100),
     cash_collected_cents: cashCollectedCents,
+    // As-entered currency, not silently converted — see SetterActivityPayload's
+    // original_currency for why (no FX lookup available at submit time).
+    original_currency: STR(values.original_currency) || "USD",
     call_summary: STR(values.summary) || null,
     recording_url: STR(values.recording_url) || null,
   };

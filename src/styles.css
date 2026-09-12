@@ -53,6 +53,7 @@
   --color-canvas: var(--background);
   --color-surface: var(--card);
   --color-raised: var(--popover);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-serif: "Instrument Serif", "Times New Roman", ui-serif, Georgia, serif;
 
@@ -211,10 +212,14 @@
   /* Glass surfaces — translucent + blurred, for chrome (sidebar/topbar/modals), not content */
   --glass-bg: oklch(0.13 0 0 / 55%);
   --glass-bg-strong: oklch(0.1 0 0 / 78%);
-  /* Near-opaque — the two stacked sticky headers (LiveTicker + TopBar) need
-     to stay fully legible no matter what scrolls behind them; glass-strong's
-     78% still let bright/bold page content bleed through visibly. */
-  --glass-bg-header: oklch(0.08 0 0 / 96%);
+  /* Fully opaque — the two stacked sticky headers (LiveTicker + TopBar) need
+     to stay fully legible no matter what scrolls behind them; both
+     glass-strong's 78% and an earlier 96% attempt here still let bright/bold
+     page content (headline numbers, bold headings) bleed through visibly at
+     this alpha level, especially under the blur's smearing. 100% + blur
+     keeps the same visual texture (blur still softens the border/shadow
+     transition) with zero readable bleed-through. */
+  --glass-bg-header: oklch(0.08 0 0 / 100%);
   --glass-border: oklch(1 0 0 / 9%);
   --glass-highlight: oklch(1 0 0 / 6%);
 }
@@ -288,7 +293,7 @@
 
   --glass-bg: oklch(1 0 0 / 65%);
   --glass-bg-strong: oklch(1 0 0 / 82%);
-  --glass-bg-header: oklch(1 0 0 / 96%);
+  --glass-bg-header: oklch(1 0 0 / 100%);
   --glass-border: oklch(0.16 0 0 / 8%);
   --glass-highlight: oklch(1 0 0 / 50%);
 }

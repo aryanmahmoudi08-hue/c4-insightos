@@ -674,7 +674,7 @@ function Onboarding() {
                     <div className="text-3xs uppercase tracking-wider text-muted-foreground truncate">
                       {MECHANISMS[k].label}
                     </div>
-                    <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums">
+                    <div className="mt-0.5 font-sans text-lg font-semibold tabular-nums">
                       {mechanismTagCounts.counts[k]}
                     </div>
                   </div>
@@ -683,7 +683,7 @@ function Onboarding() {
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground truncate">
                     Untagged
                   </div>
-                  <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-muted-foreground">
+                  <div className="mt-0.5 font-sans text-lg font-semibold tabular-nums text-muted-foreground">
                     {mechanismTagCounts.untagged}
                   </div>
                 </div>
@@ -849,7 +849,7 @@ function Onboarding() {
                 />
               </div>
             )}
-            <span className="text-2xs text-muted-foreground font-mono">
+            <span className="text-2xs text-muted-foreground font-sans tabular-nums">
               {activeRange.from} → {activeRange.to}
             </span>
           </div>
@@ -1198,7 +1198,7 @@ function Onboarding() {
                               style={{ fontSize: `${scale * 0.85}rem` }}
                             >
                               {p.phrase}
-                              <span className="text-3xs font-mono text-muted-foreground">
+                              <span className="text-3xs font-sans tabular-nums text-muted-foreground">
                                 ×{p.count}
                               </span>
                             </span>

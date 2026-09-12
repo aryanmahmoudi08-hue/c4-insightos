@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { TablesUpdate } from "@/integrations/supabase/types";
 import { useCurrentOrg, useAuth } from "@/hooks/use-auth";
 import { APPLICATION_FIELD_LABELS } from "@/lib/application-fields";
+import { ApplicationResponses } from "@/components/application-responses";
 import { TopBar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -1216,7 +1217,7 @@ function Leads() {
                         </td>
                       ))
                     ) : (
-                      <td className="p-2.5 text-xs text-muted-foreground font-mono">
+                      <td className="p-2.5 text-xs text-muted-foreground font-sans tabular-nums">
                         {APP_COLS.filter((c) => app[c.key]).length}/{APP_COLS.length} filled
                       </td>
                     )}
@@ -1439,7 +1440,7 @@ function LeadsPipelineDonut({
                     style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }}
                   />
                   <span className="flex-1 truncate font-medium">{d.label}</span>
-                  <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+                  <span className="shrink-0 font-sans tabular-nums text-2xs text-muted-foreground">
                     {d.value} · {total ? ((d.value / total) * 100).toFixed(0) : 0}%
                   </span>
                 </button>
@@ -1787,18 +1788,7 @@ function LeadDetail({
               />
             </div>
           </div>
-          <div className="rounded border border-border divide-y divide-border text-xs">
-            {APP_COLS.map((c) => (
-              <div key={c.key} className="p-2.5 grid grid-cols-3 gap-2">
-                <div className="text-muted-foreground uppercase text-3xs tracking-wider">
-                  {c.label}
-                </div>
-                <div className="col-span-2">
-                  {app[c.key] || <span className="text-muted-foreground/50">—</span>}
-                </div>
-              </div>
-            ))}
-          </div>
+          <ApplicationResponses applicationData={app} />
         </TabsContent>
 
         <TabsContent value="notes" className="space-y-3">
@@ -1843,17 +1833,19 @@ function LeadDetail({
           <div className="grid grid-cols-3 gap-2 text-xs">
             <div className="rounded border border-border p-2 text-center">
               <Film className="h-3 w-3 mx-auto text-accent mb-1" />
-              <div className="font-mono font-bold">{timeline?.touches.length ?? 0}</div>
+              <div className="font-sans tabular-nums font-bold">
+                {timeline?.touches.length ?? 0}
+              </div>
               <div className="text-3xs text-muted-foreground">Content touches</div>
             </div>
             <div className="rounded border border-border p-2 text-center">
               <MessageSquare className="h-3 w-3 mx-auto text-primary mb-1" />
-              <div className="font-mono font-bold">{timeline?.convs.length ?? 0}</div>
+              <div className="font-sans tabular-nums font-bold">{timeline?.convs.length ?? 0}</div>
               <div className="text-3xs text-muted-foreground">Conversations</div>
             </div>
             <div className="rounded border border-border p-2 text-center">
               <PhoneCall className="h-3 w-3 mx-auto text-emerald-500 mb-1" />
-              <div className="font-mono font-bold">{timeline?.calls.length ?? 0}</div>
+              <div className="font-sans tabular-nums font-bold">{timeline?.calls.length ?? 0}</div>
               <div className="text-3xs text-muted-foreground">
                 calls · ${Math.round(totalCash / 100).toLocaleString()}
               </div>
@@ -1897,7 +1889,7 @@ function LeadDetail({
                 <div key={c.id} className="rounded border border-border p-2 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="font-medium uppercase text-3xs">{c.status}</span>
-                    <span className="font-mono text-emerald-500">
+                    <span className="font-sans tabular-nums text-emerald-500">
                       ${Math.round((c.cash_collected_cents ?? 0) / 100).toLocaleString()}
                     </span>
                   </div>

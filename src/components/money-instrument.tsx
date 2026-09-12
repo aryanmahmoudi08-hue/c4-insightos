@@ -141,13 +141,15 @@ export function MoneyInstrument({
         {cashRatePct !== undefined && (
           <span>
             Cash collected rate:{" "}
-            <span className="font-mono text-foreground">{cashRatePct.toFixed(1)}%</span>
+            <span className="font-sans tabular-nums text-foreground">
+              {cashRatePct.toFixed(1)}%
+            </span>
           </span>
         )}
         {payoutPct !== undefined && payoutCents !== undefined && (
           <span>
             Payout owed ({payoutPct}%):{" "}
-            <span className="font-mono text-foreground">{fmtMoney(payoutCents)}</span>
+            <span className="font-sans tabular-nums text-foreground">{fmtMoney(payoutCents)}</span>
           </span>
         )}
       </div>

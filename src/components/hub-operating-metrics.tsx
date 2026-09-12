@@ -284,8 +284,8 @@ function InboundVelocityCard({
                   <div className="truncate text-3xs uppercase tracking-wide text-muted-foreground">
                     {label}
                   </div>
-                  {/* Priority 8 — font-mono, the canonical numeric typeface app-wide */}
-                  <div className="mt-1 font-mono text-2xl font-bold tabular-nums text-foreground">
+                  {/* font-sans tabular-nums — the canonical numeric typeface app-wide */}
+                  <div className="mt-1 font-sans text-2xl font-bold tabular-nums text-foreground">
                     {value}
                   </div>
                   {note && (
@@ -360,7 +360,7 @@ function InboundVelocityCard({
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-3xs text-muted-foreground">{row.label}</span>
                   <span
-                    className="font-mono text-sm font-bold tabular-nums"
+                    className="font-sans text-sm font-bold tabular-nums"
                     style={{ color: row.color }}
                   >
                     {row.value}
@@ -411,7 +411,7 @@ function RateProgress({ chart }: { chart: RateChartSpec }) {
       <div className="flex items-center justify-between gap-3">
         <span className="min-w-0 truncate text-xs font-medium text-foreground">{chart.label}</span>
         <span
-          className="shrink-0 font-mono text-lg font-bold tabular-nums"
+          className="shrink-0 font-sans text-lg font-bold tabular-nums"
           style={{ color: SAFE_SPECTRUM_VAR[chart.spectrum] }}
         >
           {chart.currentPct.toFixed(1)}%
@@ -713,7 +713,7 @@ export function HubOperatingMetrics() {
 
   // Client Momentum drilldown — Active Clients / Client Health open the real
   // client roster behind the count, never a fabricated record set.
-  const [showClientRoster, setShowClientRoster] = useState(false);
+  const [clientRosterView, setClientRosterView] = useState<"active" | "health" | null>(null);
 
   const rateCharts: RateChartSpec[] = useMemo(() => {
     if (!data) return [];
@@ -928,7 +928,7 @@ export function HubOperatingMetrics() {
       label: "Active Clients",
       value: fmt(data.activeClients),
       spectrum: "mid",
-      onClick: () => setShowClientRoster(true),
+      onClick: () => setClientRosterView("active"),
     },
     {
       key: "avgHealth",
@@ -937,7 +937,7 @@ export function HubOperatingMetrics() {
       spectrum: data.avgHealth > 0 && data.avgHealth < 60 ? "cold" : "mid",
       empty: !data.avgHealth,
       emptyHint: "No client health scores logged yet.",
-      onClick: () => setShowClientRoster(true),
+      onClick: () => setClientRosterView("health"),
     },
     {
       key: "wLogs",
@@ -996,10 +996,14 @@ export function HubOperatingMetrics() {
       <InboundVelocityCard totals={t} series={inboundSeries} />
       <KpiBand title="Client Momentum" items={clientItems} />
       <MetricDetailPanel
-        open={showClientRoster}
-        onOpenChange={setShowClientRoster}
-        title="Active Clients"
-        subtitle={`${data.activeClients} active of ${(data.clientRows ?? []).length} total`}
+        open={clientRosterView != null}
+        onOpenChange={(v) => !v && setClientRosterView(null)}
+        title={clientRosterView === "health" ? "Client Health" : "Active Clients"}
+        subtitle={
+          clientRosterView === "health"
+            ? `Avg health ${data.avgHealth ? data.avgHealth.toFixed(0) : "—"} · sorted lowest first`
+            : `${data.activeClients} active of ${(data.clientRows ?? []).length} total`
+        }
         columns={
           [
             { key: "name", label: "Name", render: (c) => c.full_name ?? "—" },
@@ -1012,7 +1016,13 @@ export function HubOperatingMetrics() {
             },
           ] satisfies DetailColumn<NonNullable<typeof data.clientRows>[number]>[]
         }
-        rows={data.clientRows ?? []}
+        rows={
+          clientRosterView === "health"
+            ? [...(data.clientRows ?? [])].sort(
+                (a, b) => (a.health_score ?? Infinity) - (b.health_score ?? Infinity),
+              )
+            : (data.clientRows ?? [])
+        }
         rowKey={(c) => c.id}
         cap={CLIENT_ROSTER_DERIVATION}
         working={CLIENT_ROSTER_DERIVATION}

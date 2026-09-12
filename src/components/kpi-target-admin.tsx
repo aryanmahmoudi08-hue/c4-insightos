@@ -279,7 +279,7 @@ export function KpiTargetAdmin({
               <th className="p-3 text-left">Role</th>
               <th className="p-3 text-left">KPI</th>
               <th className="p-3 text-left">Period</th>
-              <th className="p-3 text-right font-mono">Target</th>
+              <th className="p-3 text-right font-sans tabular-nums">Target</th>
               <th className="p-3 text-left">Last updated</th>
               <th className="p-3 text-right">Actions</th>
             </tr>
@@ -296,7 +296,7 @@ export function KpiTargetAdmin({
                     <td className="p-3 text-muted-foreground">{ROLE_LABELS[t.role]}</td>
                     <td className="p-3">{def?.label ?? t.metricKey}</td>
                     <td className="p-3 text-muted-foreground">{PERIOD_LABELS[t.period]}</td>
-                    <td className="p-3 text-right font-mono">
+                    <td className="p-3 text-right font-sans tabular-nums">
                       {def ? formatKpiValue(def.format, t.targetValue) : t.targetValue}
                     </td>
                     <td className="p-3 text-2xs text-muted-foreground">

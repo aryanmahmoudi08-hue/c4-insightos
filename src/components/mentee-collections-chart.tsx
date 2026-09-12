@@ -117,13 +117,13 @@ export function CollectionsChart({
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs sm:max-w-md">
         <div className="rounded-lg border border-border/60 bg-background/40 p-2">
           <div className="text-3xs uppercase tracking-wider text-muted-foreground">Expected</div>
-          <div className="mt-1 font-mono font-semibold">
+          <div className="mt-1 font-sans tabular-nums font-semibold">
             ${Math.round(totalExpected / 100).toLocaleString()}
           </div>
         </div>
         <div className="rounded-lg border border-border/60 bg-background/40 p-2">
           <div className="text-3xs uppercase tracking-wider text-muted-foreground">Actual</div>
-          <div className="mt-1 font-mono font-semibold">
+          <div className="mt-1 font-sans tabular-nums font-semibold">
             ${Math.round(totalActual / 100).toLocaleString()}
           </div>
         </div>
@@ -131,7 +131,9 @@ export function CollectionsChart({
           <div className="text-3xs uppercase tracking-wider text-muted-foreground">
             Slipped days
           </div>
-          <div className="mt-1 font-mono font-semibold text-destructive">{slippedDays}</div>
+          <div className="mt-1 font-sans tabular-nums font-semibold text-destructive">
+            {slippedDays}
+          </div>
         </div>
       </div>
       {chartData.length ? (

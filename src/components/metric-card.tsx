@@ -101,12 +101,18 @@ export function MetricCard({
           </div>
           <div
             className={cn(
-              // Priority 8 — the canonical numeric treatment app-wide is
-              // font-mono (JetBrains Mono) + tabular-nums, not font-sans;
-              // this is the single shared component every KpiCard/KpiBand
-              // headline value renders through, so fixing it here is the
-              // one place that standardizes every KPI surface in the app.
-              "mt-1.5 font-mono text-3xl font-bold tabular-nums tracking-tight md:text-[2.35rem]",
+              // The canonical numeric treatment app-wide is font-sans (Inter,
+              // same as body text) + tabular-nums, not font-mono; this is the
+              // single shared component every KpiCard/KpiBand headline value
+              // renders through, so fixing it here is the one place that
+              // standardizes every KPI surface in the app.
+              // text-3xl at a 2-column mobile card (~130px content width)
+              // clipped values like "$42,500" against the card's
+              // overflow-hidden edge (no space in a formatted number for the
+              // browser to wrap on) — text-2xl as the mobile floor keeps
+              // every value on-screen there while md/lg keep their original,
+              // larger sizes unchanged.
+              "mt-1.5 min-w-0 font-sans text-2xl font-bold tabular-nums tracking-tight sm:text-3xl md:text-[2.35rem]",
               tone === "default" ? "text-foreground" : TONE_TEXT[tone],
             )}
           >
@@ -115,7 +121,7 @@ export function MetricCard({
           {comparison && <div className="mt-1 text-2xs text-muted-foreground">{comparison}</div>}
         </div>
         {badge && (
-          <span className="badge-glass shrink-0 font-mono normal-case tracking-normal">
+          <span className="badge-glass shrink-0 font-sans tabular-nums normal-case tracking-normal">
             {badge}
           </span>
         )}

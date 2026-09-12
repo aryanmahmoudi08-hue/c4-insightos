@@ -83,7 +83,7 @@ function Fulfillment() {
                 <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Fulfillment Roster
                 </div>
-                <div className="font-mono text-4xl font-bold tabular-nums">
+                <div className="font-sans text-4xl font-bold tabular-nums">
                   {clients?.length ?? 0}
                 </div>
                 <div className="text-2xs text-muted-foreground">
@@ -128,7 +128,7 @@ function Fulfillment() {
                   <div className="font-medium text-sm">{c.full_name}</div>
                   <div className="flex items-center justify-between text-2xs text-muted-foreground mt-0.5">
                     <span>{c.offer_name ?? "—"}</span>
-                    <span className="font-mono">{c.start_date}</span>
+                    <span className="font-sans tabular-nums">{c.start_date}</span>
                   </div>
                 </button>
               ))}

@@ -8,6 +8,7 @@
 
 import type { MechanismKey } from "@/lib/content-mechanisms";
 import type { WeeklyReport } from "@/lib/weekly-report.server";
+import { computeDisqualified, disqualifiedLeadCount } from "@/lib/disqualification";
 
 export const DEV_BYPASS_ORG_ID = "aaaaaaaa-0000-4000-8000-000000000001";
 
@@ -104,6 +105,98 @@ function mockSeries(
   });
 }
 
+// Row-level fixtures backing the funnel's Leads/Booked/Showed/Offers/
+// Disqualified/Closed stages and their drilldowns (dashboard.tsx's
+// funnelPanel/disqualifiedPanel expect `curr.leadRows`/`curr.callRows` —
+// under real Supabase these are the actual query results; under Dev Bypass
+// there was previously nothing here at all, so every drilldown showed "No
+// records in range" even though the stage counts were non-zero). Every
+// count below is derived FROM these rows (via the same canonical
+// disqualifiedLeadCount/computeDisqualified used everywhere else), never a
+// second, independently-typed number — and every aggregate in MOCK_CURR
+// that these rows must reconcile with (newLeads: 46, totalCalls: 24,
+// showed: 18, offers: 14, closed: 8) is reproduced exactly below.
+// Deterministic (index-based), no Math.random().
+const MOCK_LEAD_SOURCES = [
+  "Meta Ads",
+  "Instagram",
+  "TikTok",
+  "YouTube",
+  "Referral / Partner",
+  "Direct / Organic",
+] as const;
+const MOCK_FUNNEL_LEAD_NAMES = [
+  "Priya Anand",
+  "Devon Marsh",
+  "Elena Cruz",
+  "Marcus Webb",
+  "Sofia Ricci",
+  "Owen Dalton",
+  "Nina Kowalski",
+  "Tariq Osei",
+  "Grace Lindqvist",
+  "Jamal Whitfield",
+] as const;
+const MOCK_CALL_CLOSER_NAMES = ["Jordan Blake", "Sam Rivera", "Casey Nguyen"] as const;
+
+const MOCK_LEAD_ROW_COUNT = 46; // matches MOCK_CURR.newLeads
+const MOCK_CALL_ROW_COUNT = 24; // matches MOCK_CURR.totalCalls
+// Leads disqualified directly on the lead record (a rep editing the
+// Legacy Leads pipeline stage, no call involved) — the last 5 leads.
+const DQ_LEAD_INDEX_START = MOCK_LEAD_ROW_COUNT - 5;
+// One additional call-linked disqualification (the Closer's EOD/Log Call
+// "DQ" path) on a lead that isn't already disqualified above, proving the
+// two paths dedupe by lead rather than double-counting.
+const DQ_CALL_INDEX = 20;
+
+export const MOCK_LEAD_ROWS = Array.from({ length: MOCK_LEAD_ROW_COUNT }, (_, i) => {
+  const name = MOCK_FUNNEL_LEAD_NAMES[i % MOCK_FUNNEL_LEAD_NAMES.length];
+  const isDisqualified = i >= DQ_LEAD_INDEX_START;
+  return {
+    id: `mock-lead-${i}`,
+    full_name: `${name} ${i}`,
+    email: `${name.toLowerCase().replace(/\s+/g, ".")}${i}@demo.example`,
+    source_platform: MOCK_LEAD_SOURCES[i % MOCK_LEAD_SOURCES.length],
+    source_campaign: null as string | null,
+    created_at: new Date(Date.now() - (MOCK_LEAD_ROW_COUNT - i) * 43_200_000).toISOString(),
+    status: isDisqualified ? "disqualified" : "new",
+    assigned_setter_id: null as string | null,
+  };
+});
+
+export const MOCK_CALL_ROWS = Array.from({ length: MOCK_CALL_ROW_COUNT }, (_, i) => {
+  const lead = MOCK_LEAD_ROWS[i];
+  const showed = i < MOCK_CURR.showed;
+  const offerMade = i < MOCK_CURR.offers;
+  const closed = i < MOCK_CURR.closed;
+  const isDqCall = i === DQ_CALL_INDEX;
+  return {
+    id: `mock-call-${i}`,
+    lead_id: lead.id,
+    status: isDqCall ? "disqualified" : closed ? "closed" : "booked",
+    closer_name: MOCK_CALL_CLOSER_NAMES[i % MOCK_CALL_CLOSER_NAMES.length],
+    scheduled_for: new Date(Date.now() - (MOCK_CALL_ROW_COUNT - i) * 43_200_000).toISOString(),
+    created_at: new Date(Date.now() - (MOCK_CALL_ROW_COUNT - i) * 43_200_000).toISOString(),
+    lead_email: lead.email,
+    cash_collected_cents: closed ? 500_000 + i * 10_000 : 0,
+    showed,
+    offer_made: offerMade,
+    closed,
+  };
+});
+
+// The one canonical disqualification computation, fed by the rows above —
+// never a separately-typed/duplicated count.
+const MOCK_DISQUALIFIED = disqualifiedLeadCount(MOCK_LEAD_ROWS, MOCK_CALL_ROWS);
+const MOCK_DISQUALIFIED_UNATTRIBUTED = computeDisqualified(
+  MOCK_LEAD_ROWS,
+  MOCK_CALL_ROWS,
+).unattributed;
+// Prior-period disqualified count for the funnel's own prior-stage bar —
+// no row-level backing needed (only the current period's rows ever feed a
+// drilldown), just a plausible, deterministic prior value.
+const MOCK_PREV_DISQUALIFIED = 4;
+
 const MOCK_FUNNEL = [
   { stage: "Views", value: MOCK_CURR.views, conv: null as string | null },
   { stage: "Leads", value: MOCK_CURR.newLeads, conv: pct(MOCK_CURR.newLeads, MOCK_CURR.views) },
@@ -114,6 +207,10 @@ const MOCK_FUNNEL = [
   },
   { stage: "Showed", value: MOCK_CURR.showed, conv: pct(MOCK_CURR.showed, MOCK_CURR.totalCalls) },
   { stage: "Offers", value: MOCK_CURR.offers, conv: pct(MOCK_CURR.offers, MOCK_CURR.showed) },
+  // Disqualification can happen at any point in the pipeline, not one fixed
+  // linear step downstream of Offers — same reasoning as fetchPeriod's real
+  // funnel array (_authenticated.dashboard.tsx), so no conversion % here.
+  { stage: "Disqualified", value: MOCK_DISQUALIFIED, conv: null as string | null },
   { stage: "Closed", value: MOCK_CURR.closed, conv: pct(MOCK_CURR.closed, MOCK_CURR.offers) },
 ];
 
@@ -199,8 +296,25 @@ export function mockDashboardStats(from: string, to: string) {
   const dailyPace = dayOfMonth > 0 ? monthCash / dayOfMonth : 0;
 
   return {
-    curr: MOCK_CURR,
-    prev: MOCK_PREV,
+    // curr/prev carry the same disqualified/disqualifiedUnattributed/
+    // leadRows/callRows fields the real fetchPeriod() returns (dashboard.tsx
+    // reads them via `c = stats?.curr`) — previously absent here entirely,
+    // which is why every funnel drilldown showed "No records in range" and
+    // the Disqualified stage had nothing to render.
+    curr: {
+      ...MOCK_CURR,
+      disqualified: MOCK_DISQUALIFIED,
+      disqualifiedUnattributed: MOCK_DISQUALIFIED_UNATTRIBUTED,
+      leadRows: MOCK_LEAD_ROWS,
+      callRows: MOCK_CALL_ROWS,
+    },
+    prev: {
+      ...MOCK_PREV,
+      disqualified: MOCK_PREV_DISQUALIFIED,
+      disqualifiedUnattributed: 0,
+      leadRows: [] as typeof MOCK_LEAD_ROWS,
+      callRows: [] as typeof MOCK_CALL_ROWS,
+    },
     series: mockSeries(from, to, MOCK_CURR.cash, MOCK_CURR.newLeads, MOCK_CURR.views),
     closers: MOCK_CLOSERS,
     setters: MOCK_SETTERS,

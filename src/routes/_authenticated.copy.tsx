@@ -1300,7 +1300,7 @@ function ClientsTab() {
             <div className="text-3xs uppercase tracking-wider text-muted-foreground">
               Total reach
             </div>
-            <div className="mt-1 font-mono text-lg font-semibold">
+            <div className="mt-1 font-sans tabular-nums text-lg font-semibold">
               {totalReach.toLocaleString()}
             </div>
           </div>

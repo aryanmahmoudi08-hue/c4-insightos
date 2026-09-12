@@ -355,7 +355,7 @@ export function AppSidebar() {
       </button>
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden animate-in fade-in-0 duration-200"
+          className="fixed inset-0 z-30 cursor-pointer bg-black/60 backdrop-blur-sm md:hidden animate-in fade-in-0 duration-200"
           onClick={closeMobile}
           aria-hidden
         />
@@ -375,7 +375,7 @@ export function AppSidebar() {
         <div
           className={cn(
             "border-b border-sidebar-border transition-[padding] duration-200",
-            !showExpanded ? "px-2.5 py-3.5" : "px-4 pt-4 pb-3",
+            !showExpanded ? "px-2.5 py-3.5" : "px-4 py-4",
           )}
         >
           {/* Priority 9 — the logo now sits on its own row, above the

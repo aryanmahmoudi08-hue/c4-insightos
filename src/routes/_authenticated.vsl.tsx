@@ -250,7 +250,7 @@ function VslFunnelPanel({ vsl }: { vsl: any }) {
           </div>
           <div className="mt-1 text-foreground">
             {leak.fromLabel} → {leak.toLabel}:{" "}
-            <span className="font-mono">{leak.dropRatePct.toFixed(1)}%</span> drop
+            <span className="font-sans tabular-nums">{leak.dropRatePct.toFixed(1)}%</span> drop
           </div>
           <div className="mt-1 text-muted-foreground">→ {leak.recommendedTest}</div>
         </div>
@@ -358,7 +358,7 @@ function VslPage() {
               <TabsTrigger key={k} value={k} className="gap-2">
                 <Video className="h-3.5 w-3.5" />
                 {KIND_LABEL[k]}
-                <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-3xs font-mono">
+                <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-3xs font-sans tabular-nums">
                   {grouped[k].length}
                 </span>
               </TabsTrigger>
@@ -724,7 +724,8 @@ function InsightsBlock({ insights }: { insights: any }) {
                 key={i}
                 className="rounded bg-background border border-border px-2 py-1 text-2xs"
               >
-                <span className="font-mono text-destructive">{d.timestamp}</span> · {d.why}
+                <span className="font-sans tabular-nums text-destructive">{d.timestamp}</span> ·{" "}
+                {d.why}
                 <ConfidenceBadge confidence={d.confidence} />
               </span>
             ))}
@@ -814,7 +815,7 @@ function ImportDialog({ vslId }: { vslId: string }) {
               . Include the header row.
               <br />
               Optional (only if your export carries them):{" "}
-              <span className="font-mono">
+              <span className="font-sans tabular-nums">
                 pct_25_reached, pct_50_reached, pct_75_reached, pct_90_reached, pct_100_reached,
                 cta_clicks, cta_click_rate, rewatches, skips, referrer, utm_source, utm_medium,
                 utm_campaign, device, embed_location, new_vs_returning, identified_viewer_id
@@ -1035,7 +1036,7 @@ function TranscriptPreview({ txt }: { txt: string }) {
         const m = l.match(/^\s*\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?\s*(.*)$/);
         return (
           <div key={i} className="flex gap-3 px-2.5 py-1 text-xs">
-            <span className="font-mono text-3xs text-accent w-14 shrink-0 pt-0.5">
+            <span className="font-sans tabular-nums text-3xs text-accent w-14 shrink-0 pt-0.5">
               {m ? m[1] : "—"}
             </span>
             <span className="min-w-0">{m ? m[2] : l}</span>
@@ -1082,7 +1083,9 @@ function TestimonialVideosSection({
           <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
             Testimonial library
           </div>
-          <div className="font-mono text-2xs text-muted-foreground">{videos.length}</div>
+          <div className="font-sans tabular-nums text-2xs text-muted-foreground">
+            {videos.length}
+          </div>
         </div>
         <div className="space-y-1.5">
           {videos.map((video, index) => (
@@ -1209,7 +1212,9 @@ function FaqVideosSection() {
                 </div>
                 <div className="display-serif mt-0.5 text-lg leading-snug">
                   {topBelief.title} —{" "}
-                  <span className="font-mono text-base text-spectrum-mid">{topBelief.clicks}</span>{" "}
+                  <span className="font-sans tabular-nums text-base text-spectrum-mid">
+                    {topBelief.clicks}
+                  </span>{" "}
                   clicks
                 </div>
                 {topBelief.mechanism && (
@@ -1279,15 +1284,15 @@ function FaqVideosSection() {
                 </div>
                 <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
                   <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1 font-mono text-xs font-semibold">
+                    <div className="flex items-center gap-1 font-sans tabular-nums text-xs font-semibold">
                       <MousePointerClick className="h-3 w-3 text-muted-foreground" />
                       {fmtNum(f.clicks)}
                     </div>
-                    <div className="flex items-center gap-1 font-mono text-xs font-semibold">
+                    <div className="flex items-center gap-1 font-sans tabular-nums text-xs font-semibold">
                       <Eye className="h-3 w-3 text-muted-foreground" />
                       {fmtNum(f.plays)}
                     </div>
-                    <div className="font-mono text-xs font-semibold">
+                    <div className="font-sans tabular-nums text-xs font-semibold">
                       {watchRate}%
                       <span className="text-3xs font-normal text-muted-foreground"> watch</span>
                     </div>

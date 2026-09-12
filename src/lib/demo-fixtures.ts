@@ -1,8 +1,7 @@
 /**
- * Deterministic Demo / Preview Data fixtures for the two features that
- * participate in the isolated demo-data system: the Attribution Command
- * Center and Calls on Calendar (see `use-demo-mode.tsx`). Every other page
- * always queries real data regardless of this flag.
+ * Deterministic Demo / Preview Data fixtures for the surfaces that
+ * participate in the isolated demo-data system (see `use-demo-mode.tsx` for
+ * the current, per-surface list — it's grown well past the original two).
  *
  * These fixtures are shaped EXACTLY like the real Supabase rows their
  * consuming pages already query — `buildDemoAttributionDataset()`'s output
@@ -695,6 +694,55 @@ export function buildDemoCalendarDataset(): DemoCalendarDataset {
       scenario: "awaiting_morning",
     },
     { day: 5, hour: 10, minute: 0, leadIdx: 8, closerIdx: 2, setterIdx: 0, scenario: "at_risk" },
+    // Simultaneous-booking coverage (item 6) — two clusters of overlapping
+    // 30-minute calls on "today" (day 0) so the overlap-column layout
+    // (computeOverlapColumns) is actually exercised in the demo dataset,
+    // not just in its unit test: a 2-way overlap and a 3-way overlap.
+    {
+      day: 0,
+      hour: 14,
+      minute: 0,
+      leadIdx: 1,
+      closerIdx: 0,
+      setterIdx: 0,
+      scenario: "fully_confirmed",
+    },
+    {
+      day: 0,
+      hour: 14,
+      minute: 0,
+      leadIdx: 3,
+      closerIdx: 1,
+      setterIdx: 1,
+      scenario: "awaiting_morning",
+    },
+    {
+      day: 0,
+      hour: 16,
+      minute: 30,
+      leadIdx: 5,
+      closerIdx: 2,
+      setterIdx: 0,
+      scenario: "at_risk",
+    },
+    {
+      day: 0,
+      hour: 16,
+      minute: 30,
+      leadIdx: 7,
+      closerIdx: 0,
+      setterIdx: 1,
+      scenario: "awaiting_thirty_min",
+    },
+    {
+      day: 0,
+      hour: 16,
+      minute: 30,
+      leadIdx: 9,
+      closerIdx: 1,
+      setterIdx: 0,
+      scenario: "showed",
+    },
   ];
 
   bookings.forEach((b, i) => {
@@ -880,7 +928,11 @@ export function buildDemoCalendarDataset(): DemoCalendarDataset {
       closed: null,
       cash_collected_cents: null,
       contract_value_cents: null,
-      duration_seconds: i % 3 === 0 ? 2700 : null, // a few real 45-min calls; rest use the honest 30-min default
+      // Booked sales calls on this calendar are uniformly 30-minute slots —
+      // null here means "no explicit duration," which the calendar's own
+      // geometry (DEFAULT_DURATION_MIN) renders as exactly 30 minutes, so
+      // every one of these boxes occupies the same grid height.
+      duration_seconds: null,
       cancelled,
       meeting_link: cancelled ? null : `https://meet.demo.example/${callId}`,
       recording_url: null,

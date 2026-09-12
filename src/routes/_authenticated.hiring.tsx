@@ -551,7 +551,7 @@ function Hiring() {
                           <button
                             onClick={() => setAiEvalApplicant(a)}
                             title="Open AI evaluation"
-                            className={`text-2xs font-mono font-semibold rounded px-1.5 py-0.5 ${CHIP_TONE_CLASSES[scoreTone]}`}
+                            className={`text-2xs font-sans tabular-nums font-semibold rounded px-1.5 py-0.5 ${CHIP_TONE_CLASSES[scoreTone]}`}
                           >
                             {a.ai_score?.toFixed(1) ?? "—"}
                           </button>
@@ -707,7 +707,7 @@ function Hiring() {
                   <div className="rounded-md border border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/5 p-3 grid grid-cols-2 gap-3 text-xs">
                     <div>
                       <span className="text-muted-foreground">Recent monthly cash (stated)</span>
-                      <div className="font-mono text-sm text-[color:var(--color-success)]">
+                      <div className="font-sans tabular-nums text-sm text-[color:var(--color-success)]">
                         {editing.recent_monthly_cash_collected_cents
                           ? fmtMoney(editing.recent_monthly_cash_collected_cents)
                           : "—"}
@@ -715,7 +715,7 @@ function Hiring() {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Historical cash (stated)</span>
-                      <div className="font-mono text-sm text-[color:var(--color-success)]">
+                      <div className="font-sans tabular-nums text-sm text-[color:var(--color-success)]">
                         {editing.historical_cash_collected_cents
                           ? fmtMoney(editing.historical_cash_collected_cents)
                           : "—"}
@@ -737,7 +737,7 @@ function Hiring() {
                   <span className="flex items-center gap-1.5">
                     <Sparkles className="h-3.5 w-3.5" /> AI evaluation
                   </span>
-                  <span className="font-mono text-2xs">
+                  <span className="font-sans tabular-nums text-2xs">
                     {editing.ai_score?.toFixed(1) ?? "—"}/10 →
                   </span>
                 </Button>
@@ -903,7 +903,7 @@ function AiEvaluationDrawer({
               <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                 Transcript quality
               </div>
-              <div className="font-mono text-2xl font-bold">
+              <div className="font-sans tabular-nums text-2xl font-bold">
                 {applicant.ai_score?.toFixed(1) ?? "—"}
                 <span className="text-sm text-muted-foreground">/10</span>
               </div>

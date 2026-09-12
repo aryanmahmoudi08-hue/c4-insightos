@@ -680,11 +680,11 @@ function Team() {
                   <tr>
                     <th className="text-left p-3">Member</th>
                     <th className="text-left p-3">Role</th>
-                    <th className="text-right p-3 font-mono">Booked</th>
-                    <th className="text-right p-3 font-mono">Shown</th>
-                    <th className="text-right p-3 font-mono">Closes</th>
-                    <th className="text-right p-3 font-mono">Cash</th>
-                    <th className="text-right p-3 font-mono">Close %</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Booked</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Shown</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Closes</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Cash</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Close %</th>
                     <th className="text-left p-3">Status</th>
                   </tr>
                 </thead>
@@ -696,7 +696,7 @@ function Team() {
                       onClick={() => setProfileMember(m)}
                     >
                       <td className="p-3 flex items-center gap-2">
-                        <div className="grid h-7 w-7 place-items-center rounded-full bg-muted text-2xs font-mono">
+                        <div className="grid h-7 w-7 place-items-center rounded-full bg-muted text-2xs font-sans tabular-nums">
                           {(m.profiles?.display_name ?? "??").slice(0, 2).toUpperCase()}
                         </div>
                         <span className="font-medium">
@@ -708,13 +708,13 @@ function Team() {
                           {m.role}
                         </span>
                       </td>
-                      <td className="p-3 text-right font-mono">{m.booked}</td>
-                      <td className="p-3 text-right font-mono">{m.shown}</td>
-                      <td className="p-3 text-right font-mono">{m.closes}</td>
-                      <td className="p-3 text-right font-mono text-[color:var(--color-success)]">
+                      <td className="p-3 text-right font-sans tabular-nums">{m.booked}</td>
+                      <td className="p-3 text-right font-sans tabular-nums">{m.shown}</td>
+                      <td className="p-3 text-right font-sans tabular-nums">{m.closes}</td>
+                      <td className="p-3 text-right font-sans tabular-nums text-[color:var(--color-success)]">
                         {fmtMoney(m.cash)}
                       </td>
-                      <td className="p-3 text-right font-mono">
+                      <td className="p-3 text-right font-sans tabular-nums">
                         {m.shown ? `${((m.closes / m.shown) * 100).toFixed(0)}%` : "—"}
                       </td>
                       <td className="p-3">
@@ -887,7 +887,7 @@ function Team() {
                   {byUser.map((m) => (
                     <tr key={m.user_id} className="border-t border-border/70 hover:bg-muted/20">
                       <td className="p-3 flex items-center gap-2">
-                        <div className="grid h-7 w-7 place-items-center rounded-full bg-muted text-2xs font-mono">
+                        <div className="grid h-7 w-7 place-items-center rounded-full bg-muted text-2xs font-sans tabular-nums">
                           {(m.profiles?.display_name ?? "??").slice(0, 2).toUpperCase()}
                         </div>
                         <span className="font-medium">
@@ -970,7 +970,7 @@ function Team() {
                             entry.detail &&
                             "role" in entry.detail && <> as {String(entry.detail.role)}</>}
                         </span>
-                        <span className="shrink-0 font-mono text-3xs text-muted-foreground">
+                        <span className="shrink-0 font-sans tabular-nums text-3xs text-muted-foreground">
                           {new Date(entry.created_at).toLocaleString()}
                         </span>
                       </li>
@@ -1101,21 +1101,21 @@ function RepProfileSheet({
                 <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                   Booked
                 </div>
-                <div className="font-mono text-lg font-bold">{member.booked}</div>
+                <div className="font-sans tabular-nums text-lg font-bold">{member.booked}</div>
               </div>
               <div className="rounded-md border border-border p-2.5">
                 <div className="text-3xs uppercase tracking-wider text-muted-foreground">Shown</div>
-                <div className="font-mono text-lg font-bold">{member.shown}</div>
+                <div className="font-sans tabular-nums text-lg font-bold">{member.shown}</div>
               </div>
               <div className="rounded-md border border-border p-2.5">
                 <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                   Closes
                 </div>
-                <div className="font-mono text-lg font-bold">{member.closes}</div>
+                <div className="font-sans tabular-nums text-lg font-bold">{member.closes}</div>
               </div>
               <div className="rounded-md border border-border p-2.5">
                 <div className="text-3xs uppercase tracking-wider text-muted-foreground">Cash</div>
-                <div className="font-mono text-lg font-bold text-[color:var(--color-success)]">
+                <div className="font-sans tabular-nums text-lg font-bold text-[color:var(--color-success)]">
                   {fmtMoney(member.cash)}
                 </div>
               </div>

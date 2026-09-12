@@ -156,7 +156,7 @@ export function MenteeScheduledComms({
 
       <div>
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Pending triggers <span className="font-mono">{pendingTriggers.length}</span>
+          Pending triggers <span className="font-sans tabular-nums">{pendingTriggers.length}</span>
         </div>
         <div className="space-y-1.5">
           {pendingTriggers.slice(0, 8).map((t) => {
@@ -219,7 +219,7 @@ export function MenteeScheduledComms({
 
       <div>
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Queue <span className="font-mono">{scheduled.length}</span>
+          Queue <span className="font-sans tabular-nums">{scheduled.length}</span>
         </div>
         <div className="space-y-1.5">
           {scheduled.slice(0, 10).map((s) => {

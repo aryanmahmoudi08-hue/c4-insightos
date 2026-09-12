@@ -370,7 +370,7 @@ function MoneyOriginSection({
               title={tooltip}
             >
               <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
-              <div className="mt-0.5 font-mono text-sm font-semibold">{value}</div>
+              <div className="mt-0.5 font-sans tabular-nums text-sm font-semibold">{value}</div>
             </div>
           ))}
         </div>
@@ -463,7 +463,7 @@ function MoneyOriginSection({
                       <PlatformIcon platform={normalizeSocialPlatform(c.name)} />
                       {c.name}
                     </span>
-                    <span className="font-mono text-xs text-spectrum-hot">
+                    <span className="font-sans tabular-nums text-xs text-spectrum-hot">
                       {money(c.contractedCents)}
                     </span>
                   </div>
@@ -1296,22 +1296,24 @@ export function ContentCommandCenter({
                             </div>
                           )}
                         </td>
-                        <td className="px-3 py-3 text-right font-mono text-xs">
+                        <td className="px-3 py-3 text-right font-sans tabular-nums text-xs">
                           {fmt(metric.views ?? 0)}
                         </td>
-                        <td className="px-3 py-3 text-right font-mono text-xs">
+                        <td className="px-3 py-3 text-right font-sans tabular-nums text-xs">
                           {metric.reach != null && metric.reach > 0 ? fmt(metric.reach) : "—"}
                         </td>
-                        <td className="px-3 py-3 text-right font-mono text-xs">
+                        <td className="px-3 py-3 text-right font-sans tabular-nums text-xs">
                           {engagement != null && engagement > 0 ? `${engagement.toFixed(1)}%` : "—"}
                         </td>
-                        <td className="px-3 py-3 text-right font-mono text-xs">{watch}</td>
-                        <td className="px-3 py-3 text-right font-mono text-xs">
+                        <td className="px-3 py-3 text-right font-sans tabular-nums text-xs">
+                          {watch}
+                        </td>
+                        <td className="px-3 py-3 text-right font-sans tabular-nums text-xs">
                           {replay != null ? `${replay.toFixed(2)}×` : "—"}
                         </td>
                         {/* content_metrics.cash_collected_cents has no write path — see the
                             "Cash attributed" CommandKpi above for the same override. */}
-                        <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground md:px-5">
+                        <td className="px-4 py-3 text-right font-sans tabular-nums text-xs text-muted-foreground md:px-5">
                           Not tracked
                         </td>
                       </tr>
@@ -1395,7 +1397,7 @@ function CommandKpi({
         <span style={{ color: SPECTRUM_VAR[spectrum] }}>{icon}</span>
       </div>
       <div
-        className="mt-3 font-mono text-2xl font-semibold tabular-nums"
+        className="mt-3 font-sans text-2xl font-semibold tabular-nums"
         style={{ color: SPECTRUM_VAR[spectrum] }}
       >
         {value}
@@ -1460,7 +1462,9 @@ function SignalLayer({
               <div key={item.key}>
                 <div className="mb-1 flex items-center justify-between gap-2 text-xs">
                   <span>{item.label}</span>
-                  <span className="font-mono text-muted-foreground">{item.value}%</span>
+                  <span className="font-sans tabular-nums text-muted-foreground">
+                    {item.value}%
+                  </span>
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-muted/60">
                   <div
@@ -1483,19 +1487,26 @@ function SignalLayer({
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border/70 pt-3 text-3xs text-muted-foreground">
             <div>
-              <span className="font-mono text-foreground">{weekly?.reels ?? 0}</span> reels this
-              week
+              <span className="font-sans tabular-nums text-foreground">{weekly?.reels ?? 0}</span>{" "}
+              reels this week
             </div>
             <div>
-              <span className="font-mono text-foreground">{weekly?.untracked ?? 0}</span> untracked
+              <span className="font-sans tabular-nums text-foreground">
+                {weekly?.untracked ?? 0}
+              </span>{" "}
+              untracked
             </div>
             <div>
-              <span className="font-mono text-foreground">{weekly?.missing?.length ?? 0}</span>{" "}
+              <span className="font-sans tabular-nums text-foreground">
+                {weekly?.missing?.length ?? 0}
+              </span>{" "}
               categories missing
             </div>
             <div>
-              <span className="font-mono text-foreground">{demand.counts?.faq ?? 0}</span> FAQ
-              signals
+              <span className="font-sans tabular-nums text-foreground">
+                {demand.counts?.faq ?? 0}
+              </span>{" "}
+              FAQ signals
             </div>
           </div>
           {demand.insufficientData && (

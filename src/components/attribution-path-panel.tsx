@@ -107,7 +107,7 @@ export function AttributionPathPanel({
                           <span className="min-w-0 flex-1 truncate text-[10px] text-foreground">
                             {src.label}
                           </span>
-                          <span className="shrink-0 font-mono text-[10px] font-semibold text-muted-foreground">
+                          <span className="shrink-0 font-sans tabular-nums text-[10px] font-semibold text-muted-foreground">
                             {src.value.toLocaleString()}
                           </span>
                         </button>
@@ -150,7 +150,7 @@ export function AttributionPathPanel({
                           <span className="shrink-0 text-[9px] text-spectrum-mid">▸</span>
                         )}
                       </div>
-                      <div className="mt-1 truncate font-mono text-lg font-semibold text-foreground">
+                      <div className="mt-1 truncate font-sans tabular-nums text-lg font-semibold text-foreground">
                         {stage.value == null ? "—" : stage.value.toLocaleString()}
                       </div>
                       <div className="mt-1 line-clamp-2 text-[10px] text-muted-foreground">

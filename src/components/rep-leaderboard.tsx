@@ -1,7 +1,13 @@
 import { motion } from "motion/react";
 import { Trophy, X } from "lucide-react";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DateRangePicker, type DateRange } from "@/components/date-range-picker";
 import { SPRING } from "@/lib/motion-tokens";
 import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, type SpectrumPosition } from "@/lib/spectrum";
@@ -38,8 +44,16 @@ interface RepLeaderboardProps<P extends { name: string }> {
  * until the caller passes an override), with a clear "Custom range" indicator.
  */
 export function RepLeaderboard<P extends { name: string }>({
-  titlePrefix, metrics, metricKey, onMetricChange, people, emptyLabel,
-  dateRange, onDateRangeChange, overridden, onResetRange,
+  titlePrefix,
+  metrics,
+  metricKey,
+  onMetricChange,
+  people,
+  emptyLabel,
+  dateRange,
+  onDateRangeChange,
+  overridden,
+  onResetRange,
 }: RepLeaderboardProps<P>) {
   const metric = metrics.find((m) => m.key === metricKey) ?? metrics[0];
   const sorted = [...people].sort((a, b) => metric.rankBy(b) - metric.rankBy(a)).slice(0, 6);
@@ -54,15 +68,26 @@ export function RepLeaderboard<P extends { name: string }>({
             {titlePrefix} · by {metric.label}
           </div>
           <Select value={metricKey} onValueChange={onMetricChange}>
-            <SelectTrigger className="h-7 w-[172px] text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>{metrics.map((m) => <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>)}</SelectContent>
+            <SelectTrigger className="h-7 w-[172px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {metrics.map((m) => (
+                <SelectItem key={m.key} value={m.key}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <DateRangePicker value={dateRange} onChange={onDateRangeChange} />
           {overridden && (
-            <button type="button" onClick={onResetRange}
-              className="flex items-center gap-1 rounded-full bg-spectrum-mid/15 px-2 py-0.5 text-3xs font-medium text-spectrum-mid transition-colors hover:bg-spectrum-mid/25">
+            <button
+              type="button"
+              onClick={onResetRange}
+              className="flex items-center gap-1 rounded-full bg-spectrum-mid/15 px-2 py-0.5 text-3xs font-medium text-spectrum-mid transition-colors hover:bg-spectrum-mid/25"
+            >
               Custom range <X className="h-2.5 w-2.5" />
             </button>
           )}
@@ -70,8 +95,15 @@ export function RepLeaderboard<P extends { name: string }>({
       </div>
       <div className="divide-y divide-border">
         {sorted.map((p, i) => (
-          <motion.div key={p.name} layout transition={SPRING.bouncy} className="hover-lift flex items-center gap-3 px-4 py-2.5">
-            <div className="grid h-6 w-6 place-items-center rounded-md bg-muted text-3xs font-mono font-bold text-muted-foreground">{i + 1}</div>
+          <motion.div
+            key={p.name}
+            layout
+            transition={SPRING.bouncy}
+            className="hover-lift flex items-center gap-3 px-4 py-2.5"
+          >
+            <div className="grid h-6 w-6 place-items-center rounded-md bg-muted text-3xs font-sans tabular-nums font-bold text-muted-foreground">
+              {i + 1}
+            </div>
             <AvatarInitials name={p.name} size="sm" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{p.name}</div>
@@ -86,12 +118,18 @@ export function RepLeaderboard<P extends { name: string }>({
               </div>
             </div>
             <div className="text-right shrink-0">
-              <div className={`font-mono text-sm font-semibold ${SPECTRUM_TEXT_CLASS[metric.spectrum]}`}>{metric.primary(p)}</div>
+              <div
+                className={`font-sans tabular-nums text-sm font-semibold ${SPECTRUM_TEXT_CLASS[metric.spectrum]}`}
+              >
+                {metric.primary(p)}
+              </div>
               <div className="text-3xs text-muted-foreground">{metric.secondary(p)}</div>
             </div>
           </motion.div>
         ))}
-        {sorted.length === 0 && <div className="p-8 text-center text-xs text-muted-foreground">{emptyLabel}</div>}
+        {sorted.length === 0 && (
+          <div className="p-8 text-center text-xs text-muted-foreground">{emptyLabel}</div>
+        )}
       </div>
     </div>
   );

@@ -13,7 +13,12 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { cn } from "@/lib/utils";
-import { isAnswered, type EodQuestion, type EodValues } from "@/lib/eod-reports";
+import {
+  isAnswered,
+  EOD_CURRENCY_OPTIONS,
+  type EodQuestion,
+  type EodValues,
+} from "@/lib/eod-reports";
 
 export interface EodLeadOption {
   id: string;
@@ -30,17 +35,34 @@ interface Props {
   onExit: () => void;
 }
 
+const currencySymbolFor = (code: string): string => {
+  try {
+    return (
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: code,
+        currencyDisplay: "narrowSymbol",
+      })
+        .formatToParts(0)
+        .find((p) => p.type === "currency")?.value ?? "$"
+    );
+  } catch {
+    return "$";
+  }
+};
+
 const fmtValue = (
   q: EodQuestion,
   v: string | number | boolean | undefined,
   leadOptions?: EodLeadOption[],
+  currencyCode = "USD",
 ): string => {
   if (v === undefined || v === "") return "—";
   if (q.type === "checkbox") return v ? "Yes" : "No";
   if (q.type === "select" || q.type === "team-member") return String(v);
   if (q.type === "lead-picker") return leadOptions?.find((l) => l.id === v)?.label ?? "None picked";
   if (q.money)
-    return `$${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${currencySymbolFor(currencyCode)}${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   if (q.type === "number") return String(v);
   return String(v);
 };
@@ -167,6 +189,8 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
                 onChange={handleFieldChange}
                 leadOptions={leadOptions}
                 onAdvance={goNext}
+                currencyCode={String(values.original_currency ?? "USD")}
+                onCurrencyChange={(code) => setVal("original_currency", code)}
               />
             </div>
           </div>
@@ -188,7 +212,12 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
                       {q.label}
                     </div>
                     <div className="mt-0.5 text-sm font-medium">
-                      {fmtValue(q, values[q.key], leadOptions)}
+                      {fmtValue(
+                        q,
+                        values[q.key],
+                        leadOptions,
+                        String(values.original_currency ?? "USD"),
+                      )}
                     </div>
                   </div>
                   <button
@@ -230,12 +259,23 @@ function QuestionField({
   onChange,
   leadOptions,
   onAdvance,
+  currencyCode = "USD",
+  onCurrencyChange,
 }: {
   question: EodQuestion;
   value: string | number | boolean | undefined;
   onChange: (v: string | number | boolean | undefined) => void;
   leadOptions?: EodLeadOption[];
   onAdvance: () => void;
+  /** The submission's one shared original_currency value, so this field's
+   * money prefix/dropdown reflects what the rep actually chose rather than
+   * a hardcoded $. */
+  currencyCode?: string;
+  /** Writes to the submission's shared original_currency — a separate
+   * channel from `onChange` (which only ever writes this question's own
+   * key), since the inline currency dropdown belongs to the whole
+   * submission, not to this one field. */
+  onCurrencyChange?: (code: string) => void;
 }) {
   const enterAdvances = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -245,31 +285,53 @@ function QuestionField({
   };
 
   switch (question.type) {
-    case "number":
+    case "number": {
+      const currencySymbol = question.money ? currencySymbolFor(currencyCode) : null;
       return (
-        <div className="relative">
-          {question.money && (
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-mono text-muted-foreground">
-              $
-            </span>
-          )}
-          <Input
-            autoFocus
-            type="number"
-            min={question.min}
-            max={question.max}
-            step={question.step ?? 1}
-            value={value === undefined ? "" : String(value)}
-            onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-            onKeyDown={enterAdvances}
-            placeholder={question.placeholder}
-            className={cn(
-              "h-20 text-center font-mono text-4xl tabular-nums",
-              question.money && "pl-10",
+        <div className="space-y-2">
+          <div className="relative">
+            {currencySymbol && (
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-sans tabular-nums text-muted-foreground">
+                {currencySymbol}
+              </span>
             )}
-          />
+            <Input
+              autoFocus
+              type="number"
+              min={question.min}
+              max={question.max}
+              step={question.step ?? 1}
+              value={value === undefined ? "" : String(value)}
+              onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+              onKeyDown={enterAdvances}
+              placeholder={question.placeholder}
+              className={cn(
+                "h-20 text-center font-sans text-4xl tabular-nums",
+                question.money && "pl-10",
+                question.currency && "pr-28",
+              )}
+            />
+            {/* Inline currency dropdown — part of this money question, not a
+                separate question/step (item 6 correction). Bound to the
+                submission's one shared original_currency value. */}
+            {question.currency && onCurrencyChange && (
+              <Select value={currencyCode} onValueChange={onCurrencyChange}>
+                <SelectTrigger className="absolute right-2 top-1/2 h-10 w-24 -translate-y-1/2 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {EOD_CURRENCY_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </div>
       );
+    }
     case "textarea":
       return (
         <Textarea
@@ -331,7 +393,7 @@ function QuestionField({
               key={n}
               type="button"
               variant={value === n ? "default" : "outline"}
-              className="h-12 font-mono text-base"
+              className="h-12 font-sans tabular-nums text-base"
               onClick={() => onChange(n)}
             >
               {n}

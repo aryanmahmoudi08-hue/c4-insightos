@@ -35,7 +35,7 @@ export function LandingRevenue() {
                     <div className="text-3xs uppercase tracking-[0.12em] text-muted-foreground">
                       {row.label}
                     </div>
-                    <div className="mt-1 font-mono text-sm">{row.value}</div>
+                    <div className="mt-1 font-sans tabular-nums text-sm">{row.value}</div>
                   </div>
                 ))}
               </div>

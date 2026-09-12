@@ -731,10 +731,10 @@ function AttributionCommandCenter() {
             <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="p-3 text-left">Channel</th>
-                <th className="p-3 text-right font-mono">Closes</th>
-                <th className="p-3 text-right font-mono">Revenue</th>
-                <th className="p-3 text-right font-mono">Cash</th>
-                <th className="p-3 text-right font-mono">Collection Rate</th>
+                <th className="p-3 text-right font-sans tabular-nums">Closes</th>
+                <th className="p-3 text-right font-sans tabular-nums">Revenue</th>
+                <th className="p-3 text-right font-sans tabular-nums">Cash</th>
+                <th className="p-3 text-right font-sans tabular-nums">Collection Rate</th>
                 <th className="p-3 text-left">Attribution Strength</th>
               </tr>
             </thead>
@@ -754,12 +754,14 @@ function AttributionCommandCenter() {
                       {r.platform}
                     </span>
                   </td>
-                  <td className="p-3 text-right font-mono">{r.closes}</td>
-                  <td className="p-3 text-right font-mono">{money(r.contractCents)}</td>
-                  <td className="p-3 text-right font-mono text-spectrum-hot">
+                  <td className="p-3 text-right font-sans tabular-nums">{r.closes}</td>
+                  <td className="p-3 text-right font-sans tabular-nums">
+                    {money(r.contractCents)}
+                  </td>
+                  <td className="p-3 text-right font-sans tabular-nums text-spectrum-hot">
                     {money(r.cashCents)}
                   </td>
-                  <td className="p-3 text-right font-mono">
+                  <td className="p-3 text-right font-sans tabular-nums">
                     {r.contractCents > 0
                       ? `${Math.round((r.cashCents / r.contractCents) * 100)}%`
                       : "—"}
@@ -793,16 +795,16 @@ function AttributionCommandCenter() {
             <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="p-3 text-left">Content</th>
-                <th className="p-3 text-right font-mono">Closes</th>
-                <th className="p-3 text-right font-mono">Cash</th>
+                <th className="p-3 text-right font-sans tabular-nums">Closes</th>
+                <th className="p-3 text-right font-sans tabular-nums">Cash</th>
               </tr>
             </thead>
             <tbody>
               {contentRows.slice(0, 20).map((r) => (
                 <tr key={r.contentId} className="border-t border-border/70 hover:bg-muted/20">
                   <td className="p-3 font-medium">{r.title}</td>
-                  <td className="p-3 text-right font-mono">{r.callCount}</td>
-                  <td className="p-3 text-right font-mono text-spectrum-hot">
+                  <td className="p-3 text-right font-sans tabular-nums">{r.callCount}</td>
+                  <td className="p-3 text-right font-sans tabular-nums text-spectrum-hot">
                     {money(r.cashCents)}
                   </td>
                 </tr>
@@ -838,10 +840,10 @@ function AttributionCommandCenter() {
                 <th className="p-3 text-left">Acquisition Source</th>
                 <th className="p-3 text-left">Rep</th>
                 <th className="p-3 text-left">Closer</th>
-                <th className="p-3 text-right font-mono">Calls</th>
-                <th className="p-3 text-right font-mono">Revenue</th>
-                <th className="p-3 text-right font-mono">Cash</th>
-                <th className="p-3 text-right font-mono">Collection Rate</th>
+                <th className="p-3 text-right font-sans tabular-nums">Calls</th>
+                <th className="p-3 text-right font-sans tabular-nums">Revenue</th>
+                <th className="p-3 text-right font-sans tabular-nums">Cash</th>
+                <th className="p-3 text-right font-sans tabular-nums">Collection Rate</th>
               </tr>
             </thead>
             <tbody>
@@ -851,12 +853,14 @@ function AttributionCommandCenter() {
                   <td className="p-3">{r.source ?? "Unknown"}</td>
                   <td className="p-3">{repLabel(r.setterOrDialerId)}</td>
                   <td className="p-3">{repLabel(r.closerId)}</td>
-                  <td className="p-3 text-right font-mono">{r.callCount}</td>
-                  <td className="p-3 text-right font-mono">{money(r.contractValueCents)}</td>
-                  <td className="p-3 text-right font-mono text-spectrum-hot">
+                  <td className="p-3 text-right font-sans tabular-nums">{r.callCount}</td>
+                  <td className="p-3 text-right font-sans tabular-nums">
+                    {money(r.contractValueCents)}
+                  </td>
+                  <td className="p-3 text-right font-sans tabular-nums text-spectrum-hot">
                     {money(r.cashCents)}
                   </td>
-                  <td className="p-3 text-right font-mono">
+                  <td className="p-3 text-right font-sans tabular-nums">
                     {r.contractValueCents > 0
                       ? `${Math.round((r.cashCents / r.contractValueCents) * 100)}%`
                       : "—"}
@@ -887,12 +891,12 @@ function AttributionCommandCenter() {
               {(["direct", "partial", "inferred", "unavailable"] as const).map((c) => (
                 <div key={c} className="flex items-center justify-between text-xs">
                   <span className="capitalize text-muted-foreground">{c}</span>
-                  <span className="font-mono">{coverageBreakdown[c] ?? 0}</span>
+                  <span className="font-sans tabular-nums">{coverageBreakdown[c] ?? 0}</span>
                 </div>
               ))}
               <div className="flex items-center justify-between border-t border-border/60 pt-1.5 text-xs">
                 <span className="text-muted-foreground">Unattributed (no path)</span>
-                <span className="font-mono">
+                <span className="font-sans tabular-nums">
                   {(data?.closedRows.length ?? 0) - attributedCallIds.size}
                 </span>
               </div>
@@ -906,7 +910,7 @@ function AttributionCommandCenter() {
               {(["high", "medium", "low", "unknown"] as const).map((s) => (
                 <div key={s} className="flex items-center justify-between text-xs">
                   <span className="capitalize text-muted-foreground">{s}</span>
-                  <span className="font-mono">{strengthBreakdown[s] ?? 0}</span>
+                  <span className="font-sans tabular-nums">{strengthBreakdown[s] ?? 0}</span>
                 </div>
               ))}
             </div>
@@ -936,7 +940,7 @@ function AttributionCommandCenter() {
                       <th className="p-2 text-left">Platform</th>
                       <th className="p-2 text-left">Rep</th>
                       <th className="p-2 text-left">Closer</th>
-                      <th className="p-2 text-right font-mono">Cash</th>
+                      <th className="p-2 text-right font-sans tabular-nums">Cash</th>
                       <th className="p-2 text-left">Coverage</th>
                       <th className="p-2 text-left">Strength</th>
                     </tr>
@@ -955,7 +959,7 @@ function AttributionCommandCenter() {
                         <td className="p-2">{r.platform ?? "Unknown"}</td>
                         <td className="p-2">{repLabel(r.setterId)}</td>
                         <td className="p-2">{repLabel(r.closerId)}</td>
-                        <td className="p-2 text-right font-mono">
+                        <td className="p-2 text-right font-sans tabular-nums">
                           {money(r.path.callId ? (data?.callCashById[r.path.callId] ?? 0) : 0)}
                         </td>
                         <td className="p-2 capitalize">{r.path.evidence.coverage}</td>

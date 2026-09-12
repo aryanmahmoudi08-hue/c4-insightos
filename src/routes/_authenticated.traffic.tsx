@@ -389,7 +389,7 @@ function Traffic() {
                       <span className="font-semibold text-spectrum-hot">{bestSource.name}</span> is
                       your strongest channel: {bestSource.leads} leads turned into{" "}
                       {bestSource.clients} clients ({bestSource.closeRate}% close rate) at{" "}
-                      <span className="font-mono text-base">
+                      <span className="font-sans tabular-nums text-base">
                         ${bestSource.avgDeal.toLocaleString()}
                       </span>{" "}
                       per deal.
@@ -466,7 +466,7 @@ function Traffic() {
                           style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }}
                         />
                         <span className="flex-1 truncate font-medium">{b.name}</span>
-                        <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+                        <span className="shrink-0 font-sans tabular-nums text-2xs text-muted-foreground">
                           {b.leads} · {share.toFixed(0)}%
                         </span>
                       </div>
@@ -556,7 +556,7 @@ function Traffic() {
                     <span className="text-3xs uppercase tracking-wider text-muted-foreground">
                       Revenue per lead
                     </span>
-                    <span className="font-mono text-lg font-semibold text-spectrum-hot">
+                    <span className="font-sans tabular-nums text-lg font-semibold text-spectrum-hot">
                       ${b.revenuePerLead.toLocaleString()}
                     </span>
                   </div>
@@ -601,11 +601,11 @@ function Traffic() {
                   <th className="p-3 text-left">#</th>
                   <th className="p-3 text-left">Channel</th>
                   <th className="p-3 text-left">Type</th>
-                  <th className="p-3 text-right font-mono">Leads</th>
-                  <th className="p-3 text-right font-mono">Clients</th>
-                  <th className="p-3 text-right font-mono">Close rate</th>
-                  <th className="p-3 text-right font-mono">Avg deal</th>
-                  <th className="p-3 text-right font-mono">Revenue / lead</th>
+                  <th className="p-3 text-right font-sans tabular-nums">Leads</th>
+                  <th className="p-3 text-right font-sans tabular-nums">Clients</th>
+                  <th className="p-3 text-right font-sans tabular-nums">Close rate</th>
+                  <th className="p-3 text-right font-sans tabular-nums">Avg deal</th>
+                  <th className="p-3 text-right font-sans tabular-nums">Revenue / lead</th>
                   <th className="p-3 text-left">Verdict</th>
                 </tr>
               </thead>
@@ -614,14 +614,20 @@ function Traffic() {
                   const v = verdict(b);
                   return (
                     <tr key={b.id} className="border-t border-border/70 hover:bg-muted/20">
-                      <td className="p-3 font-mono text-xs text-muted-foreground">{i + 1}</td>
+                      <td className="p-3 font-sans tabular-nums text-xs text-muted-foreground">
+                        {i + 1}
+                      </td>
                       <td className="p-3 font-medium">{b.name}</td>
                       <td className="p-3 text-xs uppercase text-muted-foreground">{b.category}</td>
-                      <td className="p-3 text-right font-mono">{b.leads}</td>
-                      <td className="p-3 text-right font-mono text-spectrum-hot">{b.clients}</td>
-                      <td className="p-3 text-right font-mono">{b.closeRate}%</td>
-                      <td className="p-3 text-right font-mono">${b.avgDeal.toLocaleString()}</td>
-                      <td className="p-3 text-right font-mono font-semibold">
+                      <td className="p-3 text-right font-sans tabular-nums">{b.leads}</td>
+                      <td className="p-3 text-right font-sans tabular-nums text-spectrum-hot">
+                        {b.clients}
+                      </td>
+                      <td className="p-3 text-right font-sans tabular-nums">{b.closeRate}%</td>
+                      <td className="p-3 text-right font-sans tabular-nums">
+                        ${b.avgDeal.toLocaleString()}
+                      </td>
+                      <td className="p-3 text-right font-sans tabular-nums font-semibold">
                         ${b.revenuePerLead.toLocaleString()}
                       </td>
                       <td className="p-3">
@@ -663,7 +669,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded border border-border px-2 py-1.5">
       <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="font-mono text-sm">{value}</div>
+      <div className="font-sans tabular-nums text-sm">{value}</div>
     </div>
   );
 }
@@ -758,7 +764,7 @@ function AddChannelForm({
         <div className="space-y-1.5">
           <Label className="text-2xs">Generated tracking URL</Label>
           <div className="flex items-center gap-2">
-            <div className="flex-1 truncate rounded border border-border bg-muted/30 px-2 py-1.5 font-mono text-2xs">
+            <div className="flex-1 truncate rounded border border-border bg-muted/30 px-2 py-1.5 font-sans tabular-nums text-2xs">
               {trackingUrl}
             </div>
             <Button

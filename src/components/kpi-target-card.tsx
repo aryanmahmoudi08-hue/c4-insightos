@@ -64,7 +64,7 @@ export function KpiTargetCard({
       </div>
       <div className="flex flex-col gap-1.5 px-3 py-2.5">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="font-mono text-lg font-bold tabular-nums">
+          <span className="font-sans text-lg font-bold tabular-nums">
             {actualValue != null ? formatKpiValue(format, actualValue) : "—"}
           </span>
           <span className="text-3xs text-muted-foreground">

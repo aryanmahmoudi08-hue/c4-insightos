@@ -368,8 +368,16 @@ async function fetchPeriod(
   };
 }
 
-const FUNNEL_LABELS = ["Views", "Leads", "Booked", "Showed", "Offers", "Closed"] as const;
-const FUNNEL_SPECTRUM: SpectrumPosition[] = ["cold", "cold", "mid", "mid", "mid", "hot"];
+const FUNNEL_LABELS = [
+  "Views",
+  "Leads",
+  "Booked",
+  "Showed",
+  "Offers",
+  "Disqualified",
+  "Closed",
+] as const;
+const FUNNEL_SPECTRUM: SpectrumPosition[] = ["cold", "cold", "mid", "mid", "mid", "mid", "hot"];
 
 const NO_UPSTREAM: Derivation = {
   status: "insufficient_data",
@@ -819,6 +827,17 @@ function Dashboard() {
           value: curr.offers,
           conv: curr.showed ? pct(curr.offers, curr.showed) : null,
         },
+        // Disqualification can happen at any point in the pipeline, not one
+        // fixed linear step downstream of Offers — so unlike every other
+        // stage here, it has no adjacent-stage conversion % of its own (see
+        // src/lib/disqualification.ts and the funnel-diagnostic cap/leak
+        // engine below, which both deliberately exclude it from the
+        // sequential conversion chain while still showing it as a stage).
+        {
+          stage: "Disqualified",
+          value: curr.disqualified,
+          conv: null,
+        },
         {
           stage: "Closed",
           value: curr.closed,
@@ -1243,6 +1262,12 @@ function Dashboard() {
               spectrum: "mid" as SpectrumPosition,
             },
             {
+              key: "disqualified",
+              label: "Disqualified",
+              value: p.disqualified,
+              spectrum: "mid" as SpectrumPosition,
+            },
+            {
               key: "closed",
               label: "Closed",
               value: p.closed,
@@ -1260,8 +1285,27 @@ function Dashboard() {
   // capStages therefore starts at Leads — deriveCap's own "needs 2 upstream
   // stages" rule then correctly leaves Booked (only Leads behind it) as
   // insufficient too, same as it already does for Leads itself.
-  const capStages = useMemo(() => funnelStages.slice(1), [funnelStages]);
-  const prevCapStages = useMemo(() => prevFunnelStages.slice(1), [prevFunnelStages]);
+  //
+  // Disqualified is also excluded here (same reasoning as Views, different
+  // cause): it isn't a sequential conversion step — a lead can be
+  // disqualified at any point in the pipeline — so it has no real
+  // "adjacent-stage" conversion rate, and including it would corrupt
+  // Closed's own cap/leak derivation (which must still be measured against
+  // Offers, not against the leak-count sitting visually between them).
+  const capStages = useMemo(
+    () => funnelStages.filter((s) => s.key !== "disqualified").slice(1),
+    [funnelStages],
+  );
+  const prevCapStages = useMemo(
+    () => prevFunnelStages.filter((s) => s.key !== "disqualified").slice(1),
+    [prevFunnelStages],
+  );
+  // capStages (5 stages: Leads/Booked/Showed/Offers/Closed) and the full
+  // funnelStages (7, Disqualified inserted at index 5) are no longer a flat
+  // +1 offset of each other — capToFunnelIndex/funnelToCapIndex translate
+  // between the two index spaces at the one seam (Closed) where they diverge.
+  const capToFunnelIndex = (i: number) => (i <= 3 ? i + 1 : i + 2);
+  const funnelToCapIndex = (i: number) => (i <= 4 ? i - 1 : i - 2);
   const funnelWorking = useMemo(
     () => deriveWorking(capStages, prevCapStages, minCapSample),
     [capStages, prevCapStages, minCapSample],
@@ -1270,9 +1314,11 @@ function Dashboard() {
   // lowest conversion rate, gated by the same sample-size floor deriveCap
   // itself requires — picking "worst rate" rather than "biggest raw drop"
   // surfaces a real bottleneck instead of just whichever stage has the most
-  // volume. leakIndex is expressed in the FULL funnelStages index space
-  // (capIndex + 1) so callers can look up labels directly.
-  const leakIndex = useMemo(() => {
+  // volume. leakCapIndex stays in capStages' own index space; leakIndex is
+  // its translation into the FULL funnelStages index space (via
+  // capToFunnelIndex, not a flat +1 now that Disqualified sits in between)
+  // so callers can look up labels directly.
+  const leakCapIndex = useMemo(() => {
     let worst: { index: number; rate: number } | null = null;
     for (let i = 2; i < capStages.length; i++) {
       const prevStage = capStages[i - 1];
@@ -1280,11 +1326,12 @@ function Dashboard() {
       const rate = prevStage.value > 0 ? capStages[i].value / prevStage.value : 0;
       if (!worst || rate < worst.rate) worst = { index: i, rate };
     }
-    return worst ? worst.index + 1 : null;
+    return worst ? worst.index : null;
   }, [capStages, minCapSample]);
+  const leakIndex = leakCapIndex != null ? capToFunnelIndex(leakCapIndex) : null;
   const leakCap = useMemo(
-    () => (leakIndex != null ? deriveCap(capStages, leakIndex - 1, minCapSample) : null),
-    [capStages, leakIndex, minCapSample],
+    () => (leakCapIndex != null ? deriveCap(capStages, leakCapIndex, minCapSample) : null),
+    [capStages, leakCapIndex, minCapSample],
   );
   // Only Showed/Offers/Closed are ever selected as leakIndex (see above), so
   // only those three need an action.
@@ -1427,13 +1474,15 @@ function Dashboard() {
         date: r.created_at,
         cashCents: null,
       }));
-    } else if (funnelSelectedIndex >= 2) {
+    } else if (funnelSelectedIndex >= 2 && funnelSelectedIndex !== 5) {
+      // index 5 (Disqualified) never reaches here — its stage click routes
+      // straight to the canonical disqualifiedPanel below instead.
       const filterFn =
         funnelSelectedIndex === 3
           ? (r: (typeof callRows)[number]) => !!r.showed
           : funnelSelectedIndex === 4
             ? (r: (typeof callRows)[number]) => !!r.offer_made || !!r.closed
-            : funnelSelectedIndex === 5
+            : funnelSelectedIndex === 6
               ? (r: (typeof callRows)[number]) => !!r.closed
               : () => true;
       rows = callRows.filter(filterFn).map((r, i) => ({
@@ -1454,16 +1503,18 @@ function Dashboard() {
       columns: FUNNEL_RECORD_COLUMNS,
       rows,
       rowKey: (r: FunnelRecord) => r.id,
-      // capStages excludes Views, so a full-array index maps to capIndex - 1.
-      // Views itself (index 0) has no representation in capStages at all —
-      // deriveCap already correctly rejects Leads/Booked (capIndex 0/1, below
-      // its own "needs 2 upstream stages" floor) with a specific message,
-      // rather than (for Booked) wrongly using Views as its "lost
-      // population" and producing a nonsensically inflated estimate.
+      // capStages excludes Views (and Disqualified — see capStages'
+      // definition above), so a full-array index maps through
+      // funnelToCapIndex, not a flat -1. Views itself (index 0) has no
+      // representation in capStages at all — deriveCap already correctly
+      // rejects Leads/Booked (capIndex 0/1, below its own "needs 2 upstream
+      // stages" floor) with a specific message, rather than (for Booked)
+      // wrongly using Views as its "lost population" and producing a
+      // nonsensically inflated estimate.
       cap:
         funnelSelectedIndex === 0
           ? NO_UPSTREAM
-          : deriveCap(capStages, funnelSelectedIndex - 1, minCapSample),
+          : deriveCap(capStages, funnelToCapIndex(funnelSelectedIndex), minCapSample),
       working: funnelSelectedIndex === 0 ? NO_UPSTREAM : funnelWorking,
       emptyRowsLabel,
     };
@@ -1860,7 +1911,7 @@ function Dashboard() {
                       {row.strength} confidence
                     </span>
                   </div>
-                  <div className="flex shrink-0 items-center gap-4 font-mono text-xs tabular-nums">
+                  <div className="flex shrink-0 items-center gap-4 font-sans text-xs tabular-nums">
                     <span className="text-muted-foreground">{fmt(row.closes)} closes</span>
                     <span className="text-muted-foreground">{money(row.revenueCents)} rev</span>
                     <span className="font-semibold text-foreground">{money(row.cashCents)}</span>
@@ -1914,25 +1965,25 @@ function Dashboard() {
                           <span className="truncate text-sm font-medium">{row.title}</span>
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                      <td className="px-3 py-2.5 text-right font-sans text-xs tabular-nums">
                         {fmt(row.views)}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                      <td className="px-3 py-2.5 text-right font-sans text-xs tabular-nums">
                         {fmt(row.leads)}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                      <td className="px-3 py-2.5 text-right font-sans text-xs tabular-nums">
                         {fmt(row.booked)}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                      <td className="px-3 py-2.5 text-right font-sans text-xs tabular-nums">
                         {fmt(row.showed)}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                      <td className="px-3 py-2.5 text-right font-sans text-xs tabular-nums">
                         {fmt(row.closes)}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-sm font-semibold text-foreground">
+                      <td className="px-3 py-2.5 text-right font-sans tabular-nums text-sm font-semibold text-foreground">
                         {money(row.cashCents)}
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                      <td className="px-4 py-2.5 text-right font-sans text-xs tabular-nums">
                         {money(row.revenueCents)}
                       </td>
                     </tr>
@@ -1959,88 +2010,49 @@ function Dashboard() {
             no AI call, the same deriveCap/deriveWorking engine the rep
             dashboards use. */}
         <FunnelInstrument
-          title="Views → Leads → Booked → Showed → Offers → Closed"
+          title="Views → Leads → Booked → Showed → Offers → Disqualified → Closed"
           subtitle={formatRangeLabel(range)}
           stages={funnelStages}
-          onStageClick={(i) => setHubSelected({ kind: "funnel", index: i })}
+          onStageClick={(i) =>
+            // Disqualified (index 5) has no adjacent-stage conversion of its
+            // own — it routes to the same canonical disqualifiedPanel below
+            // (src/lib/disqualification.ts) that drives its stage value,
+            // rather than the sequential funnel-record resolution every
+            // other stage uses.
+            setHubSelected(i === 5 ? { kind: "disqualified" } : { kind: "funnel", index: i })
+          }
         />
-        {/* Disqualified Leads sits beside the leak card, not inside the
-            funnel stage array — disqualification can happen at any point in
-            the pipeline (Legacy Leads pipeline edit, or a closer's EOD call
-            outcome), not at one fixed linear step, so it isn't a stage with
-            an upstream conversion % (Priority 2/10). */}
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <div className="rounded-lg border border-border bg-card p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              <AlertTriangle className="h-3.5 w-3.5 text-spectrum-mid" /> Largest funnel leak
-            </div>
-            {leakCap ? (
-              <>
-                <p
-                  className={cn(
-                    "mt-2 text-sm",
-                    leakCap.status === "insufficient_data"
-                      ? "italic text-muted-foreground"
-                      : "text-foreground",
-                  )}
-                >
-                  {leakIndex != null
-                    ? `Largest leak: ${funnelStages[leakIndex - 1]?.label} → ${funnelStages[leakIndex]?.label}. `
-                    : ""}
-                  {leakCap.sentence}
-                </p>
-                {leakCap.status === "ok" && leakAction && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    <span className="font-semibold text-foreground">Recommended: </span>
-                    {leakAction}
-                  </p>
-                )}
-              </>
-            ) : (
-              <p className="mt-2 text-sm italic text-muted-foreground">
-                Revenue impact unavailable — insufficient connected data.
-              </p>
-            )}
+        <div className="mt-3 rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <AlertTriangle className="h-3.5 w-3.5 text-spectrum-mid" /> Largest funnel leak
           </div>
-          <button
-            type="button"
-            onClick={() => setHubSelected({ kind: "disqualified" })}
-            className="rounded-lg border border-border bg-card p-4 text-left transition hover:border-spectrum-mid/50 hover:bg-muted/30"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                <ShieldAlert className="h-3.5 w-3.5 text-spectrum-mid" /> Disqualified leads
-              </div>
-              {c && p && (
-                <span
-                  className={cn(
-                    "text-2xs font-medium",
-                    (c.disqualified ?? 0) > (p.disqualified ?? 0)
-                      ? "text-destructive"
-                      : (c.disqualified ?? 0) < (p.disqualified ?? 0)
-                        ? "text-[color:var(--color-success)]"
-                        : "text-muted-foreground",
-                  )}
-                >
-                  vs {p.disqualified ?? 0} prior
-                </span>
+          {leakCap ? (
+            <>
+              <p
+                className={cn(
+                  "mt-2 text-sm",
+                  leakCap.status === "insufficient_data"
+                    ? "italic text-muted-foreground"
+                    : "text-foreground",
+                )}
+              >
+                {leakCapIndex != null
+                  ? `Largest leak: ${capStages[leakCapIndex - 1]?.label} → ${capStages[leakCapIndex]?.label}. `
+                  : ""}
+                {leakCap.sentence}
+              </p>
+              {leakCap.status === "ok" && leakAction && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">Recommended: </span>
+                  {leakAction}
+                </p>
               )}
-            </div>
-            <div className="mt-2 font-mono text-2xl font-semibold tabular-nums text-foreground">
-              {c ? (c.disqualified ?? 0) : "—"}
-            </div>
-            {/* Rate denominator = total leads org-wide — the population
-                every lead entered and was at risk of being disqualified
-                from, at whatever stage it happened (Priority 3). */}
-            <p className="mt-1 text-xs text-muted-foreground">
-              {c?.newLeads
-                ? `${(((c.disqualified ?? 0) / c.newLeads) * 100).toFixed(1)}% of ${c.newLeads} leads`
-                : "Click to see the underlying leads."}
-              {c?.disqualifiedUnattributed
-                ? ` · +${c.disqualifiedUnattributed} disqualified call${c.disqualifiedUnattributed === 1 ? "" : "s"} with no linked lead`
-                : ""}
+            </>
+          ) : (
+            <p className="mt-2 text-sm italic text-muted-foreground">
+              Revenue impact unavailable — insufficient connected data.
             </p>
-          </button>
+          )}
         </div>
 
         <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
@@ -2052,8 +2064,6 @@ function Dashboard() {
             never a generic AI claim; "All clear" when nothing qualifies. */}
         <ExecutiveInsights
           leakIndex={leakIndex}
-          leakCap={leakCap}
-          leakAction={leakAction}
           funnelStages={funnelStages}
           targetProgress={targetProgress}
           fmtMoney={money}
@@ -2206,7 +2216,7 @@ function MoneyHeroTooltip({
     <FollowCursorTooltip active={active}>
       <div className="rounded-lg border border-border bg-popover/95 px-3 py-2 text-xs shadow-xl">
         <div className="mb-1.5 text-2xs font-medium text-muted-foreground">{date || label}</div>
-        <div className="space-y-0.5 font-mono tabular-nums">
+        <div className="space-y-0.5 font-sans tabular-nums">
           <div className="flex items-center justify-between gap-5">
             <span className="text-spectrum-hot">Cash Collected</span>
             <span className="text-spectrum-hot">{money(point.cash)}</span>
@@ -2264,7 +2274,7 @@ function CashHero({
         {hasDelta && (
           <span
             className={cn(
-              "flex shrink-0 items-center gap-1 rounded-full border border-border/70 bg-background/35 px-2 py-1 font-mono text-2xs",
+              "flex shrink-0 items-center gap-1 rounded-full border border-border/70 bg-background/35 px-2 py-1 font-sans tabular-nums text-2xs",
               up && "text-[color:var(--color-success)]",
               down && "text-destructive",
               !up && !down && "text-muted-foreground",
@@ -2274,7 +2284,7 @@ function CashHero({
           </span>
         )}
       </div>
-      <div className="relative mt-3 flex flex-wrap items-end gap-3 font-mono tabular-nums">
+      <div className="relative mt-3 flex flex-wrap items-end gap-3 font-sans tabular-nums">
         <div>
           <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Cash Collected
@@ -2352,17 +2362,17 @@ function CashHero({
       <div className="relative mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border/60 pt-2 text-2xs text-muted-foreground">
         <span>
           vs prior period ·{" "}
-          <span className="font-mono text-foreground">
+          <span className="font-sans tabular-nums text-foreground">
             {prev !== undefined ? money(prev) : "—"}
           </span>
         </span>
         <span>
           Cash collected rate:{" "}
-          <span className="font-mono text-foreground">{cashRate.toFixed(1)}%</span>
+          <span className="font-sans tabular-nums text-foreground">{cashRate.toFixed(1)}%</span>
           {cashRateDeltaPts !== undefined && (
             <span
               className={cn(
-                "ml-1 font-mono",
+                "ml-1 font-sans tabular-nums",
                 cashRateDeltaPts >= 0 ? "text-[color:var(--color-success)]" : "text-destructive",
               )}
             >
@@ -2374,7 +2384,9 @@ function CashHero({
         {pace && (
           <span>
             Pace{" "}
-            <span className="font-mono font-semibold text-foreground">{money(pace.dailyPace)}</span>
+            <span className="font-sans tabular-nums font-semibold text-foreground">
+              {money(pace.dailyPace)}
+            </span>
             /day
           </span>
         )}
@@ -2421,7 +2433,7 @@ function PaceTallCard({
 
       <div className="flex flex-1 flex-col justify-center gap-2">
         <div>
-          <div className="font-mono text-4xl font-bold tabular-nums tracking-tight text-spectrum-mid">
+          <div className="font-sans text-4xl font-bold tabular-nums tracking-tight text-spectrum-mid">
             {money(pace.projection)}
           </div>
           <div className="mt-0.5 text-3xs uppercase tracking-[0.14em] text-muted-foreground">
@@ -2433,7 +2445,7 @@ function PaceTallCard({
             middle instead of leaving it as dead space. */}
         <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/50 bg-background/35 p-2.5">
           <div>
-            <div className="font-mono text-base font-semibold tabular-nums">
+            <div className="font-sans text-base font-semibold tabular-nums">
               {money(pace.monthCash)}
             </div>
             <div className="mt-0.5 text-3xs uppercase tracking-wide text-muted-foreground">
@@ -2441,7 +2453,7 @@ function PaceTallCard({
             </div>
           </div>
           <div>
-            <div className="font-mono text-base font-semibold tabular-nums">
+            <div className="font-sans text-base font-semibold tabular-nums">
               {money(pace.dailyPace)}
             </div>
             <div className="mt-0.5 text-3xs uppercase tracking-wide text-muted-foreground">
@@ -2464,12 +2476,12 @@ function PaceTallCard({
               </span>
             </div>
             <div className="mt-1 flex items-baseline justify-between">
-              <span className="font-mono text-base font-semibold tabular-nums">
+              <span className="font-sans text-base font-semibold tabular-nums">
                 {money(targetProgress.targetValue ?? 0)}
               </span>
               <span
                 className={cn(
-                  "font-mono text-xs tabular-nums",
+                  "font-sans text-xs tabular-nums",
                   (targetProgress.variance ?? 0) >= 0
                     ? "text-[color:var(--color-success)]"
                     : "text-destructive",
@@ -2520,15 +2532,11 @@ function PaceTallCard({
  */
 function ExecutiveInsights({
   leakIndex,
-  leakCap,
-  leakAction,
   funnelStages,
   targetProgress,
   fmtMoney,
 }: {
   leakIndex: number | null;
-  leakCap: Derivation | null;
-  leakAction?: string;
   funnelStages: DerivedFunnelStage[];
   targetProgress?: TargetProgress | null;
   fmtMoney: (cents: number) => string;
@@ -2542,18 +2550,12 @@ function ExecutiveInsights({
   };
   const insights: Insight[] = [];
 
-  if (leakIndex != null && leakCap?.status === "ok" && leakAction) {
-    const from = funnelStages[leakIndex - 1]?.label;
-    const to = funnelStages[leakIndex]?.label;
-    insights.push({
-      key: "leak",
-      claim: `Largest funnel leak: ${from} → ${to}`,
-      metric: leakCap.sentence,
-      implication:
-        "The single biggest constraint on how much of your top-of-funnel volume turns into cash this period.",
-      action: leakAction,
-    });
-  }
+  // The "largest funnel leak" finding itself lives ONLY in the Largest
+  // Funnel Leak card directly under the Funnel Diagnostic above (same
+  // leakCap/leakAction derivation) — it used to also duplicate here as its
+  // own "Requires attention" insight. leakIndex/funnelStages are still used
+  // below by the pace insight's own recommended-action text, so those stay
+  // as props even though this list no longer generates a leak entry.
 
   if (
     targetProgress &&

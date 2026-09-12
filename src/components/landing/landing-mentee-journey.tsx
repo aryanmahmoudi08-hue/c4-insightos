@@ -47,7 +47,7 @@ export function LandingMenteeJourney() {
                 <div className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {label}
                 </div>
-                <div className="mt-2 font-mono text-2xl">—</div>
+                <div className="mt-2 font-sans tabular-nums text-2xl">—</div>
                 <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
               </div>
             </StaggerItem>

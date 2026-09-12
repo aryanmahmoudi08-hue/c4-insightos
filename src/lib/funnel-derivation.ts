@@ -34,7 +34,11 @@ export interface Derivation {
  */
 export function deriveCap(stages: FunnelStage[], index: number, minSample: number): Derivation {
   const N = stages[index];
-  if (!N) return { status: "insufficient_data", sentence: "Not enough data to identify a constraint yet." };
+  if (!N)
+    return {
+      status: "insufficient_data",
+      sentence: "Not enough data to identify a constraint yet.",
+    };
   if (index < 2) {
     return {
       status: "insufficient_data",
@@ -53,9 +57,10 @@ export function deriveCap(stages: FunnelStage[], index: number, minSample: numbe
   const rate = P.value > 0 ? N.value / P.value : 0;
   const estimate = lost * rate;
   const ratePct = rate * 100;
-  const sentence = lost === 0
-    ? `${N.label} aren't currently capped by ${P.label.toLowerCase()} — every ${PP.label.toLowerCase()} made it through to ${P.label.toLowerCase()} this period.`
-    : `${N.label} are limited by ${P.label.toLowerCase()} rate: ${P.value} of ${PP.value} ${PP.label.toLowerCase()} became ${P.label.toLowerCase()}; the ${lost} lost ${PP.label.toLowerCase()}→${P.label.toLowerCase()} are worth up to ≈${estimate.toFixed(1)} ${N.label.toLowerCase()}, if they'd converted at your current ${ratePct.toFixed(1)}% ${N.label.toLowerCase()} rate.`;
+  const sentence =
+    lost === 0
+      ? `${N.label} aren't currently capped by ${P.label.toLowerCase()} — every ${PP.label.toLowerCase()} made it through to ${P.label.toLowerCase()} this period.`
+      : `${N.label} are limited by ${P.label.toLowerCase()} rate: ${P.value} of ${PP.value} ${PP.label.toLowerCase()} became ${P.label.toLowerCase()}; the ${lost} lost ${PP.label.toLowerCase()}→${P.label.toLowerCase()} are worth up to ≈${estimate.toFixed(1)} ${N.label.toLowerCase()}, if they'd converted at your current ${ratePct.toFixed(1)}% ${N.label.toLowerCase()} rate.`;
   return { status: "ok", sentence };
 }
 
@@ -67,8 +72,20 @@ export function deriveCap(stages: FunnelStage[], index: number, minSample: numbe
  * `minDeltaPts` (a real, computed, currently-happening improvement, not
  * sub-noise movement dressed up as a finding).
  */
-export function deriveWorking(current: FunnelStage[], prior: FunnelStage[], minSample: number, minDeltaPts = 2): Derivation {
-  let best: { to: string; currPct: number; prevPct: number; currNum: number; currDen: number; delta: number } | null = null;
+export function deriveWorking(
+  current: FunnelStage[],
+  prior: FunnelStage[],
+  minSample: number,
+  minDeltaPts = 2,
+): Derivation {
+  let best: {
+    to: string;
+    currPct: number;
+    prevPct: number;
+    currNum: number;
+    currDen: number;
+    delta: number;
+  } | null = null;
   for (let i = 1; i < current.length; i++) {
     const P = current[i - 1];
     const N = current[i];
@@ -91,25 +108,56 @@ export function deriveWorking(current: FunnelStage[], prior: FunnelStage[], minS
   };
 }
 
-/** Money-block capping: what Cash Collected could be at the current average deal size vs. what it actually is. */
-export function deriveMoneyCap(closes: number, avgCashPerCloseCents: number, actualCashCents: number, minSample: number, fmtMoney: (cents: number) => string): Derivation {
+/** Money-block capping: what the given money metric (Cash Collected by
+ * default — pass metricLabel to reuse this for a different money metric,
+ * e.g. Revenue Generated, without the sentence lying about which one it's
+ * describing) could be at the current average deal size vs. what it actually is. */
+export function deriveMoneyCap(
+  closes: number,
+  avgCashPerCloseCents: number,
+  actualCashCents: number,
+  minSample: number,
+  fmtMoney: (cents: number) => string,
+  metricLabel = "Cash Collected",
+): Derivation {
   if (closes < minSample) {
-    return { status: "insufficient_data", sentence: `Not enough data to identify a constraint yet — log ${Math.max(1, minSample - closes)} more closed calls to unlock this.` };
+    return {
+      status: "insufficient_data",
+      sentence: `Not enough data to identify a constraint yet — log ${Math.max(1, minSample - closes)} more closed calls to unlock this.`,
+    };
   }
   const predicted = closes * avgCashPerCloseCents;
   const gap = predicted - actualCashCents;
   if (gap <= 0) {
-    return { status: "ok", sentence: `Cash Collected is tracking at or above what your ${closes} closes predict at your average deal size (${fmtMoney(avgCashPerCloseCents)}/close).` };
+    return {
+      status: "ok",
+      sentence: `${metricLabel} is tracking at or above what your ${closes} closes predict at your average deal size (${fmtMoney(avgCashPerCloseCents)}/close).`,
+    };
   }
   return {
     status: "ok",
-    sentence: `Cash Collected could be up to ${fmtMoney(predicted)} (${closes} closes × your average ${fmtMoney(avgCashPerCloseCents)}/close) — you've collected ${fmtMoney(actualCashCents)} so far, a gap of up to ${fmtMoney(gap)}, if every close carried your current average deal size.`,
+    sentence: `${metricLabel} could be up to ${fmtMoney(predicted)} (${closes} closes × your average ${fmtMoney(avgCashPerCloseCents)}/close) — you've collected ${fmtMoney(actualCashCents)} so far, a gap of up to ${fmtMoney(gap)}, if every close carried your current average deal size.`,
   };
 }
 
-/** Money-block "what's working": average deal size moving up period-over-period. */
-export function deriveMoneyWorking(currAvgCents: number, prevAvgCents: number, currCloses: number, prevCloses: number, minSample: number, fmtMoney: (cents: number) => string): Derivation {
-  if (currCloses < minSample || prevCloses < minSample) return { status: "insufficient_data", sentence: "No clear positive mover yet." };
-  if (currAvgCents <= prevAvgCents) return { status: "insufficient_data", sentence: "No clear positive mover yet." };
-  return { status: "ok", sentence: `Average cash per close is your strongest mover this period: ${fmtMoney(prevAvgCents)} → ${fmtMoney(currAvgCents)}.` };
+/** Money-block "what's working": average deal size moving up period-over-period.
+ * `metricLabel` names the per-close average being tracked (default "cash" —
+ * pass e.g. "revenue" to keep the sentence accurate for that metric). */
+export function deriveMoneyWorking(
+  currAvgCents: number,
+  prevAvgCents: number,
+  currCloses: number,
+  prevCloses: number,
+  minSample: number,
+  fmtMoney: (cents: number) => string,
+  metricLabel = "cash",
+): Derivation {
+  if (currCloses < minSample || prevCloses < minSample)
+    return { status: "insufficient_data", sentence: "No clear positive mover yet." };
+  if (currAvgCents <= prevAvgCents)
+    return { status: "insufficient_data", sentence: "No clear positive mover yet." };
+  return {
+    status: "ok",
+    sentence: `Average ${metricLabel} per close is your strongest mover this period: ${fmtMoney(prevAvgCents)} → ${fmtMoney(currAvgCents)}.`,
+  };
 }

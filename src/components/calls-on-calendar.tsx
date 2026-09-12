@@ -29,12 +29,13 @@ import {
   unmarkTouchpointFn,
 } from "@/lib/call-confirmations.functions";
 import { applicationFormResponses } from "@/lib/application-fields";
+import { ApplicationResponses } from "@/components/application-responses";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -44,10 +45,12 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/empty-state";
 import {
+  AtSign,
   CalendarClock,
   ChevronDown,
   Clock,
   ExternalLink,
+  Mail,
   Phone,
   Settings,
   User,
@@ -91,6 +94,15 @@ type LeadRow = {
 };
 
 const DEFAULT_DURATION_MIN = 30;
+
+// Demo fixture names carry a literal "(Demo)" suffix so they're honest about
+// their source everywhere else in the app; the calendar already has its own
+// demo/mock-data indicator (DemoModeBanner), so displayed lead/rep names
+// here strip the suffix rather than duplicating that signal inside the name
+// itself.
+function displayName(name: string | null | undefined): string {
+  return (name ?? "").replace(/\s*\(Demo\)\s*$/i, "");
+}
 
 function zonedParts(date: Date, timeZone: string) {
   try {
@@ -140,8 +152,52 @@ function addDays(date: Date, n: number) {
   return d;
 }
 
-const GRID_START_MIN = 6 * 60; // 6:00am
-const GRID_END_MIN = 22 * 60; // 10:00pm
+type CalendarView = "day" | "week" | "month" | "year";
+
+// Prev/Next stepping — day/week move by fixed day counts, month/year move by
+// calendar month/year (never a fixed day count, so e.g. stepping from
+// January to February doesn't drift into the wrong week of March).
+function stepAnchor(date: Date, view: CalendarView, dir: 1 | -1): Date {
+  if (view === "day") return addDays(date, dir);
+  if (view === "week") return addDays(date, dir * 7);
+  const d = new Date(date);
+  if (view === "month") d.setMonth(d.getMonth() + dir);
+  else d.setFullYear(d.getFullYear() + dir);
+  return d;
+}
+
+// Dynamic period header (item 8) — Day: "September 16, 2026". Week:
+// "September, 2026", or "Jun–Jul 2026" when the displayed week crosses a
+// month boundary. Month: "September, 2026". Year: "2026".
+function periodLabel(date: Date, view: CalendarView): string {
+  if (view === "day") {
+    return date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  }
+  if (view === "week") {
+    const weekStart = addDays(date, -date.getDay());
+    const weekEnd = addDays(weekStart, 6);
+    if (
+      weekStart.getMonth() === weekEnd.getMonth() &&
+      weekStart.getFullYear() === weekEnd.getFullYear()
+    ) {
+      return weekStart.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    }
+    const startMon = weekStart.toLocaleDateString("en-US", { month: "short" });
+    const endMon = weekEnd.toLocaleDateString("en-US", { month: "short" });
+    // Crossing a year boundary (Dec -> Jan) shows both years; same-year
+    // cross-month just shows the one shared year.
+    return weekStart.getFullYear() === weekEnd.getFullYear()
+      ? `${startMon}–${endMon} ${weekEnd.getFullYear()}`
+      : `${startMon} ${weekStart.getFullYear()} – ${endMon} ${weekEnd.getFullYear()}`;
+  }
+  if (view === "month") {
+    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  }
+  return String(date.getFullYear());
+}
+
+const GRID_START_MIN = 0; // 12:00am — a full 24-hour day (item 14)
+const GRID_END_MIN = 24 * 60; // 11:59pm
 const PX_PER_MIN = 1.1;
 
 /**
@@ -209,12 +265,34 @@ export function computeOverlapColumns<T extends { id: string; startMin: number; 
 }
 
 const STATUS_TONE: Record<OverallConfirmationStatus, string> = {
-  confirmed: "border-emerald-500/50 bg-emerald-500/10 text-emerald-300",
-  awaiting: "border-border/60 bg-muted/20 text-muted-foreground",
-  overdue: "border-amber-500/50 bg-amber-500/10 text-amber-300",
-  at_risk: "border-red-500/50 bg-red-500/10 text-red-300",
+  confirmed: "border-emerald-500/50 bg-emerald-500/20 text-emerald-300",
+  awaiting: "border-border/60 bg-muted/25 text-muted-foreground",
+  overdue: "border-red-500/50 bg-red-500/20 text-red-300",
+  at_risk: "border-amber-500/50 bg-amber-500/20 text-amber-300",
   cancelled: "border-border/40 bg-muted/10 text-muted-foreground/60",
-  rescheduled: "border-blue-500/50 bg-blue-500/10 text-blue-300",
+  rescheduled: "border-blue-500/50 bg-blue-500/20 text-blue-300",
+};
+
+// Solid, borderless status color — the one true color-per-status mapping
+// (matches STATUS_LABEL/LEGEND_DOT exactly: confirmed=green, overdue=red,
+// at_risk=amber, cancelled=neutral, rescheduled=blue, awaiting=gray) used
+// for booking blocks, month-grid chips, and the status legend cards. Light
+// mode = the bright/saturated shade with white text; dark mode = a deeper
+// shade of the SAME hue with near-black text — never opacity tricks, two
+// intentional color values per status (Google Calendar-style behavior).
+const STATUS_SOLID: Record<OverallConfirmationStatus, { bg: string; text: string }> = {
+  confirmed: {
+    bg: "bg-emerald-500 dark:bg-emerald-800",
+    text: "text-white dark:text-emerald-950",
+  },
+  awaiting: { bg: "bg-slate-400 dark:bg-slate-700", text: "text-white dark:text-slate-950" },
+  overdue: { bg: "bg-red-500 dark:bg-red-800", text: "text-white dark:text-red-950" },
+  at_risk: { bg: "bg-amber-500 dark:bg-amber-700", text: "text-white dark:text-amber-950" },
+  cancelled: {
+    bg: "bg-neutral-300 dark:bg-neutral-700",
+    text: "text-neutral-700 dark:text-neutral-300",
+  },
+  rescheduled: { bg: "bg-blue-500 dark:bg-blue-800", text: "text-white dark:text-blue-950" },
 };
 
 const STATUS_LABEL: Record<OverallConfirmationStatus, string> = {
@@ -296,7 +374,7 @@ export function CallsOnCalendar() {
     else setDemoDataset(null);
   }, [demoMode]);
 
-  const [view, setView] = useState<"day" | "week">("day");
+  const [view, setView] = useState<"day" | "week" | "month" | "year">("day");
   const [anchorDate, setAnchorDate] = useState(() => new Date());
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [repFilter, setRepFilter] = useState<string>("all");
@@ -320,12 +398,24 @@ export function CallsOnCalendar() {
   }, []);
 
   const rangeStart = useMemo(() => {
-    const d = view === "day" ? anchorDate : addDays(anchorDate, -anchorDate.getDay());
+    let d: Date;
+    if (view === "day") d = anchorDate;
+    else if (view === "week") d = addDays(anchorDate, -anchorDate.getDay());
+    else if (view === "month") d = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
+    else d = new Date(anchorDate.getFullYear(), 0, 1);
     const s = new Date(d);
     s.setHours(0, 0, 0, 0);
-    return addDays(s, -1); // pad a day either side for timezone-boundary safety
+    // Pad enough to cover the leading/trailing grid cells (month view can
+    // show up to 6 days from the adjacent month on either side) plus a day
+    // either side for timezone-boundary safety.
+    return addDays(s, view === "month" ? -8 : -1);
   }, [anchorDate, view]);
-  const rangeEnd = useMemo(() => addDays(rangeStart, view === "day" ? 3 : 9), [rangeStart, view]);
+  const rangeEnd = useMemo(() => {
+    if (view === "day") return addDays(rangeStart, 3);
+    if (view === "week") return addDays(rangeStart, 9);
+    if (view === "month") return addDays(rangeStart, 50); // covers a 6-week grid + padding
+    return addDays(rangeStart, 368); // year, + leap day + padding
+  }, [rangeStart, view]);
 
   const { data: realData, isLoading: realLoading } = useQuery({
     queryKey: ["calls-on-calendar", orgId, rangeStart.toISOString(), rangeEnd.toISOString()],
@@ -457,8 +547,16 @@ export function CallsOnCalendar() {
   const visibleDayKeys = useMemo(() => {
     const anchorKey = dayKey(anchorDate, timezone);
     if (view === "day") return [anchorKey];
-    const weekStart = addDays(anchorDate, -anchorDate.getDay());
-    return Array.from({ length: 7 }, (_, i) => dayKey(addDays(weekStart, i), timezone));
+    if (view === "week") {
+      const weekStart = addDays(anchorDate, -anchorDate.getDay());
+      return Array.from({ length: 7 }, (_, i) => dayKey(addDays(weekStart, i), timezone));
+    }
+    if (view === "month") {
+      const monthStart = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
+      const gridStart = addDays(monthStart, -monthStart.getDay());
+      return Array.from({ length: 42 }, (_, i) => dayKey(addDays(gridStart, i), timezone));
+    }
+    return [anchorKey]; // year view aggregates by month instead — see YearGrid
   }, [anchorDate, view, timezone]);
 
   const byDay = useMemo(() => {
@@ -471,6 +569,50 @@ export function CallsOnCalendar() {
     }
     return map;
   }, [filtered, visibleDayKeys, timezone]);
+
+  // Exact (unpadded) boundaries of the currently SELECTED period — distinct
+  // from rangeStart/rangeEnd (the wider, padded fetch window) and from
+  // visibleDayKeys' month grid (which spans into the adjacent month for
+  // display). The status legend cards (item 9) count against this, so
+  // "September" really means September, not the 6 trailing October days
+  // the month grid also renders.
+  const periodStart = useMemo(() => {
+    if (view === "day")
+      return new Date(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate());
+    if (view === "week") {
+      const d = addDays(anchorDate, -anchorDate.getDay());
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+    if (view === "month") return new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
+    return new Date(anchorDate.getFullYear(), 0, 1);
+  }, [anchorDate, view]);
+  const periodEnd = useMemo(() => {
+    if (view === "day") return addDays(periodStart, 1);
+    if (view === "week") return addDays(periodStart, 7);
+    if (view === "month") return new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 1);
+    return new Date(periodStart.getFullYear() + 1, 0, 1);
+  }, [periodStart, view]);
+  const periodEntries = useMemo(
+    () =>
+      filtered.filter((e) => {
+        if (!e.call.scheduled_for) return false;
+        const t = new Date(e.call.scheduled_for).getTime();
+        return t >= periodStart.getTime() && t < periodEnd.getTime();
+      }),
+    [filtered, periodStart, periodEnd],
+  );
+  const periodStatusCounts = useMemo(() => {
+    const counts: Record<OverallConfirmationStatus, number> = {
+      confirmed: 0,
+      awaiting: 0,
+      overdue: 0,
+      at_risk: 0,
+      cancelled: 0,
+      rescheduled: 0,
+    };
+    for (const e of periodEntries) counts[e.overallStatus] += 1;
+    return counts;
+  }, [periodEntries]);
 
   const todayKey = dayKey(now, timezone);
   const todaysCalls = data
@@ -534,218 +676,270 @@ export function CallsOnCalendar() {
   }
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
-      <DemoModeBanner demoMode={demoMode} />
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <>
+      {/* "What sales calls need attention today?" (item 7A) — lives ABOVE
+          the main calendar container, always scoped to TODAY specifically
+          (matches its own heading on the Team Calendar page), never the
+          period currently being browsed below. Lightweight by design (item
+          34) — a title + one row of tiles, not another data-heavy block. */}
+      <div className="mb-3 space-y-3">
+        <DemoModeBanner demoMode={demoMode} />
         <div>
           <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Calls on Calendar
           </div>
           <div className="mt-0.5 text-base font-semibold">Today's booked sales calls</div>
         </div>
-        <div className="flex items-center gap-2">
-          <Select value={timezone} onValueChange={setTimezone}>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+          {summaryTiles.map((t) => (
+            <button
+              key={t.key}
+              onClick={() =>
+                t.filter && setStatusFilter(statusFilter === t.filter ? "all" : t.filter)
+              }
+              className={`cursor-pointer rounded-lg border p-2 text-left transition ${
+                t.filter && statusFilter === t.filter
+                  ? "border-primary bg-primary/10"
+                  : "border-border/60 bg-background/40 hover:border-border"
+              }`}
+            >
+              <div className="text-3xs uppercase tracking-wider text-muted-foreground">
+                {t.label}
+              </div>
+              <div className="mt-0.5 font-sans tabular-nums text-lg font-semibold">{t.value}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Main calendar container (item 7A) — everything below (view
+          toggles, ← Today → nav, period header, status legend cards, and
+          the calendar itself) lives inside this one outer box. */}
+      <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Period/date header (item 8) — dynamic per Day/Week/Month/Year. */}
+          <div className="text-lg font-semibold">{periodLabel(anchorDate, view)}</div>
+          <div className="flex items-center gap-2">
+            <Select value={timezone} onValueChange={setTimezone}>
+              <SelectTrigger className="h-8 w-[150px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DISPLAY_TIMEZONES.map((tz) => (
+                  <SelectItem key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex overflow-hidden rounded-lg border border-border/70">
+              {(["day", "week", "month", "year"] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={`cursor-pointer px-2.5 py-1 text-xs capitalize ${view === v ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+            <ConfirmationPolicyPopover
+              isAdmin={isAdmin}
+              policy={data?.policy}
+              onSave={async (patch) => {
+                if (demoMode) {
+                  setDemoDataset((prev) =>
+                    prev ? { ...prev, policy: { ...prev.policy, ...patch } } : prev,
+                  );
+                  toast.success("Confirmation policy updated (demo data)");
+                  return;
+                }
+                try {
+                  await setConfirmationPolicy({ data: { org_id: orgId!, ...patch } });
+                  toast.success("Confirmation policy updated");
+                  invalidate();
+                } catch {
+                  toast.error("Could not save policy — admin access required");
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Filters + ← Today → nav */}
+        <div className="flex flex-wrap items-center gap-2">
+          {repOptions.length > 0 && (
+            <Select value={repFilter} onValueChange={setRepFilter}>
+              <SelectTrigger className="h-8 w-[150px] text-xs">
+                <SelectValue placeholder="Rep: All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Rep: All</SelectItem>
+                {repOptions.map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {closerOptions.length > 0 && (
+            <Select value={closerFilter} onValueChange={setCloserFilter}>
+              <SelectTrigger className="h-8 w-[150px] text-xs">
+                <SelectValue placeholder="Closer: All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Closer: All</SelectItem>
+                {closerOptions.map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Select value={qualityFilter} onValueChange={setQualityFilter}>
             <SelectTrigger className="h-8 w-[150px] text-xs">
-              <SelectValue />
+              <SelectValue placeholder="Quality: All" />
             </SelectTrigger>
             <SelectContent>
-              {DISPLAY_TIMEZONES.map((tz) => (
-                <SelectItem key={tz.value} value={tz.value}>
-                  {tz.label}
+              <SelectItem value="all">Quality: All</SelectItem>
+              {(
+                [
+                  "High Quality",
+                  "Qualified",
+                  "Standard",
+                  "Low Quality",
+                  "Unqualified",
+                  "Unknown",
+                ] as const
+              ).map((q) => (
+                <SelectItem key={q} value={q}>
+                  {q}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <div className="flex overflow-hidden rounded-lg border border-border/70">
-            <button
-              onClick={() => setView("day")}
-              className={`px-2.5 py-1 text-xs ${view === "day" ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
+          {/* Priority 7 — explicitly "Acquisition Source" (the standardized
+              ACQUISITION_SOURCES taxonomy), never bare "Source", so it can't
+              be mistaken for the Platform filter above it. */}
+          <Select value={sourceFilter} onValueChange={setSourceFilter}>
+            <SelectTrigger className="h-8 w-[190px] text-xs">
+              <SelectValue placeholder="Acquisition Source: All" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Acquisition Source: All</SelectItem>
+              {acquisitionSourceOptions().map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setAnchorDate((d) => stepAnchor(d, view, -1))}
             >
-              Day
-            </button>
-            <button
-              onClick={() => setView("week")}
-              className={`px-2.5 py-1 text-xs ${view === "week" ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
+              ←
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setAnchorDate(new Date())}
             >
-              Week
-            </button>
+              Today
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setAnchorDate((d) => stepAnchor(d, view, 1))}
+            >
+              →
+            </Button>
           </div>
-          <ConfirmationPolicyPopover
-            isAdmin={isAdmin}
-            policy={data?.policy}
-            onSave={async (patch) => {
-              if (demoMode) {
-                setDemoDataset((prev) =>
-                  prev ? { ...prev, policy: { ...prev.policy, ...patch } } : prev,
-                );
-                toast.success("Confirmation policy updated (demo data)");
-                return;
-              }
-              try {
-                await setConfirmationPolicy({ data: { org_id: orgId!, ...patch } });
-                toast.success("Confirmation policy updated");
-                invalidate();
-              } catch {
-                toast.error("Could not save policy — admin access required");
-              }
+        </div>
+
+        {/* Status legend cards (item 9) — real colored cards (icon + label),
+            not a small dot-and-text chip row, counted against the exact
+            period currently selected (periodStatusCounts) and updating on
+            every Day/Week/Month/Year switch and ← Today → navigation.
+            Capped at 3 columns (not 6) so every card has room for its full
+            label at the intended font size — "Confirmation overdue" and
+            "Awaiting confirmation" both fit on one line at this width; the
+            label also wraps rather than truncates as a safety margin at the
+            narrowest (2-column, ~375px) breakpoint instead of clipping. */}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {(Object.keys(STATUS_LABEL) as OverallConfirmationStatus[]).map((status) => {
+            const solid = STATUS_SOLID[status];
+            return (
+              <div key={status} className={`rounded-lg p-2 ${solid.bg} ${solid.text}`}>
+                <div className="flex items-start gap-1.5 text-3xs font-semibold uppercase tracking-wide">
+                  <span className="shrink-0">{LEGEND_ICON[status]}</span>{" "}
+                  <span>{STATUS_LABEL[status]}</span>
+                </div>
+                <div className="mt-0.5 font-sans text-lg font-bold tabular-nums">
+                  {periodStatusCounts[status]}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Timeline / agenda / month / year */}
+        {view === "year" ? (
+          <YearGrid
+            anchorDate={anchorDate}
+            filtered={filtered}
+            timezone={timezone}
+            now={now}
+            onSelectDate={(date) => {
+              setAnchorDate(date);
+              setView("day");
             }}
           />
-        </div>
-      </div>
-
-      {/* Summary strip */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-        {summaryTiles.map((t) => (
-          <button
-            key={t.key}
-            onClick={() =>
-              t.filter && setStatusFilter(statusFilter === t.filter ? "all" : t.filter)
-            }
-            className={`rounded-lg border p-2 text-left transition ${
-              t.filter && statusFilter === t.filter
-                ? "border-primary bg-primary/10"
-                : "border-border/60 bg-background/40 hover:border-border"
-            }`}
-          >
-            <div className="text-3xs uppercase tracking-wider text-muted-foreground">{t.label}</div>
-            <div className="mt-0.5 font-mono text-lg font-semibold">{t.value}</div>
-          </button>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2">
-        {repOptions.length > 0 && (
-          <Select value={repFilter} onValueChange={setRepFilter}>
-            <SelectTrigger className="h-8 w-[150px] text-xs">
-              <SelectValue placeholder="Rep: All" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Rep: All</SelectItem>
-              {repOptions.map((o) => (
-                <SelectItem key={o.id} value={o.id}>
-                  {o.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        ) : view === "month" ? (
+          <MonthGrid
+            dayKeys={visibleDayKeys}
+            byDay={byDay}
+            anchorDate={anchorDate}
+            timezone={timezone}
+            now={now}
+            repNameById={data?.repNameById ?? {}}
+            onSelect={setSelectedCallId}
+            onSelectDate={(date) => {
+              setAnchorDate(date);
+              setView("day");
+            }}
+          />
+        ) : isMobile ? (
+          <AgendaList
+            entries={filtered.filter((e) =>
+              visibleDayKeys.includes(dayKey(new Date(e.call.scheduled_for ?? now), timezone)),
+            )}
+            timezone={timezone}
+            repNameById={data?.repNameById ?? {}}
+            onSelect={setSelectedCallId}
+          />
+        ) : (
+          <TimelineGrid
+            dayKeys={visibleDayKeys}
+            byDay={byDay}
+            timezone={timezone}
+            now={now}
+            repNameById={data?.repNameById ?? {}}
+            onSelect={setSelectedCallId}
+            onSelectDate={(date) => {
+              setAnchorDate(date);
+              setView("day");
+            }}
+          />
         )}
-        {closerOptions.length > 0 && (
-          <Select value={closerFilter} onValueChange={setCloserFilter}>
-            <SelectTrigger className="h-8 w-[150px] text-xs">
-              <SelectValue placeholder="Closer: All" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Closer: All</SelectItem>
-              {closerOptions.map((o) => (
-                <SelectItem key={o.id} value={o.id}>
-                  {o.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <Select value={qualityFilter} onValueChange={setQualityFilter}>
-          <SelectTrigger className="h-8 w-[150px] text-xs">
-            <SelectValue placeholder="Quality: All" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Quality: All</SelectItem>
-            {(
-              [
-                "High Quality",
-                "Qualified",
-                "Standard",
-                "Low Quality",
-                "Unqualified",
-                "Unknown",
-              ] as const
-            ).map((q) => (
-              <SelectItem key={q} value={q}>
-                {q}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {/* Priority 7 — explicitly "Acquisition Source" (the standardized
-            ACQUISITION_SOURCES taxonomy), never bare "Source", so it can't
-            be mistaken for the Platform filter above it. */}
-        <Select value={sourceFilter} onValueChange={setSourceFilter}>
-          <SelectTrigger className="h-8 w-[190px] text-xs">
-            <SelectValue placeholder="Acquisition Source: All" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Acquisition Source: All</SelectItem>
-            {acquisitionSourceOptions().map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs"
-            onClick={() => setAnchorDate((d) => addDays(d, view === "day" ? -1 : -7))}
-          >
-            ←
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs"
-            onClick={() => setAnchorDate(new Date())}
-          >
-            Today
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs"
-            onClick={() => setAnchorDate((d) => addDays(d, view === "day" ? 1 : 7))}
-          >
-            →
-          </Button>
-        </div>
       </div>
-
-      {/* Status legend (Priority 6/41) — built from the same STATUS_TONE/
-          STATUS_LABEL maps every event block and the drawer already use, so
-          it can never drift out of sync with the real taxonomy. Color +
-          icon + text label together, never color alone. */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-border/50 bg-background/30 px-3 py-2 text-3xs text-muted-foreground">
-        {(Object.keys(STATUS_LABEL) as OverallConfirmationStatus[]).map((status) => (
-          <span key={status} className="flex items-center gap-1.5">
-            <span className={`h-2 w-2 rounded-full border ${LEGEND_DOT[status]}`} />
-            <span>
-              {LEGEND_ICON[status]} {STATUS_LABEL[status]}
-            </span>
-          </span>
-        ))}
-      </div>
-
-      {/* Timeline / agenda */}
-      {isMobile ? (
-        <AgendaList
-          entries={filtered.filter((e) =>
-            visibleDayKeys.includes(dayKey(new Date(e.call.scheduled_for ?? now), timezone)),
-          )}
-          timezone={timezone}
-          repNameById={data?.repNameById ?? {}}
-          onSelect={setSelectedCallId}
-        />
-      ) : (
-        <TimelineGrid
-          dayKeys={visibleDayKeys}
-          byDay={byDay}
-          timezone={timezone}
-          now={now}
-          repNameById={data?.repNameById ?? {}}
-          onSelect={setSelectedCallId}
-        />
-      )}
 
       {selected && (
         <CallDetailDrawer
@@ -957,7 +1151,7 @@ export function CallsOnCalendar() {
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -968,6 +1162,7 @@ function TimelineGrid({
   now,
   repNameById,
   onSelect,
+  onSelectDate,
 }: {
   dayKeys: string[];
   byDay: Map<string, ReturnType<typeof Array.prototype.slice>>;
@@ -975,6 +1170,8 @@ function TimelineGrid({
   now: Date;
   repNameById: Record<string, string>;
   onSelect: (id: string) => void;
+  /** Clicking a day-column header jumps Day view to that date (item 16). */
+  onSelectDate: (date: Date) => void;
 }) {
   const hours = Array.from(
     { length: (GRID_END_MIN - GRID_START_MIN) / 60 + 1 },
@@ -991,13 +1188,16 @@ function TimelineGrid({
       style={{ maxHeight: "560px" }}
     >
       <div className="flex">
-        <div className="w-14 shrink-0 border-r border-border/60 bg-background/40">
-          <div className="h-8 border-b border-border/60" />
+        {/* Sticky header (item 13) — the corner cell + every day-column
+            header below stay pinned to the top of this scroll container
+            (not the page) while the hour grid scrolls underneath. */}
+        <div className="sticky left-0 top-0 z-20 w-14 shrink-0 border-r border-border/60 bg-background">
+          <div className="h-14 border-b border-border/60" />
           {hours.map((h) => (
             <div
               key={h}
               style={{ height: 60 * PX_PER_MIN }}
-              className="border-b border-border/30 pr-1 text-right text-3xs text-muted-foreground"
+              className="border-b border-border/45 pr-1 text-right text-3xs text-muted-foreground"
             >
               {h % 24 === 0 ? "12am" : h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h - 12}pm`}
             </div>
@@ -1019,21 +1219,48 @@ function TimelineGrid({
               return { id: e.call.id, entry: e, startMin, endMin: startMin + durationMin };
             });
           const overlapLayout = computeOverlapColumns(withTimes);
+          const isToday = key === todayKey;
+          const [ky, km, kd] = key.split("-").map(Number);
+          const cellDate = new Date(ky, km - 1, kd);
+          const weekdayAbbr = cellDate
+            .toLocaleDateString("en-US", { weekday: "short" })
+            .toUpperCase();
           return (
             <div
               key={key}
               className="relative flex-1 border-r border-border/40 last:border-r-0"
               style={{ minWidth: dayKeys.length > 1 ? 140 : undefined }}
             >
-              <div className="h-8 border-b border-border/60 bg-background/40 px-2 py-1 text-center text-3xs font-medium">
-                {key === todayKey ? "Today" : key}
-              </div>
+              {/* Google Calendar-style header (item 12): 3-letter weekday +
+                  a large date number, today gets a colored circle + colored
+                  weekday label. Clickable — jumps to Day view for that date
+                  (item 16). */}
+              <button
+                type="button"
+                onClick={() => onSelectDate(cellDate)}
+                className="sticky top-0 z-10 flex h-14 w-full cursor-pointer flex-col items-center justify-center gap-0.5 border-b border-border/60 bg-background px-2 py-1 transition hover:bg-muted/30"
+              >
+                <span
+                  className={`text-3xs font-semibold tracking-wider ${isToday ? "text-primary" : "text-muted-foreground"}`}
+                >
+                  {weekdayAbbr}
+                </span>
+                <span
+                  className={
+                    isToday
+                      ? "grid h-6 w-6 place-items-center rounded-full bg-primary text-sm font-bold text-primary-foreground"
+                      : "text-sm font-semibold text-foreground"
+                  }
+                >
+                  {kd}
+                </span>
+              </button>
               <div className="relative" style={{ height: gridHeight }}>
                 {hours.map((h) => (
                   <div
                     key={h}
                     style={{ height: 60 * PX_PER_MIN }}
-                    className="border-b border-border/20"
+                    className="border-b border-border/35"
                   />
                 ))}
                 {key === todayKey && nowTop >= 0 && nowTop <= gridHeight && (
@@ -1144,7 +1371,7 @@ function CallBlock({
       <button
         onClick={() => onSelect(call.id)}
         style={style}
-        className="overflow-hidden rounded-md border border-dashed border-border/50 bg-muted/10 px-1.5 py-1 text-left text-3xs text-muted-foreground/70"
+        className="cursor-pointer overflow-hidden rounded-md border border-dashed border-border/50 bg-muted/10 px-1.5 py-1 text-left text-3xs text-muted-foreground/70"
       >
         <div className="font-medium">Available</div>
         <div>{timeLabel}</div>
@@ -1152,34 +1379,29 @@ function CallBlock({
     );
   }
 
-  const tone = LEAD_QUALITY_TONE[quality];
-  const toneClass =
-    overallStatus === "at_risk" || overallStatus === "overdue"
-      ? "border-red-500/50 bg-red-500/10"
-      : overallStatus === "confirmed" && checklistDone === checklist.length
-        ? "border-emerald-500/50 bg-emerald-500/10"
-        : overallStatus === "confirmed"
-          ? "border-amber-500/50 bg-amber-500/10"
-          : tone === "hot"
-            ? "border-orange-500/40 bg-orange-500/5"
-            : "border-border/60 bg-background/60";
+  // Solid status color, no separate border — the block's own fill IS the
+  // status indicator (item 10/11), directly off overallStatus so it can
+  // never drift from the legend (checklist/lead-quality shaped the OLD
+  // ad-hoc tone here, which meant "at risk" and "overdue" rendered
+  // identically and "awaiting"/"rescheduled" never got their own color).
+  const solid = STATUS_SOLID[overallStatus];
 
   return (
     <button
       onClick={() => onSelect(call.id)}
       style={style}
-      className={`overflow-hidden rounded-md border px-1.5 py-1 text-left text-3xs shadow-sm ${toneClass}`}
+      className={`cursor-pointer overflow-hidden rounded-md px-1.5 py-1 text-left text-3xs shadow-sm ${solid.bg} ${solid.text}`}
     >
       <div className="flex items-center gap-1 font-semibold">
         <span className="shrink-0">{statusIcon(overallStatus)}</span>
-        <span className="truncate">Lead: {lead?.full_name ?? lead?.handle ?? "Unknown"}</span>
+        <span className="truncate">
+          {displayName(lead?.full_name ?? lead?.handle) || "Unknown"} — {displayName(closerName)}
+        </span>
       </div>
-      <div className="truncate text-muted-foreground">
-        {timeLabel} · Closer: {closerName}
-      </div>
+      <div className="truncate opacity-80">{timeLabel}</div>
       {roomy && (
         <>
-          <div className="mt-0.5 flex flex-wrap items-center gap-1 text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-1 opacity-80">
             <span>{quality}</span>
             <span>
               · {checklistDone}/{checklist.length}
@@ -1230,6 +1452,209 @@ function AgendaList({
           style={{ position: "relative", height: "auto" }}
           onSelect={onSelect}
         />
+      ))}
+    </div>
+  );
+}
+
+const MONTH_GRID_MAX_CHIPS = 3;
+
+function MonthGrid({
+  dayKeys,
+  byDay,
+  anchorDate,
+  timezone,
+  now,
+  repNameById,
+  onSelect,
+  onSelectDate,
+}: {
+  dayKeys: string[];
+  byDay: Map<string, ReturnType<typeof Array.prototype.slice>>;
+  anchorDate: Date;
+  timezone: string;
+  now: Date;
+  repNameById: Record<string, string>;
+  onSelect: (id: string) => void;
+  /** Clicking a date number jumps Day view to that date (item 16). */
+  onSelectDate: (date: Date) => void;
+}) {
+  const currentMonth = anchorDate.getMonth();
+  const todayKey = dayKey(now, timezone);
+  return (
+    <div className="rounded-xl border border-border/60 overflow-hidden">
+      <div className="sticky top-0 z-10 grid grid-cols-7 border-b border-border/60 bg-background">
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+          <div
+            key={d}
+            className="p-1.5 text-center text-3xs font-semibold uppercase tracking-wider text-muted-foreground"
+          >
+            {d}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7">
+        {dayKeys.map((key) => {
+          const [y, m, d] = key.split("-").map(Number);
+          const cellDate = new Date(y, m - 1, d);
+          const inMonth = cellDate.getMonth() === currentMonth;
+          const entries = (byDay.get(key) ?? []) as Array<{
+            call: CallRow;
+            lead?: LeadRow;
+            overallStatus: OverallConfirmationStatus;
+          }>;
+          const sorted = [...entries].sort((a, b) =>
+            (a.call.scheduled_for ?? "").localeCompare(b.call.scheduled_for ?? ""),
+          );
+          const shown = sorted.slice(0, MONTH_GRID_MAX_CHIPS);
+          const overflow = sorted.length - shown.length;
+          return (
+            <div
+              key={key}
+              className={`min-h-[92px] border-b border-r border-border/45 p-1 last:border-r-0 ${
+                inMonth ? "" : "bg-muted/10"
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => onSelectDate(cellDate)}
+                className={`cursor-pointer text-3xs transition hover:opacity-80 ${
+                  key === todayKey
+                    ? "inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground"
+                    : inMonth
+                      ? "text-muted-foreground"
+                      : "text-muted-foreground/40"
+                }`}
+              >
+                {d}
+              </button>
+              <div className="mt-1 space-y-0.5">
+                {shown.map((e) => {
+                  const lead = e.lead;
+                  const timeLabel = e.call.scheduled_for
+                    ? new Intl.DateTimeFormat("en-US", {
+                        timeZone: timezone,
+                        hour: "numeric",
+                        minute: "2-digit",
+                      }).format(new Date(e.call.scheduled_for))
+                    : "";
+                  const solid = STATUS_SOLID[e.overallStatus];
+                  return (
+                    <button
+                      key={e.call.id}
+                      onClick={() => onSelect(e.call.id)}
+                      className={`block w-full cursor-pointer truncate rounded px-1 py-0.5 text-left text-3xs ${solid.bg} ${solid.text}`}
+                      title={`${displayName(lead?.full_name ?? lead?.handle) || "Unknown"} · ${timeLabel}`}
+                    >
+                      {timeLabel} {displayName(lead?.full_name ?? lead?.handle) || "Unknown"}
+                    </button>
+                  );
+                })}
+                {overflow > 0 && (
+                  <div className="px-1 text-3xs text-muted-foreground">+{overflow} more</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {/* repNameById reserved for a future closer/setter chip in the cell —
+          not shown today to keep the grid legible at this density. */}
+      <span className="sr-only">{Object.keys(repNameById).length}</span>
+    </div>
+  );
+}
+
+const YEAR_MINI_WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
+
+function YearGrid({
+  anchorDate,
+  filtered,
+  timezone,
+  now,
+  onSelectDate,
+}: {
+  anchorDate: Date;
+  filtered: Array<{ call: CallRow }>;
+  timezone: string;
+  now: Date;
+  /** Clicking a date number jumps Day view to that date (item 16/28). */
+  onSelectDate: (date: Date) => void;
+}) {
+  const year = anchorDate.getFullYear();
+  const todayKey = dayKey(now, timezone);
+  // Real event-day indicators (item 28), not just a raw count — every date
+  // that has at least one booking gets a dot under its number, from the
+  // same filtered dataset every other view renders.
+  const datesWithEvents = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of filtered) {
+      if (!e.call.scheduled_for) continue;
+      set.add(dayKey(new Date(e.call.scheduled_for), timezone));
+    }
+    return set;
+  }, [filtered, timezone]);
+
+  const months = Array.from({ length: 12 }, (_, monthIndex) => {
+    const monthStart = new Date(year, monthIndex, 1);
+    const gridStart = addDays(monthStart, -monthStart.getDay());
+    const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+    // Trim to whole weeks that actually touch this month, so short months
+    // (Feb) don't render a wasted trailing all-next-month row.
+    const usedCells = cells.filter(
+      (d, i) => d.getMonth() === monthIndex || (i >= 7 && cells[i - 7].getMonth() === monthIndex),
+    );
+    const weekCount = Math.ceil(usedCells.length / 7) * 7;
+    return {
+      monthIndex,
+      name: monthStart.toLocaleDateString("en-US", { month: "long" }),
+      cells: cells.slice(0, weekCount),
+    };
+  });
+
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {months.map(({ monthIndex, name, cells }) => (
+        <div key={name} className="rounded-xl border border-border/60 bg-background/40 p-3">
+          <div className="mb-2 text-center text-sm font-semibold">{name}</div>
+          <div className="grid grid-cols-7 gap-y-0.5">
+            {YEAR_MINI_WEEKDAYS.map((w, i) => (
+              <div
+                key={i}
+                className="text-center text-4xs font-semibold uppercase text-muted-foreground"
+              >
+                {w}
+              </div>
+            ))}
+            {cells.map((cellDate) => {
+              const inMonth = cellDate.getMonth() === monthIndex;
+              const key = dayKey(cellDate, timezone);
+              const isToday = key === todayKey;
+              const hasEvents = datesWithEvents.has(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onSelectDate(cellDate)}
+                  className="flex cursor-pointer flex-col items-center gap-0.5 rounded py-0.5 transition hover:bg-muted/40"
+                >
+                  <span
+                    className={
+                      isToday
+                        ? "grid h-5 w-5 place-items-center rounded-full bg-primary text-4xs font-bold text-primary-foreground"
+                        : `text-4xs ${inMonth ? "text-foreground" : "text-muted-foreground/30"}`
+                    }
+                  >
+                    {cellDate.getDate()}
+                  </span>
+                  <span
+                    className={`h-1 w-1 rounded-full ${hasEvents && inMonth ? "bg-spectrum-hot" : "bg-transparent"}`}
+                  />
+                </button>
+              );
+            })}
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -1461,6 +1886,7 @@ function CallDetailDrawer({
     RESCHEDULE_REASONS[0],
   );
   const [rescheduleReasonOther, setRescheduleReasonOther] = useState("");
+  const [formResponsesOpen, setFormResponsesOpen] = useState(false);
   const finalCancelReason =
     cancelReasonCategory === "Other"
       ? `Other — ${cancelReasonOther || "no notes"}`
@@ -1483,11 +1909,30 @@ function CallDetailDrawer({
       <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle className="pr-8 leading-snug">
-            {lead?.full_name ?? lead?.handle ?? "Unknown lead"}
+            {displayName(lead?.full_name ?? lead?.handle) || "Unknown lead"}
           </SheetTitle>
         </SheetHeader>
 
         <div className="mt-4 space-y-5 text-sm">
+          {/* Contact — real lead fields only, never fabricated when missing */}
+          <section className="space-y-1.5">
+            <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Contact
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+              {lead?.phone || "Not available"}
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+              {lead?.email || "Not available"}
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <AtSign className="h-3.5 w-3.5 text-muted-foreground" />
+              {lead?.handle || "Not available"}
+            </div>
+          </section>
+
           {/* Appointment */}
           <section className="space-y-1.5">
             <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -1495,7 +1940,7 @@ function CallDetailDrawer({
             </div>
             <div className="flex items-center gap-2 text-xs">
               <User className="h-3.5 w-3.5 text-muted-foreground" />
-              Lead: {lead?.full_name ?? lead?.handle ?? "Unknown"}
+              Lead: {displayName(lead?.full_name ?? lead?.handle) || "Unknown"}
             </div>
             <div className="flex items-center gap-2 text-xs">
               <Clock className="h-3.5 w-3.5 text-muted-foreground" /> {dateLabel} ({timezone} —
@@ -1504,9 +1949,13 @@ function CallDetailDrawer({
             <div className="flex items-center gap-2 text-xs">
               <User className="h-3.5 w-3.5 text-muted-foreground" />
               Setter/Dialer:{" "}
-              {call.setter_id ? (repNameById[call.setter_id] ?? call.setter_id) : "Unassigned"} ·
-              Closer:{" "}
-              {call.closer_id ? (repNameById[call.closer_id] ?? call.closer_id) : "Unassigned"}
+              {call.setter_id
+                ? displayName(repNameById[call.setter_id]) || call.setter_id
+                : "Unassigned"}{" "}
+              · Closer:{" "}
+              {call.closer_id
+                ? displayName(repNameById[call.closer_id]) || call.closer_id
+                : "Unassigned"}
             </div>
             <div className="flex items-center gap-2 text-xs">
               <Video className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1564,34 +2013,34 @@ function CallDetailDrawer({
             )}
           </section>
 
-          {/* Lead Form Responses (Priority 6/45) — real Q&A pairs from the
-              lead's application_data, in the same fixed order every other
-              surface (Legacy Leads' Application tab) uses. Never raw JSON,
-              never fabricated when the lead has no application on file. */}
-          <Collapsible className="space-y-1.5">
-            <CollapsibleTrigger className="group flex w-full items-center justify-between text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Lead form responses
-              <ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-180" />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-2">
-              {(() => {
-                const responses = applicationFormResponses(lead?.application_data);
-                if (!responses.length) {
-                  return (
-                    <p className="text-xs italic text-muted-foreground">
-                      Not connected — no application responses on file for this lead.
-                    </p>
-                  );
-                }
-                return responses.map((r) => (
-                  <div key={r.question} className="rounded-md border border-border/40 p-2">
-                    <div className="text-3xs font-medium text-muted-foreground">{r.question}</div>
-                    <div className="mt-0.5 text-xs">{r.answer}</div>
-                  </div>
-                ));
-              })()}
-            </CollapsibleContent>
-          </Collapsible>
+          {/* Lead Form Responses — opens the same application_data Q&A
+              (application-fields.ts, shared with Legacy Leads' Application
+              tab) in a centered modal without leaving Team Calendar, rather
+              than an easy-to-miss inline collapsible. */}
+          <button
+            type="button"
+            onClick={() => setFormResponsesOpen(true)}
+            className="flex w-full items-center justify-between rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-left text-xs font-bold text-foreground transition hover:border-primary/50 hover:bg-muted/30"
+          >
+            Lead Form Responses
+            <ChevronDown className="h-3.5 w-3.5 -rotate-90 text-muted-foreground" />
+          </button>
+          <Dialog open={formResponsesOpen} onOpenChange={setFormResponsesOpen}>
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>
+                  {displayName(lead?.full_name ?? lead?.handle) || "Lead"} — Application
+                </DialogTitle>
+              </DialogHeader>
+              {applicationFormResponses(lead?.application_data).length ? (
+                <ApplicationResponses applicationData={lead?.application_data} />
+              ) : (
+                <p className="text-xs italic text-muted-foreground">
+                  Not connected — no application responses on file for this lead.
+                </p>
+              )}
+            </DialogContent>
+          </Dialog>
 
           {/* Confirmation sequence */}
           <section className="space-y-2">

@@ -258,7 +258,8 @@ export function MenteeOperationsPanel({
       <div>
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <RefreshCw className="h-3.5 w-3.5 text-amber-400" />
-          Payment recovery queue <span className="ml-auto font-mono">{allRows.length}</span>
+          Payment recovery queue{" "}
+          <span className="ml-auto font-sans tabular-nums">{allRows.length}</span>
         </div>
         <div className="mb-3 flex flex-wrap gap-1.5">
           <button
@@ -370,7 +371,7 @@ export function MenteeOperationsPanel({
       <div>
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <Clock3 className="h-3.5 w-3.5 text-cyan-400" />
-          Renewal workflow <span className="ml-auto font-mono">{renewals.length}</span>
+          Renewal workflow <span className="ml-auto font-sans tabular-nums">{renewals.length}</span>
         </div>
         <div className="space-y-2">
           {renewals.slice(0, 8).map(({ client, days }) => {

@@ -194,7 +194,11 @@ function EodFlowForRole({
     } else {
       const payload = buildSetterActivityPayload(role, orgId ?? "", values);
       if (devBypass) return;
-      const { error } = await supabase.from("setter_activity").insert(payload);
+      // original_currency isn't in the generated Supabase types yet (new
+      // column, see the migration comment) — same convention as the calls
+      // insert above.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).from("setter_activity").insert(payload);
       if (error) throw error;
     }
     if (!devBypass) {

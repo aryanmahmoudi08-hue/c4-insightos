@@ -223,15 +223,15 @@ function ClientPortfolioHero({
           <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Contracted LTV
           </div>
-          {/* Priority 8 — font-mono (JetBrains Mono), the canonical numeric
-              typeface app-wide, not the heading serif (this card's other
-              LTV figures in the table below already use font-mono). */}
-          <div className="font-mono mt-1 text-5xl font-bold tabular-nums text-spectrum-hot md:text-6xl">
+          {/* font-sans tabular-nums (Inter) — the canonical numeric typeface
+              app-wide, not the heading serif (this card's other LTV figures
+              in the table below already use it too). */}
+          <div className="font-sans mt-1 text-5xl font-bold tabular-nums text-spectrum-hot md:text-6xl">
             ${contractedLtv.toLocaleString()}
           </div>
         </div>
         {atRisk > 0 && (
-          <span className="badge-glass shrink-0 font-mono normal-case tracking-normal text-destructive">
+          <span className="badge-glass shrink-0 font-sans tabular-nums normal-case tracking-normal text-destructive">
             {atRisk} at-risk
           </span>
         )}
@@ -259,6 +259,7 @@ function MenteeLifecycleEvidence({
   orgId: string | undefined;
 }) {
   const qc = useQueryClient();
+  const { demoMode } = useDemoMode();
   const [noteDraft, setNoteDraft] = useState("");
   const clientPayments = deduplicatePaymentRecords(
     payments.filter((payment) => payment.client_id === client.id),
@@ -280,7 +281,12 @@ function MenteeLifecycleEvidence({
 
   const { data: activity = [] } = useQuery({
     queryKey: ["client-activity", orgId, client.id],
-    enabled: !!orgId,
+    // Demo mode isolation (item 31/32) — client.id under demoMode is a
+    // fixture id, never a real client_activity_events row; disabling the
+    // query keeps it an honest empty state instead of a pointless real
+    // fetch, and the addNote mutation below is disabled the same way so a
+    // demo-mode note can never write a real production row.
+    enabled: !!orgId && !demoMode,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("client_activity_events")
@@ -294,6 +300,7 @@ function MenteeLifecycleEvidence({
   });
   const addNote = useMutation({
     mutationFn: async (body: string) => {
+      if (demoMode) throw new Error("Notes aren't available in demo data.");
       const { error } = await supabase
         .from("client_activity_events")
         .insert({ org_id: orgId!, client_id: client.id, event_type: "note", body });
@@ -347,7 +354,7 @@ function MenteeLifecycleEvidence({
                   {seg.label}
                 </div>
                 <div
-                  className={`font-mono text-2xs ${seg.value ? "text-foreground" : "text-muted-foreground italic"}`}
+                  className={`font-sans tabular-nums text-2xs ${seg.value ? "text-foreground" : "text-muted-foreground italic"}`}
                 >
                   {seg.value ?? seg.fallback}
                 </div>
@@ -370,7 +377,7 @@ function MenteeLifecycleEvidence({
         ].map(([label, value]) => (
           <div key={label} className="rounded-lg border border-border/60 bg-card/60 p-2.5">
             <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
-            <div className="mt-1 font-mono text-sm tabular-nums">{value}</div>
+            <div className="mt-1 font-sans text-sm tabular-nums">{value}</div>
           </div>
         ))}
       </div>
@@ -404,7 +411,7 @@ function MenteeLifecycleEvidence({
                 .map((s) => (
                   <span
                     key={s.id}
-                    className={`rounded px-1.5 py-0.5 text-3xs font-mono ${
+                    className={`rounded px-1.5 py-0.5 text-3xs font-sans tabular-nums ${
                       s.status === "paid"
                         ? "bg-emerald-500/10 text-emerald-500"
                         : s.status === "overdue"
@@ -439,7 +446,9 @@ function MenteeLifecycleEvidence({
                       {new Date(p.collected_at).toLocaleDateString()}
                     </td>
                     <td className="py-1 uppercase text-muted-foreground">{p.status}</td>
-                    <td className="py-1 text-right font-mono">{money(p.amount_cents)}</td>
+                    <td className="py-1 text-right font-sans tabular-nums">
+                      {money(p.amount_cents)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -483,7 +492,11 @@ function MenteeLifecycleEvidence({
             ))}
           </ul>
         ) : (
-          <div className="mt-2 text-xs text-muted-foreground">No activity logged yet.</div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            {demoMode
+              ? "Demo data not connected for this activity log."
+              : "No activity logged yet."}
+          </div>
         )}
       </div>
     </div>
@@ -1278,7 +1291,7 @@ function Mentees() {
                 <th className="p-3 text-left">Collected</th>
                 <th className="p-3 text-left">Mentee</th>
                 <th className="p-3 text-left">Status</th>
-                <th className="p-3 text-right font-mono">Amount</th>
+                <th className="p-3 text-right font-sans tabular-nums">Amount</th>
               </tr>
             </thead>
             <tbody>
@@ -1293,7 +1306,7 @@ function Mentees() {
                     <td className="p-3 text-xs uppercase text-muted-foreground">
                       {payment.status}
                     </td>
-                    <td className="p-3 text-right font-mono">
+                    <td className="p-3 text-right font-sans tabular-nums">
                       {payment.currency}{" "}
                       {(payment.amount_cents / 100).toLocaleString(undefined, {
                         minimumFractionDigits: 2,
@@ -1421,7 +1434,7 @@ function Mentees() {
                     warning={risk ?? undefined}
                     metaLines={[c.offer_name || "—", nextActionLine]}
                     chip={
-                      <div className="flex items-center justify-between text-2xs font-mono">
+                      <div className="flex items-center justify-between text-2xs font-sans tabular-nums">
                         <span className="text-muted-foreground">{c.renewal_date ?? "no date"}</span>
                         <span className="text-spectrum-hot">
                           ${Math.round((c.contract_value_cents ?? 0) / 100).toLocaleString()}
@@ -1451,7 +1464,7 @@ function Mentees() {
                     <th className="text-left p-3">Renewal</th>
                     <th className="text-left p-3">Stage</th>
                     <th className="text-left p-3">Reason</th>
-                    <th className="text-right p-3 font-mono">Contract</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Contract</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1472,7 +1485,7 @@ function Mentees() {
                       <td className="p-3 text-xs">{c.renewal_date ?? "—"}</td>
                       <td className="p-3 text-xs uppercase">{stageLabel(c.renewal_stage)}</td>
                       <td className="p-3 text-xs text-destructive">{reason}</td>
-                      <td className="p-3 text-right font-mono">
+                      <td className="p-3 text-right font-sans tabular-nums">
                         ${Math.round((c.contract_value_cents ?? 0) / 100).toLocaleString()}
                       </td>
                     </tr>
@@ -1505,9 +1518,9 @@ function Mentees() {
                 <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="text-left p-3">Offer</th>
-                    <th className="text-right p-3 font-mono">Mentees</th>
-                    <th className="text-right p-3 font-mono">Total LTV</th>
-                    <th className="text-right p-3 font-mono">Avg deal</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Mentees</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Total LTV</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Avg deal</th>
                     <th className="text-left p-3">% of revenue</th>
                   </tr>
                 </thead>
@@ -1517,11 +1530,11 @@ function Mentees() {
                     return (
                       <tr key={o.offer} className="border-t border-border/70 hover:bg-muted/20">
                         <td className="p-3 font-medium">{o.offer}</td>
-                        <td className="p-3 text-right font-mono">{o.count}</td>
-                        <td className="p-3 text-right font-mono text-spectrum-hot">
+                        <td className="p-3 text-right font-sans tabular-nums">{o.count}</td>
+                        <td className="p-3 text-right font-sans tabular-nums text-spectrum-hot">
                           ${Math.round(o.total / 100).toLocaleString()}
                         </td>
-                        <td className="p-3 text-right font-mono">
+                        <td className="p-3 text-right font-sans tabular-nums">
                           ${Math.round(o.avg / 100).toLocaleString()}
                         </td>
                         <td className="p-3">
@@ -1532,7 +1545,7 @@ function Mentees() {
                                 style={{ width: `${sharePct}%` }}
                               />
                             </div>
-                            <span className="text-2xs font-mono w-12 text-right">
+                            <span className="text-2xs font-sans tabular-nums w-12 text-right">
                               {sharePct.toFixed(1)}%
                             </span>
                           </div>
@@ -1587,8 +1600,8 @@ function Mentees() {
                   <tr>
                     <th className="text-left p-3">Mentee</th>
                     <th className="text-left p-3">Offer</th>
-                    <th className="text-right p-3 font-mono">Contract</th>
-                    <th className="text-right p-3 font-mono">Balance</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Contract</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Balance</th>
                     <th className="text-center p-3">Plan progress</th>
                     <th className="text-left p-3">Next payment</th>
                     <th className="text-left p-3">Last payment</th>
@@ -1626,10 +1639,10 @@ function Mentees() {
                           <div className="text-2xs text-muted-foreground">{c.email}</div>
                         </td>
                         <td className="p-3 text-xs">{c.offer_name ?? "—"}</td>
-                        <td className="p-3 text-right font-mono">
+                        <td className="p-3 text-right font-sans tabular-nums">
                           ${Math.round((c.contract_value_cents ?? 0) / 100).toLocaleString()}
                         </td>
-                        <td className="p-3 text-right font-mono">
+                        <td className="p-3 text-right font-sans tabular-nums">
                           ${Math.round(balanceCents / 100).toLocaleString()}
                         </td>
                         <td className="p-3 text-center text-xs">
@@ -1644,7 +1657,9 @@ function Mentees() {
                                     }}
                                   />
                                 </div>
-                                <span className="font-mono text-3xs">{progress.label}</span>
+                                <span className="font-sans tabular-nums text-3xs">
+                                  {progress.label}
+                                </span>
                               </div>
                             ) : (
                               <span className="text-3xs text-muted-foreground">
@@ -1909,7 +1924,7 @@ function ClientForm({
           </div>
           <div className="flex items-center justify-between text-xs px-1">
             <span className="text-muted-foreground">Remaining balance</span>
-            <span className="font-mono font-semibold text-spectrum-hot">
+            <span className="font-sans tabular-nums font-semibold text-spectrum-hot">
               ${remainingBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}
             </span>
           </div>

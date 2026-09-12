@@ -19,7 +19,16 @@ export interface DetailColumn<T> {
  * only renders what it's given; it has no fallback narrative of its own.
  */
 export function MetricDetailPanel<T>({
-  open, onOpenChange, title, subtitle, columns, rows, rowKey, cap, working, emptyRowsLabel,
+  open,
+  onOpenChange,
+  title,
+  subtitle,
+  columns,
+  rows,
+  rowKey,
+  cap,
+  working,
+  emptyRowsLabel,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -46,7 +55,16 @@ export function MetricDetailPanel<T>({
                 <thead className="sticky-thead bg-muted/40 text-3xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     {columns.map((c) => (
-                      <th key={c.key} className={c.align === "right" ? "p-2 text-right font-mono" : "p-2 text-left"}>{c.label}</th>
+                      <th
+                        key={c.key}
+                        className={
+                          c.align === "right"
+                            ? "p-2 text-right font-sans tabular-nums"
+                            : "p-2 text-left"
+                        }
+                      >
+                        {c.label}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -54,12 +72,26 @@ export function MetricDetailPanel<T>({
                   {rows.map((r) => (
                     <tr key={rowKey(r)} className="border-t border-border/70">
                       {columns.map((c) => (
-                        <td key={c.key} className={c.align === "right" ? "p-2 text-right font-mono" : "p-2"}>{c.render(r)}</td>
+                        <td
+                          key={c.key}
+                          className={
+                            c.align === "right" ? "p-2 text-right font-sans tabular-nums" : "p-2"
+                          }
+                        >
+                          {c.render(r)}
+                        </td>
                       ))}
                     </tr>
                   ))}
                   {rows.length === 0 && (
-                    <tr><td colSpan={columns.length} className="p-6 text-center text-muted-foreground">{emptyRowsLabel ?? "No rows in range."}</td></tr>
+                    <tr>
+                      <td
+                        colSpan={columns.length}
+                        className="p-6 text-center text-muted-foreground"
+                      >
+                        {emptyRowsLabel ?? "No rows in range."}
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
@@ -82,7 +114,9 @@ export function MetricDetailPanel<T>({
 function DetailSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div>
-      <div className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</div>
+      <div className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+      </div>
       <div className="mt-1.5">{children}</div>
     </div>
   );
@@ -90,5 +124,13 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
 
 function DerivationText({ d }: { d: Derivation }) {
   // "Not enough data" is a neutral state, not a warning — never destructive/red styling.
-  return <p className={d.status === "insufficient_data" ? "text-muted-foreground italic" : "text-foreground"}>{d.sentence}</p>;
+  return (
+    <p
+      className={
+        d.status === "insufficient_data" ? "text-muted-foreground italic" : "text-foreground"
+      }
+    >
+      {d.sentence}
+    </p>
+  );
 }

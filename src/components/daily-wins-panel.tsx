@@ -331,7 +331,7 @@ export function DailyWinsPanel({
           {repeatBlockers.map((b, i) => (
             <div key={i} className="text-xs">
               <span className="font-medium">{b.name}</span> — {b.blocker}{" "}
-              <span className="font-mono text-destructive">×{b.count}</span>
+              <span className="font-sans tabular-nums text-destructive">×{b.count}</span>
             </div>
           ))}
         </div>
@@ -411,7 +411,7 @@ function WinRow({ w }: { w: Win }) {
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">{w.student_name}</span>
-        <span className="font-mono text-3xs text-muted-foreground">{w.win_date}</span>
+        <span className="font-sans tabular-nums text-3xs text-muted-foreground">{w.win_date}</span>
         <span
           className={cn(
             "rounded px-1.5 py-0.5 text-3xs uppercase tracking-wider",
@@ -440,13 +440,13 @@ function WinRow({ w }: { w: Win }) {
             {t}
           </span>
         ))}
-        <span className="ml-auto font-mono text-3xs text-muted-foreground">
+        <span className="ml-auto font-sans tabular-nums text-3xs text-muted-foreground">
           energy {w.energy_score ?? "—"}/10 · {w.yesterday_status}
         </span>
       </div>
       <div className="whitespace-pre-wrap">{w.win_description}</div>
       {financial && w.financial_amount_cents != null && (
-        <div className="font-mono text-[color:var(--color-success)]">
+        <div className="font-sans tabular-nums text-[color:var(--color-success)]">
           ${Math.round(w.financial_amount_cents / 100).toLocaleString()}{" "}
           {w.financial_source && `— ${w.financial_source}`}
         </div>
@@ -711,7 +711,7 @@ function Mini({
       <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div
         className={cn(
-          "mt-0.5 font-mono text-lg font-semibold tabular-nums",
+          "mt-0.5 font-sans text-lg font-semibold tabular-nums",
           tone === "success" && "text-[color:var(--color-success)]",
           tone === "danger" && "text-destructive",
         )}

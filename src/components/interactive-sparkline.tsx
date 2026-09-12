@@ -126,7 +126,7 @@ export function InteractiveSparkline({
       {activeValue != null && (
         <div className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-[10px] font-medium text-popover-foreground shadow-lg">
           <span className="text-muted-foreground">{activeLabel}</span>
-          <span className="ml-1 font-mono tabular-nums">{activeValue.toLocaleString()}</span>
+          <span className="ml-1 font-sans tabular-nums">{activeValue.toLocaleString()}</span>
         </div>
       )}
     </div>

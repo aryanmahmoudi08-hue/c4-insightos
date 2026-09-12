@@ -4,16 +4,23 @@ const KEY = "c4-demo-preview-mode";
 
 /**
  * Demo / Preview Data mode — a user-toggleable UI preference, distinct from
- * `devBypass` (a login-bypass for testing without a real session). This
- * flag only ever changes what TWO features render: the Attribution Command
- * Center and Calls on Calendar (both explicitly scoped to participate in
- * this system). Every other page in the app ignores this flag entirely and
- * always queries real data — Main Hub, Mentees, Content Command Center,
- * VSL, Webinar, Team Calendar's Live Team Calendar section, and all revenue
- * reporting are untouched by this toggle.
+ * `devBypass` (a login-bypass for testing without a real session). Each
+ * surface opts in individually by branching on `demoMode` in its own
+ * queries; participating surfaces currently include Main Hub, Attribution
+ * Command Center, Calls on Calendar, Mentees, Closer, and DM Setter/Inbound
+ * Dialer's primary range-scoped KPI queries. A handful of secondary,
+ * independently-ranged instruments on those same pages (e.g. the Closer and
+ * DM Setter/Inbound Dialer Leaderboards, Closer's Objections panel, the
+ * Dialer's Speed to Lead card) deliberately do NOT swap to demo data —
+ * `dev-mock-data.ts` fixtures are dev-bypass-only by design, so those
+ * instruments instead disable their query and show an honest "not
+ * connected"/"unavailable" state while Mock Data is on, rather than either
+ * reusing dev-bypass fixtures or silently leaking real org data next to
+ * demo KPIs. Check each surface's own query for its exact scope rather than
+ * assuming this flag is all-or-nothing per page.
  *
- * When on, the two participating pages swap their real Supabase queries for
- * a deterministic, hand-authored fixture dataset (`src/lib/demo-fixtures.ts`)
+ * When a surface participates, it swaps its real Supabase queries for a
+ * deterministic, hand-authored fixture dataset (`src/lib/demo-fixtures.ts`)
  * that is fed through the exact same downstream logic real data uses (the
  * canonical attribution engine, the confirmation-workflow derivations) — no
  * second engine, no database writes, no production rows touched.

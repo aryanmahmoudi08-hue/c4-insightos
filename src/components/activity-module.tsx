@@ -364,7 +364,8 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const money = useMoney();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<
-    | { kind: "reach" | "close" | "money"; index: number }
+    | { kind: "reach" | "close"; index: number }
+    | { kind: "money"; metric?: "cash" | "revenue" }
     // Daily aggregate rows (setter_activity/inbound_dialer), not per-message
     // records — this schema has no per-DM/per-link row, only day-level
     // rollups, so the drilldown honestly shows which days contributed to the
@@ -405,6 +406,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [speedWeekday, setSpeedWeekday] = useState("all");
   const [speedTimeWindow, setSpeedTimeWindow] = useState("all");
+  const [speedSlaSelected, setSpeedSlaSelected] = useState<"within" | "outside" | null>(null);
   const isDialer = role === "inbound_dialer";
   // Part C3 — leaderboard's own metric selector + independent date range,
   // defaulting to inherit the page range until explicitly overridden.
@@ -1131,7 +1133,12 @@ export function ActivityModule({ role, title, subtitle }: Props) {
 
   const { data: speedEvents = [] } = useQuery({
     queryKey: ["speed-to-lead", role, orgId, range.from, range.to, devBypass],
-    enabled: isDialer && !!orgId,
+    // Mock Data ON must not leave this read-only instrument showing real
+    // lead_response_events next to the page's own demo-gated KPIs (item 14)
+    // — dev-mock-data.ts fixtures (mockLeadResponseEvents) are documented
+    // dev-bypass-only, so demo mode shows the honest "unavailable" fallback
+    // below instead of reusing them.
+    enabled: isDialer && !!orgId && !demoMode,
     queryFn: async () => {
       // devBypass never has a real Supabase session, so the RLS-scoped query
       // below comes back empty — same reasoning as every other devBypass
@@ -1158,6 +1165,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       speedTimeWindow === "all" ? [undefined, undefined] : speedTimeWindow.split("-").map(Number);
     const filtered = filterSpeedEvents(
       speedEvents.map((event: any) => ({
+        leadId: event.lead_id,
         leadCreatedAt: event.lead_created_at,
         leadAssignedAt: event.lead_assigned_at,
         firstAttemptAt: event.first_attempt_at,
@@ -1195,6 +1203,17 @@ export function ActivityModule({ role, title, subtitle }: Props) {
           close: event.close,
         })),
       ),
+      // Row-level rows behind the summary numbers above (item 2 — the
+      // Within/Outside SLA tile drilldown needs the actual affected leads,
+      // not just the aggregate counts speedDistribution() returns).
+      rows: filtered.map((event: any) => ({
+        leadId: event.leadId,
+        repId: event.repId,
+        sourcePlatform: event.sourcePlatform,
+        leadSource: event.leadSource,
+        leadCreatedAt: event.leadCreatedAt,
+        minutesToAttempt: calculateSpeedToLead(event).minutesToAttempt,
+      })),
     };
   }, [speedEvents, platformFilter, sourceFilter, speedWeekday, speedTimeWindow]);
   const operationalSpeedQueue = useMemo(
@@ -1548,7 +1567,9 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   // range never touches the rest of the page.
   const { data: lbRows } = useQuery({
     queryKey: ["activity-lb", role, orgId, lbRange.from, lbRange.to],
-    enabled: !!orgId,
+    // Same demo-mode isolation as every other query on this page (item 14)
+    // — no real setter_activity rows surfaced while Mock Data is on.
+    enabled: !!orgId && !demoMode,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("setter_activity")
@@ -1717,6 +1738,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     const reachStages: FunnelStage[] = isDialer
       ? [
           { key: "inbound_leads", label: "Inbound Leads", value: dials, spectrum: "cold" },
+          { key: "connections", label: "Connections", value: conns, spectrum: "cold" },
           { key: "qualified", label: "Qualified Convos", value: qualified, spectrum: "mid" },
           { key: "sets", label: "Sets", value: sets, spectrum: "mid" },
         ]
@@ -1736,6 +1758,12 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             key: "inbound_leads",
             label: "Inbound Leads",
             value: prevDials,
+            spectrum: "cold",
+          },
+          {
+            key: "connections",
+            label: "Connections",
+            value: prevConns,
             spectrum: "cold",
           },
           {
@@ -1762,7 +1790,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
           { key: "sets", label: "Sets", value: prevSets, spectrum: "mid" },
         ];
     const reachFields = isDialer
-      ? ["dials", "qualified_convos", "sets"]
+      ? ["dials", "connections", "qualified_convos", "sets"]
       : ["leads_contacted", "qualified_convos", "sets"];
 
     const closeStages: FunnelStage[] = [
@@ -1823,7 +1851,32 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       cap: ReturnType<typeof deriveCap>;
       working: ReturnType<typeof deriveWorking>;
     } | null = null;
-    if (selected?.kind === "money") {
+    if (selected?.kind === "money" && selected.metric === "revenue") {
+      const avgRevPerClose = closes ? revCents / closes : 0;
+      const prevAvgRevPerClose = prevCloses ? prevRevCents / prevCloses : 0;
+      panel = {
+        title: "Revenue Generated",
+        columns: activityColumns("total_revenue_cents", "Revenue", money),
+        rows: activityRowsBy("total_revenue_cents"),
+        cap: deriveMoneyCap(
+          closes,
+          avgRevPerClose,
+          revCents,
+          minCapSample,
+          money,
+          "Revenue Generated",
+        ),
+        working: deriveMoneyWorking(
+          avgRevPerClose,
+          prevAvgRevPerClose,
+          closes,
+          prevCloses,
+          minCapSample,
+          money,
+          "revenue",
+        ),
+      };
+    } else if (selected?.kind === "money") {
       panel = {
         title: "Cash Collected",
         columns: activityColumns("cash_collected_cents", "Cash", money),
@@ -1874,6 +1927,35 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     }));
 
     const kpiItems: KpiBandItem[] = [
+      // Money-first (matches the Closer dashboard's hierarchy) — Cash
+      // Collected and Revenue Generated lead the page for both DM Setter and
+      // Inbound Dialer, ahead of the role-specific operational metrics.
+      {
+        key: "cash",
+        label: "Cash Collected",
+        value: money(cashCents),
+        spectrum: "hot",
+        featured: true,
+        wide: true,
+        deltaPct: pctDelta(cashCents, prevCashCents),
+        priorValue: money(prevCashCents),
+        empty: cashCents === 0,
+        emptyHint: "Log a close with cash collected to see this populate.",
+        onClick: () => setSelected({ kind: "money", metric: "cash" }),
+      },
+      {
+        key: "revenue",
+        label: "Revenue Generated",
+        value: money(revCents),
+        spectrum: "hot",
+        featured: true,
+        wide: true,
+        deltaPct: pctDelta(revCents, prevRevCents),
+        priorValue: money(prevRevCents),
+        empty: revCents === 0,
+        emptyHint: "Total contract value shows up once a deal closes.",
+        onClick: () => setSelected({ kind: "money", metric: "revenue" }),
+      },
       ...(isDialer
         ? [
             {
@@ -2059,32 +2141,6 @@ export function ActivityModule({ role, title, subtitle }: Props) {
           ? `${((dqCount / dqOwnedLeadCount) * 100).toFixed(1)}% of ${fmtN0(dqOwnedLeadCount)} owned leads · ${fmtN0(prevDqCount)} prior`
           : undefined,
         onClick: () => setDqPanelOpen(true),
-      },
-      {
-        key: "cash",
-        label: "Cash Collected",
-        value: money(cashCents),
-        spectrum: "hot",
-        featured: true,
-        wide: true,
-        deltaPct: pctDelta(cashCents, prevCashCents),
-        priorValue: money(prevCashCents),
-        empty: cashCents === 0,
-        emptyHint: "Log a close with cash collected to see this populate.",
-        onClick: () => setSelected({ kind: "money", index: 0 }),
-      },
-      {
-        key: "revenue",
-        label: "Revenue Generated",
-        value: money(revCents),
-        spectrum: "hot",
-        featured: true,
-        wide: true,
-        deltaPct: pctDelta(revCents, prevRevCents),
-        priorValue: money(prevRevCents),
-        empty: revCents === 0,
-        emptyHint: "Total contract value shows up once a deal closes.",
-        onClick: () => setSelected({ kind: "money", index: 0 }),
       },
       ...(isDialer
         ? [
@@ -2314,7 +2370,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             payoutPct={5}
             payoutCents={cashCents * 0.05}
             cashRatePct={revCents ? (cashCents / revCents) * 100 : 0}
-            onCashClick={() => setSelected({ kind: "money", index: 0 })}
+            onCashClick={() => setSelected({ kind: "money", metric: "cash" })}
             fmtMoney={money}
           />
         </div>
@@ -2754,7 +2810,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                         <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                           Median Response
                         </div>
-                        <div className="mt-1 font-mono text-2xl font-semibold text-foreground">
+                        <div className="mt-1 font-sans tabular-nums text-2xl font-semibold text-foreground">
                           {speedSummary.medianMinutes == null
                             ? "—"
                             : `${speedSummary.medianMinutes.toFixed(1)}m`}
@@ -2764,7 +2820,9 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                         <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                           SLA Compliance · 5-min target
                         </div>
-                        <div className={`mt-1 font-mono text-2xl font-semibold ${status.tone}`}>
+                        <div
+                          className={`mt-1 font-sans tabular-nums text-2xl font-semibold ${status.tone}`}
+                        >
                           {slaPct == null ? "—" : `${slaPct.toFixed(0)}%`}
                         </div>
                       </div>
@@ -2772,10 +2830,24 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                         <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                           Within / Outside SLA
                         </div>
-                        <div className="mt-1 font-mono text-2xl font-semibold text-foreground">
-                          <span className="text-[color:var(--color-success)]">{withinFive}</span>
+                        <div className="mt-1 font-sans tabular-nums text-2xl font-semibold text-foreground">
+                          <button
+                            type="button"
+                            onClick={() => setSpeedSlaSelected("within")}
+                            disabled={!withinFive}
+                            className="text-[color:var(--color-success)] hover:underline disabled:no-underline disabled:opacity-60"
+                          >
+                            {withinFive}
+                          </button>
                           <span className="text-muted-foreground"> / </span>
-                          <span className="text-destructive">{outsideFive}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSpeedSlaSelected("outside")}
+                            disabled={!outsideFive}
+                            className="text-destructive hover:underline disabled:no-underline disabled:opacity-60"
+                          >
+                            {outsideFive}
+                          </button>
                         </div>
                       </div>
                       <div className="flex flex-col justify-center">
@@ -2856,7 +2928,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                       <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                         {label}
                       </div>
-                      <div className="mt-2 font-mono text-xl font-semibold text-spectrum-cold">
+                      <div className="mt-2 font-sans tabular-nums text-xl font-semibold text-spectrum-cold">
                         {value}
                       </div>
                     </div>
@@ -2878,7 +2950,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                       <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                         {label}
                       </div>
-                      <div className="mt-1 font-mono">{value}</div>
+                      <div className="mt-1 font-sans tabular-nums">{value}</div>
                     </div>
                   ))}
                 </div>
@@ -2918,10 +2990,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                                 key={item.notificationKey ?? `${item.leadId}-${item.status}`}
                                 className="border-b border-border/40 last:border-0"
                               >
-                                <td className="py-2 pr-3 font-mono">
+                                <td className="py-2 pr-3 font-sans tabular-nums">
                                   {item.leadId ?? "Unavailable"}
                                 </td>
-                                <td className="py-2 pr-3 font-mono uppercase text-amber-300">
+                                <td className="py-2 pr-3 font-sans tabular-nums uppercase text-amber-300">
                                   {item.status}
                                 </td>
                                 <td className="py-2 pr-3">{item.source ?? "Unavailable"}</td>
@@ -3019,10 +3091,10 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                             className="border-b border-border/40 last:border-0"
                           >
                             <td className="py-2 pr-3 text-muted-foreground">{label}</td>
-                            <td className="py-2 pr-3 font-mono">
+                            <td className="py-2 pr-3 font-sans tabular-nums">
                               {fast == null ? "Unavailable" : `${(Number(fast) * 100).toFixed(1)}%`}
                             </td>
-                            <td className="py-2 font-mono">
+                            <td className="py-2 font-sans tabular-nums">
                               {slow == null ? "Unavailable" : `${(Number(slow) * 100).toFixed(1)}%`}
                             </td>
                           </tr>
@@ -3037,6 +3109,55 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 Speed to Lead is unavailable until lead response events are connected.
               </div>
             )}
+            <MetricDetailPanel
+              open={speedSlaSelected != null}
+              onOpenChange={(v) => !v && setSpeedSlaSelected(null)}
+              title={
+                speedSlaSelected === "within"
+                  ? "Within SLA (contacted in 5 min or less)"
+                  : "Outside SLA (contacted after 5 min)"
+              }
+              subtitle={`${range.from} → ${range.to} · assignment → first attempt`}
+              columns={[
+                { key: "lead", label: "Lead ID", render: (r) => String(r.leadId ?? "—") },
+                { key: "rep", label: "Rep", render: (r) => String(r.repId ?? "Unassigned") },
+                {
+                  key: "source",
+                  label: "Source",
+                  render: (r) => String(r.sourcePlatform ?? r.leadSource ?? "—"),
+                },
+                {
+                  key: "created",
+                  label: "Lead created",
+                  render: (r) =>
+                    r.leadCreatedAt ? new Date(r.leadCreatedAt).toLocaleString() : "—",
+                },
+                {
+                  key: "minutes",
+                  label: "Minutes to first attempt",
+                  align: "right",
+                  render: (r) =>
+                    r.minutesToAttempt == null
+                      ? "Not yet attempted"
+                      : r.minutesToAttempt.toFixed(1),
+                },
+              ]}
+              rows={speedSummary.rows.filter((r) =>
+                speedSlaSelected === "within"
+                  ? r.minutesToAttempt != null && r.minutesToAttempt <= 5
+                  : r.minutesToAttempt != null && r.minutesToAttempt > 5,
+              )}
+              rowKey={(r) => String(r.leadId)}
+              cap={{
+                status: "insufficient_data",
+                sentence: "An SLA split, not a funnel stage — no prior-stage constraint to derive.",
+              }}
+              working={{
+                status: "insufficient_data",
+                sentence:
+                  "An SLA split, not a funnel stage — no prior-period comparison to derive.",
+              }}
+            />
           </div>
         )}
         {isDialer && (
@@ -3062,7 +3183,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                     {tier.label}
                   </div>
                   <div
-                    className={`mt-2 font-mono text-xl font-semibold ${i % 2 === 0 ? "text-spectrum-hot" : "text-spectrum-mid"}`}
+                    className={`mt-2 font-sans tabular-nums text-xl font-semibold ${i % 2 === 0 ? "text-spectrum-hot" : "text-spectrum-mid"}`}
                   >
                     {tier.count}
                   </div>
@@ -3072,7 +3193,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                   Unclassified
                 </div>
-                <div className="mt-2 font-mono text-xl font-semibold text-muted-foreground">
+                <div className="mt-2 font-sans tabular-nums text-xl font-semibold text-muted-foreground">
                   {ticketTierSplit.unclassified}
                 </div>
               </div>
@@ -3277,13 +3398,13 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                     <thead className="text-3xs uppercase tracking-wider text-muted-foreground">
                       <tr>
                         <th className="p-1.5 text-left">{isDialer ? "Source" : "Platform"}</th>
-                        <th className="p-1.5 text-right font-mono">
+                        <th className="p-1.5 text-right font-sans tabular-nums">
                           {isDialer ? "Leads" : "Conversations"}
                         </th>
-                        <th className="p-1.5 text-right font-mono">Qualified</th>
-                        <th className="p-1.5 text-right font-mono">Booked</th>
-                        <th className="p-1.5 text-right font-mono">Shows</th>
-                        <th className="p-1.5 text-right font-mono">Closes</th>
+                        <th className="p-1.5 text-right font-sans tabular-nums">Qualified</th>
+                        <th className="p-1.5 text-right font-sans tabular-nums">Booked</th>
+                        <th className="p-1.5 text-right font-sans tabular-nums">Shows</th>
+                        <th className="p-1.5 text-right font-sans tabular-nums">Closes</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3298,11 +3419,13 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                               {r.label}
                             </span>
                           </td>
-                          <td className="p-1.5 text-right font-mono">{r.conversations}</td>
-                          <td className="p-1.5 text-right font-mono">{r.qualified}</td>
-                          <td className="p-1.5 text-right font-mono">{r.booked}</td>
-                          <td className="p-1.5 text-right font-mono">{r.shows}</td>
-                          <td className="p-1.5 text-right font-mono text-spectrum-hot">
+                          <td className="p-1.5 text-right font-sans tabular-nums">
+                            {r.conversations}
+                          </td>
+                          <td className="p-1.5 text-right font-sans tabular-nums">{r.qualified}</td>
+                          <td className="p-1.5 text-right font-sans tabular-nums">{r.booked}</td>
+                          <td className="p-1.5 text-right font-sans tabular-nums">{r.shows}</td>
+                          <td className="p-1.5 text-right font-sans tabular-nums text-spectrum-hot">
                             {r.closes}
                           </td>
                         </tr>
@@ -3349,7 +3472,9 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                       <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                         {label}
                       </div>
-                      <div className="mt-0.5 font-mono text-sm font-semibold">{value}</div>
+                      <div className="mt-0.5 font-sans tabular-nums text-sm font-semibold">
+                        {value}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -3547,7 +3672,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                                   (c.payload?.lead_name ?? "—")
                                 )}
                               </td>
-                              <td className="py-2 pr-3 font-mono">
+                              <td className="py-2 pr-3 font-sans tabular-nums">
                                 <span className="inline-flex items-center gap-1.5">
                                   {c.due_at ? new Date(c.due_at).toLocaleString() : "—"}
                                   {c.due_at?.slice(0, 10) ===
@@ -3587,7 +3712,11 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             metricKey={lbMetric}
             onMetricChange={setLbMetric}
             people={lbPeople}
-            emptyLabel={`No ${isDialer ? "dialers" : "setters"} in range.`}
+            emptyLabel={
+              demoMode
+                ? "Demo data not connected for this leaderboard."
+                : `No ${isDialer ? "dialers" : "setters"} in range.`
+            }
             dateRange={lbRange}
             onDateRangeChange={setLbOverride}
             overridden={!!lbOverride}
@@ -3688,7 +3817,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                         </div>
                       </div>
                       <div
-                        className={`flex items-center gap-1.5 font-mono text-sm font-semibold ${tone}`}
+                        className={`flex items-center gap-1.5 font-sans tabular-nums text-sm font-semibold ${tone}`}
                       >
                         <Icon className="h-4 w-4" />
                         {m.score}%
@@ -3776,23 +3905,23 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 <th className="text-left p-2.5">Source</th>
                 {isDialer ? (
                   <>
-                    <th className="text-right p-2.5 font-mono">Dials</th>
-                    <th className="text-right p-2.5 font-mono">Conn</th>
+                    <th className="text-right p-2.5 font-sans tabular-nums">Dials</th>
+                    <th className="text-right p-2.5 font-sans tabular-nums">Conn</th>
                   </>
                 ) : (
                   <>
-                    <th className="text-right p-2.5 font-mono">Contacted</th>
-                    <th className="text-right p-2.5 font-mono">Links</th>
+                    <th className="text-right p-2.5 font-sans tabular-nums">Contacted</th>
+                    <th className="text-right p-2.5 font-sans tabular-nums">Links</th>
                   </>
                 )}
-                <th className="text-right p-2.5 font-mono">Qual Convos</th>
-                <th className="text-right p-2.5 font-mono">Sets</th>
-                <th className="text-right p-2.5 font-mono">On Cal</th>
-                <th className="text-right p-2.5 font-mono">Live</th>
-                <th className="text-right p-2.5 font-mono">Closes</th>
-                <th className="text-right p-2.5 font-mono">Downsells</th>
-                <th className="text-right p-2.5 font-mono">Cash</th>
-                <th className="text-right p-2.5 font-mono">Revenue</th>
+                <th className="text-right p-2.5 font-sans tabular-nums">Qual Convos</th>
+                <th className="text-right p-2.5 font-sans tabular-nums">Sets</th>
+                <th className="text-right p-2.5 font-sans tabular-nums">On Cal</th>
+                <th className="text-right p-2.5 font-sans tabular-nums">Live</th>
+                <th className="text-right p-2.5 font-sans tabular-nums">Closes</th>
+                <th className="text-right p-2.5 font-sans tabular-nums">Downsells</th>
+                <th className="text-right p-2.5 font-sans tabular-nums">Cash</th>
+                <th className="text-right p-2.5 font-sans tabular-nums">Revenue</th>
                 <th className="text-center p-2.5">Rate</th>
                 <th className="text-left p-2.5">Objections</th>
                 <th className="text-left p-2.5">Notes</th>
@@ -3814,25 +3943,35 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                   </td>
                   {isDialer ? (
                     <>
-                      <td className="p-2.5 text-right font-mono">{r.dials ?? 0}</td>
-                      <td className="p-2.5 text-right font-mono">{r.connections ?? 0}</td>
+                      <td className="p-2.5 text-right font-sans tabular-nums">{r.dials ?? 0}</td>
+                      <td className="p-2.5 text-right font-sans tabular-nums">
+                        {r.connections ?? 0}
+                      </td>
                     </>
                   ) : (
                     <>
-                      <td className="p-2.5 text-right font-mono">{r.leads_contacted ?? 0}</td>
-                      <td className="p-2.5 text-right font-mono">{r.links_sent ?? 0}</td>
+                      <td className="p-2.5 text-right font-sans tabular-nums">
+                        {r.leads_contacted ?? 0}
+                      </td>
+                      <td className="p-2.5 text-right font-sans tabular-nums">
+                        {r.links_sent ?? 0}
+                      </td>
                     </>
                   )}
-                  <td className="p-2.5 text-right font-mono">{r.qualified_convos ?? 0}</td>
-                  <td className="p-2.5 text-right font-mono">{r.sets ?? 0}</td>
-                  <td className="p-2.5 text-right font-mono">{r.calls_on_calendar ?? 0}</td>
-                  <td className="p-2.5 text-right font-mono">{r.live_calls ?? 0}</td>
-                  <td className="p-2.5 text-right font-mono">{r.closes ?? 0}</td>
-                  <td className="p-2.5 text-right font-mono">{r.downsells ?? 0}</td>
-                  <td className="p-2.5 text-right font-mono text-[color:var(--color-success)]">
+                  <td className="p-2.5 text-right font-sans tabular-nums">
+                    {r.qualified_convos ?? 0}
+                  </td>
+                  <td className="p-2.5 text-right font-sans tabular-nums">{r.sets ?? 0}</td>
+                  <td className="p-2.5 text-right font-sans tabular-nums">
+                    {r.calls_on_calendar ?? 0}
+                  </td>
+                  <td className="p-2.5 text-right font-sans tabular-nums">{r.live_calls ?? 0}</td>
+                  <td className="p-2.5 text-right font-sans tabular-nums">{r.closes ?? 0}</td>
+                  <td className="p-2.5 text-right font-sans tabular-nums">{r.downsells ?? 0}</td>
+                  <td className="p-2.5 text-right font-sans tabular-nums text-[color:var(--color-success)]">
                     ${((r.cash_collected_cents ?? 0) / 100).toLocaleString()}
                   </td>
-                  <td className="p-2.5 text-right font-mono">
+                  <td className="p-2.5 text-right font-sans tabular-nums">
                     ${((r.total_revenue_cents ?? 0) / 100).toLocaleString()}
                   </td>
                   <td className="p-2.5 text-center">

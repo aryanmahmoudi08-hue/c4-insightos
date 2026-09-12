@@ -856,8 +856,8 @@ function TrafficNode({ icon, label, value }: { icon: ReactNode; label: string; v
         {icon}
         {label}
       </div>
-      {/* Priority 8 — font-mono + tabular-nums, the canonical numeric treatment. */}
-      <div className="mt-3 font-mono text-3xl font-bold tabular-nums tracking-tight text-foreground">
+      {/* font-sans + tabular-nums — the canonical numeric treatment. */}
+      <div className="mt-3 font-sans text-3xl font-bold tabular-nums tracking-tight text-foreground">
         {value}
       </div>
     </div>
@@ -919,7 +919,7 @@ function WebinarAnalyticsOverview({
           >
             <span className="text-spectrum-cold">{icon}</span>
             <span className="min-w-0 flex-1 text-xs text-muted-foreground">{label}</span>
-            <span className="font-mono text-sm text-foreground">{value}</span>
+            <span className="font-sans tabular-nums text-sm text-foreground">{value}</span>
           </div>
         ))}
       </div>
@@ -1067,7 +1067,7 @@ function RetentionStat({ label, value, hint }: { label: string; value: string; h
   return (
     <div className="rounded-lg border border-border/70 bg-background/40 p-2" title={hint}>
       <div className="text-3xs uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
-      <div className="mt-1 font-mono text-sm">{value}</div>
+      <div className="mt-1 font-sans tabular-nums text-sm">{value}</div>
     </div>
   );
 }
@@ -1197,11 +1197,11 @@ function ComparisonPanel({
             className="grid grid-cols-3 border-b border-border/60 px-4 py-3 text-sm transition hover:bg-muted/20 last:border-0"
           >
             <span className="self-center text-muted-foreground">{label}</span>
-            <span className="relative overflow-hidden rounded-md px-2 py-1 font-mono text-foreground">
+            <span className="relative overflow-hidden rounded-md px-2 py-1 font-sans tabular-nums text-foreground">
               <span className="relative z-10">{a}</span>
               {bar(aNum, "bg-spectrum-mid/20")}
             </span>
-            <span className="relative overflow-hidden rounded-md px-2 py-1 font-mono text-foreground">
+            <span className="relative overflow-hidden rounded-md px-2 py-1 font-sans tabular-nums text-foreground">
               <span className="relative z-10">{b}</span>
               {bar(bNum, "bg-spectrum-cold/15")}
             </span>
@@ -1232,7 +1232,7 @@ function AnalyticsPanel({
             className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm"
           >
             <span className="text-muted-foreground">{label}</span>
-            <span className="font-mono text-foreground">{value}</span>
+            <span className="font-sans tabular-nums text-foreground">{value}</span>
           </div>
         ))}
       </div>

@@ -963,21 +963,21 @@ function ContentIntel() {
                     <th className="text-left p-3">Angle</th>
                     <th className="text-center p-3">Funnel</th>
                     <th className="text-center p-3">Link</th>
-                    <th className="text-right p-3 font-mono">Views</th>
-                    <th className="text-right p-3 font-mono">Leads</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Views</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Leads</th>
                     <th
-                      className="text-right p-3 font-mono"
+                      className="text-right p-3 font-sans tabular-nums"
                       title="content_metrics.closes has no write path anywhere in the app"
                     >
                       Closes
                     </th>
                     <th
-                      className="text-right p-3 font-mono"
+                      className="text-right p-3 font-sans tabular-nums"
                       title="content_metrics.cash_collected_cents has no write path anywhere in the app — see the Attribution tab's Canonical Content → Cash table for real, attributed cash"
                     >
                       Cash
                     </th>
-                    <th className="text-right p-3 font-mono">Retention</th>
+                    <th className="text-right p-3 font-sans tabular-nums">Retention</th>
                     <th className="text-right p-3"></th>
                   </tr>
                 </thead>
@@ -1044,20 +1044,22 @@ function ContentIntel() {
                               <span className="text-muted-foreground">—</span>
                             )}
                           </td>
-                          <td className="p-3 text-right font-mono">
+                          <td className="p-3 text-right font-sans tabular-nums">
                             {m?.views?.toLocaleString() ?? "—"}
                           </td>
-                          <td className="p-3 text-right font-mono">{m?.leads_generated ?? "—"}</td>
+                          <td className="p-3 text-right font-sans tabular-nums">
+                            {m?.leads_generated ?? "—"}
+                          </td>
                           {/* closes/cash_collected_cents default to 0 in the DB and have no
                               write path — a literal 0/"$0" here would misread as "zero
                               closes/cash" rather than "not tracked." */}
-                          <td className="p-3 text-right font-mono text-muted-foreground">
+                          <td className="p-3 text-right font-sans tabular-nums text-muted-foreground">
                             Not tracked
                           </td>
-                          <td className="p-3 text-right font-mono text-muted-foreground">
+                          <td className="p-3 text-right font-sans tabular-nums text-muted-foreground">
                             Not tracked
                           </td>
-                          <td className="p-3 text-right font-mono">
+                          <td className="p-3 text-right font-sans tabular-nums">
                             {m?.hook_retention_pct ? m.hook_retention_pct + "%" : "—"}
                           </td>
                           <td className="p-3 text-right whitespace-nowrap">
@@ -1198,7 +1200,7 @@ function ContentIntel() {
                           }`}
                         >
                           <div
-                            className={`font-mono mb-1 text-xs ${isToday ? "text-primary font-bold" : slot.inMonth ? "text-foreground/80" : "text-muted-foreground/40"}`}
+                            className={`font-sans tabular-nums mb-1 text-xs ${isToday ? "text-primary font-bold" : slot.inMonth ? "text-foreground/80" : "text-muted-foreground/40"}`}
                           >
                             {dayNum}
                           </div>
@@ -1219,7 +1221,7 @@ function ContentIntel() {
                                   >
                                     {stage}
                                   </span>
-                                  <span className="flex items-center gap-0.5 text-3xs font-mono text-muted-foreground">
+                                  <span className="flex items-center gap-0.5 text-3xs font-sans tabular-nums text-muted-foreground">
                                     <Eye className="h-2.5 w-2.5" />
                                     {m?.views ?? 0}
                                   </span>
@@ -2024,9 +2026,9 @@ function SlidesPanel({
                 <span className="flex-1 truncate">
                   {s.caption ?? <span className="text-muted-foreground">—</span>}
                 </span>
-                <span className="font-mono">{m?.views ?? 0}v</span>
+                <span className="font-sans tabular-nums">{m?.views ?? 0}v</span>
                 <span
-                  className={`font-mono ${dropoff > 30 ? "text-destructive" : "text-muted-foreground"}`}
+                  className={`font-sans tabular-nums ${dropoff > 30 ? "text-destructive" : "text-muted-foreground"}`}
                 >
                   {dropoff}% exit
                 </span>
@@ -2170,7 +2172,7 @@ function OverviewPanel({
           ].map(([k, v]) => (
             <div key={k as string} className="rounded border border-border bg-card/40 p-2">
               <div className="text-3xs uppercase tracking-wider text-muted-foreground">{k}</div>
-              <div className="font-mono text-sm">{v}</div>
+              <div className="font-sans tabular-nums text-sm">{v}</div>
             </div>
           ))}
         </div>
@@ -2188,7 +2190,7 @@ function OverviewPanel({
           ].map(([k, v]) => (
             <div key={k as string} className="rounded border border-border bg-card/40 p-2">
               <div className="text-3xs uppercase tracking-wider text-muted-foreground">{k}</div>
-              <div className="font-mono text-sm">{v}</div>
+              <div className="font-sans tabular-nums text-sm">{v}</div>
             </div>
           ))}
         </div>
