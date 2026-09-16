@@ -1795,6 +1795,7 @@ export type Database = {
           audio_url: string | null;
           resume_url: string | null;
           recent_monthly_cash_collected_cents: number | null;
+          region: string | null;
           responses: Json;
           role_applied: string;
           source: string | null;
@@ -1825,6 +1826,7 @@ export type Database = {
           audio_url?: string | null;
           resume_url?: string | null;
           recent_monthly_cash_collected_cents?: number | null;
+          region?: string | null;
           responses?: Json;
           role_applied?: string;
           source?: string | null;
@@ -1855,6 +1857,7 @@ export type Database = {
           audio_url?: string | null;
           resume_url?: string | null;
           recent_monthly_cash_collected_cents?: number | null;
+          region?: string | null;
           responses?: Json;
           role_applied?: string;
           source?: string | null;

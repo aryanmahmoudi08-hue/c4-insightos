@@ -21,7 +21,7 @@ export const Route = createFileRoute("/_authenticated/weekly-report")({
   component: WeeklyReportPage,
   head: () => ({
     meta: [
-      { title: "Weekly Report | C4 InsightOS" },
+      { title: "Weekly Report | AscendOS" },
       {
         name: "description",
         content:

@@ -43,7 +43,8 @@ const ROUTES: { to: string; label: string; group: string; icon: typeof LayoutDas
   { to: "/dm-setter", label: "DM Setter", group: "Go to", icon: MessageSquare },
   { to: "/inbound-dialer", label: "Inbound Dialer", group: "Go to", icon: PhoneIncoming },
   { to: "/closer", label: "Closer", group: "Go to", icon: PhoneCall },
-  { to: "/outreach", label: "Messaging", group: "Go to", icon: MessageSquare },
+  // Messaging (/outreach) intentionally deferred — see
+  // src/deferred-features/outreach-route.tsx.deferred.
   { to: "/team", label: "Team Members", group: "Go to", icon: Users },
   { to: "/team-calendar", label: "Team Calendars", group: "Go to", icon: CalendarDays },
   { to: "/hiring", label: "Hiring", group: "Go to", icon: UserPlus },

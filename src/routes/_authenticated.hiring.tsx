@@ -51,7 +51,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { gradeLoomFn, recommendStageFromScore } from "@/lib/hiring.functions";
+import { gradeLoomFn, recommendStageFromScore, HIRING_REGIONS } from "@/lib/hiring.functions";
 import { KanbanBoard } from "@/components/kanban-board";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
@@ -78,6 +78,112 @@ const ROLE_TABS: { key: (typeof ROLES)[number]; label: string }[] = [
 ];
 const fmtMoney = (cents: number) => `$${Math.round(cents / 100).toLocaleString()}`;
 
+// Time-range filter (item: Hiring time range) — a small local preset set
+// scoped to this page only, deliberately NOT the shared useDateRange()
+// context: that context is global/persisted and drives unrelated pages
+// (dashboard, closer, attribution…), so filtering Hiring by application
+// date must not also silently change what date range those other pages show.
+// Filters on hiring_applicants.applied_at, the only real timestamp this
+// table has for "when did this candidate show up."
+const HIRING_RANGE_PRESETS = [
+  "all",
+  "today",
+  "this_week",
+  "this_month",
+  "last_30",
+  "last_90",
+  "this_quarter",
+  "custom",
+] as const;
+type HiringRangePreset = (typeof HIRING_RANGE_PRESETS)[number];
+const HIRING_RANGE_LABELS: Record<HiringRangePreset, string> = {
+  all: "All time",
+  today: "Today",
+  this_week: "This week",
+  this_month: "This month",
+  last_30: "Last 30 days",
+  last_90: "Last 90 days",
+  this_quarter: "This quarter",
+  custom: "Custom range",
+};
+function hiringRangeToDates(
+  preset: HiringRangePreset,
+  customFrom: string,
+  customTo: string,
+): { from: string; to: string } | null {
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const now = new Date();
+  switch (preset) {
+    case "all":
+      return null;
+    case "today":
+      return { from: iso(now), to: iso(now) };
+    case "this_week": {
+      const day = now.getDay();
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - ((day + 6) % 7));
+      return { from: iso(monday), to: iso(now) };
+    }
+    case "this_month":
+      return { from: iso(new Date(now.getFullYear(), now.getMonth(), 1)), to: iso(now) };
+    case "last_30": {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 29);
+      return { from: iso(d), to: iso(now) };
+    }
+    case "last_90": {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 89);
+      return { from: iso(d), to: iso(now) };
+    }
+    case "this_quarter": {
+      const q = Math.floor(now.getMonth() / 3);
+      return { from: iso(new Date(now.getFullYear(), q * 3, 1)), to: iso(now) };
+    }
+    case "custom":
+      return { from: customFrom, to: customTo };
+  }
+}
+
+// Candidate sort — only fields that actually exist on hiring_applicants.
+// Deliberately does NOT include revenue/closes/close-rate/calls-booked/
+// calls-showed/qualified-conversations: no such columns exist on this table
+// and no verified link exists from a candidate to a hired rep's real
+// performance rows (calls/setter_activity key on name, not on
+// hiring_applicants.id) — see the report at the end of this pass. Sorting
+// on invented numbers would be fabricating candidate performance, which is
+// explicitly not allowed here.
+const HIRING_SORTS = [
+  { key: "applied_desc", label: "Applied (newest)" },
+  { key: "applied_asc", label: "Applied (oldest)" },
+  { key: "name_asc", label: "Name (A–Z)" },
+  { key: "years_exp_desc", label: "Years experience (high–low)" },
+  { key: "ai_score_desc", label: "AI score (high–low)" },
+  { key: "stated_cash_desc", label: "Stated recent cash (high–low)" },
+] as const;
+type HiringSortKey = (typeof HIRING_SORTS)[number]["key"];
+function sortApplicants(list: Applicant[], key: HiringSortKey): Applicant[] {
+  const sorted = [...list];
+  switch (key) {
+    case "applied_desc":
+      return sorted.sort((a, b) => b.applied_at.localeCompare(a.applied_at));
+    case "applied_asc":
+      return sorted.sort((a, b) => a.applied_at.localeCompare(b.applied_at));
+    case "name_asc":
+      return sorted.sort((a, b) => a.full_name.localeCompare(b.full_name));
+    case "years_exp_desc":
+      return sorted.sort((a, b) => (b.years_experience ?? -1) - (a.years_experience ?? -1));
+    case "ai_score_desc":
+      return sorted.sort((a, b) => (b.ai_score ?? -1) - (a.ai_score ?? -1));
+    case "stated_cash_desc":
+      return sorted.sort(
+        (a, b) =>
+          (b.recent_monthly_cash_collected_cents ?? -1) -
+          (a.recent_monthly_cash_collected_cents ?? -1),
+      );
+  }
+}
+
 type Applicant = {
   id: string;
   full_name: string;
@@ -91,6 +197,7 @@ type Applicant = {
   years_experience: number | null;
   niche: string | null;
   notes: string | null;
+  region?: string | null;
   last_shown_at: string | null;
   applied_at: string;
   loom_url?: string | null;
@@ -189,6 +296,19 @@ function Hiring() {
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<(typeof ROLES)[number]>("closer");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [regionFilter, setRegionFilter] = useState<Set<string>>(new Set());
+  const [rangePreset, setRangePreset] = useState<HiringRangePreset>("all");
+  const todayIso = () => new Date().toISOString().slice(0, 10);
+  const [customFrom, setCustomFrom] = useState(todayIso);
+  const [customTo, setCustomTo] = useState(todayIso);
+  const [sortKey, setSortKey] = useState<HiringSortKey>("applied_desc");
+  const activeRange = hiringRangeToDates(rangePreset, customFrom, customTo);
+  const hasActiveFilters = regionFilter.size > 0 || rangePreset !== "all" || query.trim() !== "";
+  const clearFilters = () => {
+    setRegionFilter(new Set());
+    setRangePreset("all");
+    setQuery("");
+  };
 
   // devBypass has no real session, so reads succeed empty under RLS and writes
   // 401 — same rationale as team-calendar.tsx's mockCals/mockBlocks.
@@ -211,13 +331,22 @@ function Hiring() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (applicants ?? []).filter((a) => {
-      if (!q) return true;
-      return [a.full_name, a.email, a.niche, a.source, a.notes].some((v) =>
-        (v ?? "").toLowerCase().includes(q),
-      );
+    const matched = (applicants ?? []).filter((a) => {
+      if (q) {
+        const hit = [a.full_name, a.email, a.niche, a.source, a.notes].some((v) =>
+          (v ?? "").toLowerCase().includes(q),
+        );
+        if (!hit) return false;
+      }
+      if (regionFilter.size > 0 && !(a.region && regionFilter.has(a.region))) return false;
+      if (activeRange) {
+        const appliedDate = a.applied_at.slice(0, 10);
+        if (appliedDate < activeRange.from || appliedDate > activeRange.to) return false;
+      }
+      return true;
     });
-  }, [applicants, query]);
+    return sortApplicants(matched, sortKey);
+  }, [applicants, query, regionFilter, activeRange, sortKey]);
 
   const byStageFor = (role: string) => {
     const m = new Map<Stage, Applicant[]>();
@@ -237,6 +366,7 @@ function Hiring() {
         email: String(f.get("email") || "") || null,
         phone: String(f.get("phone") || "") || null,
         role_applied: String(f.get("role_applied") || "setter"),
+        region: String(f.get("region") || "") || null,
         source: String(f.get("source") || "") || null,
         niche: String(f.get("niche") || "") || null,
         years_experience: Number(f.get("years_experience") || 0) || null,
@@ -359,7 +489,8 @@ function Hiring() {
   const toggleSel = (id: string) => {
     setSelectedIds((prev) => {
       const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
   };
@@ -453,6 +584,130 @@ function Hiring() {
           </div>
         </div>
 
+        {/* Region / time-range / sort filters — combine with the search box
+            and role tabs above rather than resetting them; all of it feeds
+            the same `filtered` list that both the Kanban board and the
+            per-stage counts read from. */}
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/10 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-3xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Region
+            </span>
+            {HIRING_REGIONS.map((r) => {
+              const active = regionFilter.has(r);
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() =>
+                    setRegionFilter((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(r)) next.delete(r);
+                      else next.add(r);
+                      return next;
+                    })
+                  }
+                  aria-pressed={active}
+                  className={`cursor-pointer rounded-full border px-2 py-0.5 text-3xs font-medium transition ${
+                    active
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {r}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-3xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Applied
+            </span>
+            <Select
+              value={rangePreset}
+              onValueChange={(v) => setRangePreset(v as HiringRangePreset)}
+            >
+              <SelectTrigger className="h-7 w-36 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {HIRING_RANGE_PRESETS.map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {HIRING_RANGE_LABELS[p]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {rangePreset === "custom" && (
+              <>
+                <Input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="h-7 w-32 text-xs"
+                />
+                <span className="text-3xs text-muted-foreground">to</span>
+                <Input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="h-7 w-32 text-xs"
+                />
+              </>
+            )}
+            {activeRange && (
+              <span className="font-sans text-3xs tabular-nums text-muted-foreground">
+                {activeRange.from} → {activeRange.to}
+              </span>
+            )}
+          </div>
+
+          <div className="ml-auto flex items-center gap-1.5">
+            <span className="text-3xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Sort
+            </span>
+            <Select value={sortKey} onValueChange={(v) => setSortKey(v as HiringSortKey)}>
+              <SelectTrigger className="h-7 w-48 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {HIRING_SORTS.map((s) => (
+                  <SelectItem key={s.key} value={s.key}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="cursor-pointer text-3xs font-medium text-primary hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+
+        {/* Active-filter summary — "selected filters are clearly visible"
+            even once the pill row above scrolls out of view. */}
+        {hasActiveFilters && (
+          <div className="text-3xs text-muted-foreground">
+            Showing {filtered.length} of {applicants?.length ?? 0} applicants
+            {regionFilter.size > 0 && <> · Region: {Array.from(regionFilter).join(", ")}</>}
+            {rangePreset !== "all" && activeRange && (
+              <>
+                {" "}
+                · Applied {HIRING_RANGE_LABELS[rangePreset]} ({activeRange.from} → {activeRange.to})
+              </>
+            )}
+            {query.trim() && <> · Search: "{query.trim()}"</>}
+          </div>
+        )}
+
         <Tabs
           value={tab}
           onValueChange={(v) => {
@@ -545,6 +800,7 @@ function Hiring() {
                               </div>
                               <div className="text-3xs text-muted-foreground capitalize">
                                 {a.role_applied} · {a.niche ?? "—"}
+                                {a.region && <> · {a.region}</>}
                               </div>
                             </button>
                           </div>
@@ -808,6 +1064,29 @@ function Hiring() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
+                  <Label className="text-xs">Region</Label>
+                  <Select
+                    value={editing.region ?? "__unset"}
+                    onValueChange={(v) => {
+                      const region = v === "__unset" ? null : v;
+                      update.mutate({ id: editing.id, patch: { region } });
+                      setEditing({ ...editing, region });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Not set" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__unset">Not set</SelectItem>
+                      {HIRING_REGIONS.map((r) => (
+                        <SelectItem key={r} value={r}>
+                          {r}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
                   <Label className="text-xs">Recruiter notes</Label>
                   <Textarea
                     rows={4}
@@ -1021,6 +1300,23 @@ function ApplicantForm({
             </SelectTrigger>
             <SelectContent>
               {ROLES.map((r) => (
+                <SelectItem key={r} value={r}>
+                  {r}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label>Region</Label>
+          <Select name="region">
+            <SelectTrigger>
+              <SelectValue placeholder="Where is the candidate based?" />
+            </SelectTrigger>
+            <SelectContent>
+              {HIRING_REGIONS.map((r) => (
                 <SelectItem key={r} value={r}>
                   {r}
                 </SelectItem>

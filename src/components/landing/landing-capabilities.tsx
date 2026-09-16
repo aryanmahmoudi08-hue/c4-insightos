@@ -46,7 +46,7 @@ export function LandingCapabilities() {
         <SectionHeading
           eyebrow="Platform"
           title="Every part of the operation, in one system."
-          description="C4 OS is built from the real modules operators use every day — not a generic CRM with a dashboard bolted on."
+          description="AscendOS is built from the real modules operators use every day — not a generic CRM with a dashboard bolted on."
         />
         <StaggerGroup className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {CAPABILITIES.map(({ icon: Icon, title, items }) => (

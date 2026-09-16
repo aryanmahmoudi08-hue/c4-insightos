@@ -58,7 +58,7 @@ export const Route = createFileRoute("/_authenticated/content-signals")({
   component: ContentSignalsPage,
   head: () => ({
     meta: [
-      { title: "Content Signals — What to post next | C4 InsightOS" },
+      { title: "Content Signals — What to post next | AscendOS" },
       {
         name: "description",
         content:

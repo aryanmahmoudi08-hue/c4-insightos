@@ -217,6 +217,25 @@ export async function setOverallStatus(
     updated_at: nowIso,
   };
   if (status === "confirmed") patch.confirmed_at = nowIso;
+  if (status === "cancelled" || status === "rescheduled") {
+    // Snapshot whatever the status was right before this transition — once
+    // overall_status is overwritten below, that history is gone; the booking
+    // box's cancelled/rescheduled styling reads this to show the ORIGINAL
+    // status's color rather than a generic gray (see the migration comment).
+    const { data: existing } = await confirmationsTable()
+      .select("overall_status")
+      .eq("call_id", callId)
+      .maybeSingle();
+    const priorStatus = existing?.overall_status as string | undefined;
+    if (
+      priorStatus &&
+      priorStatus !== "cancelled" &&
+      priorStatus !== "rescheduled" &&
+      priorStatus !== status
+    ) {
+      patch.previous_status = priorStatus;
+    }
+  }
   if (status === "cancelled") {
     patch.cancelled_reason = cancelledReason ?? "Cancelled by rep";
     // Manual cancellation writes through to the same authoritative column
@@ -228,6 +247,30 @@ export async function setOverallStatus(
   }
   const { error } = await confirmationsTable().upsert(patch, { onConflict: "call_id" });
   if (error) throw new Error(`Failed to update confirmation status: ${error.message}`);
+}
+
+/** Records that the lead RESPONDED to an already-sent touchpoint — distinct
+ *  from merely being sent (see call-confirmations.ts's module doc). Setting
+ *  `responded: false` clears just the response marker, leaving the sent
+ *  marker intact (the message was still sent, the lead just hasn't answered
+ *  it — or that response entry was a mistake); it never touches `*_sent_at`,
+ *  which stays owned by markTouchpoint/unmarkTouchpoint. */
+export async function respondTouchpoint(
+  callId: string,
+  userId: string,
+  touchpoint: "night_before" | "morning" | "one_hour" | "thirty_min" | "ten_min",
+  responded: boolean,
+) {
+  const respondedField =
+    touchpoint === "thirty_min" ? "thirty_min_confirmed_at" : `${touchpoint}_responded_at`;
+  const patch: Record<string, unknown> = {
+    updated_by: userId,
+    updated_at: new Date().toISOString(),
+    [respondedField]: responded ? new Date().toISOString() : null,
+  };
+  if (touchpoint === "thirty_min") patch.thirty_min_confirmed = responded;
+  const { error } = await confirmationsTable().update(patch).eq("call_id", callId);
+  if (error) throw new Error(`Failed to update ${touchpoint} response: ${error.message}`);
 }
 
 /**
@@ -247,18 +290,30 @@ export async function unmarkTouchpoint(
     updated_by: userId,
     updated_at: new Date().toISOString(),
   };
-  if (touchpoint === "night_before") patch.night_before_sent_at = null;
+  // Un-sending always clears that touchpoint's response too — you can't have
+  // responded to a message that (per this correction) was never actually
+  // sent.
+  if (touchpoint === "night_before") {
+    patch.night_before_sent_at = null;
+    patch.night_before_responded_at = null;
+  }
   if (touchpoint === "morning") {
     patch.morning_sent_at = null;
     patch.morning_responded_at = null;
   }
-  if (touchpoint === "one_hour") patch.one_hour_sent_at = null;
+  if (touchpoint === "one_hour") {
+    patch.one_hour_sent_at = null;
+    patch.one_hour_responded_at = null;
+  }
   if (touchpoint === "thirty_min") {
     patch.thirty_min_sent_at = null;
     patch.thirty_min_confirmed = false;
     patch.thirty_min_confirmed_at = null;
   }
-  if (touchpoint === "ten_min") patch.ten_min_sent_at = null;
+  if (touchpoint === "ten_min") {
+    patch.ten_min_sent_at = null;
+    patch.ten_min_responded_at = null;
+  }
 
   const { error } = await confirmationsTable().update(patch).eq("call_id", callId);
   if (error) throw new Error(`Failed to unmark ${touchpoint}: ${error.message}`);

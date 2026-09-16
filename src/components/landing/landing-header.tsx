@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Menu } from "lucide-react";
-import c4OsWhite from "@/assets/c4-os-white.png";
-import c4OsBlack from "@/assets/c4-os-black.png";
+import ascendOsWhite from "@/assets/ascendos-inline-white.png";
+import ascendOsBlack from "@/assets/ascendos-inline-black.png";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -43,14 +43,14 @@ export function LandingHeader() {
       >
         <a href="#top" className="flex min-w-0 items-center gap-2">
           <img
-            src={c4OsWhite}
-            alt="C4 OS"
-            className="theme-logo-dark h-14 w-auto shrink-0 object-contain md:h-16"
+            src={ascendOsWhite}
+            alt="AscendOS"
+            className="theme-logo-dark h-10 w-auto shrink-0 object-contain md:h-12"
           />
           <img
-            src={c4OsBlack}
-            alt="C4 OS"
-            className="theme-logo-light h-14 w-auto shrink-0 object-contain md:h-16"
+            src={ascendOsBlack}
+            alt="AscendOS"
+            className="theme-logo-light h-10 w-auto shrink-0 object-contain md:h-12"
           />
         </a>
 
@@ -71,7 +71,7 @@ export function LandingHeader() {
             Sign in
           </Link>
           <Button asChild size="sm">
-            <Link to="/login">Access C4 OS</Link>
+            <Link to="/login">Access AscendOS</Link>
           </Button>
         </div>
 
@@ -87,7 +87,7 @@ export function LandingHeader() {
             </Button>
           </SheetTrigger>
           <SheetContent side="right" className="w-72">
-            <SheetTitle className="display-serif text-lg">C4 OS</SheetTitle>
+            <SheetTitle className="display-serif text-lg">AscendOS</SheetTitle>
             <nav className="mt-8 flex flex-col gap-5">
               {NAV_LINKS.map((link) => (
                 <a key={link.href} href={link.href} className="text-base text-foreground/90">
@@ -100,7 +100,7 @@ export function LandingHeader() {
                 Sign in
               </Link>
               <Button asChild className="w-full">
-                <Link to="/login">Access C4 OS</Link>
+                <Link to="/login">Access AscendOS</Link>
               </Button>
             </div>
           </SheetContent>

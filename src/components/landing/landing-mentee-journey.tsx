@@ -24,7 +24,7 @@ export function LandingMenteeJourney() {
         <SectionHeading
           eyebrow="Mentees & renewals"
           title="The client journey doesn't end at the close."
-          description="C4 OS follows the mentee relationship all the way through payment plans, health, and renewal — with contracted, collected, and forecasted value always kept distinct."
+          description="AscendOS follows the mentee relationship all the way through payment plans, health, and renewal — with contracted, collected, and forecasted value always kept distinct."
         />
 
         <FadeUp amount={0.2} className="mt-12">

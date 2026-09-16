@@ -23,14 +23,14 @@ export const Route = createFileRoute("/welcome")({
   component: LandingPage,
   head: () => ({
     meta: [
-      { title: "C4 OS — Run the business from one operating system" },
+      { title: "AscendOS — Run the business from one operating system" },
       {
         name: "description",
         content:
-          "C4 OS connects marketing, leads, sales, revenue, team performance, client payments, retention, attribution, and video intelligence into one operating system.",
+          "AscendOS connects marketing, leads, sales, revenue, team performance, client payments, retention, attribution, and video intelligence into one operating system.",
       },
-      { property: "og:title", content: "C4 OS" },
-      { name: "twitter:title", content: "C4 OS" },
+      { property: "og:title", content: "AscendOS" },
+      { name: "twitter:title", content: "AscendOS" },
       {
         property: "og:description",
         content:

@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import c4OsWhite from "@/assets/c4-os-white.png";
-import c4OsBlack from "@/assets/c4-os-black.png";
+import ascendOsWhite from "@/assets/ascendos-inline-white.png";
+import ascendOsBlack from "@/assets/ascendos-inline-black.png";
 
 const LINKS = [
   { href: "#platform", label: "Platform" },
@@ -15,14 +15,14 @@ export function LandingFooter() {
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-4 md:flex-row md:justify-between md:px-6">
         <div className="flex items-center gap-2">
           <img
-            src={c4OsWhite}
-            alt="C4 OS"
-            className="theme-logo-dark h-7 w-auto shrink-0 object-contain"
+            src={ascendOsWhite}
+            alt="AscendOS"
+            className="theme-logo-dark h-4 w-auto shrink-0 object-contain"
           />
           <img
-            src={c4OsBlack}
-            alt="C4 OS"
-            className="theme-logo-light h-7 w-auto shrink-0 object-contain"
+            src={ascendOsBlack}
+            alt="AscendOS"
+            className="theme-logo-light h-4 w-auto shrink-0 object-contain"
           />
         </div>
         <nav className="flex flex-wrap items-center justify-center gap-5">
@@ -40,7 +40,7 @@ export function LandingFooter() {
           </Link>
         </nav>
         <div className="text-xs text-muted-foreground">
-          © {new Date().getFullYear()} C4 OS. All rights reserved.
+          © {new Date().getFullYear()} AscendOS. All rights reserved.
         </div>
       </div>
     </footer>

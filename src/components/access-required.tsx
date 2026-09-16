@@ -3,8 +3,8 @@ import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { disableDevBypass } from "@/hooks/use-auth";
-import c4OsWhite from "@/assets/c4-os-white.png";
-import c4OsBlack from "@/assets/c4-os-black.png";
+import ascendOsWhite from "@/assets/ascendos-stacked-white.png";
+import ascendOsBlack from "@/assets/ascendos-stacked-black.png";
 
 /**
  * Rendered by `_authenticated.tsx` in place of the app shell whenever a
@@ -30,13 +30,13 @@ export function AccessRequired({ email }: { email?: string | null }) {
         {/* Priority 9 — sized up in step with the sidebar/login placements. */}
         <Link to="/welcome" className="flex items-center justify-center gap-2">
           <img
-            src={c4OsWhite}
-            alt="C4 OS"
+            src={ascendOsWhite}
+            alt="AscendOS"
             className="theme-logo-dark h-14 w-auto shrink-0 object-contain"
           />
           <img
-            src={c4OsBlack}
-            alt="C4 OS"
+            src={ascendOsBlack}
+            alt="AscendOS"
             className="theme-logo-light h-14 w-auto shrink-0 object-contain"
           />
         </Link>
@@ -44,7 +44,7 @@ export function AccessRequired({ email }: { email?: string | null }) {
           <ShieldAlert className="h-8 w-8 text-amber-500" />
           <h1 className="text-2xl font-semibold">Access Required</h1>
           <p className="text-sm text-muted-foreground">
-            Your account does not currently have access to C4 InsightOS.
+            Your account does not currently have access to AscendOS.
             {email ? (
               <>
                 {" "}

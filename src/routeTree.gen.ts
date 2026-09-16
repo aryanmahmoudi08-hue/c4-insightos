@@ -25,7 +25,6 @@ import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.t
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
 import { Route as AuthenticatedSequencesRouteImport } from './routes/_authenticated.sequences'
 import { Route as AuthenticatedPermissionsRouteImport } from './routes/_authenticated.permissions'
-import { Route as AuthenticatedOutreachRouteImport } from './routes/_authenticated.outreach'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated.onboarding'
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated.leads'
 import { Route as AuthenticatedInboundDialerRouteImport } from './routes/_authenticated.inbound-dialer'
@@ -129,11 +128,6 @@ const AuthenticatedPermissionsRoute =
     path: '/permissions',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedOutreachRoute = AuthenticatedOutreachRouteImport.update({
-  id: '/outreach',
-  path: '/outreach',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
@@ -257,7 +251,6 @@ export interface FileRoutesByFullPath {
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
-  '/outreach': typeof AuthenticatedOutreachRoute
   '/permissions': typeof AuthenticatedPermissionsRoute
   '/sequences': typeof AuthenticatedSequencesRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -294,7 +287,6 @@ export interface FileRoutesByTo {
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
-  '/outreach': typeof AuthenticatedOutreachRoute
   '/permissions': typeof AuthenticatedPermissionsRoute
   '/sequences': typeof AuthenticatedSequencesRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -333,7 +325,6 @@ export interface FileRoutesById {
   '/_authenticated/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
-  '/_authenticated/outreach': typeof AuthenticatedOutreachRoute
   '/_authenticated/permissions': typeof AuthenticatedPermissionsRoute
   '/_authenticated/sequences': typeof AuthenticatedSequencesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
@@ -372,7 +363,6 @@ export interface FileRouteTypes {
     | '/inbound-dialer'
     | '/leads'
     | '/onboarding'
-    | '/outreach'
     | '/permissions'
     | '/sequences'
     | '/settings'
@@ -409,7 +399,6 @@ export interface FileRouteTypes {
     | '/inbound-dialer'
     | '/leads'
     | '/onboarding'
-    | '/outreach'
     | '/permissions'
     | '/sequences'
     | '/settings'
@@ -447,7 +436,6 @@ export interface FileRouteTypes {
     | '/_authenticated/inbound-dialer'
     | '/_authenticated/leads'
     | '/_authenticated/onboarding'
-    | '/_authenticated/outreach'
     | '/_authenticated/permissions'
     | '/_authenticated/sequences'
     | '/_authenticated/settings'
@@ -588,13 +576,6 @@ declare module '@tanstack/react-router' {
       path: '/permissions'
       fullPath: '/permissions'
       preLoaderRoute: typeof AuthenticatedPermissionsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/outreach': {
-      id: '/_authenticated/outreach'
-      path: '/outreach'
-      fullPath: '/outreach'
-      preLoaderRoute: typeof AuthenticatedOutreachRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/onboarding': {
@@ -750,7 +731,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedInboundDialerRoute: typeof AuthenticatedInboundDialerRoute
   AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
-  AuthenticatedOutreachRoute: typeof AuthenticatedOutreachRoute
   AuthenticatedPermissionsRoute: typeof AuthenticatedPermissionsRoute
   AuthenticatedSequencesRoute: typeof AuthenticatedSequencesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
@@ -779,7 +759,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedInboundDialerRoute: AuthenticatedInboundDialerRoute,
   AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
-  AuthenticatedOutreachRoute: AuthenticatedOutreachRoute,
   AuthenticatedPermissionsRoute: AuthenticatedPermissionsRoute,
   AuthenticatedSequencesRoute: AuthenticatedSequencesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,

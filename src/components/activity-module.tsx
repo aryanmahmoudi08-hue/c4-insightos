@@ -40,7 +40,18 @@ import {
   PhoneIncoming,
   X,
   Clock,
+  ChevronDown,
+  Video,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { TeamMemberFilter, ALL_MEMBERS } from "@/components/team-member-filter";
@@ -64,6 +75,14 @@ import {
 } from "@/components/objection-instrument";
 import { scoreText, pickTop, type MechanismKey } from "@/lib/content-mechanisms";
 import { normalizeSocialPlatform, SOCIAL_PLATFORMS, platformMatches } from "@/lib/social-platform";
+import { WebinarFilterBranches } from "@/components/webinar-filter";
+import { useWebinars } from "@/hooks/use-webinars";
+import {
+  ALL_WEBINARS_FILTER,
+  matchesWebinarFilter,
+  webinarFilterLabel,
+  type WebinarFilterValue,
+} from "@/lib/webinar-filter";
 import { evaluateAttributionEvidence } from "@/lib/acquisition";
 import {
   buildSpeedToLeadQueue,
@@ -404,6 +423,9 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const [member, setMember] = useState<string>(ALL_MEMBERS);
   const [platformFilter, setPlatformFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [webinarFilter, setWebinarFilter] = useState<WebinarFilterValue>(ALL_WEBINARS_FILTER);
+  const { webinars, paidWebinars, organicWebinars, unclassifiedWebinars, webinarsById } =
+    useWebinars();
   const [speedWeekday, setSpeedWeekday] = useState("all");
   const [speedTimeWindow, setSpeedTimeWindow] = useState("all");
   const [speedSlaSelected, setSpeedSlaSelected] = useState<"within" | "outside" | null>(null);
@@ -1149,7 +1171,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       const { data, error } = await (supabase as any)
         .from("lead_response_events")
         .select(
-          "lead_id,lead_created_at,lead_assigned_at,first_attempt_at,first_connection_at,rep_id,source_platform,lead_source,campaign,connected,qualified,set,booked_call,showed,closed,content_id,call_id,client_id,payment_id,event_at,event_type",
+          "lead_id,lead_created_at,lead_assigned_at,first_attempt_at,first_connection_at,rep_id,source_platform,lead_source,campaign,connected,qualified,set,booked_call,showed,closed,content_id,call_id,client_id,payment_id,event_at,event_type,webinar_id",
         )
         .eq("org_id", orgId!)
         .gte("lead_created_at", `${range.from}T00:00:00`)
@@ -1159,12 +1181,23 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       return data ?? [];
     },
   });
+  // Real per-lead webinar attribution (lead_response_events.webinar_id) —
+  // the only granular-enough instrument on this page to honestly support
+  // per-webinar filtering; the main rep-activity table is a daily aggregate
+  // with no per-lead/webinar link (see the inline note near the filter row).
+  const webinarFilteredSpeedEvents = useMemo(
+    () =>
+      speedEvents.filter((event: any) =>
+        matchesWebinarFilter(webinarFilter, event.webinar_id ?? null, webinarsById),
+      ),
+    [speedEvents, webinarFilter, webinarsById],
+  );
   const speedSummary = useMemo(() => {
     const weekday = speedWeekday === "all" ? undefined : Number(speedWeekday);
     const [hourStart, hourEnd] =
       speedTimeWindow === "all" ? [undefined, undefined] : speedTimeWindow.split("-").map(Number);
     const filtered = filterSpeedEvents(
-      speedEvents.map((event: any) => ({
+      webinarFilteredSpeedEvents.map((event: any) => ({
         leadId: event.lead_id,
         leadCreatedAt: event.lead_created_at,
         leadAssignedAt: event.lead_assigned_at,
@@ -1182,7 +1215,11 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         close: event.closed,
       })),
       {
-        sourcePlatform: platformFilter === "all" ? undefined : platformFilter,
+        // The webinar restriction is already applied above via
+        // webinarFilteredSpeedEvents — don't also pass "__webinar__" through
+        // as a literal platform name here, which would zero everything out.
+        sourcePlatform:
+          platformFilter === "all" || platformFilter === "__webinar__" ? undefined : platformFilter,
         leadSource: sourceFilter === "all" ? undefined : sourceFilter,
         weekday,
         hourStart,
@@ -1215,11 +1252,11 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         minutesToAttempt: calculateSpeedToLead(event).minutesToAttempt,
       })),
     };
-  }, [speedEvents, platformFilter, sourceFilter, speedWeekday, speedTimeWindow]);
+  }, [webinarFilteredSpeedEvents, platformFilter, sourceFilter, speedWeekday, speedTimeWindow]);
   const operationalSpeedQueue = useMemo(
     () =>
       buildSpeedToLeadQueue(
-        speedEvents.map((event: any) => ({
+        webinarFilteredSpeedEvents.map((event: any) => ({
           leadId: event.lead_id,
           leadCreatedAt: event.lead_created_at,
           leadAssignedAt: event.lead_assigned_at,
@@ -1234,18 +1271,26 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         [],
         { connectorAvailable: false },
       ),
-    [speedEvents],
+    [webinarFilteredSpeedEvents],
   );
   const rows = (allRows ?? []).filter((r) => {
     const matchesMember = member === ALL_MEMBERS || r.team_member_name === member;
     const source = String((r as Record<string, unknown>).lead_source ?? "").trim();
     const explicitPlatform =
       String((r as Record<string, unknown>).source_platform ?? "").trim() || null;
-    const matchesPlatform = platformMatches(
-      source,
-      platformFilter as (typeof SOCIAL_PLATFORMS)[number] | "all",
-      explicitPlatform,
-    );
+    // Webinar is a nested branch of Platform, not a separate filter — but
+    // this table is a per-rep-per-day aggregate with no real per-lead
+    // webinar link, so selecting it can't genuinely restrict these rows
+    // (see the inline note near the filter row); it stays a no-op here
+    // rather than fabricating a match.
+    const matchesPlatform =
+      platformFilter === "__webinar__"
+        ? true
+        : platformMatches(
+            source,
+            platformFilter as (typeof SOCIAL_PLATFORMS)[number] | "all",
+            explicitPlatform,
+          );
     const matchesSource = sourceFilter === "all" || source === sourceFilter;
     return matchesMember && matchesPlatform && matchesSource;
   });
@@ -1308,11 +1353,14 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     const source = String((r as Record<string, unknown>).lead_source ?? "").trim();
     const explicitPlatform =
       String((r as Record<string, unknown>).source_platform ?? "").trim() || null;
-    const matchesPlatform = platformMatches(
-      source,
-      platformFilter as (typeof SOCIAL_PLATFORMS)[number] | "all",
-      explicitPlatform,
-    );
+    const matchesPlatform =
+      platformFilter === "__webinar__"
+        ? true
+        : platformMatches(
+            source,
+            platformFilter as (typeof SOCIAL_PLATFORMS)[number] | "all",
+            explicitPlatform,
+          );
     const matchesSource = sourceFilter === "all" || source === sourceFilter;
     return matchesMember && matchesPlatform && matchesSource;
   });
@@ -2466,21 +2514,75 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
             <TeamMemberFilter role={role} value={member} onChange={setMember} />
-            <Select value={platformFilter} onValueChange={setPlatformFilter}>
-              <SelectTrigger className="w-[190px]">
-                <SelectValue placeholder="Platform: All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Platform: All</SelectItem>
+            {/* Platform — merges the reusable Webinar hierarchy as a nested
+                branch rather than a separate control, since a webinar isn't
+                a flat platform name the way Instagram/TikTok/etc. are. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex h-9 w-[190px] items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 text-sm shadow-sm ring-offset-background transition-all hover:border-ring/30 focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring"
+                >
+                  <span className="flex min-w-0 items-center gap-1.5 truncate">
+                    {platformFilter === "__webinar__" ? (
+                      <>
+                        <Video className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        {webinarFilterLabel(webinarFilter, webinarsById)}
+                      </>
+                    ) : platformFilter === "all" ? (
+                      "Platform: All"
+                    ) : (
+                      <>
+                        <PlatformIcon
+                          platform={platformFilter as (typeof SOCIAL_PLATFORMS)[number]}
+                        />
+                        {platformFilter}
+                      </>
+                    )}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-[220px]">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setPlatformFilter("all");
+                    setWebinarFilter(ALL_WEBINARS_FILTER);
+                  }}
+                >
+                  Platform: All
+                </DropdownMenuItem>
                 {SOCIAL_PLATFORMS.map((platform) => (
-                  <SelectItem key={platform} value={platform}>
+                  <DropdownMenuItem key={platform} onClick={() => setPlatformFilter(platform)}>
                     <span className="flex items-center gap-1.5">
                       <PlatformIcon platform={platform} /> {platform}
                     </span>
-                  </SelectItem>
+                  </DropdownMenuItem>
                 ))}
-              </SelectContent>
-            </Select>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>Webinar</DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-[240px]">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setPlatformFilter("__webinar__");
+                        setWebinarFilter(ALL_WEBINARS_FILTER);
+                      }}
+                    >
+                      All Webinars
+                    </DropdownMenuItem>
+                    <WebinarFilterBranches
+                      onChange={(next) => {
+                        setPlatformFilter("__webinar__");
+                        setWebinarFilter(next);
+                      }}
+                      paidWebinars={paidWebinars}
+                      organicWebinars={organicWebinars}
+                      unclassifiedWebinars={unclassifiedWebinars}
+                    />
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {/* Priority 7 — this filters the rep's own logged `lead_source`
                 (a capture-mechanism value like "Instagram Spiderweb"/
                 "Keyword"/"Inbound"), a lower-level dimension than the
@@ -2500,6 +2602,13 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               </SelectContent>
             </Select>
           </div>
+          {platformFilter === "__webinar__" && webinarFilter.kind !== "all" && (
+            <div className="w-full text-2xs text-muted-foreground">
+              {isDialer
+                ? "Webinar filtering applies to Speed to Lead below — the rep-activity log is logged per rep/day and has no per-lead webinar link."
+                : "This rep-activity log is logged per rep/day, not per lead — it has no per-webinar link to filter by."}
+            </div>
+          )}
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button size="sm">
@@ -3385,7 +3494,8 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             if (isDialer) attributionDeepLinkSearch.dialerId = member;
             else attributionDeepLinkSearch.setterId = member;
           }
-          if (platformFilter !== "all") attributionDeepLinkSearch.platform = platformFilter;
+          if (platformFilter !== "all" && platformFilter !== "__webinar__")
+            attributionDeepLinkSearch.platform = platformFilter;
 
           return (
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">

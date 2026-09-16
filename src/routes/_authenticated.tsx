@@ -80,7 +80,7 @@ function AuthedShell() {
       <main
         className={cn(
           "relative min-h-screen overflow-x-clip transition-[margin] duration-200",
-          collapsed ? "ml-0 md:ml-14" : "ml-0 md:ml-60",
+          collapsed ? "ml-0 md:ml-16" : "ml-0 md:ml-72",
         )}
       >
         <LiveTicker />

@@ -33,7 +33,7 @@ export function LandingAttribution() {
           align="center"
           eyebrow="Attribution"
           title="Where did the money actually come from?"
-          description="C4 OS traces cash back through the full chain it came from — never a single guessed touchpoint."
+          description="AscendOS traces cash back through the full chain it came from — never a single guessed touchpoint."
         />
 
         <FadeUp amount={0.2} className="mt-12">

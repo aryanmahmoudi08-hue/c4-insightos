@@ -32,7 +32,23 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Trophy, Activity as ActivityIcon, PhoneCall } from "lucide-react";
+import {
+  Plus,
+  Trophy,
+  Activity as ActivityIcon,
+  PhoneCall,
+  ChevronDown,
+  Video,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { AttributionPathPanel, type AttributionPath } from "@/components/attribution-path-panel";
@@ -48,6 +64,12 @@ import {
   CartesianGrid,
   LineChart,
   Line,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  Legend,
 } from "recharts";
 import { PageHero } from "@/components/page-hero";
 import { FunnelInstrument } from "@/components/funnel-instrument";
@@ -87,6 +109,14 @@ import { RepLeaderboard, type RepMetricOption } from "@/components/rep-leaderboa
 import type { DateRange } from "@/components/date-range-picker";
 import { mockCalls, mockCallObjectionStats } from "@/lib/dev-mock-data";
 import { normalizeSocialPlatform, SOCIAL_PLATFORMS, platformMatches } from "@/lib/social-platform";
+import { WebinarFilterBranches } from "@/components/webinar-filter";
+import { useWebinars } from "@/hooks/use-webinars";
+import {
+  ALL_WEBINARS_FILTER,
+  matchesWebinarFilter,
+  webinarFilterLabel,
+  type WebinarFilterValue,
+} from "@/lib/webinar-filter";
 import { GlassTableShell, Pagination, usePagination } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -108,6 +138,18 @@ export const Route = createFileRoute("/_authenticated/closer")({ component: Clos
 
 const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%");
 const fmtN0 = (n: number) => Math.round(n).toLocaleString();
+// Same 5-color palette as the Setter Scorecard's radar
+// (src/components/activity-module.tsx) — kept as its own local copy here
+// rather than a shared export since that file doesn't currently export it;
+// duplicating 5 color values is simpler than introducing a new shared
+// module for it, and keeps the two scorecards visually identical.
+const CLOSER_RADAR_COLORS = [
+  "oklch(0.7 0.2 258)",
+  "oklch(0.72 0.18 25)",
+  "oklch(0.7 0.18 145)",
+  "oklch(0.72 0.18 60)",
+  "oklch(0.7 0.18 320)",
+];
 const CLOSER_SOURCES = ["Instagram Spiderweb", "Keyword", "Inbound", "Referral", "Ads", "Other"];
 
 interface CloserLbPerson {
@@ -380,6 +422,9 @@ function Closer() {
   const { range } = useDateRange();
   const [member, setMember] = useState<string>(ALL_MEMBERS);
   const [platformFilter, setPlatformFilter] = useState("all");
+  const [webinarFilter, setWebinarFilter] = useState<WebinarFilterValue>(ALL_WEBINARS_FILTER);
+  const { webinars, paidWebinars, organicWebinars, unclassifiedWebinars, webinarsById } =
+    useWebinars();
   // Part C3 — leaderboard's own metric selector + independent date range,
   // defaulting to inherit the page range until explicitly overridden.
   const [lbMetric, setLbMetric] = useState<string>("cash");
@@ -946,13 +991,44 @@ function Closer() {
     },
   });
 
+  // calls.source_webinar_id is real (the additive analytics migration) but
+  // not yet in the generated client type snapshot, and isn't worth losing
+  // the main `calls` query's strict typing over — fetched as its own small,
+  // narrowly-typed lookup instead (same eslint-disable convention already
+  // used by webinar-analytics.tsx for these untyped webinar tables/columns).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const webinarLinkDb = supabase as any;
+  const { data: callWebinarLinks } = useQuery({
+    queryKey: ["calls-webinar-links", orgId, range.from, range.to, devBypass, demoMode],
+    enabled: !!orgId && (calls?.length ?? 0) > 0,
+    queryFn: async (): Promise<Array<{ id: string; source_webinar_id: string | null }>> => {
+      if (devBypass || demoMode) return [];
+      const { data, error } = await webinarLinkDb
+        .from("calls")
+        .select("id, source_webinar_id")
+        .eq("org_id", orgId!)
+        .gte("scheduled_for", `${range.from}T00:00:00`)
+        .lte("scheduled_for", `${range.to}T23:59:59`)
+        .limit(500);
+      if (error) throw error;
+      return (data ?? []) as Array<{ id: string; source_webinar_id: string | null }>;
+    },
+  });
+  const callWebinarById = useMemo(
+    () => new Map((callWebinarLinks ?? []).map((c) => [c.id, c.source_webinar_id])),
+    [callWebinarLinks],
+  );
+
   const list = (calls ?? []).filter((c) => {
     const matchesMember = member === ALL_MEMBERS || c.closer_name === member;
     const source = String((c as Record<string, unknown>).source_platform ?? "").trim();
-    return (
-      matchesMember &&
-      platformMatches(source, platformFilter as (typeof SOCIAL_PLATFORMS)[number] | "all")
-    );
+    // Webinar is a nested branch of Platform, not a separate filter — only
+    // one of the two facets is active at a time, matching the merged control.
+    const matchesPlatformOrWebinar =
+      platformFilter === "__webinar__"
+        ? matchesWebinarFilter(webinarFilter, callWebinarById.get(c.id) ?? null, webinarsById)
+        : platformMatches(source, platformFilter as (typeof SOCIAL_PLATFORMS)[number] | "all");
+    return matchesMember && matchesPlatformOrWebinar;
   });
   const {
     page: callsPage,
@@ -962,6 +1038,16 @@ function Closer() {
     total: callsTotal,
     pageSize: callsPageSize,
   } = usePagination(list, 25);
+  // Closer Scorecard tab's own detail table — the closer equivalent of
+  // "DM Setter Input," row-per-call for the same date range, unfiltered by
+  // the member/platform picker (same convention as the radar above it).
+  const {
+    page: scorecardTablePage,
+    setPage: setScorecardTablePage,
+    pageCount: scorecardTablePageCount,
+    paged: pagedScorecardCalls,
+    total: scorecardTableTotal,
+  } = usePagination((calls ?? []) as typeof list, 25);
   // Per-call totals
   const callsBooked = list.length;
   const callsShowed = list.filter((c) => c.showed).length;
@@ -1293,13 +1379,17 @@ function Closer() {
   const avgCashPerShowed = showed ? cashCents / showed : 0;
   const avgCashPerClosed = closes ? cashCents / closes : 0;
 
-  // Prior-period totals — same dual-source max() logic as the current period above.
+  // Prior-period totals — same dual-source max() logic as the current period
+  // above. This query doesn't select `id`, so there's no join path to
+  // `source_webinar_id` here — Webinar stays a no-op on this facet rather
+  // than fabricating a match (or zeroing every prior-period row out).
   const prevList = (prevCalls ?? []).filter((c) => {
     const matchesMember = member === ALL_MEMBERS || c.closer_name === member;
     const source = String((c as Record<string, unknown>).source_platform ?? "").trim();
     return (
       matchesMember &&
-      platformMatches(source, platformFilter as (typeof SOCIAL_PLATFORMS)[number] | "all")
+      (platformFilter === "__webinar__" ||
+        platformMatches(source, platformFilter as (typeof SOCIAL_PLATFORMS)[number] | "all"))
     );
   });
   const prevCallsBooked = prevList.length;
@@ -1484,6 +1574,134 @@ function Closer() {
       })
       .sort((a, b) => b.cash - a.cash);
   }, [calls, devBypass]);
+
+  // Closer Scorecard radar — six axes covering the full closer funnel, not
+  // just show/qual/offer/close. Three of these (Close Rate, Offer → Close
+  // Rate) are already real 0-100 percentages by construction, same as the
+  // Setter Scorecard's own rate axes. The other three (Cash Collected,
+  // Revenue Generated, Calls on Calendar, # of Closes) are dollars/counts on
+  // completely different scales, so — exactly like the Setter Scorecard
+  // scales its own `Sets` axis relative to the top performer
+  // (src/components/activity-module.tsx) — each is normalized to the top
+  // closer in range rather than plotted as a raw number next to a
+  // percentage. `raw` carries the real, unnormalized value per axis/closer
+  // (real dollars, real counts) for the tooltip — the radar's own plotted
+  // numbers are never shown to the user as-is for these four axes.
+  const closerRadar = useMemo(() => {
+    const byName = new Map<string, typeof list>();
+    for (const c of calls ?? []) {
+      if (!c.closer_name) continue;
+      const arr = byName.get(c.closer_name) ?? [];
+      arr.push(c);
+      byName.set(c.closer_name, arr);
+    }
+    // Closers with zero booked calls in range are dropped entirely rather
+    // than plotted as a flat 0% shape — a real closer with no activity this
+    // period isn't the same as a closer who scored 0 on every axis, and the
+    // radar can't visually distinguish "no data" from "measured zero."
+    const people = Array.from(byName.entries())
+      .filter(([, rows]) => rows.length > 0)
+      .map(([name, rows]) => {
+        const booked = rows.length;
+        const showed = rows.filter((r) => r.showed).length;
+        const offers = rows.filter((r) => r.offer_made).length;
+        const closes = rows.filter((r) => r.closed || r.status === "closed").length;
+        const cashCents = rows.reduce((s, r) => s + (r.cash_collected_cents ?? 0), 0);
+        const revenueCents = rows.reduce((s, r) => s + (r.contract_value_cents ?? 0), 0);
+        return {
+          name,
+          booked,
+          closes,
+          cashCents,
+          revenueCents,
+          closeRate: showed ? Math.round((closes / showed) * 100) : 0,
+          offerToCloseRate: offers ? Math.round((closes / offers) * 100) : 0,
+        };
+      });
+
+    const maxBooked = Math.max(1, ...people.map((p) => p.booked));
+    const maxCloses = Math.max(1, ...people.map((p) => p.closes));
+    const maxCash = Math.max(1, ...people.map((p) => p.cashCents));
+    const maxRevenue = Math.max(1, ...people.map((p) => p.revenueCents));
+
+    const axes = [
+      "Close Rate",
+      "Cash Collected",
+      "Revenue Generated",
+      "Offer → Close Rate",
+      "Calls on Calendar",
+      "# of Closes",
+    ] as const;
+
+    const normalized = people.map((p) => ({
+      name: p.name,
+      "Close Rate": p.closeRate,
+      "Cash Collected": Math.round((p.cashCents / maxCash) * 100),
+      "Revenue Generated": Math.round((p.revenueCents / maxRevenue) * 100),
+      "Offer → Close Rate": p.offerToCloseRate,
+      "Calls on Calendar": Math.round((p.booked / maxBooked) * 100),
+      "# of Closes": Math.round((p.closes / maxCloses) * 100),
+    }));
+
+    const raw: Record<(typeof axes)[number], Record<string, string>> = {
+      "Close Rate": {},
+      "Cash Collected": {},
+      "Revenue Generated": {},
+      "Offer → Close Rate": {},
+      "Calls on Calendar": {},
+      "# of Closes": {},
+    };
+    for (const p of people) {
+      raw["Close Rate"][p.name] = `${p.closeRate}%`;
+      raw["Cash Collected"][p.name] = `$${Math.round(p.cashCents / 100).toLocaleString()}`;
+      raw["Revenue Generated"][p.name] = `$${Math.round(p.revenueCents / 100).toLocaleString()}`;
+      raw["Offer → Close Rate"][p.name] = `${p.offerToCloseRate}%`;
+      raw["Calls on Calendar"][p.name] = `${p.booked}`;
+      raw["# of Closes"][p.name] = `${p.closes}`;
+    }
+
+    const rows = axes.map((axis) => {
+      const row: Record<string, number | string> = { axis };
+      for (const p of normalized) row[p.name] = p[axis];
+      return row;
+    });
+    return { rows, names: people.map((p) => p.name), raw };
+  }, [calls]);
+
+  // Custom tooltip for the radar: Recharts would otherwise show the
+  // normalized 0-100 plotted value, which is meaningless for the
+  // dollar/count axes — this looks up the real value from `closerRadar.raw`
+  // instead, e.g. "Cash Collected: $18,500".
+  const ClosingRadarTooltip = ({
+    active,
+    payload,
+    label,
+  }: {
+    active?: boolean;
+    payload?: Array<{ name?: string; color?: string; value?: number | string }>;
+    label?: string;
+  }) => {
+    if (!active || !payload || payload.length === 0) return null;
+    return (
+      <div className="rounded-md border border-border bg-popover px-3 py-2 text-xs shadow-md">
+        <div className="mb-1 font-semibold text-foreground">{label}</div>
+        <div className="space-y-0.5">
+          {payload.map((entry) => (
+            <div key={entry.name} className="flex items-center gap-1.5">
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: entry.color }} />
+              <span className="text-muted-foreground">{entry.name}:</span>
+              <span className="font-medium tabular-nums text-foreground">
+                {(label &&
+                  entry.name &&
+                  closerRadar.raw[label as keyof typeof closerRadar.raw]?.[entry.name]) ??
+                  entry.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   // Closer x weekday call-volume heatmap — derives naturally from `calls`/`scorecard`.
   // Confirmed real bug (Sales Tracking Part 2): row *labels* previously came
@@ -1770,21 +1988,75 @@ function Closer() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
             <TeamMemberFilter role="closer" value={member} onChange={setMember} />
-            <Select value={platformFilter} onValueChange={setPlatformFilter}>
-              <SelectTrigger className="w-[190px]">
-                <SelectValue placeholder="Platform: All" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Platform: All</SelectItem>
+            {/* Platform — merges the reusable Webinar hierarchy as a nested
+                branch rather than a separate control, since a webinar isn't
+                a flat platform name the way Instagram/TikTok/etc. are. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex h-9 w-[190px] items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 text-sm shadow-sm ring-offset-background transition-all hover:border-ring/30 focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring"
+                >
+                  <span className="flex min-w-0 items-center gap-1.5 truncate">
+                    {platformFilter === "__webinar__" ? (
+                      <>
+                        <Video className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        {webinarFilterLabel(webinarFilter, webinarsById)}
+                      </>
+                    ) : platformFilter === "all" ? (
+                      "Platform: All"
+                    ) : (
+                      <>
+                        <PlatformIcon
+                          platform={platformFilter as (typeof SOCIAL_PLATFORMS)[number]}
+                        />
+                        {platformFilter}
+                      </>
+                    )}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-[220px]">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setPlatformFilter("all");
+                    setWebinarFilter(ALL_WEBINARS_FILTER);
+                  }}
+                >
+                  Platform: All
+                </DropdownMenuItem>
                 {SOCIAL_PLATFORMS.map((platform) => (
-                  <SelectItem key={platform} value={platform}>
+                  <DropdownMenuItem key={platform} onClick={() => setPlatformFilter(platform)}>
                     <span className="flex items-center gap-1.5">
                       <PlatformIcon platform={platform} /> {platform}
                     </span>
-                  </SelectItem>
+                  </DropdownMenuItem>
                 ))}
-              </SelectContent>
-            </Select>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>Webinar</DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-[240px]">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setPlatformFilter("__webinar__");
+                        setWebinarFilter(ALL_WEBINARS_FILTER);
+                      }}
+                    >
+                      All Webinars
+                    </DropdownMenuItem>
+                    <WebinarFilterBranches
+                      onChange={(next) => {
+                        setPlatformFilter("__webinar__");
+                        setWebinarFilter(next);
+                      }}
+                      paidWebinars={paidWebinars}
+                      organicWebinars={organicWebinars}
+                      unclassifiedWebinars={unclassifiedWebinars}
+                    />
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -3659,6 +3931,7 @@ function Closer() {
           <TabsList>
             <TabsTrigger value="objections">Objection frequency</TabsTrigger>
             <TabsTrigger value="ttc">Time-to-close trend</TabsTrigger>
+            <TabsTrigger value="scorecard">Scorecard</TabsTrigger>
           </TabsList>
 
           <TabsContent value="objections">
@@ -3758,6 +4031,153 @@ function Closer() {
                 </div>
               )}
             </div>
+          </TabsContent>
+
+          {/* Closer Scorecard — mirrors src/components/activity-module.tsx's
+              Setter Scorecard tab (same RadarChart config, same normalized
+              0-100 axes, same up-to-5-reps legend, same detail table right
+              underneath), adapted to the closer funnel: Show → Qual → Offer
+              → Close instead of Sets/Show/Close/Qual. */}
+          <TabsContent value="scorecard">
+            <div className="rounded-lg border border-border bg-card p-4">
+              <div className="mb-3">
+                <div className="text-sm font-semibold">
+                  Closer scorecard · Close Rate / Cash Collected / Revenue / Offer→Close / Calls on
+                  Calendar / Closes
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Normalized 0–100. Close Rate and Offer → Close Rate are real percentages already
+                  on that scale; Cash Collected, Revenue Generated, Calls on Calendar, and # of
+                  Closes are scaled relative to the top closer in range (same method the Setter
+                  Scorecard uses for Sets) since dollars and counts can't be compared directly
+                  against percentages. Hover a point for the real underlying value.
+                </div>
+              </div>
+              {closerRadar.names.length === 0 ? (
+                <div className="p-10 text-center text-sm text-muted-foreground">
+                  No booked calls in this date range yet.
+                </div>
+              ) : (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart data={closerRadar.rows}>
+                      <PolarGrid stroke="var(--border)" />
+                      <PolarAngleAxis
+                        dataKey="axis"
+                        stroke="var(--muted-foreground)"
+                        fontSize={11}
+                      />
+                      <PolarRadiusAxis
+                        stroke="var(--muted-foreground)"
+                        fontSize={9}
+                        angle={30}
+                        domain={[0, 100]}
+                      />
+                      {closerRadar.names.slice(0, 5).map((name, i) => (
+                        <Radar
+                          key={name}
+                          name={name}
+                          dataKey={name}
+                          stroke={CLOSER_RADAR_COLORS[i]}
+                          fill={CLOSER_RADAR_COLORS[i]}
+                          fillOpacity={0.25}
+                        />
+                      ))}
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Tooltip content={<ClosingRadarTooltip />} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4" id="closer-scorecard-input" />
+            <GlassTableShell
+              toolbar={
+                <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
+                  Closer Scorecard Input · {scorecardTableTotal} rows
+                </div>
+              }
+              footer={
+                scorecardTableTotal > 0 ? (
+                  <Pagination
+                    page={scorecardTablePage}
+                    pageCount={scorecardTablePageCount}
+                    onPage={setScorecardTablePage}
+                    total={scorecardTableTotal}
+                    pageSize={25}
+                  />
+                ) : undefined
+              }
+            >
+              <table className="w-full text-sm">
+                <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="text-left p-2.5">Closer</th>
+                    <th className="text-left p-2.5">Date</th>
+                    <th className="text-left p-2.5">Source</th>
+                    <th className="text-center p-2.5">Showed</th>
+                    <th className="text-center p-2.5">Offer</th>
+                    <th className="text-center p-2.5">Closed</th>
+                    <th className="text-center p-2.5">Recovered</th>
+                    <th className="text-right p-2.5 font-sans tabular-nums">Cash</th>
+                    <th className="text-right p-2.5 font-sans tabular-nums">Revenue</th>
+                    <th className="text-right p-2.5 font-sans tabular-nums">Deposit</th>
+                    <th className="text-left p-2.5">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedScorecardCalls.map((c) => (
+                    <tr key={c.id} className="border-t border-border/70 hover:bg-muted/20">
+                      <td className="p-2.5 font-medium">{c.closer_name || "—"}</td>
+                      <td className="p-2.5 text-xs text-muted-foreground">
+                        {c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="p-2.5 text-xs">{c.source_platform || "—"}</td>
+                      <td className="p-2.5 text-center font-mono text-xs">
+                        {c.showed ? "TRUE" : "FALSE"}
+                      </td>
+                      <td className="p-2.5 text-center font-mono text-xs">
+                        {c.offer_made ? "TRUE" : "FALSE"}
+                      </td>
+                      <td className="p-2.5 text-center font-mono text-xs">
+                        {c.closed || c.status === "closed" ? "TRUE" : "FALSE"}
+                      </td>
+                      <td className="p-2.5 text-center font-mono text-xs">
+                        {c.recovered_from_call_id ? "TRUE" : "FALSE"}
+                      </td>
+                      <td className="p-2.5 text-right font-sans tabular-nums text-[color:var(--color-success)]">
+                        {c.cash_collected_cents
+                          ? "$" + (c.cash_collected_cents / 100).toLocaleString()
+                          : "—"}
+                      </td>
+                      <td className="p-2.5 text-right font-sans tabular-nums">
+                        {c.contract_value_cents
+                          ? "$" + (c.contract_value_cents / 100).toLocaleString()
+                          : "—"}
+                      </td>
+                      <td className="p-2.5 text-right font-sans tabular-nums">
+                        {c.deposit_cents ? "$" + (c.deposit_cents / 100).toLocaleString() : "—"}
+                      </td>
+                      <td className="p-2.5 text-xs text-muted-foreground max-w-[240px] truncate">
+                        {c.call_summary || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {scorecardTableTotal === 0 && (
+                    <tr>
+                      <td colSpan={11}>
+                        <EmptyState
+                          icon={<PhoneCall className="h-4 w-4" />}
+                          title="No calls in this date range"
+                          description="Log your first call."
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </GlassTableShell>
           </TabsContent>
         </Tabs>
 

@@ -2,7 +2,14 @@ import type { AcquisitionSpendRecord } from "./acquisition";
 import type { WebinarEventRow } from "./webinar-events";
 import type { WebinarMetricRow } from "./webinar-analytics";
 
-type MockWebinar = { id: string; name: string; status: string; starts_at: string; source: "mock" };
+type MockWebinar = {
+  id: string;
+  name: string;
+  status: string;
+  starts_at: string;
+  source: "mock";
+  webinar_type: "paid" | "organic" | "unclassified";
+};
 
 export type MockWebinarFixture = {
   webinars: MockWebinar[];
@@ -242,6 +249,7 @@ export function createMockWebinarFixture(base = new Date()): MockWebinarFixture 
       status: "completed",
       starts_at: isoTime(base, 7, 18),
       source: "mock",
+      webinar_type: "paid",
     },
     {
       id: "mock-webinar-b",
@@ -249,6 +257,7 @@ export function createMockWebinarFixture(base = new Date()): MockWebinarFixture 
       status: "completed",
       starts_at: isoTime(base, 14, 18),
       source: "mock",
+      webinar_type: "paid",
     },
     {
       id: "mock-webinar-c",
@@ -256,6 +265,9 @@ export function createMockWebinarFixture(base = new Date()): MockWebinarFixture 
       status: "completed",
       starts_at: isoTime(base, 21, 18),
       source: "mock",
+      // Organic-classified with no ad spend connected — demonstrates the
+      // "ROAS N/A — Organic" case rather than a fabricated 0x/Unavailable.
+      webinar_type: "organic",
     },
   ];
   const profiles = [
@@ -362,28 +374,19 @@ export function createMockWebinarFixture(base = new Date()): MockWebinarFixture 
         engagement: 55,
         replay: 28,
       },
-      spend: [
-        {
-          campaign: "mock-campaign-tiktok-c",
-          campaignName: "Client Acquisition Spark",
-          platform: "TikTok",
-          contentId: CONTENT_C,
-          spend: 140000,
-          impressions: 130000,
-          clicks: 6100,
-          visits: 4700,
-        },
-        {
-          campaign: "mock-campaign-x-c",
-          campaignName: "Client Acquisition Threads",
-          platform: "X / Twitter",
-          contentId: CONTENT_C,
-          spend: 60000,
-          impressions: 75000,
-          clicks: 1900,
-          visits: 1450,
-        },
-      ],
+      // Organic-classified webinar (see `webinar_type` above) — no
+      // acquisition_spend rows on purpose, so its ROAS is genuinely
+      // inapplicable (N/A — Organic) rather than a fabricated 0x.
+      spend: [] as {
+        campaign: string;
+        campaignName: string;
+        platform: string;
+        contentId: string;
+        spend: number;
+        impressions: number;
+        clicks: number;
+        visits: number;
+      }[],
     },
   ];
   const metrics: Record<string, WebinarMetricRow[]> = {};

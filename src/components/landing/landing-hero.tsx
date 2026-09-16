@@ -27,7 +27,7 @@ export function LandingHero() {
         >
           <div className="eyebrow inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5">
             <Sparkles className="h-3 w-3 text-accent" />
-            C4 OS · Operating System
+            AscendOS · Operating System
           </div>
           <h1 className="display-serif mt-5 text-4xl leading-[1.05] sm:text-5xl md:text-6xl">
             Run the entire business
@@ -35,14 +35,14 @@ export function LandingHero() {
             from one operating system.
           </h1>
           <p className="mt-6 max-w-lg text-base leading-relaxed text-muted-foreground md:text-lg">
-            C4 OS connects marketing, leads, sales, revenue, team performance, client payments,
+            AscendOS connects marketing, leads, sales, revenue, team performance, client payments,
             retention, attribution, and video intelligence into a single operating picture — so you
             always know what happened, what needs attention, and what to do next.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Button asChild size="lg">
               <Link to="/login">
-                Access C4 OS
+                Access AscendOS
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>

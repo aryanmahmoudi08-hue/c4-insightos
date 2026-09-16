@@ -9,6 +9,9 @@ import { StatCard } from "@/components/stat-card";
 import { SlimHeader } from "@/components/slim-header";
 import { Sparkline } from "@/components/sparkline";
 import { EmptyState } from "@/components/empty-state";
+import { WebinarFilter } from "@/components/webinar-filter";
+import { useWebinars } from "@/hooks/use-webinars";
+import { ALL_WEBINARS_FILTER, type WebinarFilterValue } from "@/lib/webinar-filter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -326,6 +329,9 @@ function VslPage() {
     onError: (e: any) => toast.error(e.message || "Failed to update action status"),
   });
   const [kind, setKind] = useState<VslKind | "faq">("main");
+  const [webinarFilter, setWebinarFilter] = useState<WebinarFilterValue>(ALL_WEBINARS_FILTER);
+  const { webinars, paidWebinars, organicWebinars, unclassifiedWebinars, webinarsById } =
+    useWebinars();
 
   const grouped = useMemo(() => {
     const m: Record<VslKind, any[]> = {
@@ -375,6 +381,29 @@ function VslPage() {
                 subtitle="Import Wistia metrics, drop your transcript, and let AI point at the drop-off."
                 right={<NewVslButton kind={k} />}
               />
+              {k === "webinar" && (
+                <div className="space-y-2">
+                  <WebinarFilter
+                    value={webinarFilter}
+                    onChange={setWebinarFilter}
+                    webinars={webinars}
+                    paidWebinars={paidWebinars}
+                    organicWebinars={organicWebinars}
+                    unclassifiedWebinars={unclassifiedWebinars}
+                    webinarsById={webinarsById}
+                  />
+                  {webinarFilter.kind !== "all" && (
+                    <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">
+                        Webinar attribution unavailable
+                      </span>{" "}
+                      — Webinar VSL videos aren't currently linked to a specific webinar record in
+                      the data model, so this selection can't filter the videos below. Showing all
+                      Webinar VSL videos.
+                    </div>
+                  )}
+                </div>
+              )}
               {isLoading && <div className="text-sm text-muted-foreground">Loading…</div>}
               {k === "testimonial" ? (
                 <TestimonialVideosSection videos={grouped[k]} range={range} isLoading={isLoading} />

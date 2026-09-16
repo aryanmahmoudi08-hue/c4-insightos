@@ -17,7 +17,7 @@ export function LandingCta() {
           <div className="mt-8 flex justify-center">
             <Button asChild size="lg">
               <Link to="/login">
-                Access C4 OS
+                Access AscendOS
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>

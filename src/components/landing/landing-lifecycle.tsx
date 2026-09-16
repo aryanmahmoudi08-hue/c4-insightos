@@ -52,7 +52,7 @@ export function LandingLifecycle() {
           align="center"
           eyebrow="One connected system"
           title="See the business as one system, not a funnel."
-          description="Real businesses branch and merge — several sources feed the same lead, two teams share the same booked call, one outcome splits into retention or refund. C4 OS models the actual relationships, not a forced straight line."
+          description="Real businesses branch and merge — several sources feed the same lead, two teams share the same booked call, one outcome splits into retention or refund. AscendOS models the actual relationships, not a forced straight line."
         />
 
         <div className="mt-14 flex flex-col items-center">

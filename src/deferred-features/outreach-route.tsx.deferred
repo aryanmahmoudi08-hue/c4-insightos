@@ -1,3 +1,23 @@
+// DEFERRED FEATURE — Messaging (Email & SMS).
+//
+// This was the live /outreach route (nav label "Messaging (Email & SMS)").
+// It's intentionally hidden/deferred, not deleted: the sidebar nav entry
+// (src/components/app-sidebar.tsx) and command-palette entry
+// (src/components/command-palette.tsx) that linked to it have been removed,
+// and this file was moved out of src/routes/ (renamed .tsx -> .tsx.deferred)
+// so TanStack Router's file-based codegen no longer registers /outreach as
+// a route at all.
+//
+// The underlying Supabase tables (outreach_lists, outreach_recipients,
+// outreach_messages — see supabase/migrations/20260610031508_*.sql) were
+// left untouched; this component's queries/mutations still target them
+// as-is. The permissions.ts "outreach" resource entry was also left in
+// place (harmless — it just becomes a no-op row in the permission editor
+// with nothing to gate).
+//
+// To restore: move this file back to src/routes/_authenticated.outreach.tsx
+// (renaming .tsx.deferred -> .tsx), re-add the sidebar/command-palette nav
+// entries, and let the route tree regenerate.
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";

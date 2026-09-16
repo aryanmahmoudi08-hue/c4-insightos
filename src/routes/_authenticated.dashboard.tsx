@@ -24,7 +24,26 @@ import {
   CheckCircle2,
   Lightbulb,
   ShieldAlert,
+  ChevronDown,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { WebinarFilterBranches } from "@/components/webinar-filter";
+import { useWebinars } from "@/hooks/use-webinars";
+import {
+  ALL_WEBINARS_FILTER,
+  matchesWebinarFilter,
+  webinarFilterLabel,
+  type WebinarFilterValue,
+  type WebinarRecord,
+} from "@/lib/webinar-filter";
 import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { cn } from "@/lib/utils";
@@ -192,7 +211,12 @@ async function fetchPeriod(
   orgId: string,
   from: string,
   to: string,
-  filters: { socialPlatform: SocialPlatform | "all"; acquisitionSource: AcquisitionSource | "all" },
+  filters: {
+    socialPlatform: SocialPlatform | "all";
+    acquisitionSource: AcquisitionSource | "all" | "__webinar__";
+    webinarFilter: WebinarFilterValue;
+    webinarsById: Map<string, WebinarRecord>;
+  },
   demoMode = false,
 ) {
   const fromISO = `${from}T00:00:00`;
@@ -207,6 +231,7 @@ async function fetchPeriod(
     full_name: string | null;
     email: string | null;
     status: string | null;
+    source_webinar_id?: string | null;
   }[];
   let callsRaw: {
     id: string;
@@ -225,6 +250,10 @@ async function fetchPeriod(
     scheduled_for: string | null;
   }[];
   let contentRaw: { views: number | null; leads_generated: number | null; captured_at: string }[];
+  // Real per-call webinar attribution, only ever fetched when the Webinar
+  // filter branch is selected (see below) — never fabricated for demo mode,
+  // which has no webinar fixture of its own.
+  let callWebinarLinks: Array<{ id: string; source_webinar_id: string | null }>;
   let settersRaw: {
     cash_collected_cents: number | null;
     total_revenue_cents: number | null;
@@ -253,8 +282,17 @@ async function fetchPeriod(
     settersRaw = demo.setterActivity.filter(
       (a) => a.activity_date >= from && a.activity_date <= to,
     );
+    callWebinarLinks = [];
   } else {
-    const [pays, leads, calls, content, setters] = await Promise.all([
+    // calls.source_webinar_id is real (the additive analytics migration)
+    // but not yet in the generated client type snapshot, and isn't worth
+    // losing the main `calls` query's strict typing over — fetched as its
+    // own small, narrowly-typed lookup, only when the Webinar filter branch
+    // is actually selected (same documented gap webinar-analytics.tsx and
+    // closer.tsx already work around).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const webinarLinkDb = supabase as any;
+    const [pays, leads, calls, content, setters, callWebinarLinksRes] = await Promise.all([
       supabase
         .from("payments")
         .select("amount_cents, collected_at")
@@ -268,7 +306,9 @@ async function fetchPeriod(
       // types, so both periods fetch the same superset of columns.
       supabase
         .from("leads")
-        .select("id, created_at, source_platform, source_campaign, full_name, email, status")
+        .select(
+          "id, created_at, source_platform, source_campaign, full_name, email, status, source_webinar_id",
+        )
         .eq("org_id", orgId)
         .gte("created_at", fromISO)
         .lte("created_at", toISO),
@@ -294,30 +334,63 @@ async function fetchPeriod(
         .eq("org_id", orgId)
         .gte("activity_date", from)
         .lte("activity_date", to),
+      filters.acquisitionSource === "__webinar__"
+        ? webinarLinkDb
+            .from("calls")
+            .select("id, source_webinar_id")
+            .eq("org_id", orgId)
+            .gte("created_at", fromISO)
+            .lte("created_at", toISO)
+        : Promise.resolve({ data: [] as Array<{ id: string; source_webinar_id: string | null }> }),
     ]);
     payList = pays.data ?? [];
     leadsRaw = leads.data ?? [];
     callsRaw = calls.data ?? [];
     contentRaw = content.data ?? [];
     settersRaw = setters.data ?? [];
+    callWebinarLinks = (callWebinarLinksRes.data ?? []) as Array<{
+      id: string;
+      source_webinar_id: string | null;
+    }>;
   }
+  const callWebinarById = new Map(callWebinarLinks.map((c) => [c.id, c.source_webinar_id]));
 
-  const matches = (row: { source_platform?: string | null; source_campaign?: string | null }) =>
-    (filters.socialPlatform === "all" ||
-      normalizeSocialPlatform(row.source_campaign, row.source_platform) ===
-        filters.socialPlatform) &&
-    // Priority 7 fix — this previously passed `row.source_campaign` (a
-    // campaign NAME, e.g. "Q4 Instagram Push") as the acquisition-source
-    // evidence, which only ever matched by accidental substring overlap.
-    // `row.source_platform` is the real, same evidence the Platform filter
-    // above already uses — no `traffic_sources.category` join exists at
-    // this query level (unlike Attribution Command Center's dedicated
-    // query), so Acquisition Source and Platform will often agree here;
-    // that's honest given what's actually available, not a fabricated
-    // distinction.
-    acquisitionSourceMatches(null, filters.acquisitionSource, row.source_platform);
-  const leadList = leadsRaw.filter(matches);
-  const callList = callsRaw.filter(matches);
+  const matchesSocialPlatform = (row: {
+    source_platform?: string | null;
+    source_campaign?: string | null;
+  }) =>
+    filters.socialPlatform === "all" ||
+    normalizeSocialPlatform(row.source_campaign, row.source_platform) === filters.socialPlatform;
+  // Webinar is a nested branch of Acquisition Source, not a separate
+  // filter — only one of the two facets is active at a time, matching the
+  // merged control.
+  const matchesAcquisitionOrWebinar = (
+    row: { source_platform?: string | null },
+    webinarId: string | null,
+  ) =>
+    filters.acquisitionSource === "__webinar__"
+      ? matchesWebinarFilter(filters.webinarFilter, webinarId, filters.webinarsById)
+      : // Priority 7 fix — this previously passed `row.source_campaign` (a
+        // campaign NAME, e.g. "Q4 Instagram Push") as the acquisition-source
+        // evidence, which only ever matched by accidental substring overlap.
+        // `row.source_platform` is the real, same evidence the Platform
+        // filter above already uses — no `traffic_sources.category` join
+        // exists at this query level (unlike Attribution Command Center's
+        // dedicated query), so Acquisition Source and Platform will often
+        // agree here; that's honest given what's actually available, not a
+        // fabricated distinction.
+        acquisitionSourceMatches(
+          null,
+          filters.acquisitionSource as AcquisitionSource | "all",
+          row.source_platform,
+        );
+  const leadList = leadsRaw.filter(
+    (l) => matchesSocialPlatform(l) && matchesAcquisitionOrWebinar(l, l.source_webinar_id ?? null),
+  );
+  const callList = callsRaw.filter(
+    (c) =>
+      matchesSocialPlatform(c) && matchesAcquisitionOrWebinar(c, callWebinarById.get(c.id) ?? null),
+  );
   const contentList =
     filters.socialPlatform === "all" && filters.acquisitionSource === "all" ? contentRaw : [];
   const setterList =
@@ -429,7 +502,11 @@ function Dashboard() {
   const navigate = useNavigate();
   const money = useMoney();
   const [socialPlatform, setSocialPlatform] = useState<SocialPlatform | "all">("all");
-  const [acquisitionSource, setAcquisitionSource] = useState<AcquisitionSource | "all">("all");
+  const [acquisitionSource, setAcquisitionSource] = useState<
+    AcquisitionSource | "all" | "__webinar__"
+  >("all");
+  const [webinarFilter, setWebinarFilter] = useState<WebinarFilterValue>(ALL_WEBINARS_FILTER);
+  const { paidWebinars, organicWebinars, unclassifiedWebinars, webinarsById } = useWebinars();
   const HUB_CLOSER_METRICS = buildHubCloserMetrics(money);
   const HUB_SETTER_METRICS = buildHubSetterMetrics(money);
   const FUNNEL_RECORD_COLUMNS = buildFunnelRecordColumns(money);
@@ -483,6 +560,7 @@ function Dashboard() {
       demoMode,
       socialPlatform,
       acquisitionSource,
+      acquisitionSource === "__webinar__" ? JSON.stringify(webinarFilter) : null,
     ],
     enabled: !!orgId,
     queryFn: async () => {
@@ -527,10 +605,16 @@ function Dashboard() {
             orgId!,
             range.from,
             range.to,
-            { socialPlatform, acquisitionSource },
+            { socialPlatform, acquisitionSource, webinarFilter, webinarsById },
             demoMode,
           ),
-          fetchPeriod(orgId!, prevFrom, prevTo, { socialPlatform, acquisitionSource }, demoMode),
+          fetchPeriod(
+            orgId!,
+            prevFrom,
+            prevTo,
+            { socialPlatform, acquisitionSource, webinarFilter, webinarsById },
+            demoMode,
+          ),
           demo
             ? asRes(
                 demo.payments
@@ -1666,22 +1750,63 @@ function Dashboard() {
           </label>
           <label className="grid gap-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             Acquisition Source
-            <Select
-              value={acquisitionSource}
-              onValueChange={(value) => setAcquisitionSource(value as AcquisitionSource | "all")}
-            >
-              <SelectTrigger className="h-8 w-44 text-xs normal-case tracking-normal text-foreground">
-                <SelectValue placeholder="All Sources" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Sources</SelectItem>
+            {/* Merges the reusable Webinar hierarchy as a nested branch
+                rather than a separate control, matching Team Calendar's
+                Acquisition Source dropdown. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex h-8 w-44 items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 text-xs normal-case tracking-normal text-foreground shadow-sm ring-offset-background transition-all hover:border-ring/30 focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring"
+                >
+                  <span className="truncate">
+                    {acquisitionSource === "__webinar__"
+                      ? webinarFilterLabel(webinarFilter, webinarsById)
+                      : acquisitionSource === "all"
+                        ? "All Sources"
+                        : acquisitionSource}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setAcquisitionSource("all");
+                    setWebinarFilter(ALL_WEBINARS_FILTER);
+                  }}
+                >
+                  All Sources
+                </DropdownMenuItem>
                 {ACQUISITION_SOURCES.map((source) => (
-                  <SelectItem key={source} value={source}>
+                  <DropdownMenuItem key={source} onClick={() => setAcquisitionSource(source)}>
                     {source}
-                  </SelectItem>
+                  </DropdownMenuItem>
                 ))}
-              </SelectContent>
-            </Select>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>Webinar</DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-60">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setAcquisitionSource("__webinar__");
+                        setWebinarFilter(ALL_WEBINARS_FILTER);
+                      }}
+                    >
+                      All Webinars
+                    </DropdownMenuItem>
+                    <WebinarFilterBranches
+                      onChange={(next) => {
+                        setAcquisitionSource("__webinar__");
+                        setWebinarFilter(next);
+                      }}
+                      paidWebinars={paidWebinars}
+                      organicWebinars={organicWebinars}
+                      unclassifiedWebinars={unclassifiedWebinars}
+                    />
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </label>
         </div>
         {isError && (

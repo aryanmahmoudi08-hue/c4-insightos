@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import c4OsWhite from "@/assets/c4-os-white.png";
-import c4OsBlack from "@/assets/c4-os-black.png";
+import ascendOsWhite from "@/assets/ascendos-stacked-white.png";
+import ascendOsBlack from "@/assets/ascendos-stacked-black.png";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
@@ -62,13 +62,13 @@ function LoginPage() {
           so the brand mark reads at the same scale everywhere it appears. */}
       <Link to="/welcome" className="mb-8 flex items-center gap-2">
         <img
-          src={c4OsWhite}
-          alt="C4 OS"
+          src={ascendOsWhite}
+          alt="AscendOS"
           className="theme-logo-dark h-20 w-auto shrink-0 object-contain"
         />
         <img
-          src={c4OsBlack}
-          alt="C4 OS"
+          src={ascendOsBlack}
+          alt="AscendOS"
           className="theme-logo-light h-20 w-auto shrink-0 object-contain"
         />
       </Link>
@@ -125,7 +125,7 @@ function LoginPage() {
             onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
             className="block w-full text-center text-xs text-muted-foreground hover:text-foreground"
           >
-            {mode === "signup" ? "Have an account? Sign in" : "New to C4? Create an account"}
+            {mode === "signup" ? "Have an account? Sign in" : "New to AscendOS? Create an account"}
           </button>
           <Link
             to="/request-access"

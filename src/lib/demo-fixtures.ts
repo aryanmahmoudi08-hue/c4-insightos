@@ -454,6 +454,7 @@ export type DemoConfirmation = {
   call_id: string;
   night_before_scheduled_at: string | null;
   night_before_sent_at: string | null;
+  night_before_responded_at: string | null;
   morning_scheduled_at: string | null;
   morning_sent_at: string | null;
   morning_reason_for_change: string | null;
@@ -464,16 +465,19 @@ export type DemoConfirmation = {
   morning_responded_at: string | null;
   one_hour_scheduled_at: string | null;
   one_hour_sent_at: string | null;
+  one_hour_responded_at: string | null;
   thirty_min_scheduled_at: string | null;
   thirty_min_sent_at: string | null;
   thirty_min_confirmed: boolean;
   thirty_min_confirmed_at: string | null;
   ten_min_scheduled_at: string | null;
   ten_min_sent_at: string | null;
+  ten_min_responded_at: string | null;
   overall_status: "awaiting" | "confirmed" | "overdue" | "at_risk" | "cancelled" | "rescheduled";
   confirmed_at: string | null;
   cancelled_reason: string | null;
   rescheduled_reason: string | null;
+  previous_status: "awaiting" | "confirmed" | "overdue" | "at_risk" | null;
 };
 
 export type DemoCalendarDataset = {
@@ -558,6 +562,7 @@ export function buildDemoCalendarDataset(): DemoCalendarDataset {
     call_id: callId,
     night_before_scheduled_at: null,
     night_before_sent_at: null,
+    night_before_responded_at: null,
     morning_scheduled_at: null,
     morning_sent_at: null,
     morning_reason_for_change: null,
@@ -568,14 +573,17 @@ export function buildDemoCalendarDataset(): DemoCalendarDataset {
     morning_responded_at: null,
     one_hour_scheduled_at: null,
     one_hour_sent_at: null,
+    one_hour_responded_at: null,
     thirty_min_scheduled_at: null,
     thirty_min_sent_at: null,
     thirty_min_confirmed: false,
     thirty_min_confirmed_at: null,
     ten_min_scheduled_at: null,
     ten_min_sent_at: null,
+    ten_min_responded_at: null,
     overall_status: "awaiting",
     confirmed_at: null,
+    previous_status: null,
     cancelled_reason: null,
     rescheduled_reason: null,
   });
@@ -788,8 +796,13 @@ export function buildDemoCalendarDataset(): DemoCalendarDataset {
 
     switch (b.scenario) {
       case "fully_confirmed":
+        // All five circles green — every touchpoint sent AND responded, the
+        // "best case" example for the five-circle sequence.
         confirmation.night_before_sent_at = new Date(
           scheduledFor.getTime() - 20 * HOUR_MS,
+        ).toISOString();
+        confirmation.night_before_responded_at = new Date(
+          scheduledFor.getTime() - 19 * HOUR_MS,
         ).toISOString();
         confirmation.morning_sent_at = new Date(scheduledFor.getTime() - 6 * HOUR_MS).toISOString();
         confirmation.morning_goal_1 = "Get clarity on the 90-day roadmap";
@@ -799,6 +812,9 @@ export function buildDemoCalendarDataset(): DemoCalendarDataset {
           scheduledFor.getTime() - 5 * HOUR_MS,
         ).toISOString();
         confirmation.one_hour_sent_at = new Date(scheduledFor.getTime() - HOUR_MS).toISOString();
+        confirmation.one_hour_responded_at = new Date(
+          scheduledFor.getTime() - 55 * 60_000,
+        ).toISOString();
         confirmation.thirty_min_sent_at = new Date(
           scheduledFor.getTime() - 30 * 60_000,
         ).toISOString();
@@ -807,6 +823,9 @@ export function buildDemoCalendarDataset(): DemoCalendarDataset {
           scheduledFor.getTime() - 28 * 60_000,
         ).toISOString();
         confirmation.ten_min_sent_at = new Date(scheduledFor.getTime() - 10 * 60_000).toISOString();
+        confirmation.ten_min_responded_at = new Date(
+          scheduledFor.getTime() - 8 * 60_000,
+        ).toISOString();
         confirmation.overall_status = "confirmed";
         confirmation.confirmed_at = confirmation.thirty_min_confirmed_at;
         break;
@@ -880,12 +899,34 @@ export function buildDemoCalendarDataset(): DemoCalendarDataset {
         confirmation.overall_status = "awaiting";
         break;
       case "cancelled":
+        // A booking that had gone overdue before it was cancelled — the
+        // booking box renders with the ORIGINAL (overdue/red) status color,
+        // not a generic cancelled gray, per the reference screenshot.
         cancelled = true;
+        confirmation.night_before_sent_at = new Date(
+          scheduledFor.getTime() - 20 * HOUR_MS,
+        ).toISOString();
         confirmation.overall_status = "cancelled";
+        confirmation.previous_status = "overdue";
         confirmation.cancelled_reason = "Cancelled — confirmation not received";
         break;
       case "rescheduled":
+        // A booking that was fully confirmed before the lead asked to move
+        // it — renders with the ORIGINAL (confirmed/green) status color,
+        // matching the spec's own worked example.
+        confirmation.night_before_sent_at = new Date(
+          scheduledFor.getTime() - 20 * HOUR_MS,
+        ).toISOString();
+        confirmation.night_before_responded_at = new Date(
+          scheduledFor.getTime() - 19 * HOUR_MS,
+        ).toISOString();
+        confirmation.morning_sent_at = new Date(scheduledFor.getTime() - 6 * HOUR_MS).toISOString();
+        confirmation.morning_responded_at = new Date(
+          scheduledFor.getTime() - 5 * HOUR_MS,
+        ).toISOString();
         confirmation.overall_status = "rescheduled";
+        confirmation.previous_status = "confirmed";
+        confirmation.rescheduled_reason = "Lead requested new time";
         break;
       case "showed":
         confirmation.night_before_sent_at = new Date(

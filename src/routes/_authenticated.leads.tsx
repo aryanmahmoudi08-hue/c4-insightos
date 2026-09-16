@@ -27,6 +27,7 @@ import {
   Copy,
   FileText,
   CalendarDays,
+  ChevronDown,
 } from "lucide-react";
 import { generatePreCallVideoLinkFn } from "@/lib/pre-call-video.functions";
 import { toast } from "sonner";
@@ -42,6 +43,30 @@ import {
   ColumnGroupToggle,
 } from "@/components/glass-table";
 import { mockLeads, mockLeadInsights, withMockDelay } from "@/lib/dev-mock-data";
+import { WebinarFilterBranches } from "@/components/webinar-filter";
+import { useWebinars } from "@/hooks/use-webinars";
+import {
+  ALL_WEBINARS_FILTER,
+  matchesWebinarFilter,
+  webinarFilterLabel,
+  type WebinarFilterValue,
+} from "@/lib/webinar-filter";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { DateRangePicker, RANGES, type DateRange } from "@/components/date-range-picker";
@@ -97,6 +122,7 @@ type LeadRow = {
   estimated_close_probability: number | null;
   source_connector: string | null;
   source_platform: string | null;
+  source_webinar_id: string | null;
   source_format: string | null;
   source_campaign: string | null;
   first_touch_at: string | null;
@@ -479,6 +505,9 @@ function Leads() {
   const [closerFilter, setCloserFilter] = useState("all");
   const [platformFilter, setPlatformFilter] = useState("all");
   const [offerFilter, setOfferFilter] = useState("all");
+  const [webinarFilter, setWebinarFilter] = useState<WebinarFilterValue>(ALL_WEBINARS_FILTER);
+  const { webinars, paidWebinars, organicWebinars, unclassifiedWebinars, webinarsById } =
+    useWebinars();
   const [detailKind, setDetailKind] = useState<
     "total" | "booked" | "closed" | "available" | "diamond" | "stage" | null
   >(null);
@@ -509,7 +538,7 @@ function Leads() {
       const { data, error } = await supabase
         .from("leads")
         .select(
-          "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, source_platform, source_format, source_campaign, first_touch_at, first_touch_content_id, assigned_setter_id, qualification_notes, application_data, notes, created_at, tags, ticket_tier, calls(closer_id, closer_name, scheduled_for)",
+          "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, source_platform, source_webinar_id, source_format, source_campaign, first_touch_at, first_touch_content_id, assigned_setter_id, qualification_notes, application_data, notes, created_at, tags, ticket_tier, calls(closer_id, closer_name, scheduled_for)",
         )
         .eq("org_id", orgId!)
         .order("created_at", { ascending: false })
@@ -648,9 +677,23 @@ function Leads() {
     const offer = typeof l.application_data?.offer === "string" ? l.application_data.offer : null;
     if (setterFilter !== "all" && (l.assigned_setter_id ?? "unassigned") !== setterFilter)
       return false;
-    if (closerFilter !== "all" && (l.closer_id ?? "unassigned") !== closerFilter) return false;
-    if (platformFilter !== "all" && (l.source_platform ?? "unavailable") !== platformFilter)
+    // Closer filter keys off `closerName` (calls.closer_name, the reliable
+    // free-text field this page already prefers for display) rather than
+    // `closer_id` — the native EOD form never sets closer_id, so filtering
+    // on it made this dropdown show almost every lead as "Unassigned"
+    // regardless of whether a closer was actually logged.
+    if (closerFilter !== "all" && (l.closerName ?? "unassigned") !== closerFilter) return false;
+    // Webinar is a nested branch of the Platform control (not a separate
+    // filter), so it only applies when Platform's own selection is that
+    // branch — otherwise Platform's flat value is matched as before.
+    if (platformFilter === "__webinar__") {
+      if (!matchesWebinarFilter(webinarFilter, l.source_webinar_id, webinarsById)) return false;
+    } else if (
+      platformFilter !== "all" &&
+      (l.source_platform ?? "unavailable") !== platformFilter
+    ) {
       return false;
+    }
     if (offerFilter !== "all" && (offer ?? "unavailable") !== offerFilter) return false;
     if (!q) return true;
     const hay = [
@@ -688,6 +731,8 @@ function Leads() {
     closerFilter,
     platformFilter,
     offerFilter,
+    webinarFilter,
+    webinarsById,
   ]);
 
   const nowISO = useMemo(() => new Date().toISOString(), []);
@@ -714,7 +759,9 @@ function Leads() {
       Array.from(new Set((leads ?? []).map(pick).filter(Boolean))) as string[];
     return {
       setters: values((lead) => lead.assigned_setter_id),
-      closers: values((lead) => lead.closer_id ?? null),
+      // Real closer names (calls.closer_name) — see the matching predicate
+      // fix above for why this switched away from closer_id.
+      closers: values((lead) => lead.closerName ?? null),
       platforms: values((lead) => lead.source_platform),
       offers: Array.from(
         new Set(
@@ -816,6 +863,8 @@ function Leads() {
     closerFilter,
     platformFilter,
     offerFilter,
+    webinarFilter,
+    webinarsById,
   ]);
 
   const settingsFn = useServerFn(getWorkspaceSettingsFn);
@@ -993,39 +1042,127 @@ function Leads() {
                 )}
               </div>
               <DateRangePicker value={entryRange} onChange={setEntryRange} />
-              {[
-                ["Setter", setterFilter, setSetterFilter, filterOptions.setters],
-                ["Closer", closerFilter, setCloserFilter, filterOptions.closers],
-                ["Platform", platformFilter, setPlatformFilter, filterOptions.platforms],
-                ["Offer", offerFilter, setOfferFilter, filterOptions.offers],
-              ].map(([label, value, setter, options]) => (
-                <select
-                  key={label as string}
-                  value={value as string}
-                  onChange={(event) => (setter as (value: string) => void)(event.target.value)}
-                  className="h-8 max-w-[150px] rounded-md border border-input bg-background px-2 text-2xs"
-                >
-                  <option value="all">All {label as string}s</option>
-                  <option value="unassigned">Unavailable / unassigned</option>
-                  {(options as string[]).map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
+              <Select value={setterFilter} onValueChange={setSetterFilter}>
+                <SelectTrigger className="h-8 w-[150px] text-2xs">
+                  <SelectValue placeholder="All Setters" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Setters</SelectItem>
+                  <SelectItem value="unassigned">Unavailable / unassigned</SelectItem>
+                  {filterOptions.setters.map((option) => (
+                    // Setter options are raw auth.users uuids — resolve to a
+                    // display name where we have one, same lookup used for
+                    // the rest of this page, rather than showing the raw id.
+                    <SelectItem key={option} value={option}>
+                      {setterProfiles[option] ?? option}
+                    </SelectItem>
                   ))}
-                </select>
-              ))}
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="h-8 rounded-md border border-input bg-background px-2 text-2xs"
-              >
-                <option value="all">All statuses</option>
-                {STATUS_OPTIONS.map((s) => (
-                  <option key={s.v} value={s.v}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
+                </SelectContent>
+              </Select>
+              <Select value={closerFilter} onValueChange={setCloserFilter}>
+                <SelectTrigger className="h-8 w-[150px] text-2xs">
+                  <SelectValue placeholder="All Closers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Closers</SelectItem>
+                  <SelectItem value="unassigned">Unavailable / unassigned</SelectItem>
+                  {filterOptions.closers.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* Platform — merges the reusable Webinar hierarchy as a nested
+                  branch (All Webinars / Paid Webinars > … / Organic Webinars
+                  > …) rather than a separate control, since a webinar isn't
+                  a flat platform name the way the live-derived options are. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-8 w-[150px] items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 text-2xs shadow-sm ring-offset-background transition-all hover:border-ring/30 focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring"
+                  >
+                    <span className="truncate">
+                      {platformFilter === "__webinar__"
+                        ? webinarFilterLabel(webinarFilter, webinarsById)
+                        : platformFilter === "all"
+                          ? "All Platforms"
+                          : platformFilter === "unassigned"
+                            ? "Unavailable / unassigned"
+                            : platformFilter}
+                    </span>
+                    <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[200px]">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setPlatformFilter("all");
+                      setWebinarFilter(ALL_WEBINARS_FILTER);
+                    }}
+                  >
+                    All Platforms
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setPlatformFilter("unassigned")}>
+                    Unavailable / unassigned
+                  </DropdownMenuItem>
+                  {filterOptions.platforms.map((option) => (
+                    <DropdownMenuItem key={option} onClick={() => setPlatformFilter(option)}>
+                      {option}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>Webinar</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-[240px]">
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setPlatformFilter("__webinar__");
+                          setWebinarFilter(ALL_WEBINARS_FILTER);
+                        }}
+                      >
+                        All Webinars
+                      </DropdownMenuItem>
+                      <WebinarFilterBranches
+                        onChange={(next) => {
+                          setPlatformFilter("__webinar__");
+                          setWebinarFilter(next);
+                        }}
+                        paidWebinars={paidWebinars}
+                        organicWebinars={organicWebinars}
+                        unclassifiedWebinars={unclassifiedWebinars}
+                      />
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Select value={offerFilter} onValueChange={setOfferFilter}>
+                <SelectTrigger className="h-8 w-[150px] text-2xs">
+                  <SelectValue placeholder="All Offers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Offers</SelectItem>
+                  <SelectItem value="unassigned">Unavailable / unassigned</SelectItem>
+                  {filterOptions.offers.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-8 w-[170px] text-2xs">
+                  <SelectValue placeholder="All statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {STATUS_OPTIONS.map((s) => (
+                    <SelectItem key={s.v} value={s.v}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <div className="ml-auto text-2xs text-muted-foreground">
                 {view.length} / {leads?.length ?? 0}
               </div>

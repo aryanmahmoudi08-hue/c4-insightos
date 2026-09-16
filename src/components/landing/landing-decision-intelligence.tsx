@@ -55,8 +55,8 @@ export function LandingDecisionIntelligence() {
           <div>
             <SectionHeading
               eyebrow="Decision intelligence"
-              title="C4 OS doesn't just report what happened."
-              description="Dashboards tell you where the number landed. C4 OS is built to answer the questions that come right after — so attention goes to what actually matters, not everything at once."
+              title="AscendOS doesn't just report what happened."
+              description="Dashboards tell you where the number landed. AscendOS is built to answer the questions that come right after — so attention goes to what actually matters, not everything at once."
             />
             <StaggerGroup className="mt-6 space-y-2.5">
               {QUESTIONS.map((q) => (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
@@ -14,9 +14,11 @@ import { deriveLeadQuality, LEAD_QUALITY_TONE, type LeadQuality } from "@/lib/le
 import { normalizeAcquisitionSource, acquisitionSourceOptions } from "@/lib/acquisition-source";
 import {
   TOUCHPOINT_LABELS,
+  TOUCHPOINT_SEQUENCE,
   deriveTouchpointStatus,
   deriveNextAction,
   buildPreCallChecklist,
+  getTouchpointTimestamps,
   type Touchpoint,
   type CallConfirmationRow,
   type OverallConfirmationStatus,
@@ -27,6 +29,7 @@ import {
   setConfirmationStatusFn,
   setConfirmationPolicyFn,
   unmarkTouchpointFn,
+  respondTouchpointFn,
 } from "@/lib/call-confirmations.functions";
 import { applicationFormResponses } from "@/lib/application-fields";
 import { ApplicationResponses } from "@/components/application-responses";
@@ -43,10 +46,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { WebinarFilterBranches } from "@/components/webinar-filter";
+import { useWebinars } from "@/hooks/use-webinars";
+import {
+  ALL_WEBINARS_FILTER,
+  matchesWebinarFilter,
+  webinarFilterLabel,
+  type WebinarFilterValue,
+} from "@/lib/webinar-filter";
 import { EmptyState } from "@/components/empty-state";
 import {
   AtSign,
   CalendarClock,
+  Check,
   ChevronDown,
   Clock,
   ExternalLink,
@@ -88,6 +109,7 @@ type LeadRow = {
   intent_score: number | null;
   priority: string | null;
   source_platform: string | null;
+  source_webinar_id?: string | null;
   qualification_notes: string | null;
   precall_video_watched: boolean | null;
   application_data: Record<string, unknown> | null;
@@ -280,19 +302,46 @@ const STATUS_TONE: Record<OverallConfirmationStatus, string> = {
 // mode = the bright/saturated shade with white text; dark mode = a deeper
 // shade of the SAME hue with near-black text — never opacity tricks, two
 // intentional color values per status (Google Calendar-style behavior).
+// Shades tuned one step richer than the original 700/800 dark values (item
+// 17 — those read as muddy/flat against the near-black calendar surface;
+// 600 keeps the "deep, not neon" intent while staying visibly saturated).
 const STATUS_SOLID: Record<OverallConfirmationStatus, { bg: string; text: string }> = {
   confirmed: {
-    bg: "bg-emerald-500 dark:bg-emerald-800",
+    bg: "bg-emerald-500 dark:bg-emerald-600",
     text: "text-white dark:text-emerald-950",
   },
-  awaiting: { bg: "bg-slate-400 dark:bg-slate-700", text: "text-white dark:text-slate-950" },
-  overdue: { bg: "bg-red-500 dark:bg-red-800", text: "text-white dark:text-red-950" },
-  at_risk: { bg: "bg-amber-500 dark:bg-amber-700", text: "text-white dark:text-amber-950" },
+  awaiting: { bg: "bg-slate-400 dark:bg-slate-600", text: "text-white dark:text-slate-950" },
+  overdue: { bg: "bg-red-500 dark:bg-red-600", text: "text-white dark:text-red-950" },
+  at_risk: { bg: "bg-amber-500 dark:bg-amber-600", text: "text-white dark:text-amber-950" },
   cancelled: {
-    bg: "bg-neutral-300 dark:bg-neutral-700",
-    text: "text-neutral-700 dark:text-neutral-300",
+    bg: "bg-neutral-300 dark:bg-neutral-600",
+    text: "text-neutral-800 dark:text-neutral-100",
   },
-  rescheduled: { bg: "bg-blue-500 dark:bg-blue-800", text: "text-white dark:text-blue-950" },
+  rescheduled: { bg: "bg-blue-500 dark:bg-blue-600", text: "text-white dark:text-blue-950" },
+};
+
+// The ORIGINAL status's color, used only for cancelled/rescheduled booking
+// boxes (item 6) — border + text, never a fill. Distinct from STATUS_SOLID
+// (which is a fill+text pair for an ACTIVE status) because a cancelled/
+// rescheduled box's fill is always the calendar surface color, not a status
+// color; only the border/text preserve which status it used to be.
+const ORIGINAL_STATUS_ACCENT: Record<
+  NonNullable<CallConfirmationRow>["previous_status"] & string,
+  { border: string; text: string }
+> = {
+  awaiting: {
+    border: "border-slate-400 dark:border-slate-500",
+    text: "text-slate-600 dark:text-slate-300",
+  },
+  confirmed: {
+    border: "border-emerald-500 dark:border-emerald-500",
+    text: "text-emerald-600 dark:text-emerald-400",
+  },
+  overdue: { border: "border-red-500 dark:border-red-500", text: "text-red-600 dark:text-red-400" },
+  at_risk: {
+    border: "border-amber-500 dark:border-amber-500",
+    text: "text-amber-600 dark:text-amber-400",
+  },
 };
 
 const STATUS_LABEL: Record<OverallConfirmationStatus, string> = {
@@ -359,6 +408,7 @@ export function CallsOnCalendar() {
   const getConfirmations = useServerFn(getConfirmationsForCallsFn);
   const markTouchpoint = useServerFn(markTouchpointFn);
   const unmarkTouchpoint = useServerFn(unmarkTouchpointFn);
+  const respondTouchpoint = useServerFn(respondTouchpointFn);
   const setConfirmationStatus = useServerFn(setConfirmationStatusFn);
   const setConfirmationPolicy = useServerFn(setConfirmationPolicyFn);
 
@@ -381,6 +431,9 @@ export function CallsOnCalendar() {
   const [closerFilter, setCloserFilter] = useState<string>("all");
   const [qualityFilter, setQualityFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [webinarFilter, setWebinarFilter] = useState<WebinarFilterValue>(ALL_WEBINARS_FILTER);
+  const { webinars, paidWebinars, organicWebinars, unclassifiedWebinars, webinarsById } =
+    useWebinars();
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [now, setNow] = useState(() => new Date());
@@ -452,7 +505,7 @@ export function CallsOnCalendar() {
           ? supabase
               .from("leads")
               .select(
-                "id, full_name, handle, email, phone, status, intent_score, priority, source_platform, qualification_notes, precall_video_watched, application_data",
+                "id, full_name, handle, email, phone, status, intent_score, priority, source_platform, source_webinar_id, qualification_notes, precall_video_watched, application_data",
               )
               .in("id", leadIds)
           : Promise.resolve({ data: [] as LeadRow[] }),
@@ -529,6 +582,8 @@ export function CallsOnCalendar() {
         checklist,
         checklistDone,
         source,
+        webinarId:
+          (lead as { source_webinar_id?: string | null } | undefined)?.source_webinar_id ?? null,
       };
     });
   }, [data, now]);
@@ -539,10 +594,23 @@ export function CallsOnCalendar() {
       if (repFilter !== "all" && e.call.setter_id !== repFilter) return false;
       if (closerFilter !== "all" && e.call.closer_id !== closerFilter) return false;
       if (qualityFilter !== "all" && e.quality !== qualityFilter) return false;
-      if (sourceFilter !== "all" && e.source !== sourceFilter) return false;
+      if (sourceFilter === "__webinar__") {
+        if (!matchesWebinarFilter(webinarFilter, e.webinarId, webinarsById)) return false;
+      } else if (sourceFilter !== "all" && e.source !== sourceFilter) {
+        return false;
+      }
       return true;
     });
-  }, [enriched, statusFilter, repFilter, closerFilter, qualityFilter, sourceFilter]);
+  }, [
+    enriched,
+    statusFilter,
+    repFilter,
+    closerFilter,
+    qualityFilter,
+    sourceFilter,
+    webinarFilter,
+    webinarsById,
+  ]);
 
   const visibleDayKeys = useMemo(() => {
     const anchorKey = dayKey(anchorDate, timezone);
@@ -614,26 +682,36 @@ export function CallsOnCalendar() {
     return counts;
   }, [periodEntries]);
 
-  const todayKey = dayKey(now, timezone);
-  const todaysCalls = data
-    ? enriched.filter(
-        (e) =>
-          e.call.scheduled_for && dayKey(new Date(e.call.scheduled_for), timezone) === todayKey,
-      )
-    : [];
+  // Scoped to the SAME selected-period entries the six status cards below
+  // use (item 13) — this used to be hardcoded to "today" regardless of the
+  // active Day/Week/Month/Year view, which meant switching to Week/Month/
+  // Year left the summary silently still describing today. periodEntries
+  // already recomputes per view; reusing it here (rather than a second
+  // "today" filter) is what actually keeps the two in sync.
   const summary = {
-    total: todaysCalls.length,
-    confirmed: todaysCalls.filter((e) => e.overallStatus === "confirmed").length,
-    awaiting: todaysCalls.filter((e) => e.overallStatus === "awaiting").length,
-    overdue: todaysCalls.filter((e) => e.overallStatus === "overdue").length,
-    atRisk: todaysCalls.filter((e) => e.overallStatus === "at_risk").length,
-    ready: todaysCalls.filter(
+    total: periodEntries.length,
+    ready: periodEntries.filter(
       (e) => e.checklistDone === e.checklist.length && e.overallStatus !== "cancelled",
     ).length,
-    videoNotWatched: todaysCalls.filter(
+    videoNotWatched: periodEntries.filter(
       (e) => e.lead && !e.lead.precall_video_watched && e.overallStatus !== "cancelled",
     ).length,
-    openSlots: todaysCalls.filter((e) => e.overallStatus === "cancelled").length,
+    openSlots: periodEntries.filter((e) => e.overallStatus === "cancelled").length,
+  };
+  // Dynamic timeframe wording (item 12) — "Today's" only when Day is
+  // selected; Week/Month/Year get their own noun rather than staying
+  // hardcoded to "Today's" regardless of the active view.
+  const periodNoun: Record<CalendarView, string> = {
+    day: "Today's",
+    week: "This week's",
+    month: "This month's",
+    year: "This year's",
+  };
+  const periodAdjective: Record<CalendarView, string> = {
+    day: "Today",
+    week: "This Week",
+    month: "This Month",
+    year: "This Year",
   };
 
   const repOptions = useMemo(() => {
@@ -651,20 +729,15 @@ export function CallsOnCalendar() {
 
   const selected = enriched.find((e) => e.call.id === selectedCallId) ?? null;
 
-  const summaryTiles: Array<{ key: string; label: string; value: number; filter?: string }> = [
-    { key: "total", label: "Calls Today", value: summary.total },
-    { key: "confirmed", label: "Confirmed", value: summary.confirmed, filter: "confirmed" },
-    {
-      key: "awaiting",
-      label: "Awaiting Confirmation",
-      value: summary.awaiting,
-      filter: "awaiting",
-    },
-    { key: "overdue", label: "Confirmation Overdue", value: summary.overdue, filter: "overdue" },
-    { key: "at_risk", label: "At Risk", value: summary.atRisk, filter: "at_risk" },
+  // Confirmed/Awaiting/Overdue/At Risk used to duplicate here AND in the six
+  // colored status cards below — removed (item 14), not just hidden; the
+  // six cards are now the one place those counts live, and are themselves
+  // real filters (item 15) rather than static duplicates of these tiles.
+  const summaryTiles: Array<{ key: string; label: string; value: number }> = [
+    { key: "total", label: `Calls ${periodAdjective[view]}`, value: summary.total },
     { key: "ready", label: "Pre-Call Ready", value: summary.ready },
     { key: "video", label: "Video Not Watched", value: summary.videoNotWatched },
-    { key: "open", label: "Open Slots", value: summary.openSlots, filter: "cancelled" },
+    { key: "open", label: "Open Slots", value: summary.openSlots },
   ];
 
   if (isLoading) {
@@ -677,10 +750,16 @@ export function CallsOnCalendar() {
 
   return (
     <>
-      {/* "What sales calls need attention today?" (item 7A) — lives ABOVE
-          the main calendar container, always scoped to TODAY specifically
-          (matches its own heading on the Team Calendar page), never the
-          period currently being browsed below. Lightweight by design (item
+      {/* "Calls on Calendar" summary (item 7A) — lives ABOVE the main
+          calendar container. Correction: this heading + its tiles used to
+          stay hardcoded to "today" regardless of the active Day/Week/Month/
+          Year view (unlike the six status cards below, which already
+          tracked the selected period) — now scoped to periodEntries like
+          everything else, so switching views doesn't leave this block
+          silently describing a different period than the calendar under
+          it. The page-level "What sales calls need attention today?"
+          heading in team-calendar.tsx is a separate, deliberately
+          always-today widget and is untouched. Lightweight by design (item
           34) — a title + one row of tiles, not another data-heavy block. */}
       <div className="mb-3 space-y-3">
         <DemoModeBanner demoMode={demoMode} />
@@ -688,26 +767,20 @@ export function CallsOnCalendar() {
           <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Calls on Calendar
           </div>
-          <div className="mt-0.5 text-base font-semibold">Today's booked sales calls</div>
+          <div className="mt-0.5 text-base font-semibold text-foreground">
+            {periodNoun[view]} booked sales calls
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {summaryTiles.map((t) => (
-            <button
-              key={t.key}
-              onClick={() =>
-                t.filter && setStatusFilter(statusFilter === t.filter ? "all" : t.filter)
-              }
-              className={`cursor-pointer rounded-lg border p-2 text-left transition ${
-                t.filter && statusFilter === t.filter
-                  ? "border-primary bg-primary/10"
-                  : "border-border/60 bg-background/40 hover:border-border"
-              }`}
-            >
+            <div key={t.key} className="rounded-lg border border-border/60 bg-background/40 p-2">
               <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                 {t.label}
               </div>
-              <div className="mt-0.5 font-sans tabular-nums text-lg font-semibold">{t.value}</div>
-            </button>
+              <div className="mt-0.5 font-sans tabular-nums text-lg font-semibold text-foreground">
+                {t.value}
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -718,7 +791,12 @@ export function CallsOnCalendar() {
       <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           {/* Period/date header (item 8) — dynamic per Day/Week/Month/Year. */}
-          <div className="text-lg font-semibold">{periodLabel(anchorDate, view)}</div>
+          {/* Period header (item 4) — sized up from text-lg so the calendar's
+              own date control reads as a primary header, not secondary
+              metadata next to the filters/nav beside it. */}
+          <div className="text-2xl font-bold tracking-tight text-foreground">
+            {periodLabel(anchorDate, view)}
+          </div>
           <div className="flex items-center gap-2">
             <Select value={timezone} onValueChange={setTimezone}>
               <SelectTrigger className="h-8 w-[150px] text-xs">
@@ -822,20 +900,65 @@ export function CallsOnCalendar() {
           </Select>
           {/* Priority 7 — explicitly "Acquisition Source" (the standardized
               ACQUISITION_SOURCES taxonomy), never bare "Source", so it can't
-              be mistaken for the Platform filter above it. */}
-          <Select value={sourceFilter} onValueChange={setSourceFilter}>
-            <SelectTrigger className="h-8 w-[190px] text-xs">
-              <SelectValue placeholder="Acquisition Source: All" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Acquisition Source: All</SelectItem>
+              be mistaken for the Platform filter above it. Webinar is an
+              additional acquisition-source category nested as a hierarchy
+              (All Webinars / Paid Webinars > … / Organic Webinars > …)
+              rather than a flat item, since one webinar can't be named in a
+              single flat option the way Instagram/TikTok/etc. can. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex h-8 w-[190px] items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 text-xs shadow-sm ring-offset-background transition-all hover:border-ring/30 focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring"
+              >
+                <span className="truncate">
+                  {sourceFilter === "__webinar__"
+                    ? `Acquisition Source: ${webinarFilterLabel(webinarFilter, webinarsById)}`
+                    : sourceFilter === "all"
+                      ? "Acquisition Source: All"
+                      : `Acquisition Source: ${sourceFilter}`}
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-[220px]">
+              <DropdownMenuItem
+                onClick={() => {
+                  setSourceFilter("all");
+                  setWebinarFilter(ALL_WEBINARS_FILTER);
+                }}
+              >
+                Acquisition Source: All
+              </DropdownMenuItem>
               {acquisitionSourceOptions().map((s) => (
-                <SelectItem key={s} value={s}>
+                <DropdownMenuItem key={s} onClick={() => setSourceFilter(s)}>
                   {s}
-                </SelectItem>
+                </DropdownMenuItem>
               ))}
-            </SelectContent>
-          </Select>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Webinar</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-[240px]">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSourceFilter("__webinar__");
+                      setWebinarFilter(ALL_WEBINARS_FILTER);
+                    }}
+                  >
+                    All Webinars
+                  </DropdownMenuItem>
+                  <WebinarFilterBranches
+                    onChange={(next) => {
+                      setSourceFilter("__webinar__");
+                      setWebinarFilter(next);
+                    }}
+                    paidWebinars={paidWebinars}
+                    organicWebinars={organicWebinars}
+                    unclassifiedWebinars={unclassifiedWebinars}
+                  />
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <div className="ml-auto flex items-center gap-1">
             <Button
               variant="outline"
@@ -864,20 +987,50 @@ export function CallsOnCalendar() {
           </div>
         </div>
 
-        {/* Status legend cards (item 9) — real colored cards (icon + label),
-            not a small dot-and-text chip row, counted against the exact
-            period currently selected (periodStatusCounts) and updating on
-            every Day/Week/Month/Year switch and ← Today → navigation.
-            Capped at 3 columns (not 6) so every card has room for its full
-            label at the intended font size — "Confirmation overdue" and
-            "Awaiting confirmation" both fit on one line at this width; the
-            label also wraps rather than truncates as a safety margin at the
-            narrowest (2-column, ~375px) breakpoint instead of clipping. */}
+        {/* Status legend cards — now the PRIMARY interactive status filter
+            (item 15), not decorative. Clicking a card filters the calendar
+            (and every count on this page) to that status for the currently
+            selected date range; clicking the active card again clears it
+            (item 16) — no separate "All" control needed since that's
+            already the one-click way back. Counted against the exact period
+            currently selected (periodStatusCounts) and updating on every
+            Day/Week/Month/Year switch and ← Today → navigation. Capped at 3
+            columns (not 6) so every card has room for its full label at the
+            intended font size — "Confirmation overdue" and "Awaiting
+            confirmation" both fit on one line at this width; the label also
+            wraps rather than truncates as a safety margin at the narrowest
+            (2-column, ~375px) breakpoint instead of clipping. */}
+        <div className="flex items-center justify-between">
+          <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Filter by status
+          </div>
+          {statusFilter !== "all" && (
+            <button
+              type="button"
+              onClick={() => setStatusFilter("all")}
+              className="cursor-pointer text-3xs font-medium text-primary hover:underline"
+            >
+              Clear filter
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {(Object.keys(STATUS_LABEL) as OverallConfirmationStatus[]).map((status) => {
             const solid = STATUS_SOLID[status];
+            const isSelected = statusFilter === status;
             return (
-              <div key={status} className={`rounded-lg p-2 ${solid.bg} ${solid.text}`}>
+              <button
+                key={status}
+                type="button"
+                onClick={() => setStatusFilter(isSelected ? "all" : status)}
+                aria-pressed={isSelected}
+                title={`Filter to ${STATUS_LABEL[status]}`}
+                className={`cursor-pointer rounded-lg p-2 text-left transition ${solid.bg} ${solid.text} ${
+                  isSelected
+                    ? "ring-2 ring-foreground ring-offset-2 ring-offset-card"
+                    : "opacity-95 hover:opacity-100 hover:brightness-105"
+                }`}
+              >
                 <div className="flex items-start gap-1.5 text-3xs font-semibold uppercase tracking-wide">
                   <span className="shrink-0">{LEGEND_ICON[status]}</span>{" "}
                   <span>{STATUS_LABEL[status]}</span>
@@ -885,9 +1038,37 @@ export function CallsOnCalendar() {
                 <div className="mt-0.5 font-sans text-lg font-bold tabular-nums">
                   {periodStatusCounts[status]}
                 </div>
-              </div>
+              </button>
             );
           })}
+        </div>
+
+        {/* Confirmation-circle legend — small and informational only, next
+            to (never instead of) the actual five circles on each booking.
+            Uses the exact same dot size/border/fill/icon classes as
+            ConfirmationCircles' own "normal" size so it can never visually
+            drift from what the real circles look like. Not-sent uses an
+            explicit border-foreground/30 here (vs. border-current/30 on the
+            real circles, which inherit the booking card's own text color)
+            since this legend isn't sitting on a colored status card. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-3xs text-muted-foreground">
+          <span className="font-semibold text-foreground">Pre-call Sequences:</span>
+          <div className="flex items-center gap-1.5">
+            <span className="grid h-2.5 w-2.5 shrink-0 place-items-center rounded-full border border-foreground/30 bg-transparent" />
+            <span>Not sent</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="grid h-2.5 w-2.5 shrink-0 place-items-center rounded-full border border-neutral-400 bg-neutral-300 dark:border-neutral-300 dark:bg-neutral-300">
+              <Mail className="h-2 w-2 text-neutral-700" />
+            </span>
+            <span>Sent, no response</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="grid h-2.5 w-2.5 shrink-0 place-items-center rounded-full border border-emerald-500 bg-emerald-500">
+              <Check className="h-2 w-2 text-neutral-900 dark:text-white" strokeWidth={3.5} />
+            </span>
+            <span>Responded</span>
+          </div>
         </div>
 
         {/* Timeline / agenda / month / year */}
@@ -1033,6 +1214,43 @@ export function CallsOnCalendar() {
               toast.error("Could not unmark touchpoint");
             }
           }}
+          onRespondTouchpoint={async (touchpoint, responded) => {
+            if (demoMode) {
+              setDemoDataset((prev) => {
+                if (!prev) return prev;
+                const next = new Map(prev.confirmationByCallId);
+                const existing = next.get(selected.call.id);
+                if (!existing) return prev;
+                const patched = { ...existing };
+                const nowIso = responded ? new Date().toISOString() : null;
+                if (touchpoint === "night_before") patched.night_before_responded_at = nowIso;
+                if (touchpoint === "morning") patched.morning_responded_at = nowIso;
+                if (touchpoint === "one_hour") patched.one_hour_responded_at = nowIso;
+                if (touchpoint === "thirty_min") {
+                  patched.thirty_min_confirmed = responded;
+                  patched.thirty_min_confirmed_at = nowIso;
+                }
+                if (touchpoint === "ten_min") patched.ten_min_responded_at = nowIso;
+                next.set(selected.call.id, patched);
+                return { ...prev, confirmationByCallId: next };
+              });
+              toast.success(
+                `${TOUCHPOINT_LABELS[touchpoint]} ${responded ? "marked responded" : "response cleared"} (demo data)`,
+              );
+              return;
+            }
+            try {
+              await respondTouchpoint({
+                data: { call_id: selected.call.id, org_id: orgId!, touchpoint, responded },
+              });
+              invalidate();
+              toast.success(
+                `${TOUCHPOINT_LABELS[touchpoint]} ${responded ? "marked responded" : "response cleared"}`,
+              );
+            } catch {
+              toast.error("Could not update response");
+            }
+          }}
           onSetStatus={async (status, cancelledReason, rescheduledReason) => {
             if (demoMode) {
               setDemoDataset((prev) => {
@@ -1173,19 +1391,51 @@ function TimelineGrid({
   /** Clicking a day-column header jumps Day view to that date (item 16). */
   onSelectDate: (date: Date) => void;
 }) {
-  const hours = Array.from(
-    { length: (GRID_END_MIN - GRID_START_MIN) / 60 + 1 },
-    (_, i) => GRID_START_MIN / 60 + i,
-  );
+  // Exactly 24 rows (0..23) — item 1's fix. The previous "+1" length here
+  // rendered a 25th row whose label wraps back to "12am" (h % 24 === 0 at
+  // h=24), which both duplicated the top's own 12am label at the bottom AND
+  // made this label column one full hour-row taller than the event grid
+  // column below (gridHeight is exactly 24*60 minutes — a 25-row label
+  // column no longer matches it), leaving a dangling blank strip under the
+  // last real hour. 24 rows × 60min = the same 1440-minute day, no mismatch.
+  const hours = Array.from({ length: 24 }, (_, i) => i);
   const gridHeight = (GRID_END_MIN - GRID_START_MIN) * PX_PER_MIN;
   const nowMinutes = minutesIntoDay(now, timezone);
   const nowTop = (nowMinutes - GRID_START_MIN) * PX_PER_MIN;
   const todayKey = dayKey(now, timezone);
+  const HEADER_HEIGHT = 56; // h-14
+  const SCROLL_MAX_HEIGHT = 560;
+
+  // Initial scroll position (item 3) — never open cold at 12am. If today is
+  // one of the visible columns AND it's already a reasonable hour, center on
+  // the current time (where sales calls are actually happening right now).
+  // But "now" can itself be the middle of the night — 1am, 3am — a time slot
+  // with essentially no bookings, which left the calendar opening on a
+  // near-empty view. Below an 8am floor (same value already used as the
+  // non-today fallback) we use that same working-hour default instead of
+  // the literal clock time, so a page load/refresh always lands somewhere
+  // calls actually cluster. Re-runs whenever the visible day set changes
+  // (Day/Week navigation, ← Today →), not just on first mount.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const todayVisible = dayKeys.includes(todayKey);
+    const WORKING_HOUR_FLOOR = 8 * 60;
+    const targetMinutes =
+      todayVisible && nowMinutes >= WORKING_HOUR_FLOOR ? nowMinutes : WORKING_HOUR_FLOOR;
+    const viewportHeight = SCROLL_MAX_HEIGHT - HEADER_HEIGHT;
+    const rawTop = (targetMinutes - GRID_START_MIN) * PX_PER_MIN - viewportHeight / 3;
+    const maxScroll = gridHeight - viewportHeight;
+    container.scrollTop = Math.min(Math.max(0, rawTop), Math.max(0, maxScroll));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on the visible-day set, not every prop; re-deriving nowMinutes each render would re-scroll on every 60s clock tick.
+  }, [dayKeys.join(",")]);
 
   return (
     <div
+      ref={scrollRef}
       className="overflow-auto rounded-xl border border-border/60"
-      style={{ maxHeight: "560px" }}
+      style={{ maxHeight: SCROLL_MAX_HEIGHT }}
     >
       <div className="flex">
         {/* Sticky header (item 13) — the corner cell + every day-column
@@ -1197,9 +1447,15 @@ function TimelineGrid({
             <div
               key={h}
               style={{ height: 60 * PX_PER_MIN }}
-              className="border-b border-border/45 pr-1 text-right text-3xs text-muted-foreground"
+              // Time labels (item 2) — text-foreground (theme-aware white in
+              // dark mode, black in light mode) instead of the previous
+              // muted-foreground gray, per item 10's "eliminate the overly-
+              // gray calendar typography." Grid line matches the hour rows'
+              // own border-foreground/15 (see the matching comment there —
+              // border-border tops out too faint to read clearly).
+              className="border-b border-foreground/15 pr-1 text-right text-3xs font-medium text-foreground/80"
             >
-              {h % 24 === 0 ? "12am" : h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h - 12}pm`}
+              {h === 0 ? "12am" : h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h - 12}pm`}
             </div>
           ))}
         </div>
@@ -1231,41 +1487,64 @@ function TimelineGrid({
               className="relative flex-1 border-r border-border/40 last:border-r-0"
               style={{ minWidth: dayKeys.length > 1 ? 140 : undefined }}
             >
-              {/* Google Calendar-style header (item 12): 3-letter weekday +
-                  a large date number, today gets a colored circle + colored
-                  weekday label. Clickable — jumps to Day view for that date
-                  (item 16). */}
-              <button
-                type="button"
-                onClick={() => onSelectDate(cellDate)}
-                className="sticky top-0 z-10 flex h-14 w-full cursor-pointer flex-col items-center justify-center gap-0.5 border-b border-border/60 bg-background px-2 py-1 transition hover:bg-muted/30"
-              >
+              {/* Google Calendar-style header (item 7/8/12): weekday label
+                  above a significantly larger date number, today gets a
+                  colored circle + colored weekday label. Only the date
+                  number itself is clickable — jumps to Day view for that
+                  date (item 16) — not the weekday label or the surrounding
+                  header padding, so hovering/clicking anywhere else in this
+                  header does nothing. This mirrors the hover-circle scoping
+                  fix just above it: interaction and hover both key off the
+                  circle's own bounds, never the whole cell. */}
+              <div className="sticky top-0 z-10 flex h-14 w-full flex-col items-center justify-center gap-0.5 border-b border-border/60 bg-background px-2 py-1">
                 <span
-                  className={`text-3xs font-semibold tracking-wider ${isToday ? "text-primary" : "text-muted-foreground"}`}
+                  className={`text-2xs font-semibold tracking-wider ${isToday ? "text-primary" : "text-foreground/70"}`}
                 >
                   {weekdayAbbr}
                 </span>
-                <span
+                <button
+                  type="button"
+                  onClick={() => onSelectDate(cellDate)}
                   className={
                     isToday
-                      ? "grid h-6 w-6 place-items-center rounded-full bg-primary text-sm font-bold text-primary-foreground"
-                      : "text-sm font-semibold text-foreground"
+                      ? "grid h-8 w-8 cursor-pointer place-items-center rounded-full bg-primary text-base font-bold text-primary-foreground"
+                      : "grid h-8 w-8 cursor-pointer place-items-center rounded-full text-lg font-bold text-foreground transition hover:bg-neutral-300 dark:hover:bg-neutral-700"
                   }
                 >
                   {kd}
-                </span>
-              </button>
+                </button>
+              </div>
               <div className="relative" style={{ height: gridHeight }}>
                 {hours.map((h) => (
                   <div
                     key={h}
                     style={{ height: 60 * PX_PER_MIN }}
-                    className="border-b border-border/35"
+                    // Item 5: the old border-border-based line topped out
+                    // around 7-8% effective alpha even at full strength
+                    // (border-border itself is only a 12-14%-alpha token, so
+                    // any opacity modifier on it just dilutes further) — too
+                    // faint to track across a wide grid. Switched to
+                    // border-foreground (white in dark mode, near-black in
+                    // light mode) at a modifier tuned for a clearly visible
+                    // but still subtle hairline.
+                    className="border-b border-foreground/15"
                   />
                 ))}
+                {/* Current-time line — stacking fix: this shared z-10 with
+                    the sticky day-header button above (which is also z-10),
+                    an unresolved tie that let the line visually bleed
+                    through the header's background while scrolling (the
+                    header's own text still painted above it, producing the
+                    reported "line above the header background but below its
+                    text" artifact). z-[5] keeps it unambiguously BELOW the
+                    header (z-10, its own stacking context) while staying
+                    ABOVE the CallBlock event cards it needs to stay visible
+                    over (their inline zIndex is 1-4 at realistic overlap
+                    counts) — the header now always wins, the line still
+                    never disappears behind an event. */}
                 {key === todayKey && nowTop >= 0 && nowTop <= gridHeight && (
                   <div
-                    className="pointer-events-none absolute left-0 right-0 z-10 border-t-2 border-red-500"
+                    className="pointer-events-none absolute left-0 right-0 z-[5] border-t-2 border-red-500"
                     style={{ top: nowTop }}
                   >
                     <span className="absolute -top-1.5 left-0 h-3 w-3 rounded-full bg-red-500" />
@@ -1305,6 +1584,7 @@ function TimelineGrid({
                         zIndex: layout.column + 1,
                       }}
                       onSelect={onSelect}
+                      columnCount={layout.columnCount}
                     />
                   );
                 })}
@@ -1325,16 +1605,90 @@ function statusIcon(status: OverallConfirmationStatus) {
   return "…";
 }
 
+// Five small circles for the canonical touchpoint sequence (items 19-23) —
+// pure derivation off deriveTouchpointStatus, so a circle can never show
+// green unless a response is actually recorded (item 23). Three visually
+// distinct states, none of which can be confused for another: empty/no fill
+// (not sent), light-gray fill + envelope icon (sent, no response — an
+// in-progress, neutral outcome, never green and never a checkmark), and
+// green fill + checkmark (responded — the only state that means someone on
+// the other end actually acted). The gray fill and its icon color are fixed
+// (not a dark/light-inverting pair) since the fill itself doesn't change
+// between themes — only the checkmark on the green "responded" state does.
+//
+// Sizing is CSS container-query driven (against the booking button's own
+// @container, not columnCount) rather than JS-computed: full size whenever
+// the button is actually wide enough to hold it (@[100px]:), the small
+// fallback otherwise. That's a deliberate correction — sizing off
+// columnCount alone shrank the circles on every overlapping booking even
+// when the column was still plenty wide (e.g. a 2-way overlap in a roomy
+// view), which read as inconsistent. This way two calls at the same time in
+// a wide view get full-size circles just like a single call does; only a
+// column that's genuinely too narrow (verified: below 100px, five full
+// circles plus the icon they'd need would clip) drops to the small,
+// icon-less fallback that was already proven safe at every overlap width.
+function ConfirmationCircles({
+  confirmation,
+  scheduledFor,
+  className,
+}: {
+  confirmation: CallConfirmationRow;
+  scheduledFor: string;
+  className?: string;
+}) {
+  return (
+    <div className={`flex shrink-0 items-center gap-0 @[100px]:gap-0.5 ${className ?? ""}`}>
+      {TOUCHPOINT_SEQUENCE.map((tp) => {
+        const status = deriveTouchpointStatus(tp, confirmation, scheduledFor);
+        const responded = status === "responded";
+        const sentNoResponse = status === "manually_sent" || status === "scheduled";
+        const stateLabel = responded
+          ? "Responded"
+          : sentNoResponse
+            ? "Sent, no response"
+            : "Not sent";
+        return (
+          <span
+            key={tp}
+            title={`${TOUCHPOINT_LABELS[tp]} — ${stateLabel}`}
+            className={`grid h-1 w-1 shrink-0 place-items-center rounded-full border @[100px]:h-2.5 @[100px]:w-2.5 ${
+              responded
+                ? "border-emerald-500 bg-emerald-500"
+                : sentNoResponse
+                  ? "border-neutral-400 bg-neutral-300 dark:border-neutral-300 dark:bg-neutral-300"
+                  : "border-current/30 bg-transparent"
+            }`}
+          >
+            {/* Below 100px the dot itself is only 4px — too small to also
+                hold a legible icon without overflowing it. The fill/border
+                distinction alone still carries the three real states there;
+                the icon is a bonus once there's room, never the only signal. */}
+            {responded && (
+              <Check
+                className="hidden h-2 w-2 text-neutral-900 dark:text-white @[100px]:block"
+                strokeWidth={3.5}
+              />
+            )}
+            {sentNoResponse && <Mail className="hidden h-2 w-2 text-neutral-700 @[100px]:block" />}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function CallBlock({
   entry,
   timezone,
   repNameById,
   style,
   onSelect,
+  columnCount = 1,
 }: {
   entry: {
     call: CallRow;
     lead?: LeadRow;
+    confirmation: CallConfirmationRow;
     overallStatus: OverallConfirmationStatus;
     quality: LeadQuality;
     nextAction: string;
@@ -1345,9 +1699,30 @@ function CallBlock({
   repNameById: Record<string, string>;
   style: React.CSSProperties;
   onSelect: (id: string) => void;
+  /** How many calls currently overlap this one (same slot, split into
+   *  side-by-side columns). Drives the item-26 narrow-card priority fix —
+   *  defaults to 1 (no overlap) for AgendaList, which never splits columns. */
+  columnCount?: number;
 }) {
-  const { call, lead, overallStatus, quality, nextAction, checklist, checklistDone } = entry;
+  const { call, lead, confirmation, overallStatus, quality, nextAction, checklist, checklistDone } =
+    entry;
+  // Item 26 correction: 2+ overlapping calls split this column narrow enough
+  // that the old single-line "Name — Closer" + full-size circles layout
+  // could shrink the name span to 0px (measured, confirmed defect: at
+  // columnCount 2 the name span hit width:0 at both a 1400px and an 820px
+  // viewport). Any overlap ("compact", columnCount>=2) drops the status icon
+  // and the closer suffix to guarantee the two hard requirements — the lead
+  // name keeps a protected, non-zero minimum width, and all five circles
+  // stay full and unclipped (verified: they still measurably overlapped the
+  // button's right edge at columnCount 2 with the icon kept and full-size
+  // closer text competing for the same row — dropping both was the only
+  // combination that held at every measured overlap width). "tight" (3+-way,
+  // genuinely narrower again) shrinks the circles and the name floor further
+  // on top of that.
+  const compact = columnCount >= 2;
+  const tight = columnCount >= 3;
   const isCancelled = overallStatus === "cancelled";
+  const isRescheduled = overallStatus === "rescheduled";
   const timeLabel = call.scheduled_for
     ? new Intl.DateTimeFormat("en-US", {
         timeZone: timezone,
@@ -1365,16 +1740,31 @@ function CallBlock({
   // — never by padding the 30-minute block itself.
   const blockHeight = typeof style.height === "number" ? style.height : Infinity;
   const roomy = blockHeight >= 48;
+  const leadLine = `${displayName(lead?.full_name ?? lead?.handle) || "Unknown"} — ${displayName(closerName)}`;
 
-  if (isCancelled) {
+  // Cancelled/rescheduled (item 6): fill matches the calendar surface (never
+  // the status color), border + text come from the booking's ORIGINAL status
+  // (captured server-side in previous_status the instant it transitioned —
+  // see call-confirmations.server.ts's setOverallStatus), and the lead/closer
+  // line strikes through. A booking cancelled/rescheduled before ever having
+  // a previous_status (e.g. it was "awaiting" from creation) falls back to
+  // the awaiting accent rather than losing its border/text entirely.
+  if (isCancelled || isRescheduled) {
+    const accent = ORIGINAL_STATUS_ACCENT[confirmation?.previous_status ?? "awaiting"];
     return (
       <button
         onClick={() => onSelect(call.id)}
         style={style}
-        className="cursor-pointer overflow-hidden rounded-md border border-dashed border-border/50 bg-muted/10 px-1.5 py-1 text-left text-3xs text-muted-foreground/70"
+        className={`cursor-pointer overflow-hidden rounded-md border-2 bg-card px-1.5 py-1 text-left text-3xs shadow-sm ${accent.border} ${accent.text}`}
       >
-        <div className="font-medium">Available</div>
-        <div>{timeLabel}</div>
+        <div className="flex items-center gap-1 font-semibold">
+          <span className="shrink-0">{statusIcon(overallStatus)}</span>
+          <span className="truncate line-through decoration-2">
+            {isCancelled ? "Canceled: " : "Rescheduled: "}
+            {leadLine}
+          </span>
+        </div>
+        <div className="truncate line-through opacity-80">{timeLabel}</div>
       </button>
     );
   }
@@ -1390,13 +1780,53 @@ function CallBlock({
     <button
       onClick={() => onSelect(call.id)}
       style={style}
-      className={`cursor-pointer overflow-hidden rounded-md px-1.5 py-1 text-left text-3xs shadow-sm ${solid.bg} ${solid.text}`}
+      className={`@container cursor-pointer overflow-hidden rounded-md px-1.5 py-1 text-left text-3xs shadow-sm ${solid.bg} ${solid.text}`}
     >
-      <div className="flex items-center gap-1 font-semibold">
-        <span className="shrink-0">{statusIcon(overallStatus)}</span>
-        <span className="truncate">
-          {displayName(lead?.full_name ?? lead?.handle) || "Unknown"} — {displayName(closerName)}
+      {/* Priority order when the box is narrow (item 26): 1) lead name,
+          2) closer, 3) the five confirmation circles. The lead name always
+          keeps a protected, non-zero minimum width — it can truncate but
+          never fully disappear. Any overlap (compact, 2+ calls sharing this
+          slot) drops the status icon; tight (3+-way overlap) shrinks the
+          name floor further on top of that.
+
+          Name and closer sit directly next to each other ("Name and
+          Closer") — neither is flex-1 (a greedy flex-1 name was pushing
+          closer, and the circles after it, all the way to the button's far
+          right edge with a large dead gap in between). A dedicated
+          zero-width spacer with flex-1 comes after them and does that
+          job instead, so the circles stay pinned to the right edge as a
+          consistent "status area" while name+closer form one left-aligned
+          cluster right next to the icon.
+
+          The closer suffix is NOT tied to columnCount — this card is a CSS
+          size container (@container), and the closer span only renders
+          (hidden below, inline at/above ~100px of ACTUAL rendered width)
+          once there's genuinely room for it. That's why a 2-way overlap in
+          Day view (one wide column split in two, still ~190px+) shows the
+          closer while the same 2-way overlap in a 7-column Week view
+          (~65-80px) doesn't — same columnCount, different real width. When
+          shown, closer has no width floor of its own, so it truncates/
+          shrinks away before the protected name floor ever gives up any
+          space. ConfirmationCircles is sized the same way (see its own
+          comment) — full-size whenever the button is wide enough, not
+          keyed off columnCount, so two overlapping calls in a roomy view
+          get the same circle size as a single call does. */}
+      <div className={`flex items-center font-semibold ${tight ? "gap-0.5" : "gap-1"}`}>
+        {!compact && <span className="shrink-0">{statusIcon(overallStatus)}</span>}
+        <span className={`${tight ? "min-w-[10px]" : "min-w-[18px]"} shrink truncate`}>
+          {displayName(lead?.full_name ?? lead?.handle) || "Unknown"}
         </span>
+        <span className="hidden min-w-0 shrink truncate text-[0.92em] font-normal opacity-80 @[100px]:inline">
+          and <span className="font-semibold">{displayName(closerName)}</span>
+        </span>
+        <span className="min-w-0 flex-1" />
+        {call.scheduled_for && (
+          <ConfirmationCircles
+            confirmation={confirmation}
+            scheduledFor={call.scheduled_for}
+            className="shrink-0"
+          />
+        )}
       </div>
       <div className="truncate opacity-80">{timeLabel}</div>
       {roomy && (
@@ -1423,6 +1853,7 @@ function AgendaList({
   entries: Array<{
     call: CallRow;
     lead?: LeadRow;
+    confirmation: CallConfirmationRow;
     overallStatus: OverallConfirmationStatus;
     quality: LeadQuality;
     nextAction: string;
@@ -1487,7 +1918,7 @@ function MonthGrid({
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
           <div
             key={d}
-            className="p-1.5 text-center text-3xs font-semibold uppercase tracking-wider text-muted-foreground"
+            className="p-1.5 text-center text-3xs font-semibold uppercase tracking-wider text-foreground/70"
           >
             {d}
           </div>
@@ -1501,6 +1932,7 @@ function MonthGrid({
           const entries = (byDay.get(key) ?? []) as Array<{
             call: CallRow;
             lead?: LeadRow;
+            confirmation: CallConfirmationRow;
             overallStatus: OverallConfirmationStatus;
           }>;
           const sorted = [...entries].sort((a, b) =>
@@ -1515,19 +1947,24 @@ function MonthGrid({
                 inMonth ? "" : "bg-muted/10"
               }`}
             >
-              <button
-                type="button"
-                onClick={() => onSelectDate(cellDate)}
-                className={`cursor-pointer text-3xs transition hover:opacity-80 ${
-                  key === todayKey
-                    ? "inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground"
-                    : inMonth
-                      ? "text-muted-foreground"
-                      : "text-muted-foreground/40"
-                }`}
-              >
-                {d}
-              </button>
+              {/* Item 11: only the date number is centered within its own
+                  small area — the cell itself and the event chips below stay
+                  left-aligned, unchanged. */}
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => onSelectDate(cellDate)}
+                  className={`grid h-7 w-7 cursor-pointer place-items-center rounded-full text-sm font-semibold transition ${
+                    key === todayKey
+                      ? "bg-primary text-primary-foreground"
+                      : inMonth
+                        ? "text-foreground hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                        : "text-foreground/30 hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                  }`}
+                >
+                  {d}
+                </button>
+              </div>
               <div className="mt-1 space-y-0.5">
                 {shown.map((e) => {
                   const lead = e.lead;
@@ -1538,6 +1975,27 @@ function MonthGrid({
                         minute: "2-digit",
                       }).format(new Date(e.call.scheduled_for))
                     : "";
+                  // Item 6, shared with CallBlock (Day/Week/Agenda) via the
+                  // same ORIGINAL_STATUS_ACCENT lookup — a cancelled/
+                  // rescheduled booking never falls back to this chip's
+                  // normal solid-status fill, in Month view either.
+                  if (e.overallStatus === "cancelled" || e.overallStatus === "rescheduled") {
+                    const accent =
+                      ORIGINAL_STATUS_ACCENT[e.confirmation?.previous_status ?? "awaiting"];
+                    const label = e.overallStatus === "cancelled" ? "Canceled" : "Rescheduled";
+                    return (
+                      <button
+                        key={e.call.id}
+                        onClick={() => onSelect(e.call.id)}
+                        className={`block w-full cursor-pointer truncate rounded border px-1 py-0.5 text-left text-3xs bg-card ${accent.border} ${accent.text}`}
+                        title={`${label}: ${displayName(lead?.full_name ?? lead?.handle) || "Unknown"} · ${timeLabel}`}
+                      >
+                        <span className="line-through decoration-2">
+                          {timeLabel} {displayName(lead?.full_name ?? lead?.handle) || "Unknown"}
+                        </span>
+                      </button>
+                    );
+                  }
                   const solid = STATUS_SOLID[e.overallStatus];
                   return (
                     <button
@@ -1616,12 +2074,12 @@ function YearGrid({
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {months.map(({ monthIndex, name, cells }) => (
         <div key={name} className="rounded-xl border border-border/60 bg-background/40 p-3">
-          <div className="mb-2 text-center text-sm font-semibold">{name}</div>
+          <div className="mb-2 text-center text-sm font-semibold text-foreground">{name}</div>
           <div className="grid grid-cols-7 gap-y-0.5">
             {YEAR_MINI_WEEKDAYS.map((w, i) => (
               <div
                 key={i}
-                className="text-center text-4xs font-semibold uppercase text-muted-foreground"
+                className="text-center text-3xs font-semibold uppercase text-foreground/60"
               >
                 {w}
               </div>
@@ -1636,13 +2094,18 @@ function YearGrid({
                   key={key}
                   type="button"
                   onClick={() => onSelectDate(cellDate)}
-                  className="flex cursor-pointer flex-col items-center gap-0.5 rounded py-0.5 transition hover:bg-muted/40"
+                  className="flex cursor-pointer flex-col items-center gap-0.5 rounded py-0.5"
                 >
+                  {/* Item 9: the hover circle sits on the date number itself
+                      (lighter than the today/selected fill), not the whole
+                      cell — item 8: typography bumped one notch from the
+                      previous 4xs without restructuring this mini-month
+                      composition. */}
                   <span
                     className={
                       isToday
-                        ? "grid h-5 w-5 place-items-center rounded-full bg-primary text-4xs font-bold text-primary-foreground"
-                        : `text-4xs ${inMonth ? "text-foreground" : "text-muted-foreground/30"}`
+                        ? "grid h-6 w-6 place-items-center rounded-full bg-primary text-3xs font-bold text-primary-foreground"
+                        : `grid h-6 w-6 place-items-center rounded-full text-3xs transition hover:bg-neutral-300 dark:hover:bg-neutral-700 ${inMonth ? "text-foreground" : "text-foreground/30"}`
                     }
                   >
                     {cellDate.getDate()}
@@ -1767,21 +2230,45 @@ function ConfirmationPolicyPopover({
   );
 }
 
+/** Formats a stored timestamp exactly as recorded — never the current time,
+ *  never a generated/inferred value. Returns null for a missing timestamp so
+ *  callers render an honest "not sent"/"no response recorded" state instead
+ *  of a fabricated one. */
+function formatTouchpointTimestamp(iso: string | null, timezone: string): string | null {
+  if (!iso) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
 function TouchpointRow({
   touchpoint,
   confirmation,
   scheduledFor,
+  timezone,
   onMark,
   onUnmark,
+  onRespond,
 }: {
   touchpoint: Touchpoint;
   confirmation: CallConfirmationRow;
   scheduledFor: string;
+  timezone: string;
   onMark: () => void;
   onUnmark: () => void;
+  /** Marks/unmarks that the lead RESPONDED to an already-sent touchpoint —
+   *  item 21/24: distinct from sent/not-sent, additive on top of it. */
+  onRespond: (responded: boolean) => void;
 }) {
   const status = deriveTouchpointStatus(touchpoint, confirmation, scheduledFor);
   const actionable = status === "due" || status === "not_due" || status === "not_sent";
+  const { sentAt, respondedAt } = getTouchpointTimestamps(touchpoint, confirmation);
+  const sentLabel = formatTouchpointTimestamp(sentAt, timezone);
+  const respondedLabel = formatTouchpointTimestamp(respondedAt, timezone);
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-background/40 p-2">
       <div>
@@ -1789,13 +2276,50 @@ function TouchpointRow({
         <div className="text-3xs uppercase tracking-wider text-muted-foreground">
           {status.replace("_", " ")}
         </div>
+        {/* Actual stored timestamps (item 24) — never the current time and
+            never inferred, so a touchpoint that was never sent/responded to
+            shows an honest "Not sent" / "No response recorded" instead of a
+            blank or fabricated value. Sent and responded are independent:
+            a sent-but-unanswered touchpoint shows only the sent line. */}
+        <div className="mt-1 space-y-0.5 text-3xs text-muted-foreground">
+          <div>{sentLabel ? `Sent · ${sentLabel}` : "Not sent"}</div>
+          {(status === "responded" || status === "manually_sent") && (
+            <div>{respondedLabel ? `Responded · ${respondedLabel}` : "No response recorded"}</div>
+          )}
+        </div>
       </div>
       {status === "responded" || status === "manually_sent" ? (
-        <div className="flex items-center gap-2">
-          <span className="text-3xs text-emerald-400">Done</span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {status === "responded" ? (
+            <>
+              <span className="text-3xs text-emerald-400">Responded</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-1.5 text-3xs text-muted-foreground hover:text-foreground"
+                onClick={() => onRespond(false)}
+              >
+                Unmark responded
+              </Button>
+            </>
+          ) : (
+            <>
+              <span className="text-3xs text-muted-foreground">Sent, no response</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-1.5 text-3xs"
+                onClick={() => onRespond(true)}
+              >
+                Mark responded
+              </Button>
+            </>
+          )}
           {/* Corrects an accidental click on InsightOS's own state — never
               claims to undo a message a real integration actually
-              delivered (Priority 6/49). */}
+              delivered (Priority 6/49). Still available once responded —
+              unmarking sent clears the response with it, since a response
+              can't outlive the message it responded to. */}
           <Button
             size="sm"
             variant="ghost"
@@ -1828,6 +2352,7 @@ function CallDetailDrawer({
   onClose,
   onMarkTouchpoint,
   onUnmarkTouchpoint,
+  onRespondTouchpoint,
   onSetStatus,
   onReschedule,
   onToggleShowed,
@@ -1863,6 +2388,7 @@ function CallDetailDrawer({
     },
   ) => void;
   onUnmarkTouchpoint: (touchpoint: Touchpoint) => void;
+  onRespondTouchpoint: (touchpoint: Touchpoint, responded: boolean) => void;
   onSetStatus: (
     status: OverallConfirmationStatus,
     cancelledReason?: string,
@@ -2054,14 +2580,13 @@ function CallDetailDrawer({
             </div>
             {call.scheduled_for && (
               <div className="space-y-2">
-                {(
-                  ["night_before", "morning", "one_hour", "thirty_min", "ten_min"] as Touchpoint[]
-                ).map((tp) => (
+                {TOUCHPOINT_SEQUENCE.map((tp) => (
                   <div key={tp}>
                     <TouchpointRow
                       touchpoint={tp}
                       confirmation={confirmation}
                       scheduledFor={call.scheduled_for!}
+                      timezone={timezone}
                       onMark={() =>
                         onMarkTouchpoint(
                           tp,
@@ -2069,6 +2594,7 @@ function CallDetailDrawer({
                         )
                       }
                       onUnmark={() => onUnmarkTouchpoint(tp)}
+                      onRespond={(responded) => onRespondTouchpoint(tp, responded)}
                     />
                     {tp === "morning" && (
                       <div className="mt-1.5 space-y-1.5 rounded-lg border border-border/40 bg-background/30 p-2">

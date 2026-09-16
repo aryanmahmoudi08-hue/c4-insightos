@@ -549,9 +549,10 @@
     border-color: oklch(0.16 0 0 / 18%);
   }
 
-  /* C4 OS logo: two real assets (c4-os-white.png / c4-os-black.png), not one
-     asset approximated via CSS filter. .theme-logo-dark shows by default
-     (dark sidebar); .light flips which one is visible. Pure CSS, no theme-
+  /* AscendOS logo: two real theme-specific assets per lockup (inline for the
+     /welcome landing page, stacked everywhere else), not one asset
+     approximated via CSS filter. .theme-logo-dark shows by default (dark
+     sidebar); .light flips which one is visible. Pure CSS, no theme-
      detection JS, so there's no flash. */
   .theme-logo-light {
     display: none;

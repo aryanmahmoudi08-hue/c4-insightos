@@ -50,6 +50,7 @@ const TOUCHPOINT_WINDOWS: Record<
 export type CallConfirmationRow = {
   night_before_scheduled_at: string | null;
   night_before_sent_at: string | null;
+  night_before_responded_at: string | null;
   morning_scheduled_at: string | null;
   morning_sent_at: string | null;
   morning_reason_for_change: string | null;
@@ -60,16 +61,22 @@ export type CallConfirmationRow = {
   morning_responded_at: string | null;
   one_hour_scheduled_at: string | null;
   one_hour_sent_at: string | null;
+  one_hour_responded_at: string | null;
   thirty_min_scheduled_at: string | null;
   thirty_min_sent_at: string | null;
   thirty_min_confirmed: boolean;
   thirty_min_confirmed_at: string | null;
   ten_min_scheduled_at: string | null;
   ten_min_sent_at: string | null;
+  ten_min_responded_at: string | null;
   overall_status: "awaiting" | "confirmed" | "overdue" | "at_risk" | "cancelled" | "rescheduled";
   confirmed_at: string | null;
   cancelled_reason: string | null;
   rescheduled_reason: string | null;
+  // Snapshot of overall_status taken the instant it transitioned to
+  // cancelled/rescheduled — display-only (see the migration comment), never
+  // read by deriveOverallStatus or anything else in this status machine.
+  previous_status: "awaiting" | "confirmed" | "overdue" | "at_risk" | null;
 } | null;
 
 const FIELD_MAP: Record<
@@ -77,23 +84,62 @@ const FIELD_MAP: Record<
   {
     scheduled: keyof NonNullable<CallConfirmationRow>;
     sent: keyof NonNullable<CallConfirmationRow>;
-    responded?: keyof NonNullable<CallConfirmationRow>;
+    responded: keyof NonNullable<CallConfirmationRow>;
   }
 > = {
-  night_before: { scheduled: "night_before_scheduled_at", sent: "night_before_sent_at" },
+  night_before: {
+    scheduled: "night_before_scheduled_at",
+    sent: "night_before_sent_at",
+    responded: "night_before_responded_at",
+  },
   morning: {
     scheduled: "morning_scheduled_at",
     sent: "morning_sent_at",
     responded: "morning_responded_at",
   },
-  one_hour: { scheduled: "one_hour_scheduled_at", sent: "one_hour_sent_at" },
+  one_hour: {
+    scheduled: "one_hour_scheduled_at",
+    sent: "one_hour_sent_at",
+    responded: "one_hour_responded_at",
+  },
   thirty_min: {
     scheduled: "thirty_min_scheduled_at",
     sent: "thirty_min_sent_at",
     responded: "thirty_min_confirmed_at",
   },
-  ten_min: { scheduled: "ten_min_scheduled_at", sent: "ten_min_sent_at" },
+  ten_min: {
+    scheduled: "ten_min_scheduled_at",
+    sent: "ten_min_sent_at",
+    responded: "ten_min_responded_at",
+  },
 };
+
+/** Reads a touchpoint's actual stored scheduled/sent/responded timestamps —
+ *  never generated or inferred, exactly what's in the row (or null). The
+ *  confirmation-sequence drawer uses this to show real timestamps alongside
+ *  the derived status, rather than the status label alone. */
+export function getTouchpointTimestamps(
+  touchpoint: Touchpoint,
+  confirmation: CallConfirmationRow,
+): { scheduledAt: string | null; sentAt: string | null; respondedAt: string | null } {
+  const fields = FIELD_MAP[touchpoint];
+  return {
+    scheduledAt: (confirmation?.[fields.scheduled] as string | null | undefined) ?? null,
+    sentAt: (confirmation?.[fields.sent] as string | null | undefined) ?? null,
+    respondedAt: (confirmation?.[fields.responded] as string | null | undefined) ?? null,
+  };
+}
+
+/** The five touchpoints in canonical sequence order — the single source of
+ *  truth for "1 → 2 → 3 → 4 → 5" wherever that order needs to be rendered
+ *  (the five-circle indicator, the drawer's touchpoint list). */
+export const TOUCHPOINT_SEQUENCE: Touchpoint[] = [
+  "night_before",
+  "morning",
+  "one_hour",
+  "thirty_min",
+  "ten_min",
+];
 
 export function deriveTouchpointStatus(
   touchpoint: Touchpoint,
@@ -103,9 +149,7 @@ export function deriveTouchpointStatus(
 ): TouchpointStatus {
   const fields = FIELD_MAP[touchpoint];
   const sentAt = confirmation?.[fields.sent] as string | null | undefined;
-  const respondedAt = fields.responded
-    ? (confirmation?.[fields.responded] as string | null | undefined)
-    : null;
+  const respondedAt = confirmation?.[fields.responded] as string | null | undefined;
   if (respondedAt) return "responded";
   if (sentAt) return "manually_sent";
 

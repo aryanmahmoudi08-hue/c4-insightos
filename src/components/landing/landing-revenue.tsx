@@ -17,7 +17,7 @@ export function LandingRevenue() {
           <SectionHeading
             eyebrow="Revenue & cash"
             title="Revenue and cash are not the same number."
-            description="C4 OS keeps contracted value, collected cash, forecasted pace, and at-risk balance visibly separate — so a strong revenue month never quietly hides a collections problem."
+            description="AscendOS keeps contracted value, collected cash, forecasted pace, and at-risk balance visibly separate — so a strong revenue month never quietly hides a collections problem."
           />
           <FadeUp delay={0.1} amount={0.3}>
             <div className="rounded-2xl border border-border bg-card p-5">

@@ -1,7 +1,10 @@
 import { fetchCoreWindow, buildWeeklyReport } from "@/lib/weekly-report.server";
 import { computeDemand } from "@/lib/content-signals.server";
 import { clientAtRiskReason } from "@/lib/client-risk";
-import { DEFAULT_WORKSPACE_SETTINGS, type WorkspaceSettings } from "@/lib/workspace-settings.functions";
+import {
+  DEFAULT_WORKSPACE_SETTINGS,
+  type WorkspaceSettings,
+} from "@/lib/workspace-settings.functions";
 
 type Sb = { from: (t: string) => any };
 
@@ -23,7 +26,12 @@ type ToolDef = {
   name: string;
   description: string;
   parameters: { type: "object"; properties: Record<string, unknown>; required?: string[] };
-  run: (sb: Sb, orgId: string, settings: WorkspaceSettings, args: Record<string, unknown>) => Promise<unknown>;
+  run: (
+    sb: Sb,
+    orgId: string,
+    settings: WorkspaceSettings,
+    args: Record<string, unknown>,
+  ) => Promise<unknown>;
 };
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
@@ -32,13 +40,15 @@ const daysAgoIso = (n: number) => isoDate(new Date(Date.now() - n * 86400e3));
 const TOOLS: ToolDef[] = [
   {
     name: "get_weekly_snapshot",
-    description: "The full rolling-last-7-days business snapshot: cash collected + WoW delta, calls booked/showed/closed + rates, new leads, closer/setter leaderboards, funnel health (what's capping growth, what's working), content mix, client renewal/at-risk breakdown, hiring pipeline. This is the SAME data the Weekly Report page shows. Use this first for any general 'how's business doing' / 'how was this week' question before reaching for a narrower tool.",
+    description:
+      "The full rolling-last-7-days business snapshot: cash collected + WoW delta, calls booked/showed/closed + rates, new leads, closer/setter leaderboards, funnel health (what's capping growth, what's working), content mix, client renewal/at-risk breakdown, hiring pipeline. This is the SAME data the Weekly Report page shows. Use this first for any general 'how's business doing' / 'how was this week' question before reaching for a narrower tool.",
     parameters: { type: "object", properties: {} },
     run: async (sb, orgId, settings) => buildWeeklyReport(sb, orgId, settings),
   },
   {
     name: "get_cash_and_calls_for_range",
-    description: "Cash collected, calls booked/showed/closed, new leads, and closer/setter cash+close breakdowns for an ARBITRARY date range (not just the last 7 days). Use when the user asks about a specific period, a longer window, or wants to compare two custom ranges (call it twice).",
+    description:
+      "Cash collected, calls booked/showed/closed, new leads, and closer/setter cash+close breakdowns for an ARBITRARY date range (not just the last 7 days). Use when the user asks about a specific period, a longer window, or wants to compare two custom ranges (call it twice).",
     parameters: {
       type: "object",
       properties: {
@@ -47,49 +57,71 @@ const TOOLS: ToolDef[] = [
       },
       required: ["from", "to"],
     },
-    run: async (sb, orgId, _settings, args) => fetchCoreWindow(sb, orgId, String(args.from), String(args.to)),
+    run: async (sb, orgId, _settings, args) =>
+      fetchCoreWindow(sb, orgId, String(args.from), String(args.to)),
   },
   {
     name: "get_content_mix",
-    description: "The recommended content-mechanism mix (educational/credibility/authoritative/relatability) computed from real FAQ clicks, setter-call signals, onboarding intakes, and posted reels — same computation /content-signals shows. Explicitly flags insufficientData when total signal weight is too thin to be confident. Defaults to the last 30 days if no range given.",
+    description:
+      "The recommended content-mechanism mix (educational/credibility/authoritative/relatability) computed from real FAQ clicks, setter-call signals, onboarding intakes, and posted reels — same computation /content-signals shows. Explicitly flags insufficientData when total signal weight is too thin to be confident. Defaults to the last 30 days if no range given.",
     parameters: {
       type: "object",
       properties: {
-        from: { type: "string", description: "Start date, YYYY-MM-DD. Optional — defaults to 30 days ago." },
+        from: {
+          type: "string",
+          description: "Start date, YYYY-MM-DD. Optional — defaults to 30 days ago.",
+        },
         to: { type: "string", description: "End date, YYYY-MM-DD. Optional — defaults to today." },
       },
     },
-    run: async (sb, orgId, settings, args) => computeDemand(
-      sb, orgId,
-      { from: String(args.from ?? daysAgoIso(29)), to: String(args.to ?? isoDate(new Date())) },
-      settings.content_engine,
-    ),
+    run: async (sb, orgId, settings, args) =>
+      computeDemand(
+        sb,
+        orgId,
+        { from: String(args.from ?? daysAgoIso(29)), to: String(args.to ?? isoDate(new Date())) },
+        settings.content_engine,
+      ),
   },
   {
     name: "list_at_risk_clients",
-    description: "Every active client currently flagged at-risk (renewal within the workspace's configured at-risk window with no renewal conversation started, or an overdue renewal), with the specific reason per client — not just a count. Same clientAtRiskReason logic the Clients page and Weekly Report use.",
+    description:
+      "Every active client currently flagged at-risk (renewal within the workspace's configured at-risk window with no renewal conversation started, or an overdue renewal), with the specific reason per client — not just a count. Same clientAtRiskReason logic the Clients page and Weekly Report use.",
     parameters: { type: "object", properties: {} },
     run: async (sb, orgId, settings) => {
-      const { data, error } = await sb.from("clients")
+      const { data, error } = await sb
+        .from("clients")
         .select("id, full_name, renewal_date, renewal_conv_started, status")
-        .eq("org_id", orgId).eq("status", "active");
+        .eq("org_id", orgId)
+        .eq("status", "active");
       if (error) throw new Error(error.message);
-      const rows = (data ?? []) as { id: string; full_name: string | null; renewal_date: string | null; renewal_conv_started: boolean | null }[];
+      const rows = (data ?? []) as {
+        id: string;
+        full_name: string | null;
+        renewal_date: string | null;
+        renewal_conv_started: boolean | null;
+      }[];
       const atRisk = rows
-        .map((c) => ({ name: c.full_name ?? "(unnamed)", reason: clientAtRiskReason(c, settings.clients.renewalAtRiskDays) }))
+        .map((c) => ({
+          name: c.full_name ?? "(unnamed)",
+          reason: clientAtRiskReason(c, settings.clients.renewalAtRiskDays),
+        }))
         .filter((c): c is { name: string; reason: string } => c.reason !== null);
       return { atRiskCount: atRisk.length, totalActiveClients: rows.length, atRisk };
     },
   },
   {
     name: "get_open_alerts",
-    description: "Every currently unacknowledged alert (real threshold breaches logged to the alerts table — the same 'Open Alerts' card shown on the Main Hub), most recent first.",
+    description:
+      "Every currently unacknowledged alert (real threshold breaches logged to the alerts table — the same 'Open Alerts' card shown on the Main Hub), most recent first.",
     parameters: { type: "object", properties: {} },
     run: async (sb, orgId) => {
-      const { data, error } = await sb.from("alerts")
+      const { data, error } = await sb
+        .from("alerts")
         .select("id, severity, title, created_at")
-        .eq("org_id", orgId).eq("acknowledged", false)
-        .order("created_at", { ascending: false }).limit(20);
+        .eq("org_id", orgId)
+        .eq("acknowledged", false)
+        .order("created_at", { ascending: false })
+        .limit(20);
       if (error) throw new Error(error.message);
       return { openAlertCount: (data ?? []).length, alerts: data ?? [] };
     },
@@ -110,7 +142,7 @@ function buildSystemPrompt(): string {
   const yesterday = daysAgoIso(1);
   const last24h = daysAgoIso(1);
 
-  return `You are C4 Sentinel, the operating assistant inside C4 InsightOS — a business-ops platform for a high-ticket coaching/info-product company.
+  return `You are C4 Sentinel, the operating assistant inside AscendOS — a business-ops platform for a high-ticket coaching/info-product company.
 
 Today's date is ${today} (${weekday}). Use this to resolve every relative time expression into concrete YYYY-MM-DD bounds before calling a tool — never guess or leave a range vague:
 - "today" / "past 24 hours" / "last 24 hours" → from=${last24h} to=${today}
@@ -130,7 +162,12 @@ Rules, non-negotiable:
 8. Keep answers tight and specific — this is a working dashboard assistant, not a report generator. A few sentences, not an essay, unless the user asks for detail.`;
 }
 
-type OpenAiMessage = { role: string; content: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[]; tool_call_id?: string };
+type OpenAiMessage = {
+  role: string;
+  content: string | null;
+  tool_calls?: { id: string; function: { name: string; arguments: string } }[];
+  tool_call_id?: string;
+};
 
 async function callGateway(apiKey: string, messages: OpenAiMessage[]) {
   return fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -139,7 +176,10 @@ async function callGateway(apiKey: string, messages: OpenAiMessage[]) {
     body: JSON.stringify({
       model: "openai/gpt-5.6-sol",
       messages,
-      tools: TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })),
+      tools: TOOLS.map((t) => ({
+        type: "function",
+        function: { name: t.name, description: t.description, parameters: t.parameters },
+      })),
       tool_choice: "auto",
     }),
   });
@@ -148,12 +188,18 @@ async function callGateway(apiKey: string, messages: OpenAiMessage[]) {
 const MAX_TOOL_TURNS = 4;
 
 export async function askSentinel(
-  sb: Sb, orgId: string, settings: WorkspaceSettings, conversation: SentinelMessage[],
+  sb: Sb,
+  orgId: string,
+  settings: WorkspaceSettings,
+  conversation: SentinelMessage[],
 ): Promise<{ reply: string; toolsUsed: string[] }> {
   const apiKey = process.env["LOVABLE_API_KEY"];
   if (!apiKey) return { reply: "AI is not configured.", toolsUsed: [] };
 
-  const messages: OpenAiMessage[] = [{ role: "system", content: buildSystemPrompt() }, ...conversation];
+  const messages: OpenAiMessage[] = [
+    { role: "system", content: buildSystemPrompt() },
+    ...conversation,
+  ];
   const toolsUsed: string[] = [];
 
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
@@ -161,11 +207,17 @@ export async function askSentinel(
     try {
       res = await callGateway(apiKey, messages);
     } catch (e) {
-      return { reply: `AI request failed: ${e instanceof Error ? e.message : "network error"}`, toolsUsed };
+      return {
+        reply: `AI request failed: ${e instanceof Error ? e.message : "network error"}`,
+        toolsUsed,
+      };
     }
-    if (res.status === 429) return { reply: "AI rate limit hit — try again in a minute.", toolsUsed };
-    if (res.status === 402) return { reply: "AI credits exhausted — add credits to keep using C4 Sentinel.", toolsUsed };
-    if (!res.ok) return { reply: `AI error (${res.status}): ${(await res.text()).slice(0, 400)}`, toolsUsed };
+    if (res.status === 429)
+      return { reply: "AI rate limit hit — try again in a minute.", toolsUsed };
+    if (res.status === 402)
+      return { reply: "AI credits exhausted — add credits to keep using C4 Sentinel.", toolsUsed };
+    if (!res.ok)
+      return { reply: `AI error (${res.status}): ${(await res.text()).slice(0, 400)}`, toolsUsed };
 
     const json: { choices?: { message?: OpenAiMessage }[] } = await res.json();
     const msg = json.choices?.[0]?.message;
@@ -187,7 +239,11 @@ export async function askSentinel(
             resultPayload = { error: e instanceof Error ? e.message : "Tool call failed." };
           }
         }
-        messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(resultPayload) });
+        messages.push({
+          role: "tool",
+          tool_call_id: call.id,
+          content: JSON.stringify(resultPayload),
+        });
       }
       continue;
     }
@@ -195,7 +251,11 @@ export async function askSentinel(
     return { reply: msg.content?.trim() || "No insight returned.", toolsUsed };
   }
 
-  return { reply: "That question needed more tool calls than I allow in one turn — try breaking it into smaller questions.", toolsUsed };
+  return {
+    reply:
+      "That question needed more tool calls than I allow in one turn — try breaking it into smaller questions.",
+    toolsUsed,
+  };
 }
 
 export { DEFAULT_WORKSPACE_SETTINGS };

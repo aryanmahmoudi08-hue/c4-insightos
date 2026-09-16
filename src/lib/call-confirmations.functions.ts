@@ -139,6 +139,29 @@ export const unmarkTouchpointFn = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/** Marks/unmarks that the lead RESPONDED to an already-sent touchpoint —
+ *  distinct from `markTouchpointFn`/`unmarkTouchpointFn`, which own the
+ *  sent state. See call-confirmations.server.ts's respondTouchpoint doc. */
+export const respondTouchpointFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        call_id: z.string().uuid(),
+        org_id: z.string().uuid(),
+        touchpoint: touchpointSchema,
+        responded: z.boolean(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as never as { supabase: unknown; userId: string };
+    await assertOrgMember(supabase, userId, data.org_id);
+    const { respondTouchpoint } = await import("./call-confirmations.server");
+    await respondTouchpoint(data.call_id, userId, data.touchpoint, data.responded);
+    return { ok: true };
+  });
+
 export const getConfirmationPolicyFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ org_id: z.string().uuid() }).parse(d))

@@ -47,12 +47,12 @@ export const Route = createFileRoute("/_authenticated/team-calendar")({
   component: TeamCalendarPage,
   head: () => ({
     meta: [
-      { title: "Team Calendars — C4 InsightOS" },
+      { title: "Team Calendars — AscendOS" },
       {
         name: "description",
         content: "Every closer and setter calendar in one view, with day the whole team can see.",
       },
-      { property: "og:title", content: "Team Calendars — C4 InsightOS" },
+      { property: "og:title", content: "Team Calendars — AscendOS" },
       {
         property: "og:description",
         content: "Closer and setter Google Calendars visible to the whole team.",

@@ -40,17 +40,17 @@ export const Route = createFileRoute("/_authenticated/settings")({
   component: Settings,
   head: () => ({
     meta: [
-      { title: "Settings · C4 InsightOS" },
+      { title: "Settings · AscendOS" },
       {
         name: "description",
         content:
-          "Manage appearance, workspace details and team access for your C4 InsightOS workspace.",
+          "Manage appearance, workspace details and team access for your AscendOS workspace.",
       },
-      { property: "og:title", content: "Settings · C4 InsightOS" },
+      { property: "og:title", content: "Settings · AscendOS" },
       {
         property: "og:description",
         content:
-          "Manage appearance, workspace details and team access for your C4 InsightOS workspace.",
+          "Manage appearance, workspace details and team access for your AscendOS workspace.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

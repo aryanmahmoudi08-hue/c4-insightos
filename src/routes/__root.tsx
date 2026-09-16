@@ -1,7 +1,12 @@
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
-  Outlet, createRootRouteWithContext, useRouter, HeadContent, Scripts, Link,
+  Outlet,
+  createRootRouteWithContext,
+  useRouter,
+  HeadContent,
+  Scripts,
+  Link,
 } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/hooks/use-auth";
@@ -14,7 +19,9 @@ function NotFoundComponent() {
       <div className="text-center">
         <h1 className="font-mono text-6xl font-bold">404</h1>
         <p className="mt-2 text-sm text-muted-foreground">Route not found.</p>
-        <Link to="/" className="mt-4 inline-block text-sm text-primary underline">Back to command center</Link>
+        <Link to="/" className="mt-4 inline-block text-sm text-primary underline">
+          Back to command center
+        </Link>
       </div>
     </div>
   );
@@ -28,8 +35,15 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
       <div className="max-w-md text-center">
         <h1 className="text-lg font-semibold">Something broke</h1>
         <p className="mt-2 text-xs text-muted-foreground">{error.message}</p>
-        <button onClick={() => { router.invalidate(); reset(); }}
-          className="mt-4 rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground">Retry</button>
+        <button
+          onClick={() => {
+            router.invalidate();
+            reset();
+          }}
+          className="mt-4 rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground"
+        >
+          Retry
+        </button>
       </div>
     </div>
   );
@@ -40,14 +54,34 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "C4 InsightOS" },
-      { name: "description", content: "Business intelligence command center for high-ticket coaching & info-product operators." },
-      { property: "og:title", content: "C4 InsightOS" },
-      { name: "twitter:title", content: "C4 InsightOS" },
-      { property: "og:description", content: "Business intelligence command center for high-ticket coaching & info-product operators." },
-      { name: "twitter:description", content: "Business intelligence command center for high-ticket coaching & info-product operators." },
-      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/zvc72oMCDcYGSMIKqrxsMA8TLup2/social-images/social-1779172160305-Gemini_Generated_Image_t34nyft34nyft34n_(1).webp" },
-      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/zvc72oMCDcYGSMIKqrxsMA8TLup2/social-images/social-1779172160305-Gemini_Generated_Image_t34nyft34nyft34n_(1).webp" },
+      { title: "AscendOS" },
+      {
+        name: "description",
+        content:
+          "Business intelligence command center for high-ticket coaching & info-product operators.",
+      },
+      { property: "og:title", content: "AscendOS" },
+      { name: "twitter:title", content: "AscendOS" },
+      {
+        property: "og:description",
+        content:
+          "Business intelligence command center for high-ticket coaching & info-product operators.",
+      },
+      {
+        name: "twitter:description",
+        content:
+          "Business intelligence command center for high-ticket coaching & info-product operators.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/zvc72oMCDcYGSMIKqrxsMA8TLup2/social-images/social-1779172160305-Gemini_Generated_Image_t34nyft34nyft34n_(1).webp",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/zvc72oMCDcYGSMIKqrxsMA8TLup2/social-images/social-1779172160305-Gemini_Generated_Image_t34nyft34nyft34n_(1).webp",
+      },
       { name: "twitter:card", content: "summary_large_image" },
       { property: "og:type", content: "website" },
     ],
@@ -55,7 +89,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "stylesheet", href: appCss },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap",
+      },
     ],
   }),
   shellComponent: RootShell,
@@ -131,7 +168,8 @@ function RootComponent() {
  */
 function useViewTransitionGuard() {
   useEffect(() => {
-    if (typeof document === "undefined" || typeof document.startViewTransition !== "function") return;
+    if (typeof document === "undefined" || typeof document.startViewTransition !== "function")
+      return;
     const native = document.startViewTransition.bind(document);
     const noopTransition = (): ViewTransition => ({
       ready: Promise.resolve(),
@@ -140,7 +178,9 @@ function useViewTransitionGuard() {
       skipTransition() {},
       types: new Set(),
     });
-    document.startViewTransition = ((cb?: ViewTransitionUpdateCallback | StartViewTransitionOptions) => {
+    document.startViewTransition = ((
+      cb?: ViewTransitionUpdateCallback | StartViewTransitionOptions,
+    ) => {
       const update = typeof cb === "function" ? cb : cb?.update;
       try {
         const vt = native(cb as never);
@@ -148,13 +188,18 @@ function useViewTransitionGuard() {
         vt.finished.catch(() => {});
         return vt;
       } catch (err) {
-        if (err instanceof DOMException && (err.name === "InvalidStateError" || err.name === "NotSupportedError")) {
+        if (
+          err instanceof DOMException &&
+          (err.name === "InvalidStateError" || err.name === "NotSupportedError")
+        ) {
           update?.();
           return noopTransition();
         }
         throw err;
       }
     }) as typeof document.startViewTransition;
-    return () => { document.startViewTransition = native; };
+    return () => {
+      document.startViewTransition = native;
+    };
   }, []);
 }

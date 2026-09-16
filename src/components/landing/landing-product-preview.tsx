@@ -77,9 +77,9 @@ export function LandingProductPreview() {
       <div className="mx-auto max-w-6xl px-4 md:px-6">
         <SectionHeading
           align="center"
-          eyebrow="Inside C4 OS"
+          eyebrow="Inside AscendOS"
           title="One system, every module."
-          description="Representative previews of the real modules inside C4 OS."
+          description="Representative previews of the real modules inside AscendOS."
         />
 
         <FadeUp amount={0.15} className="mt-10">

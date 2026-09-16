@@ -34,8 +34,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { WebinarFilter } from "@/components/webinar-filter";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { useDateRange } from "@/hooks/use-date-range";
+import { useWebinars } from "@/hooks/use-webinars";
 import { supabase } from "@/integrations/supabase/client";
 import {
   aggregateWebinarMetrics,
@@ -53,6 +55,13 @@ import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail
 import type { Derivation } from "@/lib/funnel-derivation";
 import { useMoney } from "@/hooks/use-money";
 import { ChartTooltip } from "@/components/chart-tooltip";
+import {
+  ALL_WEBINARS_FILTER,
+  resolveWebinarIds,
+  uniformWebinarType,
+  webinarFilterLabel,
+  type WebinarFilterValue,
+} from "@/lib/webinar-filter";
 
 const WEBINAR_NOT_A_FUNNEL_STAGE: Derivation = {
   status: "insufficient_data",
@@ -64,7 +73,13 @@ export const Route = createFileRoute("/_authenticated/webinar-analytics")({
   component: WebinarAnalyticsPage,
 });
 
-type Webinar = { id: string; name: string; status: string; starts_at: string | null };
+type Webinar = {
+  id: string;
+  name: string;
+  status: string;
+  starts_at: string | null;
+  webinar_type?: "paid" | "organic" | "unclassified";
+};
 type WebinarMetric = {
   registered?: number | null;
   live_attendees?: number | null;
@@ -97,7 +112,11 @@ function WebinarAnalyticsPage() {
   const { devBypass } = useAuth();
   const { range } = useDateRange();
   const orgId = (org as { org_id?: string } | undefined)?.org_id;
-  const [selectedId, setSelectedIdRaw] = useState(devBypass ? "mock-webinar-a" : "all");
+  const { webinars, paidWebinars, organicWebinars, unclassifiedWebinars, webinarsById } =
+    useWebinars();
+  const [selectedFilter, setSelectedFilterRaw] = useState<WebinarFilterValue>(
+    devBypass ? { kind: "webinar", webinarId: "mock-webinar-a" } : ALL_WEBINARS_FILTER,
+  );
   const [comparisonId, setComparisonId] = useState(devBypass ? "mock-webinar-b" : "none");
   // Only "Live at Pitch" has a real per-lead join available (webinar_events,
   // via lead_id) — every other Executive KPI is an aggregate webinar_metrics
@@ -109,11 +128,17 @@ function WebinarAnalyticsPage() {
   // A webinar can't be compared against itself — if the primary selection
   // changes to match the current comparison choice, drop the comparison
   // back to "none" rather than silently comparing a webinar with itself.
-  const setSelectedId = (id: string) => {
-    setSelectedIdRaw(id);
-    setComparisonId((prev) => (prev === id ? "none" : prev));
+  const setSelectedFilter = (next: WebinarFilterValue) => {
+    setSelectedFilterRaw(next);
+    if (next.kind === "webinar") {
+      setComparisonId((prev) => (prev === next.webinarId ? "none" : prev));
+    }
   };
-  const webinarOptionLabel = (webinar: Webinar) => {
+  const webinarOptionLabel = (webinar: {
+    name: string;
+    status?: string | null;
+    starts_at?: string | null;
+  }) => {
     const date = webinar.starts_at
       ? new Date(webinar.starts_at).toLocaleDateString(undefined, {
           month: "short",
@@ -131,35 +156,32 @@ function WebinarAnalyticsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const webinarsQuery = useQuery({
-    queryKey: ["webinars", orgId, devBypass],
-    enabled: devBypass || !!orgId,
-    queryFn: async (): Promise<Webinar[]> => {
-      if (devBypass) return mockFixture.webinars;
-      const { data, error } = await db
-        .from("webinars")
-        .select("id,name,status,starts_at")
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data ?? [];
-    },
-    retry: false,
-  });
+  // null = no restriction ("All Webinars" — every webinar_id for the org);
+  // an array (possibly empty) scopes the queries below to exactly those ids.
+  const resolvedIds = useMemo(
+    () => resolveWebinarIds(selectedFilter, webinars),
+    [selectedFilter, webinars],
+  );
+  const hasWebinarsToQuery = resolvedIds === null || resolvedIds.length > 0;
+  const scopeKey = resolvedIds === null ? "all" : resolvedIds.join(",");
 
   const metricsQuery = useQuery({
-    queryKey: ["webinar-metrics", orgId, selectedId, range.from, range.to, devBypass],
-    enabled: (devBypass || !!orgId) && selectedId !== "all",
+    queryKey: ["webinar-metrics", orgId, scopeKey, range.from, range.to, devBypass],
+    enabled: (devBypass || !!orgId) && hasWebinarsToQuery,
     queryFn: async (): Promise<WebinarMetric[]> => {
-      if (devBypass) return mockFixture.metrics[selectedId] ?? [];
-      const { data, error } = await db
+      if (devBypass) {
+        const ids = resolvedIds ?? webinars.map((w) => w.id);
+        return ids.flatMap((id) => mockFixture.metrics[id] ?? []);
+      }
+      let q = db
         .from("webinar_metrics")
         .select("*")
         .eq("org_id", orgId)
-        .eq("webinar_id", selectedId)
         .gte("captured_at", `${range.from}T00:00:00`)
         .lte("captured_at", `${range.to}T23:59:59`)
         .order("captured_at", { ascending: false });
+      if (resolvedIds !== null) q = q.in("webinar_id", resolvedIds);
+      const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
     },
@@ -185,20 +207,24 @@ function WebinarAnalyticsPage() {
     retry: false,
   });
   const eventsQuery = useQuery({
-    queryKey: ["webinar-events", orgId, selectedId, range.from, range.to, devBypass],
-    enabled: (devBypass || !!orgId) && selectedId !== "all",
+    queryKey: ["webinar-events", orgId, scopeKey, range.from, range.to, devBypass],
+    enabled: (devBypass || !!orgId) && hasWebinarsToQuery,
     queryFn: async (): Promise<WebinarEvent[]> => {
-      if (devBypass) return mockFixture.events[selectedId] ?? [];
-      const { data, error } = await db
+      if (devBypass) {
+        const ids = resolvedIds ?? webinars.map((w) => w.id);
+        return ids.flatMap((id) => mockFixture.events[id] ?? []);
+      }
+      let q = db
         .from("webinar_events")
         .select(
           "id, lead_id, event_type, occurred_at, source_platform, source_type, registration_source, source_campaign, source_content_id, source_format, provider_event_id, event_key, metadata",
         )
         .eq("org_id", orgId)
-        .eq("webinar_id", selectedId)
         .gte("occurred_at", `${range.from}T00:00:00`)
         .lte("occurred_at", `${range.to}T23:59:59`)
         .order("occurred_at", { ascending: true });
+      if (resolvedIds !== null) q = q.in("webinar_id", resolvedIds);
+      const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
     },
@@ -209,19 +235,23 @@ function WebinarAnalyticsPage() {
     [eventsQuery.data],
   );
   const spendQuery = useQuery({
-    queryKey: ["acquisition-spend", orgId, selectedId, range.from, range.to, devBypass],
-    enabled: (devBypass || !!orgId) && selectedId !== "all",
+    queryKey: ["acquisition-spend", orgId, scopeKey, range.from, range.to, devBypass],
+    enabled: (devBypass || !!orgId) && hasWebinarsToQuery,
     queryFn: async (): Promise<AcquisitionSpendRecord[]> => {
-      if (devBypass) return mockFixture.spend[selectedId] ?? [];
-      const { data, error } = await db
+      if (devBypass) {
+        const ids = resolvedIds ?? webinars.map((w) => w.id);
+        return ids.flatMap((id) => mockFixture.spend[id] ?? []);
+      }
+      let q = db
         .from("acquisition_spend")
         .select(
           "org_id, provider, ad_account_id, campaign_id, campaign_name, spend_date, currency, spend_amount_cents, impressions, clicks, paid_visits, is_remarketing, source_platform, source_type, webinar_id, content_id, external_record_id, captured_at, metadata",
         )
         .eq("org_id", orgId)
-        .eq("webinar_id", selectedId)
         .gte("spend_date", range.from)
         .lte("spend_date", range.to);
+      if (resolvedIds !== null) q = q.in("webinar_id", resolvedIds);
+      const { data, error } = await q;
       if (error) throw error;
       return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
         orgId: String(row.org_id),
@@ -288,13 +318,34 @@ function WebinarAnalyticsPage() {
     [metricsQuery.data, comparisonQuery.data],
   );
   const selected = useMemo(
-    () => webinarsQuery.data?.find((webinar) => webinar.id === selectedId),
-    [webinarsQuery.data, selectedId],
+    () =>
+      selectedFilter.kind === "webinar"
+        ? webinars.find((webinar) => webinar.id === selectedFilter.webinarId)
+        : undefined,
+    [webinars, selectedFilter],
   );
   const comparisonWebinar = useMemo(
-    () => webinarsQuery.data?.find((webinar) => webinar.id === comparisonId),
-    [webinarsQuery.data, comparisonId],
+    () => webinars.find((webinar) => webinar.id === comparisonId),
+    [webinars, comparisonId],
   );
+  const scopeName = selected?.name ?? webinarFilterLabel(selectedFilter, webinarsById);
+  // Every webinar in the current scope shares one classification (e.g. a
+  // single organic webinar, or "All Organic Webinars") → drives the
+  // ROAS-N/A-for-organic display below. `null` means the scope mixes
+  // classifications (e.g. "All Webinars" spanning both), which falls back
+  // to the normal Unavailable-style handling since paid economics can
+  // still legitimately apply to part of a mixed scope.
+  const scopeType = uniformWebinarType(selectedFilter, webinars);
+  const roasLabel = (roas: number | null) =>
+    scopeType === "organic"
+      ? "N/A — Organic"
+      : roas == null
+        ? "Unavailable"
+        : `${roas.toFixed(2)}x`;
+  const roasEmptyHint =
+    scopeType === "organic"
+      ? "ROAS is only applicable when attributable paid advertising spend is connected."
+      : undefined;
   const hasData = !!latest || webinarEvents.length > 0;
 
   return (
@@ -326,52 +377,46 @@ function WebinarAnalyticsPage() {
               </div>
               <div
                 className="mt-1 truncate text-base font-semibold tracking-tight text-foreground"
-                title={selected?.name ?? "Webinar workspace"}
+                title={scopeName}
               >
-                {selected?.name ?? "Webinar workspace"}
+                {scopeName}
               </div>
             </div>
           </div>
-          <Select value={selectedId} onValueChange={setSelectedId}>
-            <SelectTrigger
-              className="w-full text-xs shadow-none sm:w-[280px]"
-              title={selected?.name}
-            >
-              <SelectValue placeholder="Choose webinar command" className="truncate" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All webinars</SelectItem>
-              {(webinarsQuery.data ?? []).map((webinar) => (
-                <SelectItem key={webinar.id} value={webinar.id} title={webinarOptionLabel(webinar)}>
-                  <span className="block max-w-[260px] truncate">
-                    {webinarOptionLabel(webinar)}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <WebinarFilter
+            value={selectedFilter}
+            onChange={setSelectedFilter}
+            webinars={webinars}
+            paidWebinars={paidWebinars}
+            organicWebinars={organicWebinars}
+            unclassifiedWebinars={unclassifiedWebinars}
+            webinarsById={webinarsById}
+            triggerClassName="w-full sm:w-[280px]"
+          />
         </div>
 
-        {selectedId === "all" ? (
+        {webinars.length === 0 ? (
           <EmptyState
             icon={<CalendarDays className="h-5 w-5" />}
-            title="No webinar selected"
-            description="Create or select a webinar to analyze acquisition, attendance, retention, sales setting, closing, and return."
+            title="No webinars yet"
+            description="Create a webinar to analyze acquisition, attendance, retention, sales setting, closing, and return."
           />
         ) : (
           <>
             <section className="space-y-3">
               <SectionTitle
-                title={selected?.name ?? "Webinar detail"}
+                title={scopeName}
                 subtitle="Executive KPI layer · metrics remain unavailable until a legitimate source is connected."
                 right={
-                  <Link
-                    to="/attribution"
-                    search={{ webinarId: selectedId }}
-                    className="text-xs text-primary hover:underline"
-                  >
-                    Explore Full Attribution →
-                  </Link>
+                  selectedFilter.kind === "webinar" ? (
+                    <Link
+                      to="/attribution"
+                      search={{ webinarId: selectedFilter.webinarId }}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Explore Full Attribution →
+                    </Link>
+                  ) : undefined
                 }
               />
               <KpiBand
@@ -422,16 +467,15 @@ function WebinarAnalyticsPage() {
                   {
                     key: "roas",
                     label: "ROAS",
-                    value:
-                      summary.revenue.roas == null
-                        ? "Unavailable"
-                        : `${summary.revenue.roas.toFixed(2)}x`,
+                    value: roasLabel(summary.revenue.roas),
                     spectrum: "hot",
                     icon: <CircleDollarSign className="h-4 w-4" />,
-                    empty: summary.revenue.roas == null,
-                    emptyHint: acquisition.hasSpend
-                      ? "No attributable revenue yet."
-                      : "Requires connected acquisition spend.",
+                    empty: scopeType === "organic" || summary.revenue.roas == null,
+                    emptyHint:
+                      roasEmptyHint ??
+                      (acquisition.hasSpend
+                        ? "No attributable revenue yet."
+                        : "Requires connected acquisition spend."),
                   },
                 ]}
               />
@@ -550,13 +594,11 @@ function WebinarAnalyticsPage() {
                     {
                       key: "roasAcquisition",
                       label: "ROAS (Acquisition)",
-                      value:
-                        acquisition.roas == null
-                          ? "Unavailable"
-                          : `${acquisition.roas.toFixed(2)}x`,
+                      value: roasLabel(acquisition.roas),
                       spectrum: "hot",
                       icon: <CircleDollarSign className="h-4 w-4" />,
-                      empty: acquisition.roas == null,
+                      empty: scopeType === "organic" || acquisition.roas == null,
+                      emptyHint: roasEmptyHint,
                     },
                   ]}
                 />
@@ -570,9 +612,26 @@ function WebinarAnalyticsPage() {
                   title="Paid vs. organic"
                   subtitle="Real lead-capture split by source — same figures used in the webinar comparison table, promoted here for single-webinar view."
                 />
+                {selected && summary.capture.paidLeads > 0 && summary.capture.organicLeads > 0 && (
+                  <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">Mixed webinar acquisition</span>{" "}
+                    — this webinar's own classification is{" "}
+                    <span className="font-semibold text-foreground">
+                      {selected.webinar_type ?? "unclassified"}
+                    </span>
+                    , but it has captured leads from both paid and organic sources. Paid economics
+                    below (CPL/CPA/ROAS) are computed only from the paid portion.
+                  </div>
+                )}
                 <KpiBand
                   title="Paid vs. organic"
                   items={[
+                    {
+                      key: "totalLeads",
+                      label: "Total Leads",
+                      value: number(summary.capture.totalLeads),
+                      spectrum: "cold",
+                    },
                     {
                       key: "paidLeads",
                       label: "Paid Leads",
@@ -659,9 +718,11 @@ function WebinarAnalyticsPage() {
                   ["Upsell revenue", currency(summary.closing.upsellRevenueCents)],
                   [
                     "ROAS (core + bump + upsell revenue)",
-                    summary.revenue.roas == null
-                      ? "Unavailable without legitimate spend"
-                      : `${summary.revenue.roas.toFixed(2)}x`,
+                    scopeType === "organic"
+                      ? "N/A — Organic"
+                      : summary.revenue.roas == null
+                        ? "Unavailable without legitimate spend"
+                        : `${summary.revenue.roas.toFixed(2)}x`,
                   ],
                   [
                     "Net profit (core offer revenue basis — excludes refunds & non-ad costs)",
@@ -719,7 +780,7 @@ function WebinarAnalyticsPage() {
                 <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Compare with
                 </span>
-                {(webinarsQuery.data?.length ?? 0) < 2 ? (
+                {webinars.length < 2 ? (
                   <span className="text-xs text-muted-foreground">
                     Add another webinar to enable a comparison.
                   </span>
@@ -730,8 +791,14 @@ function WebinarAnalyticsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No comparison</SelectItem>
-                      {(webinarsQuery.data ?? [])
-                        .filter((webinar) => webinar.id !== selectedId)
+                      {webinars
+                        .filter(
+                          (webinar) =>
+                            !(
+                              selectedFilter.kind === "webinar" &&
+                              selectedFilter.webinarId === webinar.id
+                            ),
+                        )
                         .map((webinar) => (
                           <SelectItem
                             key={webinar.id}
@@ -759,6 +826,8 @@ function WebinarAnalyticsPage() {
                   right={comparison.right}
                   leftName={selected?.name ?? "Selected webinar"}
                   rightName={comparisonWebinar?.name ?? "Comparison webinar"}
+                  leftOrganic={selected?.webinar_type === "organic"}
+                  rightOrganic={comparisonWebinar?.webinar_type === "organic"}
                 />
               </section>
             )}
@@ -1077,11 +1146,15 @@ function ComparisonPanel({
   right,
   leftName,
   rightName,
+  leftOrganic,
+  rightOrganic,
 }: {
   left: ReturnType<typeof aggregateWebinarMetrics>;
   right: ReturnType<typeof aggregateWebinarMetrics>;
   leftName: string;
   rightName: string;
+  leftOrganic?: boolean;
+  rightOrganic?: boolean;
 }) {
   const currency = useCurrency();
   const rows: Array<[string, string, string, number | null, number | null]> = [
@@ -1165,10 +1238,18 @@ function ComparisonPanel({
     ],
     [
       "ROAS",
-      left.revenue.roas == null ? "Unavailable" : `${left.revenue.roas.toFixed(2)}x`,
-      right.revenue.roas == null ? "Unavailable" : `${right.revenue.roas.toFixed(2)}x`,
-      left.revenue.roas,
-      right.revenue.roas,
+      leftOrganic
+        ? "N/A — Organic"
+        : left.revenue.roas == null
+          ? "Unavailable"
+          : `${left.revenue.roas.toFixed(2)}x`,
+      rightOrganic
+        ? "N/A — Organic"
+        : right.revenue.roas == null
+          ? "Unavailable"
+          : `${right.revenue.roas.toFixed(2)}x`,
+      leftOrganic ? null : left.revenue.roas,
+      rightOrganic ? null : right.revenue.roas,
     ],
   ];
   return (
