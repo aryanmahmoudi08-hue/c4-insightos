@@ -1,8 +1,21 @@
 import { useCurrentOrg } from "./use-auth";
 
-export type Role = "owner" | "admin" | "viewer" | "setter" | "closer" | "sales_manager" | "growth_ops";
+export type Role =
+  | "owner"
+  | "admin"
+  | "viewer"
+  | "setter"
+  | "inbound_dialer"
+  | "closer"
+  | "sales_manager"
+  | "growth_ops";
 
-export function useRole(): { role: Role | null; isAdmin: boolean; canManage: boolean; canEdit: boolean } {
+export function useRole(): {
+  role: Role | null;
+  isAdmin: boolean;
+  canManage: boolean;
+  canEdit: boolean;
+} {
   const { data: org } = useCurrentOrg();
   const role = (org?.role as Role | undefined) ?? null;
   const isAdmin = role === "owner" || role === "admin";

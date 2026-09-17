@@ -77,6 +77,12 @@ const ACTIONS: {
     label: "Log Day (Inbound Dialer)",
     icon: Trophy,
   },
+  {
+    to: "/inbound-dialer",
+    search: { action: "log-callback" },
+    label: "Log Follow-up Call (Inbound Dialer)",
+    icon: PhoneIncoming,
+  },
   { to: "/closer", search: { action: "log-call" }, label: "Log Call", icon: Award },
   {
     to: "/fulfillment",

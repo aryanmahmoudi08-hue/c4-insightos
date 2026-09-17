@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, Pencil } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -19,6 +20,8 @@ import {
   type EodQuestion,
   type EodValues,
 } from "@/lib/eod-reports";
+import { OBJECTION_CATEGORIES, OTHER_OBJECTION_VALUE } from "@/lib/objection-taxonomy";
+import { Label } from "@/components/ui/label";
 
 export interface EodLeadOption {
   id: string;
@@ -56,11 +59,54 @@ const fmtValue = (
   v: string | number | boolean | undefined,
   leadOptions?: EodLeadOption[],
   currencyCode = "USD",
+  otherText?: string,
+  allValues?: EodValues,
 ): string => {
+  if (q.type === "followup-details") {
+    if (!allValues) return "—";
+    const parts: string[] = [];
+    const requestedAt = allValues.followup_requested_at;
+    if (requestedAt) {
+      parts.push(
+        `Requested for ${new Date(String(requestedAt)).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`,
+      );
+    }
+    const amount = allValues.followup_amount_pitched;
+    if (amount !== undefined && amount !== "") {
+      parts.push(
+        `${currencySymbolFor(currencyCode)}${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} pitched`,
+      );
+    }
+    const reason = String(allValues.followup_reason ?? "");
+    if (reason) {
+      const opt = OBJECTION_CATEGORIES.find((c) => c.value === reason);
+      const reasonLabel = opt?.label ?? reason;
+      const reasonOtherText = String(allValues.followup_reason_other ?? "");
+      parts.push(
+        reason === OTHER_OBJECTION_VALUE && reasonOtherText
+          ? `${reasonLabel} (${reasonOtherText})`
+          : reasonLabel,
+      );
+    }
+    const notes = String(allValues.followup_notes ?? "");
+    if (notes) parts.push(`Notes: ${notes}`);
+    return parts.length > 0 ? parts.join(" · ") : "—";
+  }
   if (v === undefined || v === "") return "—";
   if (q.type === "checkbox") return v ? "Yes" : "No";
   if (q.type === "select" || q.type === "team-member") return String(v);
   if (q.type === "lead-picker") return leadOptions?.find((l) => l.id === v)?.label ?? "None picked";
+  if (q.type === "objection-multiselect") {
+    const labels = String(v)
+      .split(",")
+      .filter(Boolean)
+      .map((value) => {
+        const opt = OBJECTION_CATEGORIES.find((c) => c.value === value);
+        if (value === OTHER_OBJECTION_VALUE && otherText) return `${opt?.label} (${otherText})`;
+        return opt?.label ?? value;
+      });
+    return labels.length > 0 ? labels.join(", ") : "—";
+  }
   if (q.money)
     return `${currencySymbolFor(currencyCode)}${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   if (q.type === "number") return String(v);
@@ -85,10 +131,17 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
-  const total = schema.length;
+  // Conditional steps (e.g. Closer EOD's Follow-Up Details, shown only for
+  // a follow-up Lead Status) are filtered out of the flow entirely rather
+  // than just hidden — recomputed every render off the live `values`, so
+  // answering an earlier question can make a later step appear/disappear
+  // before the rep reaches it, without renumbering the fixed questions
+  // around it.
+  const effectiveSchema = schema.filter((q) => !q.showIf || q.showIf(values));
+  const total = effectiveSchema.length;
   const isReview = step === total;
-  const current = !isReview ? schema[step] : null;
-  const currentValid = current ? isAnswered(current, values[current.key]) : true;
+  const current = !isReview ? effectiveSchema[step] : null;
+  const currentValid = current ? isAnswered(current, values) : true;
   const pct = isReview ? 100 : Math.round((step / total) * 100);
 
   const setVal = (key: string, v: string | number | boolean | undefined) =>
@@ -191,6 +244,10 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
                 onAdvance={goNext}
                 currencyCode={String(values.original_currency ?? "USD")}
                 onCurrencyChange={(code) => setVal("original_currency", code)}
+                objectionsOther={String(values.objections_other ?? "")}
+                onObjectionsOtherChange={(v) => setVal("objections_other", v)}
+                values={values}
+                setVal={setVal}
               />
             </div>
           </div>
@@ -205,7 +262,7 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
               Here's what's about to be logged. Edit anything that's off.
             </p>
             <div className="mt-6 divide-y divide-border rounded-lg border border-border/60">
-              {schema.map((q, i) => (
+              {effectiveSchema.map((q, i) => (
                 <div key={q.key} className="flex items-start justify-between gap-3 px-3 py-2.5">
                   <div className="min-w-0">
                     <div className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
@@ -217,6 +274,8 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
                         values[q.key],
                         leadOptions,
                         String(values.original_currency ?? "USD"),
+                        String(values.objections_other ?? ""),
+                        values,
                       )}
                     </div>
                   </div>
@@ -261,6 +320,10 @@ function QuestionField({
   onAdvance,
   currencyCode = "USD",
   onCurrencyChange,
+  objectionsOther = "",
+  onObjectionsOtherChange,
+  values,
+  setVal,
 }: {
   question: EodQuestion;
   value: string | number | boolean | undefined;
@@ -276,6 +339,19 @@ function QuestionField({
    * key), since the inline currency dropdown belongs to the whole
    * submission, not to this one field. */
   onCurrencyChange?: (code: string) => void;
+  /** The submission's shared objections_other free-text value — same
+   * paired-field pattern as currencyCode/onCurrencyChange above, since
+   * "objection-multiselect"'s own `value`/`onChange` only ever carry the
+   * selected category list, not the Other explanation. */
+  objectionsOther?: string;
+  onObjectionsOtherChange?: (v: string) => void;
+  /** Full submission + generic setter — only "followup-details" uses these,
+   * since that one step writes several distinct keys at once
+   * (followup_requested_at/followup_amount_pitched/followup_reason/
+   * followup_reason_other/followup_notes) rather than the single
+   * value/onChange every other question type carries. */
+  values: EodValues;
+  setVal: (key: string, v: string | number | boolean | undefined) => void;
 }) {
   const enterAdvances = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -382,6 +458,149 @@ function QuestionField({
           </Button>
         </div>
       );
+    case "objection-multiselect": {
+      const selected = String(value ?? "")
+        .split(",")
+        .filter(Boolean);
+      const toggle = (v: string) => {
+        const wasSelected = selected.includes(v);
+        const next = wasSelected ? selected.filter((s) => s !== v) : [...selected, v];
+        onChange(next.length > 0 ? next.join(",") : undefined);
+        // Turning Other off clears its paired text so a stale explanation
+        // can't linger unselected and get submitted anyway.
+        if (v === OTHER_OBJECTION_VALUE && wasSelected) onObjectionsOtherChange?.("");
+      };
+      const otherSelected = selected.includes(OTHER_OBJECTION_VALUE);
+      return (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {OBJECTION_CATEGORIES.map((opt) => {
+              const isSelected = selected.includes(opt.value);
+              return (
+                <label
+                  key={opt.value}
+                  htmlFor={`objection_${opt.value}`}
+                  className={cn(
+                    "flex h-12 cursor-pointer items-center gap-3 rounded-md border px-4 text-base transition-colors",
+                    isSelected ? "border-primary bg-primary/10" : "border-input hover:bg-muted/40",
+                  )}
+                >
+                  <Checkbox
+                    id={`objection_${opt.value}`}
+                    checked={isSelected}
+                    onCheckedChange={() => toggle(opt.value)}
+                  />
+                  {opt.label}
+                </label>
+              );
+            })}
+          </div>
+          {otherSelected && (
+            <div className="space-y-1.5">
+              <label className="text-sm text-muted-foreground" htmlFor="objections_other_input">
+                Other objection:
+              </label>
+              <Input
+                id="objections_other_input"
+                autoFocus
+                required
+                value={objectionsOther}
+                onChange={(e) => onObjectionsOtherChange?.(e.target.value)}
+                onKeyDown={enterAdvances}
+                placeholder="Describe the specific objection"
+                className="h-12 text-base"
+              />
+            </div>
+          )}
+        </div>
+      );
+    }
+    case "followup-details": {
+      const requestedAt = String(values.followup_requested_at ?? "");
+      const amountPitched = values.followup_amount_pitched;
+      const reason = String(values.followup_reason ?? "");
+      const reasonOther = String(values.followup_reason_other ?? "");
+      const notes = String(values.followup_notes ?? "");
+      const reasonIsOther = reason === OTHER_OBJECTION_VALUE;
+      const currencySymbol = currencySymbolFor(currencyCode);
+      return (
+        <div className="space-y-6">
+          <div className="space-y-1.5">
+            <Label className="text-sm text-muted-foreground">
+              When did the lead ask to be followed up with?
+            </Label>
+            <Input
+              autoFocus
+              type="datetime-local"
+              value={requestedAt}
+              onChange={(e) => setVal("followup_requested_at", e.target.value)}
+              className="h-14 text-lg"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm text-muted-foreground">How much was pitched?</Label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-sans tabular-nums text-muted-foreground">
+                {currencySymbol}
+              </span>
+              <Input
+                type="number"
+                min={0}
+                step={0.01}
+                value={amountPitched === undefined ? "" : String(amountPitched)}
+                onChange={(e) =>
+                  setVal(
+                    "followup_amount_pitched",
+                    e.target.value === "" ? undefined : Number(e.target.value),
+                  )
+                }
+                placeholder="0"
+                className="h-14 pl-10 text-lg"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm text-muted-foreground">
+              Why is this lead being followed up with?
+            </Label>
+            <Select value={reason || undefined} onValueChange={(v) => setVal("followup_reason", v)}>
+              <SelectTrigger className="h-14 text-lg">
+                <SelectValue placeholder="Choose one" />
+              </SelectTrigger>
+              <SelectContent>
+                {OBJECTION_CATEGORIES.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {reasonIsOther && (
+              <Input
+                autoFocus
+                required
+                value={reasonOther}
+                onChange={(e) => setVal("followup_reason_other", e.target.value)}
+                placeholder="Describe the specific reason"
+                className="mt-2 h-12 text-base"
+              />
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm text-muted-foreground">
+              What specifically should be remembered for the follow-up? (optional)
+            </Label>
+            <Textarea
+              rows={3}
+              value={notes}
+              onChange={(e) => setVal("followup_notes", e.target.value)}
+              placeholder="What they need to decide, what they're waiting on, what you promised to send…"
+              className="text-base"
+            />
+          </div>
+        </div>
+      );
+    }
     case "scale": {
       const lo = question.min ?? 1;
       const hi = question.max ?? 10;

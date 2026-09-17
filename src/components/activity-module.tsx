@@ -38,8 +38,6 @@ import {
   Activity as ActivityIcon,
   MessageCircle,
   PhoneIncoming,
-  X,
-  Clock,
   ChevronDown,
   Video,
 } from "lucide-react";
@@ -65,6 +63,8 @@ import { FunnelInstrument } from "@/components/funnel-instrument";
 import { MoneyInstrument, type MoneyPoint } from "@/components/money-instrument";
 import { KpiBand, type KpiBandItem } from "@/components/kpi-band";
 import { OperationalWorkflowPanel } from "@/components/operational-workflow-panel";
+import { DialerCallbackFab } from "@/components/dialer-callback-fab";
+import { DialerFollowUpRows } from "@/components/dialer-followup-list";
 import { groupBySourcePlatform } from "@/lib/attribution-flow";
 import { RateSmallMultiples, type RateChartSpec } from "@/components/rate-small-multiples";
 import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
@@ -116,7 +116,6 @@ import { clusterObjectionsFn } from "@/lib/objection-clustering.functions";
 import { markLeadDialedFn } from "@/lib/lead-dial-attempts.functions";
 import { useMoney } from "@/hooks/use-money";
 import { ChartTooltip } from "@/components/chart-tooltip";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { applyObjectionClusters } from "@/lib/objection-clustering";
 import {
   ResponsiveContainer,
@@ -171,26 +170,6 @@ function deriveDialStatus(
   if (event?.firstAttemptAt) return "Dialed";
   return "Available";
 }
-
-// Callback scheduling timezone (spec: "Log a Call" timezone visibility).
-// Leads have no stored timezone anywhere in the schema — the `datetime-local`
-// input above this is filled in and read back in the browser's own local
-// time (`new Date(dueAt).toISOString()` at the mutation call site already
-// relies on that), so the honest thing to surface is which timezone that
-// browser-local value is actually being interpreted in, not a guessed lead
-// timezone. Never attribute this offset to the lead.
-const browserTzAbbrev = () =>
-  new Intl.DateTimeFormat(undefined, { timeZoneName: "short" })
-    .formatToParts(new Date())
-    .find((p) => p.type === "timeZoneName")?.value ?? "Local";
-const browserUtcOffset = () => {
-  const offsetMin = -new Date().getTimezoneOffset();
-  const sign = offsetMin >= 0 ? "+" : "-";
-  const abs = Math.abs(offsetMin);
-  const h = Math.floor(abs / 60);
-  const m = abs % 60;
-  return `UTC${sign}${h}${m ? `:${String(m).padStart(2, "0")}` : ""}`;
-};
 
 const LEAD_SOURCES = ["Instagram Spiderweb", "Keyword", "Inbound", "Referral", "Ads", "Other"];
 
@@ -958,146 +937,6 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     }),
     [callbacks, todayStr],
   );
-  // Real Legacy Lead selector — was previously a free-text "lead name" field
-  // with no link back to the actual lead record. operational_work_items
-  // already had an entity_id column for exactly this (unique per
-  // org+entity_type+entity_id) but nothing populated it.
-  const [callbackDrawerOpen, setCallbackDrawerOpen] = useState(false);
-  const [callbackLeadQuery, setCallbackLeadQuery] = useState("");
-  const [callbackSelectedLead, setCallbackSelectedLead] = useState<{
-    id: string;
-    full_name: string | null;
-    handle: string | null;
-    email: string | null;
-  } | null>(null);
-  const { data: callbackLeadResults = [] } = useQuery({
-    queryKey: ["dialer-callback-lead-search", orgId, callbackLeadQuery, devBypass],
-    enabled: isDialer && !!orgId && callbackLeadQuery.trim().length >= 2 && !callbackSelectedLead,
-    queryFn: async () => {
-      const q = callbackLeadQuery.trim();
-      // Dev bypass never has a real Supabase session, so a real leads query
-      // comes back RLS-empty (same reasoning as every other devBypass branch
-      // in this codebase) — a search-and-select workflow with nothing to
-      // select isn't a degraded-but-honest empty state like a zeroed KPI
-      // tile, it's an unusable interaction, so it gets a real mock fallback
-      // like VslPage/closer.tsx/leads.tsx/team.tsx already do for theirs.
-      if (devBypass) {
-        const needle = q.toLowerCase();
-        return mockLeads()
-          .filter(
-            (lead) =>
-              lead.full_name.toLowerCase().includes(needle) ||
-              lead.handle.toLowerCase().includes(needle) ||
-              lead.email.toLowerCase().includes(needle),
-          )
-          .slice(0, 8)
-          .map((lead) => ({
-            id: lead.id,
-            full_name: lead.full_name,
-            handle: lead.handle,
-            email: lead.email,
-          }));
-      }
-      const { data, error } = await supabase
-        .from("leads")
-        .select("id, full_name, handle, email")
-        .eq("org_id", orgId!)
-        .or(`full_name.ilike.%${q}%,handle.ilike.%${q}%,email.ilike.%${q}%`)
-        .limit(8);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-  const logCallback = useMutation({
-    mutationFn: async ({
-      leadId,
-      leadName,
-      dueAt,
-    }: {
-      leadId: string;
-      leadName: string;
-      dueAt: string;
-    }) => {
-      const dueIso = dueAt ? new Date(dueAt).toISOString() : null;
-      if (devBypass) {
-        const now = new Date().toISOString();
-        setDevBypassCallbacks((prev) => {
-          const existingIdx = prev.findIndex((c) => c.entity_id === leadId);
-          const row: CallbackRow = {
-            id: existingIdx >= 0 ? prev[existingIdx].id : `dev-callback-${leadId}-${Date.now()}`,
-            entity_id: leadId,
-            state: "requested",
-            owner_id: null,
-            due_at: dueIso,
-            next_action: "Call back",
-            created_at: existingIdx >= 0 ? prev[existingIdx].created_at : now,
-            updated_at: now,
-            payload: { lead_name: leadName },
-          };
-          if (existingIdx >= 0) {
-            const next = [...prev];
-            next[existingIdx] = row;
-            return next;
-          }
-          return [...prev, row];
-        });
-        return;
-      }
-      const { error } = await (supabase as any).from("operational_work_items").upsert(
-        {
-          org_id: orgId!,
-          entity_type: "dialer_callback",
-          entity_id: leadId,
-          state: "requested",
-          due_at: dueIso,
-          next_action: "Call back",
-          next_action_at: dueIso,
-          payload: { lead_name: leadName },
-        },
-        { onConflict: "org_id,entity_type,entity_id" },
-      );
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Callback logged");
-      if (!devBypass) qc.invalidateQueries({ queryKey: ["dialer-callbacks", orgId] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const completeCallback = useMutation({
-    mutationFn: async (id: string) => {
-      if (devBypass) {
-        setDevBypassCallbacks((prev) =>
-          prev.map((c) =>
-            c.id === id ? { ...c, state: "completed", updated_at: new Date().toISOString() } : c,
-          ),
-        );
-        return;
-      }
-      const { error } = await (supabase as any)
-        .from("operational_work_items")
-        .update({ state: "completed", updated_at: new Date().toISOString() })
-        .eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      if (!devBypass) qc.invalidateQueries({ queryKey: ["dialer-callbacks", orgId] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  // Split date + time fields, not one native datetime-local input (visual
-  // refinement pass) — composed into the same "YYYY-MM-DDTHH:mm" shape the
-  // mutation always expected, so dueAt's downstream handling (parsed with
-  // `new Date()`, stored as UTC via `.toISOString()`) is unchanged.
-  const [callbackDueDate, setCallbackDueDate] = useState("");
-  const [callbackDueTime, setCallbackDueTime] = useState("");
-  const callbackDueAt =
-    callbackDueDate && callbackDueTime ? `${callbackDueDate}T${callbackDueTime}` : "";
-  const resetCallbackDueAt = () => {
-    setCallbackDueDate("");
-    setCallbackDueTime("");
-  };
-
   // Persisted hot-lead alerts (spec section 4: "Create an InsightOS
   // notification"). A row here IS the InsightOS-side notification — durable,
   // queryable, visible to the whole team — independent of whether Discord
@@ -3599,221 +3438,21 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             </div>
           );
         })()}
-        {/* Log a Callback — a floating action button instead of an inline
-            trigger card, so it doesn't reserve page layout space. Same
-            onClick, same Sheet/form/lead-selector/save logic below,
-            completely unchanged — presentation-only swap. */}
-        {isDialer && (
-          <>
-            <button
-              type="button"
-              onClick={() => setCallbackDrawerOpen(true)}
-              aria-label="Log Callback"
-              title="Log a Callback"
-              className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-border bg-primary text-primary-foreground shadow-lg transition hover:scale-105 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-            >
-              <PhoneIncoming className="h-5 w-5" />
-              {callbacks.filter((c) => c.state !== "completed").length > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full border border-border bg-destructive px-1 text-3xs font-semibold text-destructive-foreground">
-                  {callbacks.filter((c) => c.state !== "completed").length}
-                </span>
-              )}
-            </button>
-            <Sheet open={callbackDrawerOpen} onOpenChange={setCallbackDrawerOpen}>
-              <SheetContent className="w-full overflow-y-auto sm:max-w-md">
-                <SheetHeader>
-                  <SheetTitle>Log a callback</SheetTitle>
-                </SheetHeader>
-                <div className="mt-4 space-y-3">
-                  <div className="relative">
-                    <Label className="text-2xs">Lead</Label>
-                    {callbackSelectedLead ? (
-                      <div className="mt-1 flex w-fit items-center gap-2 rounded-lg border border-spectrum-mid/40 bg-spectrum-mid/10 py-1.5 pr-1.5 pl-2.5">
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-spectrum-mid shadow-[0_0_6px_var(--spectrum-mid)]" />
-                        <span className="text-xs font-semibold text-foreground">
-                          {callbackSelectedLead.full_name ??
-                            callbackSelectedLead.handle ??
-                            callbackSelectedLead.email}
-                        </span>
-                        {callbackSelectedLead.email && (
-                          <span className="text-3xs text-muted-foreground">
-                            {callbackSelectedLead.email}
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          aria-label="Change lead"
-                          onClick={() => setCallbackSelectedLead(null)}
-                          className="rounded p-0.5 text-muted-foreground hover:bg-background/60 hover:text-foreground"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <Input
-                          value={callbackLeadQuery}
-                          onChange={(e) => setCallbackLeadQuery(e.target.value)}
-                          placeholder="Search a Legacy Lead by name, handle, or email"
-                          className="mt-1 h-8 w-72 text-xs"
-                        />
-                        {callbackLeadResults.length > 0 && (
-                          <div className="absolute top-full left-0 z-20 mt-1 w-72 rounded-md border border-border bg-popover shadow-md">
-                            {callbackLeadResults.map((lead) => (
-                              <button
-                                key={lead.id}
-                                type="button"
-                                className="block w-full truncate px-3 py-1.5 text-left text-xs hover:bg-muted"
-                                onClick={() => {
-                                  setCallbackSelectedLead(lead);
-                                  setCallbackLeadQuery("");
-                                }}
-                              >
-                                {lead.full_name ?? lead.handle ?? lead.email ?? "Unnamed lead"}
-                                {lead.email && (
-                                  <span className="ml-1.5 text-muted-foreground">{lead.email}</span>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-end gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-2xs">Date</Label>
-                      <Input
-                        type="date"
-                        value={callbackDueDate}
-                        onChange={(e) => setCallbackDueDate(e.target.value)}
-                        className="h-8 w-36 text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-2xs">Time</Label>
-                      <Input
-                        type="time"
-                        value={callbackDueTime}
-                        onChange={(e) => setCallbackDueTime(e.target.value)}
-                        className="h-8 w-28 text-xs"
-                      />
-                    </div>
-                    <Button
-                      size="sm"
-                      disabled={!callbackSelectedLead || logCallback.isPending}
-                      onClick={() => {
-                        if (!callbackSelectedLead) return;
-                        logCallback.mutate(
-                          {
-                            leadId: callbackSelectedLead.id,
-                            leadName:
-                              callbackSelectedLead.full_name ??
-                              callbackSelectedLead.handle ??
-                              callbackSelectedLead.email ??
-                              "Unnamed lead",
-                            dueAt: callbackDueAt,
-                          },
-                          {
-                            onSuccess: () => {
-                              setCallbackSelectedLead(null);
-                              setCallbackLeadQuery("");
-                              resetCallbackDueAt();
-                            },
-                          },
-                        );
-                      }}
-                    >
-                      Log callback
-                    </Button>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-1.5 text-3xs">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/50 px-2 py-1 text-muted-foreground">
-                      <Clock className="h-3 w-3" />
-                      Your time zone:{" "}
-                      <span className="font-medium text-foreground">
-                        {browserTzAbbrev()} ({browserUtcOffset()})
-                      </span>
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/50 px-2 py-1 text-muted-foreground">
-                      Lead time zone:{" "}
-                      <span className="font-medium text-foreground">Unavailable</span>
-                    </span>
-                    {callbackDueAt && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-spectrum-mid/40 bg-spectrum-mid/10 px-2 py-1 text-spectrum-mid">
-                        Scheduling for{" "}
-                        {new Date(callbackDueAt).toLocaleString(undefined, {
-                          dateStyle: "medium",
-                          timeStyle: "short",
-                        })}{" "}
-                        {browserTzAbbrev()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                {callbacks.filter((c) => c.state !== "completed").length > 0 && (
-                  <div className="mt-3 overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-border/70 text-left text-muted-foreground">
-                          <th className="pb-2 pr-3">Lead</th>
-                          <th className="pb-2 pr-3">Due</th>
-                          <th className="pb-2 pr-3">State</th>
-                          <th className="pb-2" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {callbacks
-                          .filter((c) => c.state !== "completed")
-                          .map((c) => (
-                            <tr key={c.id} className="border-b border-border/40 last:border-0">
-                              <td className="py-2 pr-3">
-                                {c.entity_id ? (
-                                  <Link
-                                    to="/leads"
-                                    search={{ leadId: c.entity_id }}
-                                    className="text-primary hover:underline"
-                                  >
-                                    {c.payload?.lead_name ?? "Open lead"}
-                                  </Link>
-                                ) : (
-                                  (c.payload?.lead_name ?? "—")
-                                )}
-                              </td>
-                              <td className="py-2 pr-3 font-sans tabular-nums">
-                                <span className="inline-flex items-center gap-1.5">
-                                  {c.due_at ? new Date(c.due_at).toLocaleString() : "—"}
-                                  {c.due_at?.slice(0, 10) ===
-                                    new Date().toISOString().slice(0, 10) && (
-                                    <span className="rounded-full bg-spectrum-hot/15 px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wide text-spectrum-hot">
-                                      Due today
-                                    </span>
-                                  )}
-                                </span>
-                              </td>
-                              <td className="py-2 pr-3 uppercase">{c.state}</td>
-                              <td className="py-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-6 text-2xs"
-                                  onClick={() => completeCallback.mutate(c.id)}
-                                >
-                                  Mark completed
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </SheetContent>
-            </Sheet>
-          </>
+        {/* Who needs a callback and when — always visible, not just inside
+            the Log Callback drawer. */}
+        {isDialer && orgId && (
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
+              <PhoneIncoming className="h-3.5 w-3.5 text-accent" />
+              Upcoming Follow-ups
+            </div>
+            <DialerFollowUpRows orgId={orgId} devBypass={devBypass} />
+          </div>
         )}
+        {/* Log a Callback — extracted to a shared component (also used
+            standalone on Home) so the dialer's own callback list, lead
+            search, and mutations aren't duplicated here. */}
+        {isDialer && orgId && <DialerCallbackFab orgId={orgId} devBypass={devBypass} />}
         {/* Leaderboard with metric selector + independent date range (Part C3) + spectrum activity heatmap (Part C4) */}
         <div className="grid gap-4 lg:grid-cols-2">
           <RepLeaderboard

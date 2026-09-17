@@ -189,6 +189,7 @@ export const ROLES = [
   "sales_manager",
   "growth_ops",
   "setter",
+  "inbound_dialer",
   "closer",
   "viewer",
 ] as const;
@@ -199,6 +200,7 @@ export const ROLE_LABELS: Record<ManagedRole, string> = {
   sales_manager: "Sales manager",
   growth_ops: "Growth ops",
   setter: "DM setter",
+  inbound_dialer: "Dialer",
   closer: "Closer",
   viewer: "Viewer",
 };
@@ -208,6 +210,7 @@ export const ROLE_BLURBS: Record<ManagedRole, string> = {
   sales_manager: "Runs the sales floor: leads, reps, payouts, hiring.",
   growth_ops: "Content, copy and attribution; no personnel or payout editing.",
   setter: "Own DM pipeline and lead notes only.",
+  inbound_dialer: "Own inbound call queue, callbacks and lead notes only.",
   closer: "Own calls, cash logging and booked-lead context only.",
   viewer: "Read-only observer — no edits anywhere.",
 };
@@ -237,6 +240,17 @@ export function defaultPerm(
           resource,
         ),
         can_edit: ["leads", "dm_setter", "eod_reports"].includes(resource),
+      };
+    case "inbound_dialer":
+      return {
+        can_view: [
+          "dashboard",
+          "leads",
+          "inbound_dialer",
+          "eod_reports",
+          "content_calendar",
+        ].includes(resource),
+        can_edit: ["leads", "inbound_dialer", "eod_reports"].includes(resource),
       };
     case "closer":
       return {

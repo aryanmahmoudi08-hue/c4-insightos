@@ -53,7 +53,7 @@ function LandingPage() {
   // page itself never blocks on this so anonymous visitors — the common
   // case for a public marketing page — never see a loading flash.
   useEffect(() => {
-    if (!loading && user) nav({ to: "/dashboard" });
+    if (!loading && user) nav({ to: "/home" });
   }, [loading, user, nav]);
 
   return (

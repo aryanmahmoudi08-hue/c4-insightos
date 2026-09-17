@@ -1,10 +1,30 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5";
+  graphql_public: {
+    Tables: {
+      [_ in never]: never;
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json;
+          operationName?: string;
+          query?: string;
+          variables?: Json;
+        };
+        Returns: Json;
+      };
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
   };
   public: {
     Tables: {
@@ -45,6 +65,100 @@ export type Database = {
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      acquisition_spend: {
+        Row: {
+          ad_account_id: string | null;
+          campaign_id: string | null;
+          campaign_name: string | null;
+          captured_at: string;
+          clicks: number | null;
+          content_id: string | null;
+          created_at: string;
+          currency: string;
+          external_record_id: string;
+          id: string;
+          impressions: number | null;
+          is_remarketing: boolean;
+          metadata: Json;
+          org_id: string;
+          paid_visits: number | null;
+          provider: string;
+          source_platform: string | null;
+          source_type: string | null;
+          spend_amount_cents: number | null;
+          spend_date: string;
+          webinar_id: string | null;
+        };
+        Insert: {
+          ad_account_id?: string | null;
+          campaign_id?: string | null;
+          campaign_name?: string | null;
+          captured_at?: string;
+          clicks?: number | null;
+          content_id?: string | null;
+          created_at?: string;
+          currency?: string;
+          external_record_id: string;
+          id?: string;
+          impressions?: number | null;
+          is_remarketing?: boolean;
+          metadata?: Json;
+          org_id: string;
+          paid_visits?: number | null;
+          provider: string;
+          source_platform?: string | null;
+          source_type?: string | null;
+          spend_amount_cents?: number | null;
+          spend_date: string;
+          webinar_id?: string | null;
+        };
+        Update: {
+          ad_account_id?: string | null;
+          campaign_id?: string | null;
+          campaign_name?: string | null;
+          captured_at?: string;
+          clicks?: number | null;
+          content_id?: string | null;
+          created_at?: string;
+          currency?: string;
+          external_record_id?: string;
+          id?: string;
+          impressions?: number | null;
+          is_remarketing?: boolean;
+          metadata?: Json;
+          org_id?: string;
+          paid_visits?: number | null;
+          provider?: string;
+          source_platform?: string | null;
+          source_type?: string | null;
+          spend_amount_cents?: number | null;
+          spend_date?: string;
+          webinar_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "acquisition_spend_content_id_fkey";
+            columns: ["content_id"];
+            isOneToOne: false;
+            referencedRelation: "content_pieces";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "acquisition_spend_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "acquisition_spend_webinar_id_fkey";
+            columns: ["webinar_id"];
+            isOneToOne: false;
+            referencedRelation: "webinars";
             referencedColumns: ["id"];
           },
         ];
@@ -207,7 +321,141 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
+            foreignKeyName: "call_coaching_reviews_call_id_fkey";
+            columns: ["call_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["call_id"];
+          },
+          {
             foreignKeyName: "call_coaching_reviews_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      call_confirmations: {
+        Row: {
+          call_id: string;
+          cancelled_reason: string | null;
+          confirmed_at: string | null;
+          created_at: string;
+          id: string;
+          morning_goal_1: string | null;
+          morning_goal_2: string | null;
+          morning_goal_3: string | null;
+          morning_reason_for_change: string | null;
+          morning_responded_at: string | null;
+          morning_response_notes: string | null;
+          morning_scheduled_at: string | null;
+          morning_sent_at: string | null;
+          night_before_responded_at: string | null;
+          night_before_scheduled_at: string | null;
+          night_before_sent_at: string | null;
+          one_hour_responded_at: string | null;
+          one_hour_scheduled_at: string | null;
+          one_hour_sent_at: string | null;
+          org_id: string;
+          overall_status: string;
+          previous_status: string | null;
+          rescheduled_reason: string | null;
+          ten_min_responded_at: string | null;
+          ten_min_scheduled_at: string | null;
+          ten_min_sent_at: string | null;
+          thirty_min_confirmed: boolean;
+          thirty_min_confirmed_at: string | null;
+          thirty_min_scheduled_at: string | null;
+          thirty_min_sent_at: string | null;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          call_id: string;
+          cancelled_reason?: string | null;
+          confirmed_at?: string | null;
+          created_at?: string;
+          id?: string;
+          morning_goal_1?: string | null;
+          morning_goal_2?: string | null;
+          morning_goal_3?: string | null;
+          morning_reason_for_change?: string | null;
+          morning_responded_at?: string | null;
+          morning_response_notes?: string | null;
+          morning_scheduled_at?: string | null;
+          morning_sent_at?: string | null;
+          night_before_responded_at?: string | null;
+          night_before_scheduled_at?: string | null;
+          night_before_sent_at?: string | null;
+          one_hour_responded_at?: string | null;
+          one_hour_scheduled_at?: string | null;
+          one_hour_sent_at?: string | null;
+          org_id: string;
+          overall_status?: string;
+          previous_status?: string | null;
+          rescheduled_reason?: string | null;
+          ten_min_responded_at?: string | null;
+          ten_min_scheduled_at?: string | null;
+          ten_min_sent_at?: string | null;
+          thirty_min_confirmed?: boolean;
+          thirty_min_confirmed_at?: string | null;
+          thirty_min_scheduled_at?: string | null;
+          thirty_min_sent_at?: string | null;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          call_id?: string;
+          cancelled_reason?: string | null;
+          confirmed_at?: string | null;
+          created_at?: string;
+          id?: string;
+          morning_goal_1?: string | null;
+          morning_goal_2?: string | null;
+          morning_goal_3?: string | null;
+          morning_reason_for_change?: string | null;
+          morning_responded_at?: string | null;
+          morning_response_notes?: string | null;
+          morning_scheduled_at?: string | null;
+          morning_sent_at?: string | null;
+          night_before_responded_at?: string | null;
+          night_before_scheduled_at?: string | null;
+          night_before_sent_at?: string | null;
+          one_hour_responded_at?: string | null;
+          one_hour_scheduled_at?: string | null;
+          one_hour_sent_at?: string | null;
+          org_id?: string;
+          overall_status?: string;
+          previous_status?: string | null;
+          rescheduled_reason?: string | null;
+          ten_min_responded_at?: string | null;
+          ten_min_scheduled_at?: string | null;
+          ten_min_sent_at?: string | null;
+          thirty_min_confirmed?: boolean;
+          thirty_min_confirmed_at?: string | null;
+          thirty_min_scheduled_at?: string | null;
+          thirty_min_sent_at?: string | null;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "call_confirmations_call_id_fkey";
+            columns: ["call_id"];
+            isOneToOne: true;
+            referencedRelation: "calls";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "call_confirmations_call_id_fkey";
+            columns: ["call_id"];
+            isOneToOne: true;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["call_id"];
+          },
+          {
+            foreignKeyName: "call_confirmations_org_id_fkey";
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "organizations";
@@ -272,14 +520,11 @@ export type Database = {
       };
       calls: {
         Row: {
+          calendly_cancel_url: string | null;
+          calendly_reschedule_url: string | null;
           call_summary: string | null;
-          cash_collected_cents: number | null;
-          source_platform: string | null;
-          source_format: string | null;
-          source_content_id: string | null;
-          source_vsl_id: string | null;
-          source_campaign: string | null;
           cancelled: boolean;
+          cash_collected_cents: number | null;
           closed: boolean | null;
           closer_id: string | null;
           closer_name: string | null;
@@ -288,35 +533,46 @@ export type Database = {
           deposit_cents: number | null;
           disposition: string | null;
           duration_seconds: number | null;
+          eod_lead_status: string | null;
+          followup_amount_pitched_cents: number | null;
+          followup_notes: string | null;
+          followup_reason: string | null;
+          followup_reason_other: string | null;
           id: string;
           key_moment: string | null;
           lead_email: string | null;
           lead_id: string | null;
+          meeting_link: string | null;
           no_show_recovered: boolean;
+          offer_at: string | null;
           offer_made: boolean | null;
           org_id: string;
+          original_currency: string;
           payment_plan: boolean | null;
           recording_url: string | null;
           recovered_from_call_id: string | null;
+          requested_followup_at: string | null;
           scheduled_for: string | null;
           setter_id: string | null;
           showed: boolean | null;
           showed_at: string | null;
-          offer_at: string | null;
+          source_campaign: string | null;
+          source_content_id: string | null;
+          source_format: string | null;
+          source_platform: string | null;
+          source_vsl_id: string | null;
+          source_webinar_id: string | null;
           status: Database["public"]["Enums"]["call_status"];
           talk_seconds: number | null;
           time_to_close_seconds: number | null;
           updated_at: string;
         };
         Insert: {
+          calendly_cancel_url?: string | null;
+          calendly_reschedule_url?: string | null;
           call_summary?: string | null;
-          cash_collected_cents?: number | null;
-          source_platform?: string | null;
-          source_format?: string | null;
-          source_content_id?: string | null;
-          source_vsl_id?: string | null;
-          source_campaign?: string | null;
           cancelled?: boolean;
+          cash_collected_cents?: number | null;
           closed?: boolean | null;
           closer_id?: string | null;
           closer_name?: string | null;
@@ -325,35 +581,46 @@ export type Database = {
           deposit_cents?: number | null;
           disposition?: string | null;
           duration_seconds?: number | null;
+          eod_lead_status?: string | null;
+          followup_amount_pitched_cents?: number | null;
+          followup_notes?: string | null;
+          followup_reason?: string | null;
+          followup_reason_other?: string | null;
           id?: string;
           key_moment?: string | null;
           lead_email?: string | null;
           lead_id?: string | null;
+          meeting_link?: string | null;
           no_show_recovered?: boolean;
+          offer_at?: string | null;
           offer_made?: boolean | null;
           org_id: string;
+          original_currency?: string;
           payment_plan?: boolean | null;
           recording_url?: string | null;
           recovered_from_call_id?: string | null;
+          requested_followup_at?: string | null;
           scheduled_for?: string | null;
           setter_id?: string | null;
           showed?: boolean | null;
           showed_at?: string | null;
-          offer_at?: string | null;
+          source_campaign?: string | null;
+          source_content_id?: string | null;
+          source_format?: string | null;
+          source_platform?: string | null;
+          source_vsl_id?: string | null;
+          source_webinar_id?: string | null;
           status?: Database["public"]["Enums"]["call_status"];
           talk_seconds?: number | null;
           time_to_close_seconds?: number | null;
           updated_at?: string;
         };
         Update: {
+          calendly_cancel_url?: string | null;
+          calendly_reschedule_url?: string | null;
           call_summary?: string | null;
-          cash_collected_cents?: number | null;
-          source_platform?: string | null;
-          source_format?: string | null;
-          source_content_id?: string | null;
-          source_vsl_id?: string | null;
-          source_campaign?: string | null;
           cancelled?: boolean;
+          cash_collected_cents?: number | null;
           closed?: boolean | null;
           closer_id?: string | null;
           closer_name?: string | null;
@@ -362,21 +629,35 @@ export type Database = {
           deposit_cents?: number | null;
           disposition?: string | null;
           duration_seconds?: number | null;
+          eod_lead_status?: string | null;
+          followup_amount_pitched_cents?: number | null;
+          followup_notes?: string | null;
+          followup_reason?: string | null;
+          followup_reason_other?: string | null;
           id?: string;
           key_moment?: string | null;
           lead_email?: string | null;
           lead_id?: string | null;
+          meeting_link?: string | null;
           no_show_recovered?: boolean;
+          offer_at?: string | null;
           offer_made?: boolean | null;
           org_id?: string;
+          original_currency?: string;
           payment_plan?: boolean | null;
           recording_url?: string | null;
           recovered_from_call_id?: string | null;
+          requested_followup_at?: string | null;
           scheduled_for?: string | null;
           setter_id?: string | null;
           showed?: boolean | null;
           showed_at?: string | null;
-          offer_at?: string | null;
+          source_campaign?: string | null;
+          source_content_id?: string | null;
+          source_format?: string | null;
+          source_platform?: string | null;
+          source_vsl_id?: string | null;
+          source_webinar_id?: string | null;
           status?: Database["public"]["Enums"]["call_status"];
           talk_seconds?: number | null;
           time_to_close_seconds?: number | null;
@@ -409,6 +690,82 @@ export type Database = {
             columns: ["recovered_from_call_id"];
             isOneToOne: false;
             referencedRelation: "calls";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calls_recovered_from_call_id_fkey";
+            columns: ["recovered_from_call_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["call_id"];
+          },
+          {
+            foreignKeyName: "calls_source_content_id_fkey";
+            columns: ["source_content_id"];
+            isOneToOne: false;
+            referencedRelation: "content_pieces";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calls_source_vsl_id_fkey";
+            columns: ["source_vsl_id"];
+            isOneToOne: false;
+            referencedRelation: "vsls";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calls_source_webinar_id_fkey";
+            columns: ["source_webinar_id"];
+            isOneToOne: false;
+            referencedRelation: "webinars";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      client_activity_events: {
+        Row: {
+          actor_id: string | null;
+          actor_name: string | null;
+          body: string | null;
+          client_id: string;
+          created_at: string;
+          event_type: string;
+          id: string;
+          org_id: string;
+        };
+        Insert: {
+          actor_id?: string | null;
+          actor_name?: string | null;
+          body?: string | null;
+          client_id: string;
+          created_at?: string;
+          event_type: string;
+          id?: string;
+          org_id: string;
+        };
+        Update: {
+          actor_id?: string | null;
+          actor_name?: string | null;
+          body?: string | null;
+          client_id?: string;
+          created_at?: string;
+          event_type?: string;
+          id?: string;
+          org_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_activity_events_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "client_activity_events_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
             referencedColumns: ["id"];
           },
         ];
@@ -576,265 +933,40 @@ export type Database = {
           },
         ];
       };
-      client_activity_events: {
+      confirmation_policy: {
         Row: {
-          actor_id: string | null;
-          actor_name: string | null;
-          body: string | null;
-          client_id: string;
-          created_at: string;
-          event_type: string;
-          id: string;
+          at_risk_after_hours: number;
+          auto_cancel_enabled: boolean;
+          auto_cancel_minutes_before: number;
           org_id: string;
-        };
-        Insert: {
-          actor_id?: string | null;
-          actor_name?: string | null;
-          body?: string | null;
-          client_id: string;
-          created_at?: string;
-          event_type: string;
-          id?: string;
-          org_id: string;
-        };
-        Update: {
-          actor_id?: string | null;
-          actor_name?: string | null;
-          body?: string | null;
-          client_id?: string;
-          created_at?: string;
-          event_type?: string;
-          id?: string;
-          org_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "client_activity_events_client_id_fkey";
-            columns: ["client_id"];
-            isOneToOne: false;
-            referencedRelation: "clients";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      payment_schedule_items: {
-        Row: {
-          amount_cents: number;
-          client_id: string;
-          created_at: string;
-          due_date: string;
-          id: string;
-          notes: string | null;
-          org_id: string;
-          payment_id: string | null;
-          status: string;
+          overdue_after_hours: number;
           updated_at: string;
+          updated_by: string | null;
         };
         Insert: {
-          amount_cents: number;
-          client_id: string;
-          created_at?: string;
-          due_date: string;
-          id?: string;
-          notes?: string | null;
+          at_risk_after_hours?: number;
+          auto_cancel_enabled?: boolean;
+          auto_cancel_minutes_before?: number;
           org_id: string;
-          payment_id?: string | null;
-          status?: string;
+          overdue_after_hours?: number;
           updated_at?: string;
+          updated_by?: string | null;
         };
         Update: {
-          amount_cents?: number;
-          client_id?: string;
-          created_at?: string;
-          due_date?: string;
-          id?: string;
-          notes?: string | null;
+          at_risk_after_hours?: number;
+          auto_cancel_enabled?: boolean;
+          auto_cancel_minutes_before?: number;
           org_id?: string;
-          payment_id?: string | null;
-          status?: string;
+          overdue_after_hours?: number;
           updated_at?: string;
+          updated_by?: string | null;
         };
         Relationships: [
           {
-            foreignKeyName: "payment_schedule_items_client_id_fkey";
-            columns: ["client_id"];
-            isOneToOne: false;
-            referencedRelation: "clients";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "payment_schedule_items_payment_id_fkey";
-            columns: ["payment_id"];
-            isOneToOne: false;
-            referencedRelation: "payments";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      payment_recovery_items: {
-        Row: {
-          amount_cents: number;
-          client_id: string | null;
-          created_at: string;
-          due_at: string | null;
-          id: string;
-          next_action: string | null;
-          next_action_at: string | null;
-          org_id: string;
-          owner_id: string | null;
-          payment_id: string | null;
-          provider_execution_status: string;
-          status: string;
-          updated_at: string;
-        };
-        Insert: {
-          amount_cents?: number;
-          client_id?: string | null;
-          created_at?: string;
-          due_at?: string | null;
-          id?: string;
-          next_action?: string | null;
-          next_action_at?: string | null;
-          org_id: string;
-          owner_id?: string | null;
-          payment_id?: string | null;
-          provider_execution_status?: string;
-          status?: string;
-          updated_at?: string;
-        };
-        Update: {
-          amount_cents?: number;
-          client_id?: string | null;
-          created_at?: string;
-          due_at?: string | null;
-          id?: string;
-          next_action?: string | null;
-          next_action_at?: string | null;
-          org_id?: string;
-          owner_id?: string | null;
-          payment_id?: string | null;
-          provider_execution_status?: string;
-          status?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "payment_recovery_items_client_id_fkey";
-            columns: ["client_id"];
-            isOneToOne: false;
-            referencedRelation: "clients";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      renewal_work_items: {
-        Row: {
-          client_id: string;
-          created_at: string;
-          id: string;
-          next_action: string | null;
-          next_action_at: string | null;
-          org_id: string;
-          owner_id: string | null;
-          payment_outcome: string | null;
-          reason: string | null;
-          renewal_date: string | null;
-          renewal_outcome: string | null;
-          risk: string;
-          stage: string;
-          updated_at: string;
-        };
-        Insert: {
-          client_id: string;
-          created_at?: string;
-          id?: string;
-          next_action?: string | null;
-          next_action_at?: string | null;
-          org_id: string;
-          owner_id?: string | null;
-          payment_outcome?: string | null;
-          reason?: string | null;
-          renewal_date?: string | null;
-          renewal_outcome?: string | null;
-          risk?: string;
-          stage?: string;
-          updated_at?: string;
-        };
-        Update: {
-          client_id?: string;
-          created_at?: string;
-          id?: string;
-          next_action?: string | null;
-          next_action_at?: string | null;
-          org_id?: string;
-          owner_id?: string | null;
-          payment_outcome?: string | null;
-          reason?: string | null;
-          renewal_date?: string | null;
-          renewal_outcome?: string | null;
-          risk?: string;
-          stage?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "renewal_work_items_client_id_fkey";
-            columns: ["client_id"];
-            isOneToOne: false;
-            referencedRelation: "clients";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      scheduled_communications: {
-        Row: {
-          body: string | null;
-          channel: string;
-          client_id: string;
-          created_at: string;
-          id: string;
-          org_id: string;
-          scheduled_for: string;
-          send_status: string;
-          sent_at: string | null;
-          subject: string | null;
-          trigger_type: string;
-          updated_at: string;
-        };
-        Insert: {
-          body?: string | null;
-          channel: string;
-          client_id: string;
-          created_at?: string;
-          id?: string;
-          org_id: string;
-          scheduled_for: string;
-          send_status?: string;
-          sent_at?: string | null;
-          subject?: string | null;
-          trigger_type: string;
-          updated_at?: string;
-        };
-        Update: {
-          body?: string | null;
-          channel?: string;
-          client_id?: string;
-          created_at?: string;
-          id?: string;
-          org_id?: string;
-          scheduled_for?: string;
-          send_status?: string;
-          sent_at?: string | null;
-          subject?: string | null;
-          trigger_type?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "scheduled_communications_client_id_fkey";
-            columns: ["client_id"];
-            isOneToOne: false;
-            referencedRelation: "clients";
+            foreignKeyName: "confirmation_policy_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: true;
+            referencedRelation: "organizations";
             referencedColumns: ["id"];
           },
         ];
@@ -1501,6 +1633,1799 @@ export type Database = {
         };
         Relationships: [];
       };
+      crm_activities: {
+        Row: {
+          activity_type: string;
+          actor_user_id: string | null;
+          body: string | null;
+          created_at: string;
+          id: string;
+          occurred_at: string;
+          org_id: string;
+          payload: Json;
+          source_id: string | null;
+          source_type: string;
+          title: string;
+        };
+        Insert: {
+          activity_type: string;
+          actor_user_id?: string | null;
+          body?: string | null;
+          created_at?: string;
+          id?: string;
+          occurred_at?: string;
+          org_id: string;
+          payload?: Json;
+          source_id?: string | null;
+          source_type?: string;
+          title: string;
+        };
+        Update: {
+          activity_type?: string;
+          actor_user_id?: string | null;
+          body?: string | null;
+          created_at?: string;
+          id?: string;
+          occurred_at?: string;
+          org_id?: string;
+          payload?: Json;
+          source_id?: string | null;
+          source_type?: string;
+          title?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_activities_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_activity_targets: {
+        Row: {
+          activity_id: string;
+          created_at: string;
+          entity_id: string;
+          entity_type: string;
+          id: string;
+          org_id: string;
+        };
+        Insert: {
+          activity_id: string;
+          created_at?: string;
+          entity_id: string;
+          entity_type: string;
+          id?: string;
+          org_id: string;
+        };
+        Update: {
+          activity_id?: string;
+          created_at?: string;
+          entity_id?: string;
+          entity_type?: string;
+          id?: string;
+          org_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_activity_targets_activity_id_fkey";
+            columns: ["activity_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_activities";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_activity_targets_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_automation_rules: {
+        Row: {
+          actions: Json;
+          conditions: Json;
+          created_at: string;
+          created_by: string | null;
+          description: string | null;
+          entity_type: string;
+          id: string;
+          is_enabled: boolean;
+          name: string;
+          org_id: string;
+          trigger_config: Json;
+          trigger_type: string;
+          updated_at: string;
+        };
+        Insert: {
+          actions?: Json;
+          conditions?: Json;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          entity_type: string;
+          id?: string;
+          is_enabled?: boolean;
+          name: string;
+          org_id: string;
+          trigger_config?: Json;
+          trigger_type: string;
+          updated_at?: string;
+        };
+        Update: {
+          actions?: Json;
+          conditions?: Json;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          entity_type?: string;
+          id?: string;
+          is_enabled?: boolean;
+          name?: string;
+          org_id?: string;
+          trigger_config?: Json;
+          trigger_type?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_automation_rules_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_automation_runs: {
+        Row: {
+          completed_at: string | null;
+          created_at: string;
+          error_message: string | null;
+          id: string;
+          input: Json;
+          org_id: string;
+          result: Json;
+          rule_id: string;
+          started_at: string | null;
+          status: string;
+          trigger_entity_id: string | null;
+          trigger_entity_type: string;
+        };
+        Insert: {
+          completed_at?: string | null;
+          created_at?: string;
+          error_message?: string | null;
+          id?: string;
+          input?: Json;
+          org_id: string;
+          result?: Json;
+          rule_id: string;
+          started_at?: string | null;
+          status?: string;
+          trigger_entity_id?: string | null;
+          trigger_entity_type: string;
+        };
+        Update: {
+          completed_at?: string | null;
+          created_at?: string;
+          error_message?: string | null;
+          id?: string;
+          input?: Json;
+          org_id?: string;
+          result?: Json;
+          rule_id?: string;
+          started_at?: string | null;
+          status?: string;
+          trigger_entity_id?: string | null;
+          trigger_entity_type?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_automation_runs_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_automation_runs_rule_id_fkey";
+            columns: ["rule_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_automation_rules";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_bulk_operations: {
+        Row: {
+          completed_at: string | null;
+          created_at: string;
+          entity_type: string;
+          error_message: string | null;
+          id: string;
+          initiated_by: string | null;
+          input: Json;
+          operation_type: string;
+          org_id: string;
+          result: Json;
+          selection_count: number;
+          selection_snapshot: Json;
+          status: string;
+        };
+        Insert: {
+          completed_at?: string | null;
+          created_at?: string;
+          entity_type: string;
+          error_message?: string | null;
+          id?: string;
+          initiated_by?: string | null;
+          input?: Json;
+          operation_type: string;
+          org_id: string;
+          result?: Json;
+          selection_count: number;
+          selection_snapshot?: Json;
+          status?: string;
+        };
+        Update: {
+          completed_at?: string | null;
+          created_at?: string;
+          entity_type?: string;
+          error_message?: string | null;
+          id?: string;
+          initiated_by?: string | null;
+          input?: Json;
+          operation_type?: string;
+          org_id?: string;
+          result?: Json;
+          selection_count?: number;
+          selection_snapshot?: Json;
+          status?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_bulk_operations_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_call_recordings: {
+        Row: {
+          call_session_id: string | null;
+          content_type: string | null;
+          created_at: string;
+          duration_seconds: number | null;
+          external_recording_id: string | null;
+          id: string;
+          legacy_call_id: string | null;
+          metadata: Json;
+          org_id: string;
+          provider: string;
+          recording_url: string | null;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          call_session_id?: string | null;
+          content_type?: string | null;
+          created_at?: string;
+          duration_seconds?: number | null;
+          external_recording_id?: string | null;
+          id?: string;
+          legacy_call_id?: string | null;
+          metadata?: Json;
+          org_id: string;
+          provider: string;
+          recording_url?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          call_session_id?: string | null;
+          content_type?: string | null;
+          created_at?: string;
+          duration_seconds?: number | null;
+          external_recording_id?: string | null;
+          id?: string;
+          legacy_call_id?: string | null;
+          metadata?: Json;
+          org_id?: string;
+          provider?: string;
+          recording_url?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_call_recordings_call_session_id_fkey";
+            columns: ["call_session_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_call_sessions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_call_recordings_legacy_call_id_fkey";
+            columns: ["legacy_call_id"];
+            isOneToOne: false;
+            referencedRelation: "calls";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_call_recordings_legacy_call_id_fkey";
+            columns: ["legacy_call_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["call_id"];
+          },
+          {
+            foreignKeyName: "crm_call_recordings_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_call_sessions: {
+        Row: {
+          account_id: string | null;
+          answered_at: string | null;
+          completed_at: string | null;
+          contact_id: string | null;
+          created_at: string;
+          created_by: string | null;
+          direction: string;
+          disposition: string | null;
+          duration_seconds: number | null;
+          external_call_id: string | null;
+          from_address: string | null;
+          id: string;
+          legacy_call_id: string | null;
+          legacy_lead_id: string | null;
+          metadata: Json;
+          notes: string | null;
+          opportunity_id: string | null;
+          org_id: string;
+          provider: string;
+          started_at: string | null;
+          status: string;
+          thread_id: string | null;
+          to_address: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          account_id?: string | null;
+          answered_at?: string | null;
+          completed_at?: string | null;
+          contact_id?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          direction: string;
+          disposition?: string | null;
+          duration_seconds?: number | null;
+          external_call_id?: string | null;
+          from_address?: string | null;
+          id?: string;
+          legacy_call_id?: string | null;
+          legacy_lead_id?: string | null;
+          metadata?: Json;
+          notes?: string | null;
+          opportunity_id?: string | null;
+          org_id: string;
+          provider: string;
+          started_at?: string | null;
+          status?: string;
+          thread_id?: string | null;
+          to_address?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          account_id?: string | null;
+          answered_at?: string | null;
+          completed_at?: string | null;
+          contact_id?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          direction?: string;
+          disposition?: string | null;
+          duration_seconds?: number | null;
+          external_call_id?: string | null;
+          from_address?: string | null;
+          id?: string;
+          legacy_call_id?: string | null;
+          legacy_lead_id?: string | null;
+          metadata?: Json;
+          notes?: string | null;
+          opportunity_id?: string | null;
+          org_id?: string;
+          provider?: string;
+          started_at?: string | null;
+          status?: string;
+          thread_id?: string | null;
+          to_address?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_call_sessions_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_communication_accounts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_call_sessions_contact_id_fkey";
+            columns: ["contact_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_contacts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_call_sessions_legacy_call_id_fkey";
+            columns: ["legacy_call_id"];
+            isOneToOne: false;
+            referencedRelation: "calls";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_call_sessions_legacy_call_id_fkey";
+            columns: ["legacy_call_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["call_id"];
+          },
+          {
+            foreignKeyName: "crm_call_sessions_legacy_lead_id_fkey";
+            columns: ["legacy_lead_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["lead_id"];
+          },
+          {
+            foreignKeyName: "crm_call_sessions_legacy_lead_id_fkey";
+            columns: ["legacy_lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_call_sessions_opportunity_id_fkey";
+            columns: ["opportunity_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_opportunities";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_call_sessions_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_call_sessions_thread_id_fkey";
+            columns: ["thread_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_communication_threads";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_communication_accounts: {
+        Row: {
+          address_value: string;
+          channel: string;
+          connection_status: string;
+          created_at: string;
+          created_by: string | null;
+          display_name: string | null;
+          external_account_id: string | null;
+          id: string;
+          is_default: boolean;
+          last_synced_at: string | null;
+          org_id: string;
+          provider: string;
+          settings: Json;
+          updated_at: string;
+        };
+        Insert: {
+          address_value: string;
+          channel: string;
+          connection_status?: string;
+          created_at?: string;
+          created_by?: string | null;
+          display_name?: string | null;
+          external_account_id?: string | null;
+          id?: string;
+          is_default?: boolean;
+          last_synced_at?: string | null;
+          org_id: string;
+          provider: string;
+          settings?: Json;
+          updated_at?: string;
+        };
+        Update: {
+          address_value?: string;
+          channel?: string;
+          connection_status?: string;
+          created_at?: string;
+          created_by?: string | null;
+          display_name?: string | null;
+          external_account_id?: string | null;
+          id?: string;
+          is_default?: boolean;
+          last_synced_at?: string | null;
+          org_id?: string;
+          provider?: string;
+          settings?: Json;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_communication_accounts_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_communication_deliveries: {
+        Row: {
+          created_at: string;
+          delivery_status: string;
+          error_code: string | null;
+          error_message: string | null;
+          external_event_id: string;
+          id: string;
+          message_id: string;
+          occurred_at: string;
+          org_id: string;
+          payload: Json;
+          provider: string;
+        };
+        Insert: {
+          created_at?: string;
+          delivery_status: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          external_event_id: string;
+          id?: string;
+          message_id: string;
+          occurred_at?: string;
+          org_id: string;
+          payload?: Json;
+          provider: string;
+        };
+        Update: {
+          created_at?: string;
+          delivery_status?: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          external_event_id?: string;
+          id?: string;
+          message_id?: string;
+          occurred_at?: string;
+          org_id?: string;
+          payload?: Json;
+          provider?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_communication_deliveries_message_id_fkey";
+            columns: ["message_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_communication_messages";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_communication_deliveries_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_communication_messages: {
+        Row: {
+          account_id: string | null;
+          bcc_addresses: Json;
+          body_html: string | null;
+          body_text: string | null;
+          cc_addresses: Json;
+          created_at: string;
+          created_by: string | null;
+          direction: string;
+          error_message: string | null;
+          external_message_id: string | null;
+          from_address: string | null;
+          id: string;
+          metadata: Json;
+          org_id: string;
+          provider: string;
+          received_at: string | null;
+          sent_at: string | null;
+          status: string;
+          subject: string | null;
+          thread_id: string;
+          to_addresses: Json;
+          updated_at: string;
+        };
+        Insert: {
+          account_id?: string | null;
+          bcc_addresses?: Json;
+          body_html?: string | null;
+          body_text?: string | null;
+          cc_addresses?: Json;
+          created_at?: string;
+          created_by?: string | null;
+          direction: string;
+          error_message?: string | null;
+          external_message_id?: string | null;
+          from_address?: string | null;
+          id?: string;
+          metadata?: Json;
+          org_id: string;
+          provider: string;
+          received_at?: string | null;
+          sent_at?: string | null;
+          status?: string;
+          subject?: string | null;
+          thread_id: string;
+          to_addresses?: Json;
+          updated_at?: string;
+        };
+        Update: {
+          account_id?: string | null;
+          bcc_addresses?: Json;
+          body_html?: string | null;
+          body_text?: string | null;
+          cc_addresses?: Json;
+          created_at?: string;
+          created_by?: string | null;
+          direction?: string;
+          error_message?: string | null;
+          external_message_id?: string | null;
+          from_address?: string | null;
+          id?: string;
+          metadata?: Json;
+          org_id?: string;
+          provider?: string;
+          received_at?: string | null;
+          sent_at?: string | null;
+          status?: string;
+          subject?: string | null;
+          thread_id?: string;
+          to_addresses?: Json;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_communication_messages_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_communication_accounts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_communication_messages_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_communication_messages_thread_id_fkey";
+            columns: ["thread_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_communication_threads";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_communication_participants: {
+        Row: {
+          address_value: string;
+          contact_id: string | null;
+          created_at: string;
+          display_name: string | null;
+          id: string;
+          org_id: string;
+          participant_role: string;
+          thread_id: string;
+        };
+        Insert: {
+          address_value: string;
+          contact_id?: string | null;
+          created_at?: string;
+          display_name?: string | null;
+          id?: string;
+          org_id: string;
+          participant_role?: string;
+          thread_id: string;
+        };
+        Update: {
+          address_value?: string;
+          contact_id?: string | null;
+          created_at?: string;
+          display_name?: string | null;
+          id?: string;
+          org_id?: string;
+          participant_role?: string;
+          thread_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_communication_participants_contact_id_fkey";
+            columns: ["contact_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_contacts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_communication_participants_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_communication_participants_thread_id_fkey";
+            columns: ["thread_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_communication_threads";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_communication_threads: {
+        Row: {
+          account_id: string | null;
+          assigned_user_id: string | null;
+          channel: string;
+          company_id: string | null;
+          contact_id: string | null;
+          created_at: string;
+          external_thread_id: string | null;
+          id: string;
+          last_message_at: string | null;
+          legacy_lead_id: string | null;
+          metadata: Json;
+          opportunity_id: string | null;
+          org_id: string;
+          status: string;
+          subject: string | null;
+          unread_count: number;
+          updated_at: string;
+        };
+        Insert: {
+          account_id?: string | null;
+          assigned_user_id?: string | null;
+          channel: string;
+          company_id?: string | null;
+          contact_id?: string | null;
+          created_at?: string;
+          external_thread_id?: string | null;
+          id?: string;
+          last_message_at?: string | null;
+          legacy_lead_id?: string | null;
+          metadata?: Json;
+          opportunity_id?: string | null;
+          org_id: string;
+          status?: string;
+          subject?: string | null;
+          unread_count?: number;
+          updated_at?: string;
+        };
+        Update: {
+          account_id?: string | null;
+          assigned_user_id?: string | null;
+          channel?: string;
+          company_id?: string | null;
+          contact_id?: string | null;
+          created_at?: string;
+          external_thread_id?: string | null;
+          id?: string;
+          last_message_at?: string | null;
+          legacy_lead_id?: string | null;
+          metadata?: Json;
+          opportunity_id?: string | null;
+          org_id?: string;
+          status?: string;
+          subject?: string | null;
+          unread_count?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_communication_threads_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_communication_accounts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_communication_threads_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_companies";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_communication_threads_contact_id_fkey";
+            columns: ["contact_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_contacts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_communication_threads_legacy_lead_id_fkey";
+            columns: ["legacy_lead_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["lead_id"];
+          },
+          {
+            foreignKeyName: "crm_communication_threads_legacy_lead_id_fkey";
+            columns: ["legacy_lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_communication_threads_opportunity_id_fkey";
+            columns: ["opportunity_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_opportunities";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_communication_threads_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_companies: {
+        Row: {
+          created_at: string;
+          description: string | null;
+          domain: string | null;
+          id: string;
+          industry: string | null;
+          name: string;
+          org_id: string;
+          owner_user_id: string | null;
+          updated_at: string;
+          website: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          description?: string | null;
+          domain?: string | null;
+          id?: string;
+          industry?: string | null;
+          name: string;
+          org_id: string;
+          owner_user_id?: string | null;
+          updated_at?: string;
+          website?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          description?: string | null;
+          domain?: string | null;
+          id?: string;
+          industry?: string | null;
+          name?: string;
+          org_id?: string;
+          owner_user_id?: string | null;
+          updated_at?: string;
+          website?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_companies_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_company_contacts: {
+        Row: {
+          company_id: string;
+          contact_id: string;
+          created_at: string;
+          id: string;
+          is_primary: boolean;
+          org_id: string;
+          title: string | null;
+        };
+        Insert: {
+          company_id: string;
+          contact_id: string;
+          created_at?: string;
+          id?: string;
+          is_primary?: boolean;
+          org_id: string;
+          title?: string | null;
+        };
+        Update: {
+          company_id?: string;
+          contact_id?: string;
+          created_at?: string;
+          id?: string;
+          is_primary?: boolean;
+          org_id?: string;
+          title?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_company_contacts_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_companies";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_company_contacts_contact_id_fkey";
+            columns: ["contact_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_contacts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_company_contacts_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_contacts: {
+        Row: {
+          created_at: string;
+          description: string | null;
+          display_name: string;
+          first_name: string | null;
+          id: string;
+          last_name: string | null;
+          legacy_lead_id: string | null;
+          lifecycle_status: string;
+          org_id: string;
+          owner_user_id: string | null;
+          primary_email: string | null;
+          primary_phone: string | null;
+          social_handle: string | null;
+          source: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          description?: string | null;
+          display_name: string;
+          first_name?: string | null;
+          id?: string;
+          last_name?: string | null;
+          legacy_lead_id?: string | null;
+          lifecycle_status?: string;
+          org_id: string;
+          owner_user_id?: string | null;
+          primary_email?: string | null;
+          primary_phone?: string | null;
+          social_handle?: string | null;
+          source?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          description?: string | null;
+          display_name?: string;
+          first_name?: string | null;
+          id?: string;
+          last_name?: string | null;
+          legacy_lead_id?: string | null;
+          lifecycle_status?: string;
+          org_id?: string;
+          owner_user_id?: string | null;
+          primary_email?: string | null;
+          primary_phone?: string | null;
+          social_handle?: string | null;
+          source?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_contacts_legacy_lead_id_fkey";
+            columns: ["legacy_lead_id"];
+            isOneToOne: true;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["lead_id"];
+          },
+          {
+            foreignKeyName: "crm_contacts_legacy_lead_id_fkey";
+            columns: ["legacy_lead_id"];
+            isOneToOne: true;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_contacts_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_custom_field_definitions: {
+        Row: {
+          created_at: string;
+          entity_type: string;
+          field_type: string;
+          id: string;
+          is_archived: boolean;
+          is_required: boolean;
+          key: string;
+          label: string;
+          options: Json;
+          org_id: string;
+          position: number;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          entity_type: string;
+          field_type: string;
+          id?: string;
+          is_archived?: boolean;
+          is_required?: boolean;
+          key: string;
+          label: string;
+          options?: Json;
+          org_id: string;
+          position?: number;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          entity_type?: string;
+          field_type?: string;
+          id?: string;
+          is_archived?: boolean;
+          is_required?: boolean;
+          key?: string;
+          label?: string;
+          options?: Json;
+          org_id?: string;
+          position?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_custom_field_definitions_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_custom_field_values: {
+        Row: {
+          created_at: string;
+          definition_id: string;
+          entity_id: string;
+          entity_type: string;
+          id: string;
+          org_id: string;
+          updated_at: string;
+          updated_by: string | null;
+          value: Json;
+        };
+        Insert: {
+          created_at?: string;
+          definition_id: string;
+          entity_id: string;
+          entity_type: string;
+          id?: string;
+          org_id: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          value: Json;
+        };
+        Update: {
+          created_at?: string;
+          definition_id?: string;
+          entity_id?: string;
+          entity_type?: string;
+          id?: string;
+          org_id?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          value?: Json;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_custom_field_values_definition_id_fkey";
+            columns: ["definition_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_custom_field_definitions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_custom_field_values_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_external_events: {
+        Row: {
+          created_at: string;
+          error_message: string | null;
+          event_type: string;
+          external_event_id: string;
+          id: string;
+          org_id: string;
+          payload: Json;
+          processed_at: string | null;
+          processing_status: string;
+          provider: string;
+          received_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          error_message?: string | null;
+          event_type: string;
+          external_event_id: string;
+          id?: string;
+          org_id: string;
+          payload?: Json;
+          processed_at?: string | null;
+          processing_status?: string;
+          provider: string;
+          received_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          error_message?: string | null;
+          event_type?: string;
+          external_event_id?: string;
+          id?: string;
+          org_id?: string;
+          payload?: Json;
+          processed_at?: string | null;
+          processing_status?: string;
+          provider?: string;
+          received_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_external_events_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_legacy_links: {
+        Row: {
+          created_at: string;
+          crm_entity_id: string;
+          crm_entity_type: string;
+          id: string;
+          legacy_entity_id: string;
+          legacy_entity_type: string;
+          org_id: string;
+          relationship_type: string;
+        };
+        Insert: {
+          created_at?: string;
+          crm_entity_id: string;
+          crm_entity_type: string;
+          id?: string;
+          legacy_entity_id: string;
+          legacy_entity_type: string;
+          org_id: string;
+          relationship_type?: string;
+        };
+        Update: {
+          created_at?: string;
+          crm_entity_id?: string;
+          crm_entity_type?: string;
+          id?: string;
+          legacy_entity_id?: string;
+          legacy_entity_type?: string;
+          org_id?: string;
+          relationship_type?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_legacy_links_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_legacy_stage_mappings: {
+        Row: {
+          created_at: string;
+          id: string;
+          legacy_entity_type: string;
+          legacy_value: string;
+          lifecycle_status: string | null;
+          notes: string | null;
+          org_id: string;
+          pipeline_id: string | null;
+          pipeline_stage_id: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          legacy_entity_type: string;
+          legacy_value: string;
+          lifecycle_status?: string | null;
+          notes?: string | null;
+          org_id: string;
+          pipeline_id?: string | null;
+          pipeline_stage_id?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          legacy_entity_type?: string;
+          legacy_value?: string;
+          lifecycle_status?: string | null;
+          notes?: string | null;
+          org_id?: string;
+          pipeline_id?: string | null;
+          pipeline_stage_id?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_legacy_stage_mappings_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_legacy_stage_mappings_pipeline_id_fkey";
+            columns: ["pipeline_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_pipelines";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_legacy_stage_mappings_pipeline_stage_id_fkey";
+            columns: ["pipeline_stage_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_pipeline_stages";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_notes: {
+        Row: {
+          author_user_id: string | null;
+          body: string;
+          company_id: string | null;
+          contact_id: string | null;
+          created_at: string;
+          id: string;
+          legacy_lead_id: string | null;
+          legacy_lead_note_id: string | null;
+          opportunity_id: string | null;
+          org_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          author_user_id?: string | null;
+          body: string;
+          company_id?: string | null;
+          contact_id?: string | null;
+          created_at?: string;
+          id?: string;
+          legacy_lead_id?: string | null;
+          legacy_lead_note_id?: string | null;
+          opportunity_id?: string | null;
+          org_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          author_user_id?: string | null;
+          body?: string;
+          company_id?: string | null;
+          contact_id?: string | null;
+          created_at?: string;
+          id?: string;
+          legacy_lead_id?: string | null;
+          legacy_lead_note_id?: string | null;
+          opportunity_id?: string | null;
+          org_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_notes_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_companies";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_notes_contact_id_fkey";
+            columns: ["contact_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_contacts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_notes_legacy_lead_id_fkey";
+            columns: ["legacy_lead_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["lead_id"];
+          },
+          {
+            foreignKeyName: "crm_notes_legacy_lead_id_fkey";
+            columns: ["legacy_lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_notes_legacy_lead_note_id_fkey";
+            columns: ["legacy_lead_note_id"];
+            isOneToOne: true;
+            referencedRelation: "lead_notes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_notes_opportunity_id_fkey";
+            columns: ["opportunity_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_opportunities";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_notes_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_opportunities: {
+        Row: {
+          amount_cents: number;
+          company_id: string | null;
+          contact_id: string | null;
+          created_at: string;
+          currency: string;
+          expected_close_date: string | null;
+          id: string;
+          legacy_call_id: string | null;
+          legacy_client_id: string | null;
+          lost_at: string | null;
+          lost_reason: string | null;
+          name: string;
+          org_id: string;
+          owner_user_id: string | null;
+          pipeline_id: string;
+          pipeline_stage_id: string;
+          probability: number | null;
+          source: string | null;
+          status: string;
+          updated_at: string;
+          won_at: string | null;
+        };
+        Insert: {
+          amount_cents?: number;
+          company_id?: string | null;
+          contact_id?: string | null;
+          created_at?: string;
+          currency?: string;
+          expected_close_date?: string | null;
+          id?: string;
+          legacy_call_id?: string | null;
+          legacy_client_id?: string | null;
+          lost_at?: string | null;
+          lost_reason?: string | null;
+          name: string;
+          org_id: string;
+          owner_user_id?: string | null;
+          pipeline_id: string;
+          pipeline_stage_id: string;
+          probability?: number | null;
+          source?: string | null;
+          status?: string;
+          updated_at?: string;
+          won_at?: string | null;
+        };
+        Update: {
+          amount_cents?: number;
+          company_id?: string | null;
+          contact_id?: string | null;
+          created_at?: string;
+          currency?: string;
+          expected_close_date?: string | null;
+          id?: string;
+          legacy_call_id?: string | null;
+          legacy_client_id?: string | null;
+          lost_at?: string | null;
+          lost_reason?: string | null;
+          name?: string;
+          org_id?: string;
+          owner_user_id?: string | null;
+          pipeline_id?: string;
+          pipeline_stage_id?: string;
+          probability?: number | null;
+          source?: string | null;
+          status?: string;
+          updated_at?: string;
+          won_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_opportunities_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_companies";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_opportunities_contact_id_fkey";
+            columns: ["contact_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_contacts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_opportunities_legacy_call_id_fkey";
+            columns: ["legacy_call_id"];
+            isOneToOne: true;
+            referencedRelation: "calls";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_opportunities_legacy_call_id_fkey";
+            columns: ["legacy_call_id"];
+            isOneToOne: true;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["call_id"];
+          },
+          {
+            foreignKeyName: "crm_opportunities_legacy_client_id_fkey";
+            columns: ["legacy_client_id"];
+            isOneToOne: true;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_opportunities_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_opportunities_pipeline_id_fkey";
+            columns: ["pipeline_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_pipelines";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_opportunities_pipeline_stage_id_fkey";
+            columns: ["pipeline_stage_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_pipeline_stages";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_pipeline_stages: {
+        Row: {
+          color: string | null;
+          created_at: string;
+          id: string;
+          is_archived: boolean;
+          is_closed_lost: boolean;
+          is_closed_won: boolean;
+          name: string;
+          org_id: string;
+          pipeline_id: string;
+          position: number;
+          probability: number;
+          updated_at: string;
+        };
+        Insert: {
+          color?: string | null;
+          created_at?: string;
+          id?: string;
+          is_archived?: boolean;
+          is_closed_lost?: boolean;
+          is_closed_won?: boolean;
+          name: string;
+          org_id: string;
+          pipeline_id: string;
+          position?: number;
+          probability?: number;
+          updated_at?: string;
+        };
+        Update: {
+          color?: string | null;
+          created_at?: string;
+          id?: string;
+          is_archived?: boolean;
+          is_closed_lost?: boolean;
+          is_closed_won?: boolean;
+          name?: string;
+          org_id?: string;
+          pipeline_id?: string;
+          position?: number;
+          probability?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_pipeline_stages_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_pipeline_stages_pipeline_id_fkey";
+            columns: ["pipeline_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_pipelines";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_pipelines: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          description: string | null;
+          id: string;
+          is_archived: boolean;
+          is_default: boolean;
+          name: string;
+          org_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          id?: string;
+          is_archived?: boolean;
+          is_default?: boolean;
+          name: string;
+          org_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          id?: string;
+          is_archived?: boolean;
+          is_default?: boolean;
+          name?: string;
+          org_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_pipelines_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_saved_views: {
+        Row: {
+          columns: Json;
+          created_at: string;
+          description: string | null;
+          entity_type: string;
+          filters: Json;
+          id: string;
+          is_default: boolean;
+          name: string;
+          org_id: string;
+          owner_user_id: string | null;
+          sort: Json;
+          updated_at: string;
+          visibility: string;
+        };
+        Insert: {
+          columns?: Json;
+          created_at?: string;
+          description?: string | null;
+          entity_type: string;
+          filters?: Json;
+          id?: string;
+          is_default?: boolean;
+          name: string;
+          org_id: string;
+          owner_user_id?: string | null;
+          sort?: Json;
+          updated_at?: string;
+          visibility?: string;
+        };
+        Update: {
+          columns?: Json;
+          created_at?: string;
+          description?: string | null;
+          entity_type?: string;
+          filters?: Json;
+          id?: string;
+          is_default?: boolean;
+          name?: string;
+          org_id?: string;
+          owner_user_id?: string | null;
+          sort?: Json;
+          updated_at?: string;
+          visibility?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_saved_views_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      crm_tasks: {
+        Row: {
+          assignee_user_id: string | null;
+          company_id: string | null;
+          completed_at: string | null;
+          contact_id: string | null;
+          created_at: string;
+          created_by: string | null;
+          description: string | null;
+          due_at: string | null;
+          id: string;
+          legacy_call_id: string | null;
+          legacy_lead_id: string | null;
+          opportunity_id: string | null;
+          org_id: string;
+          priority: string;
+          status: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          assignee_user_id?: string | null;
+          company_id?: string | null;
+          completed_at?: string | null;
+          contact_id?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          due_at?: string | null;
+          id?: string;
+          legacy_call_id?: string | null;
+          legacy_lead_id?: string | null;
+          opportunity_id?: string | null;
+          org_id: string;
+          priority?: string;
+          status?: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          assignee_user_id?: string | null;
+          company_id?: string | null;
+          completed_at?: string | null;
+          contact_id?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          due_at?: string | null;
+          id?: string;
+          legacy_call_id?: string | null;
+          legacy_lead_id?: string | null;
+          opportunity_id?: string | null;
+          org_id?: string;
+          priority?: string;
+          status?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crm_tasks_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_companies";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_tasks_contact_id_fkey";
+            columns: ["contact_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_contacts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_tasks_legacy_call_id_fkey";
+            columns: ["legacy_call_id"];
+            isOneToOne: false;
+            referencedRelation: "calls";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_tasks_legacy_call_id_fkey";
+            columns: ["legacy_call_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["call_id"];
+          },
+          {
+            foreignKeyName: "crm_tasks_legacy_lead_id_fkey";
+            columns: ["legacy_lead_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["lead_id"];
+          },
+          {
+            foreignKeyName: "crm_tasks_legacy_lead_id_fkey";
+            columns: ["legacy_lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_tasks_opportunity_id_fkey";
+            columns: ["opportunity_id"];
+            isOneToOne: false;
+            referencedRelation: "crm_opportunities";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "crm_tasks_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       daily_wins: {
         Row: {
           blocker: string | null;
@@ -1628,6 +3553,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "dashboard_widgets_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      eod_submissions: {
+        Row: {
+          external_submission_id: string | null;
+          form_provider: string;
+          id: string;
+          last_error: string | null;
+          org_id: string;
+          payload: Json;
+          processed_at: string | null;
+          processing_attempts: number;
+          received_at: string;
+          submission_status: string;
+          submitter_id: string | null;
+        };
+        Insert: {
+          external_submission_id?: string | null;
+          form_provider?: string;
+          id?: string;
+          last_error?: string | null;
+          org_id: string;
+          payload?: Json;
+          processed_at?: string | null;
+          processing_attempts?: number;
+          received_at?: string;
+          submission_status?: string;
+          submitter_id?: string | null;
+        };
+        Update: {
+          external_submission_id?: string | null;
+          form_provider?: string;
+          id?: string;
+          last_error?: string | null;
+          org_id?: string;
+          payload?: Json;
+          processed_at?: string | null;
+          processing_attempts?: number;
+          received_at?: string;
+          submission_status?: string;
+          submitter_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "eod_submissions_org_id_fkey";
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "organizations";
@@ -1771,6 +3746,36 @@ export type Database = {
         };
         Relationships: [];
       };
+      fx_rates: {
+        Row: {
+          base_currency: string;
+          created_at: string;
+          id: string;
+          quote_currency: string;
+          rate: number;
+          rate_date: string;
+          source: string;
+        };
+        Insert: {
+          base_currency?: string;
+          created_at?: string;
+          id?: string;
+          quote_currency: string;
+          rate: number;
+          rate_date: string;
+          source?: string;
+        };
+        Update: {
+          base_currency?: string;
+          created_at?: string;
+          id?: string;
+          quote_currency?: string;
+          rate?: number;
+          rate_date?: string;
+          source?: string;
+        };
+        Relationships: [];
+      };
       hiring_applicants: {
         Row: {
           ai_reasoning: string | null;
@@ -1779,6 +3784,7 @@ export type Database = {
           ai_stated_role: string | null;
           ai_transcript_summary: string | null;
           applied_at: string;
+          audio_url: string | null;
           created_at: string;
           email: string | null;
           full_name: string;
@@ -1792,11 +3798,10 @@ export type Database = {
           org_id: string;
           phone: string | null;
           portfolio_url: string | null;
-          audio_url: string | null;
-          resume_url: string | null;
           recent_monthly_cash_collected_cents: number | null;
           region: string | null;
           responses: Json;
+          resume_url: string | null;
           role_applied: string;
           source: string | null;
           stage: string;
@@ -1810,6 +3815,7 @@ export type Database = {
           ai_stated_role?: string | null;
           ai_transcript_summary?: string | null;
           applied_at?: string;
+          audio_url?: string | null;
           created_at?: string;
           email?: string | null;
           full_name: string;
@@ -1823,11 +3829,10 @@ export type Database = {
           org_id: string;
           phone?: string | null;
           portfolio_url?: string | null;
-          audio_url?: string | null;
-          resume_url?: string | null;
           recent_monthly_cash_collected_cents?: number | null;
           region?: string | null;
           responses?: Json;
+          resume_url?: string | null;
           role_applied?: string;
           source?: string | null;
           stage?: string;
@@ -1841,6 +3846,7 @@ export type Database = {
           ai_stated_role?: string | null;
           ai_transcript_summary?: string | null;
           applied_at?: string;
+          audio_url?: string | null;
           created_at?: string;
           email?: string | null;
           full_name?: string;
@@ -1854,11 +3860,10 @@ export type Database = {
           org_id?: string;
           phone?: string | null;
           portfolio_url?: string | null;
-          audio_url?: string | null;
-          resume_url?: string | null;
           recent_monthly_cash_collected_cents?: number | null;
           region?: string | null;
           responses?: Json;
+          resume_url?: string | null;
           role_applied?: string;
           source?: string | null;
           stage?: string;
@@ -1966,6 +3971,13 @@ export type Database = {
             foreignKeyName: "lead_call_transcripts_lead_id_fkey";
             columns: ["lead_id"];
             isOneToOne: false;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["lead_id"];
+          },
+          {
+            foreignKeyName: "lead_call_transcripts_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
             referencedRelation: "leads";
             referencedColumns: ["id"];
           },
@@ -1975,6 +3987,57 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "organizations";
             referencedColumns: ["id"];
+          },
+        ];
+      };
+      lead_classification_rules: {
+        Row: {
+          created_at: string;
+          id: string;
+          is_active: boolean;
+          operator: string;
+          org_id: string;
+          priority: number;
+          threshold_cents: number;
+          tier_key: string;
+          typeform_field_key: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          operator: string;
+          org_id: string;
+          priority?: number;
+          threshold_cents: number;
+          tier_key: string;
+          typeform_field_key: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          operator?: string;
+          org_id?: string;
+          priority?: number;
+          threshold_cents?: number;
+          tier_key?: string;
+          typeform_field_key?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lead_classification_rules_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lead_classification_rules_org_id_tier_key_fkey";
+            columns: ["org_id", "tier_key"];
+            isOneToOne: false;
+            referencedRelation: "offer_tiers";
+            referencedColumns: ["org_id", "key"];
           },
         ];
       };
@@ -2138,16 +4201,201 @@ export type Database = {
           },
         ];
       };
+      lead_response_events: {
+        Row: {
+          booked_call: boolean | null;
+          call_id: string | null;
+          campaign: string | null;
+          client_id: string | null;
+          closed: boolean | null;
+          connected: boolean | null;
+          content_id: string | null;
+          created_at: string;
+          event_at: string | null;
+          event_log: Json;
+          event_type: string | null;
+          first_attempt_at: string | null;
+          first_connection_at: string | null;
+          format: string | null;
+          id: string;
+          lead_assigned_at: string | null;
+          lead_created_at: string | null;
+          lead_id: string;
+          lead_source: string | null;
+          offer: boolean | null;
+          org_id: string;
+          payment_id: string | null;
+          qualified: boolean | null;
+          rep_id: string | null;
+          set: boolean | null;
+          showed: boolean | null;
+          source_platform: string | null;
+          updated_at: string;
+          webinar_id: string | null;
+        };
+        Insert: {
+          booked_call?: boolean | null;
+          call_id?: string | null;
+          campaign?: string | null;
+          client_id?: string | null;
+          closed?: boolean | null;
+          connected?: boolean | null;
+          content_id?: string | null;
+          created_at?: string;
+          event_at?: string | null;
+          event_log?: Json;
+          event_type?: string | null;
+          first_attempt_at?: string | null;
+          first_connection_at?: string | null;
+          format?: string | null;
+          id?: string;
+          lead_assigned_at?: string | null;
+          lead_created_at?: string | null;
+          lead_id: string;
+          lead_source?: string | null;
+          offer?: boolean | null;
+          org_id: string;
+          payment_id?: string | null;
+          qualified?: boolean | null;
+          rep_id?: string | null;
+          set?: boolean | null;
+          showed?: boolean | null;
+          source_platform?: string | null;
+          updated_at?: string;
+          webinar_id?: string | null;
+        };
+        Update: {
+          booked_call?: boolean | null;
+          call_id?: string | null;
+          campaign?: string | null;
+          client_id?: string | null;
+          closed?: boolean | null;
+          connected?: boolean | null;
+          content_id?: string | null;
+          created_at?: string;
+          event_at?: string | null;
+          event_log?: Json;
+          event_type?: string | null;
+          first_attempt_at?: string | null;
+          first_connection_at?: string | null;
+          format?: string | null;
+          id?: string;
+          lead_assigned_at?: string | null;
+          lead_created_at?: string | null;
+          lead_id?: string;
+          lead_source?: string | null;
+          offer?: boolean | null;
+          org_id?: string;
+          payment_id?: string | null;
+          qualified?: boolean | null;
+          rep_id?: string | null;
+          set?: boolean | null;
+          showed?: boolean | null;
+          source_platform?: string | null;
+          updated_at?: string;
+          webinar_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lead_response_events_call_id_fkey";
+            columns: ["call_id"];
+            isOneToOne: false;
+            referencedRelation: "calls";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lead_response_events_call_id_fkey";
+            columns: ["call_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["call_id"];
+          },
+          {
+            foreignKeyName: "lead_response_events_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lead_response_events_content_id_fkey";
+            columns: ["content_id"];
+            isOneToOne: false;
+            referencedRelation: "content_pieces";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lead_response_events_payment_id_fkey";
+            columns: ["payment_id"];
+            isOneToOne: false;
+            referencedRelation: "payments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lead_response_events_webinar_id_fkey";
+            columns: ["webinar_id"];
+            isOneToOne: false;
+            referencedRelation: "webinars";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      lead_video_links: {
+        Row: {
+          created_at: string;
+          id: string;
+          lead_id: string;
+          opened_at: string | null;
+          org_id: string;
+          token: string;
+          vsl_kind: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          lead_id: string;
+          opened_at?: string | null;
+          org_id: string;
+          token: string;
+          vsl_kind?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          lead_id?: string;
+          opened_at?: string | null;
+          org_id?: string;
+          token?: string;
+          vsl_kind?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lead_video_links_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_attribution_v";
+            referencedColumns: ["lead_id"];
+          },
+          {
+            foreignKeyName: "lead_video_links_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lead_video_links_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       leads: {
         Row: {
           application_data: Json;
           assigned_setter_id: string | null;
-          source_platform: string | null;
-          source_format: string | null;
-          source_content_id: string | null;
-          source_campaign: string | null;
-          source_webinar_id: string | null;
-          source_vsl_id: string | null;
           beliefs: string | null;
           created_at: string;
           email: string | null;
@@ -2169,22 +4417,25 @@ export type Database = {
           precall_video_watched: boolean;
           priority: string;
           qualification_notes: string | null;
+          source_campaign: string | null;
           source_connector: string | null;
+          source_content_id: string | null;
+          source_format: string | null;
+          source_platform: string | null;
+          source_vsl_id: string | null;
+          source_webinar_id: string | null;
           status: Database["public"]["Enums"]["lead_status"];
           tags: string[];
           ticket_tier: string | null;
+          ticket_tier_classified_at: string | null;
+          ticket_tier_raw_value: string | null;
+          ticket_tier_rule_id: string | null;
           traffic_source_id: string | null;
           updated_at: string;
         };
         Insert: {
           application_data?: Json;
           assigned_setter_id?: string | null;
-          source_platform?: string | null;
-          source_format?: string | null;
-          source_content_id?: string | null;
-          source_campaign?: string | null;
-          source_webinar_id?: string | null;
-          source_vsl_id?: string | null;
           beliefs?: string | null;
           created_at?: string;
           email?: string | null;
@@ -2206,22 +4457,25 @@ export type Database = {
           precall_video_watched?: boolean;
           priority?: string;
           qualification_notes?: string | null;
+          source_campaign?: string | null;
           source_connector?: string | null;
+          source_content_id?: string | null;
+          source_format?: string | null;
+          source_platform?: string | null;
+          source_vsl_id?: string | null;
+          source_webinar_id?: string | null;
           status?: Database["public"]["Enums"]["lead_status"];
           tags?: string[];
           ticket_tier?: string | null;
+          ticket_tier_classified_at?: string | null;
+          ticket_tier_raw_value?: string | null;
+          ticket_tier_rule_id?: string | null;
           traffic_source_id?: string | null;
           updated_at?: string;
         };
         Update: {
           application_data?: Json;
           assigned_setter_id?: string | null;
-          source_platform?: string | null;
-          source_format?: string | null;
-          source_content_id?: string | null;
-          source_campaign?: string | null;
-          source_webinar_id?: string | null;
-          source_vsl_id?: string | null;
           beliefs?: string | null;
           created_at?: string;
           email?: string | null;
@@ -2243,10 +4497,19 @@ export type Database = {
           precall_video_watched?: boolean;
           priority?: string;
           qualification_notes?: string | null;
+          source_campaign?: string | null;
           source_connector?: string | null;
+          source_content_id?: string | null;
+          source_format?: string | null;
+          source_platform?: string | null;
+          source_vsl_id?: string | null;
+          source_webinar_id?: string | null;
           status?: Database["public"]["Enums"]["lead_status"];
           tags?: string[];
           ticket_tier?: string | null;
+          ticket_tier_classified_at?: string | null;
+          ticket_tier_raw_value?: string | null;
+          ticket_tier_rule_id?: string | null;
           traffic_source_id?: string | null;
           updated_at?: string;
         };
@@ -2263,6 +4526,34 @@ export type Database = {
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "leads_source_content_id_fkey";
+            columns: ["source_content_id"];
+            isOneToOne: false;
+            referencedRelation: "content_pieces";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "leads_source_vsl_id_fkey";
+            columns: ["source_vsl_id"];
+            isOneToOne: false;
+            referencedRelation: "vsls";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "leads_source_webinar_id_fkey";
+            columns: ["source_webinar_id"];
+            isOneToOne: false;
+            referencedRelation: "webinars";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "leads_ticket_tier_rule_id_fkey";
+            columns: ["ticket_tier_rule_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_classification_rules";
             referencedColumns: ["id"];
           },
           {
@@ -2490,6 +4781,276 @@ export type Database = {
           },
         ];
       };
+      notification_attempts: {
+        Row: {
+          attempt_count: number;
+          channel: string;
+          created_at: string;
+          event: string;
+          id: string;
+          idempotency_key: string;
+          last_error: string | null;
+          next_retry_at: string | null;
+          org_id: string;
+          payload: Json;
+          provider: string | null;
+          recipient: string | null;
+          sent_at: string | null;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          attempt_count?: number;
+          channel: string;
+          created_at?: string;
+          event: string;
+          id?: string;
+          idempotency_key: string;
+          last_error?: string | null;
+          next_retry_at?: string | null;
+          org_id: string;
+          payload?: Json;
+          provider?: string | null;
+          recipient?: string | null;
+          sent_at?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          attempt_count?: number;
+          channel?: string;
+          created_at?: string;
+          event?: string;
+          id?: string;
+          idempotency_key?: string;
+          last_error?: string | null;
+          next_retry_at?: string | null;
+          org_id?: string;
+          payload?: Json;
+          provider?: string | null;
+          recipient?: string | null;
+          sent_at?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notification_attempts_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      objection_intelligence: {
+        Row: {
+          call_id: string | null;
+          confidence: number | null;
+          created_at: string;
+          decision_factor: string | null;
+          evidence_ref: string | null;
+          id: string;
+          objection_category: string | null;
+          objection_position: string | null;
+          org_id: string;
+          outcome: string | null;
+          speaker: string | null;
+          timestamp_seconds: number | null;
+          transcript_id: string | null;
+        };
+        Insert: {
+          call_id?: string | null;
+          confidence?: number | null;
+          created_at?: string;
+          decision_factor?: string | null;
+          evidence_ref?: string | null;
+          id?: string;
+          objection_category?: string | null;
+          objection_position?: string | null;
+          org_id: string;
+          outcome?: string | null;
+          speaker?: string | null;
+          timestamp_seconds?: number | null;
+          transcript_id?: string | null;
+        };
+        Update: {
+          call_id?: string | null;
+          confidence?: number | null;
+          created_at?: string;
+          decision_factor?: string | null;
+          evidence_ref?: string | null;
+          id?: string;
+          objection_category?: string | null;
+          objection_position?: string | null;
+          org_id?: string;
+          outcome?: string | null;
+          speaker?: string | null;
+          timestamp_seconds?: number | null;
+          transcript_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "objection_intelligence_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      offer_payment_plans: {
+        Row: {
+          cadence: string;
+          created_at: string;
+          deposit_cents: number | null;
+          id: string;
+          installment_amount_cents: number | null;
+          installment_count: number | null;
+          is_active: boolean;
+          label: string;
+          offer_id: string;
+          org_id: string;
+          total_contracted_value_cents: number | null;
+        };
+        Insert: {
+          cadence: string;
+          created_at?: string;
+          deposit_cents?: number | null;
+          id?: string;
+          installment_amount_cents?: number | null;
+          installment_count?: number | null;
+          is_active?: boolean;
+          label: string;
+          offer_id: string;
+          org_id: string;
+          total_contracted_value_cents?: number | null;
+        };
+        Update: {
+          cadence?: string;
+          created_at?: string;
+          deposit_cents?: number | null;
+          id?: string;
+          installment_amount_cents?: number | null;
+          installment_count?: number | null;
+          is_active?: boolean;
+          label?: string;
+          offer_id?: string;
+          org_id?: string;
+          total_contracted_value_cents?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "offer_payment_plans_offer_id_fkey";
+            columns: ["offer_id"];
+            isOneToOne: false;
+            referencedRelation: "offers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "offer_payment_plans_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      offer_tiers: {
+        Row: {
+          created_at: string;
+          id: string;
+          is_active: boolean;
+          key: string;
+          label: string;
+          org_id: string;
+          sort_order: number;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          key: string;
+          label: string;
+          org_id: string;
+          sort_order?: number;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          key?: string;
+          label?: string;
+          org_id?: string;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "offer_tiers_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      offers: {
+        Row: {
+          created_at: string;
+          currency: string;
+          description: string | null;
+          id: string;
+          is_active: boolean;
+          name: string;
+          org_id: string;
+          price_cents: number | null;
+          pricing_type: string;
+          tier_key: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          currency?: string;
+          description?: string | null;
+          id?: string;
+          is_active?: boolean;
+          name: string;
+          org_id: string;
+          price_cents?: number | null;
+          pricing_type?: string;
+          tier_key: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          currency?: string;
+          description?: string | null;
+          id?: string;
+          is_active?: boolean;
+          name?: string;
+          org_id?: string;
+          price_cents?: number | null;
+          pricing_type?: string;
+          tier_key?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "offers_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "offers_org_id_tier_key_fkey";
+            columns: ["org_id", "tier_key"];
+            isOneToOne: false;
+            referencedRelation: "offer_tiers";
+            referencedColumns: ["org_id", "key"];
+          },
+        ];
+      };
       onboarding_responses: {
         Row: {
           client_id: string | null;
@@ -2531,6 +5092,113 @@ export type Database = {
           },
           {
             foreignKeyName: "onboarding_responses_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      operational_audit_events: {
+        Row: {
+          action: string;
+          actor_id: string | null;
+          created_at: string;
+          from_state: string | null;
+          id: string;
+          org_id: string;
+          payload: Json;
+          reason: string | null;
+          to_state: string | null;
+          work_item_id: string | null;
+        };
+        Insert: {
+          action: string;
+          actor_id?: string | null;
+          created_at?: string;
+          from_state?: string | null;
+          id?: string;
+          org_id: string;
+          payload?: Json;
+          reason?: string | null;
+          to_state?: string | null;
+          work_item_id?: string | null;
+        };
+        Update: {
+          action?: string;
+          actor_id?: string | null;
+          created_at?: string;
+          from_state?: string | null;
+          id?: string;
+          org_id?: string;
+          payload?: Json;
+          reason?: string | null;
+          to_state?: string | null;
+          work_item_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "operational_audit_events_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "operational_audit_events_work_item_id_fkey";
+            columns: ["work_item_id"];
+            isOneToOne: false;
+            referencedRelation: "operational_work_items";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      operational_work_items: {
+        Row: {
+          created_at: string;
+          due_at: string | null;
+          entity_id: string | null;
+          entity_type: string;
+          id: string;
+          next_action: string | null;
+          next_action_at: string | null;
+          org_id: string;
+          owner_id: string | null;
+          payload: Json;
+          state: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          due_at?: string | null;
+          entity_id?: string | null;
+          entity_type: string;
+          id?: string;
+          next_action?: string | null;
+          next_action_at?: string | null;
+          org_id: string;
+          owner_id?: string | null;
+          payload?: Json;
+          state: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          due_at?: string | null;
+          entity_id?: string | null;
+          entity_type?: string;
+          id?: string;
+          next_action?: string | null;
+          next_action_at?: string | null;
+          org_id?: string;
+          owner_id?: string | null;
+          payload?: Json;
+          state?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "operational_work_items_org_id_fkey";
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "organizations";
@@ -2708,6 +5376,130 @@ export type Database = {
           },
         ];
       };
+      payment_recovery_items: {
+        Row: {
+          amount_cents: number;
+          client_id: string | null;
+          created_at: string;
+          due_at: string | null;
+          id: string;
+          next_action: string | null;
+          next_action_at: string | null;
+          org_id: string;
+          owner_id: string | null;
+          payment_id: string | null;
+          provider_execution_status: string;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          amount_cents?: number;
+          client_id?: string | null;
+          created_at?: string;
+          due_at?: string | null;
+          id?: string;
+          next_action?: string | null;
+          next_action_at?: string | null;
+          org_id: string;
+          owner_id?: string | null;
+          payment_id?: string | null;
+          provider_execution_status?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          amount_cents?: number;
+          client_id?: string | null;
+          created_at?: string;
+          due_at?: string | null;
+          id?: string;
+          next_action?: string | null;
+          next_action_at?: string | null;
+          org_id?: string;
+          owner_id?: string | null;
+          payment_id?: string | null;
+          provider_execution_status?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "payment_recovery_items_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payment_recovery_items_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      payment_schedule_items: {
+        Row: {
+          amount_cents: number;
+          client_id: string;
+          created_at: string;
+          due_date: string;
+          id: string;
+          notes: string | null;
+          org_id: string;
+          payment_id: string | null;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          amount_cents: number;
+          client_id: string;
+          created_at?: string;
+          due_date: string;
+          id?: string;
+          notes?: string | null;
+          org_id: string;
+          payment_id?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          amount_cents?: number;
+          client_id?: string;
+          created_at?: string;
+          due_date?: string;
+          id?: string;
+          notes?: string | null;
+          org_id?: string;
+          payment_id?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "payment_schedule_items_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payment_schedule_items_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payment_schedule_items_payment_id_fkey";
+            columns: ["payment_id"];
+            isOneToOne: false;
+            referencedRelation: "payments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       payments: {
         Row: {
           amount_cents: number;
@@ -2717,8 +5509,13 @@ export type Database = {
           created_at: string;
           currency: string;
           external_id: string | null;
+          fx_rate: number;
+          fx_rate_date: string | null;
+          fx_source: string;
           id: string;
           org_id: string;
+          original_amount_cents: number;
+          original_currency: string;
           raw: Json | null;
           source_connector: string | null;
           status: Database["public"]["Enums"]["payment_status"];
@@ -2731,8 +5528,13 @@ export type Database = {
           created_at?: string;
           currency?: string;
           external_id?: string | null;
+          fx_rate: number;
+          fx_rate_date?: string | null;
+          fx_source: string;
           id?: string;
           org_id: string;
+          original_amount_cents: number;
+          original_currency: string;
           raw?: Json | null;
           source_connector?: string | null;
           status?: Database["public"]["Enums"]["payment_status"];
@@ -2745,8 +5547,13 @@ export type Database = {
           created_at?: string;
           currency?: string;
           external_id?: string | null;
+          fx_rate?: number;
+          fx_rate_date?: string | null;
+          fx_source?: string;
           id?: string;
           org_id?: string;
+          original_amount_cents?: number;
+          original_currency?: string;
           raw?: Json | null;
           source_connector?: string | null;
           status?: Database["public"]["Enums"]["payment_status"];
@@ -2863,6 +5670,122 @@ export type Database = {
           },
         ];
       };
+      renewal_work_items: {
+        Row: {
+          client_id: string;
+          created_at: string;
+          id: string;
+          next_action: string | null;
+          next_action_at: string | null;
+          org_id: string;
+          owner_id: string | null;
+          payment_outcome: string | null;
+          reason: string | null;
+          renewal_date: string | null;
+          renewal_outcome: string | null;
+          risk: string;
+          stage: string;
+          updated_at: string;
+        };
+        Insert: {
+          client_id: string;
+          created_at?: string;
+          id?: string;
+          next_action?: string | null;
+          next_action_at?: string | null;
+          org_id: string;
+          owner_id?: string | null;
+          payment_outcome?: string | null;
+          reason?: string | null;
+          renewal_date?: string | null;
+          renewal_outcome?: string | null;
+          risk?: string;
+          stage?: string;
+          updated_at?: string;
+        };
+        Update: {
+          client_id?: string;
+          created_at?: string;
+          id?: string;
+          next_action?: string | null;
+          next_action_at?: string | null;
+          org_id?: string;
+          owner_id?: string | null;
+          payment_outcome?: string | null;
+          reason?: string | null;
+          renewal_date?: string | null;
+          renewal_outcome?: string | null;
+          risk?: string;
+          stage?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "renewal_work_items_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "renewal_work_items_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      rep_kpi_targets: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          effective_from: string;
+          id: string;
+          is_active: boolean;
+          metric_key: string;
+          org_id: string;
+          period: string;
+          role: string;
+          target_value: number;
+          team_member_name: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          effective_from?: string;
+          id?: string;
+          is_active?: boolean;
+          metric_key: string;
+          org_id: string;
+          period: string;
+          role: string;
+          target_value: number;
+          team_member_name: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          effective_from?: string;
+          id?: string;
+          is_active?: boolean;
+          metric_key?: string;
+          org_id?: string;
+          period?: string;
+          role?: string;
+          target_value?: number;
+          team_member_name?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "rep_kpi_targets_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       role_permissions: {
         Row: {
           can_edit: boolean;
@@ -2894,6 +5817,66 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "role_permissions_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      scheduled_communications: {
+        Row: {
+          body: string | null;
+          channel: string;
+          client_id: string;
+          created_at: string;
+          id: string;
+          org_id: string;
+          scheduled_for: string;
+          send_status: string;
+          sent_at: string | null;
+          subject: string | null;
+          trigger_type: string;
+          updated_at: string;
+        };
+        Insert: {
+          body?: string | null;
+          channel: string;
+          client_id: string;
+          created_at?: string;
+          id?: string;
+          org_id: string;
+          scheduled_for: string;
+          send_status?: string;
+          sent_at?: string | null;
+          subject?: string | null;
+          trigger_type: string;
+          updated_at?: string;
+        };
+        Update: {
+          body?: string | null;
+          channel?: string;
+          client_id?: string;
+          created_at?: string;
+          id?: string;
+          org_id?: string;
+          scheduled_for?: string;
+          send_status?: string;
+          sent_at?: string | null;
+          subject?: string | null;
+          trigger_type?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_communications_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "scheduled_communications_org_id_fkey";
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "organizations";
@@ -2963,6 +5946,7 @@ export type Database = {
           notes: string | null;
           objections: string | null;
           org_id: string;
+          original_currency: string;
           outbound_dms_sent: number | null;
           post_booking_page_visits: number | null;
           pre_call_video_watches: number | null;
@@ -2996,6 +5980,7 @@ export type Database = {
           notes?: string | null;
           objections?: string | null;
           org_id: string;
+          original_currency?: string;
           outbound_dms_sent?: number | null;
           post_booking_page_visits?: number | null;
           pre_call_video_watches?: number | null;
@@ -3029,6 +6014,7 @@ export type Database = {
           notes?: string | null;
           objections?: string | null;
           org_id?: string;
+          original_currency?: string;
           outbound_dms_sent?: number | null;
           post_booking_page_visits?: number | null;
           pre_call_video_watches?: number | null;
@@ -3110,6 +6096,53 @@ export type Database = {
           },
           {
             foreignKeyName: "setter_call_signals_org_id_fkey";
+            columns: ["org_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      sla_breach_records: {
+        Row: {
+          breached_at: string;
+          created_at: string;
+          id: string;
+          lead_id: string | null;
+          notification_key: string;
+          org_id: string;
+          owner_id: string | null;
+          resolution: string | null;
+          status: string;
+          threshold_minutes: number;
+        };
+        Insert: {
+          breached_at: string;
+          created_at?: string;
+          id?: string;
+          lead_id?: string | null;
+          notification_key: string;
+          org_id: string;
+          owner_id?: string | null;
+          resolution?: string | null;
+          status?: string;
+          threshold_minutes?: number;
+        };
+        Update: {
+          breached_at?: string;
+          created_at?: string;
+          id?: string;
+          lead_id?: string | null;
+          notification_key?: string;
+          org_id?: string;
+          owner_id?: string | null;
+          resolution?: string | null;
+          status?: string;
+          threshold_minutes?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "sla_breach_records_org_id_fkey";
             columns: ["org_id"];
             isOneToOne: false;
             referencedRelation: "organizations";
@@ -3814,6 +6847,209 @@ export type Database = {
           },
         ];
       };
+      webinar_events: {
+        Row: {
+          event_key: string | null;
+          event_type: string;
+          id: string;
+          lead_id: string | null;
+          metadata: Json;
+          occurred_at: string;
+          org_id: string;
+          provider_event_id: string | null;
+          registration_source: string | null;
+          source_campaign: string | null;
+          source_content_id: string | null;
+          source_format: string | null;
+          source_platform: string | null;
+          source_type: string | null;
+          webinar_id: string;
+        };
+        Insert: {
+          event_key?: string | null;
+          event_type: string;
+          id?: string;
+          lead_id?: string | null;
+          metadata?: Json;
+          occurred_at?: string;
+          org_id: string;
+          provider_event_id?: string | null;
+          registration_source?: string | null;
+          source_campaign?: string | null;
+          source_content_id?: string | null;
+          source_format?: string | null;
+          source_platform?: string | null;
+          source_type?: string | null;
+          webinar_id: string;
+        };
+        Update: {
+          event_key?: string | null;
+          event_type?: string;
+          id?: string;
+          lead_id?: string | null;
+          metadata?: Json;
+          occurred_at?: string;
+          org_id?: string;
+          provider_event_id?: string | null;
+          registration_source?: string | null;
+          source_campaign?: string | null;
+          source_content_id?: string | null;
+          source_format?: string | null;
+          source_platform?: string | null;
+          source_type?: string | null;
+          webinar_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "webinar_events_source_content_id_fkey";
+            columns: ["source_content_id"];
+            isOneToOne: false;
+            referencedRelation: "content_pieces";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "webinar_events_webinar_id_fkey";
+            columns: ["webinar_id"];
+            isOneToOne: false;
+            referencedRelation: "webinars";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      webinar_metrics: {
+        Row: {
+          captured_at: string;
+          clicks: number | null;
+          core_revenue_cents: number | null;
+          deposits: number | null;
+          email_clicks: number | null;
+          email_opens: number | null;
+          group_leads: number | null;
+          id: string;
+          lead_capture_investment_cents: number | null;
+          live_attendees: number | null;
+          order_bump_revenue_cents: number | null;
+          order_bump_sales: number | null;
+          org_id: string;
+          organic_leads: number | null;
+          paid_leads: number | null;
+          pitch_attendees: number | null;
+          refunds_cents: number | null;
+          registered: number | null;
+          sales: number | null;
+          source: string;
+          upsell_revenue_cents: number | null;
+          upsell_sales: number | null;
+          visits_organic: number | null;
+          visits_paid: number | null;
+          webinar_id: string;
+        };
+        Insert: {
+          captured_at?: string;
+          clicks?: number | null;
+          core_revenue_cents?: number | null;
+          deposits?: number | null;
+          email_clicks?: number | null;
+          email_opens?: number | null;
+          group_leads?: number | null;
+          id?: string;
+          lead_capture_investment_cents?: number | null;
+          live_attendees?: number | null;
+          order_bump_revenue_cents?: number | null;
+          order_bump_sales?: number | null;
+          org_id: string;
+          organic_leads?: number | null;
+          paid_leads?: number | null;
+          pitch_attendees?: number | null;
+          refunds_cents?: number | null;
+          registered?: number | null;
+          sales?: number | null;
+          source?: string;
+          upsell_revenue_cents?: number | null;
+          upsell_sales?: number | null;
+          visits_organic?: number | null;
+          visits_paid?: number | null;
+          webinar_id: string;
+        };
+        Update: {
+          captured_at?: string;
+          clicks?: number | null;
+          core_revenue_cents?: number | null;
+          deposits?: number | null;
+          email_clicks?: number | null;
+          email_opens?: number | null;
+          group_leads?: number | null;
+          id?: string;
+          lead_capture_investment_cents?: number | null;
+          live_attendees?: number | null;
+          order_bump_revenue_cents?: number | null;
+          order_bump_sales?: number | null;
+          org_id?: string;
+          organic_leads?: number | null;
+          paid_leads?: number | null;
+          pitch_attendees?: number | null;
+          refunds_cents?: number | null;
+          registered?: number | null;
+          sales?: number | null;
+          source?: string;
+          upsell_revenue_cents?: number | null;
+          upsell_sales?: number | null;
+          visits_organic?: number | null;
+          visits_paid?: number | null;
+          webinar_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "webinar_metrics_webinar_id_fkey";
+            columns: ["webinar_id"];
+            isOneToOne: false;
+            referencedRelation: "webinars";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      webinars: {
+        Row: {
+          created_at: string;
+          id: string;
+          name: string;
+          notes: string | null;
+          org_id: string;
+          registration_url: string | null;
+          slug: string | null;
+          starts_at: string | null;
+          status: string;
+          updated_at: string;
+          webinar_type: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          name: string;
+          notes?: string | null;
+          org_id: string;
+          registration_url?: string | null;
+          slug?: string | null;
+          starts_at?: string | null;
+          status?: string;
+          updated_at?: string;
+          webinar_type?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          name?: string;
+          notes?: string | null;
+          org_id?: string;
+          registration_url?: string | null;
+          slug?: string | null;
+          starts_at?: string | null;
+          status?: string;
+          updated_at?: string;
+          webinar_type?: string;
+        };
+        Relationships: [];
+      };
       work_blocks: {
         Row: {
           block_date: string;
@@ -3872,6 +7108,42 @@ export type Database = {
       };
     };
     Views: {
+      crm_communication_legacy_adapter_v: {
+        Row: {
+          channel: string | null;
+          contact_id: string | null;
+          created_at: string | null;
+          id: string | null;
+          last_message_at: string | null;
+          legacy_lead_id: string | null;
+          org_id: string | null;
+          record_source: string | null;
+          status: string | null;
+          subject: string | null;
+          unread_count: number | null;
+        };
+        Relationships: [];
+      };
+      crm_contact_legacy_adapter_v: {
+        Row: {
+          created_at: string | null;
+          display_name: string | null;
+          first_name: string | null;
+          id: string | null;
+          last_name: string | null;
+          legacy_lead_id: string | null;
+          lifecycle_status: string | null;
+          org_id: string | null;
+          owner_user_id: string | null;
+          primary_email: string | null;
+          primary_phone: string | null;
+          record_source: string | null;
+          social_handle: string | null;
+          source: string | null;
+          updated_at: string | null;
+        };
+        Relationships: [];
+      };
       lead_attribution_v: {
         Row: {
           call_cash_cents: number | null;
@@ -3935,6 +7207,46 @@ export type Database = {
         Args: { _org_id: string; _user_id: string };
         Returns: boolean;
       };
+      record_lead_lifecycle_event: {
+        Args: {
+          p_call_id?: string;
+          p_campaign?: string;
+          p_client_id?: string;
+          p_content_id?: string;
+          p_event_at: string;
+          p_event_type: string;
+          p_format?: string;
+          p_idempotency_key: string;
+          p_lead_id: string;
+          p_lead_source?: string;
+          p_org_id: string;
+          p_payload?: Json;
+          p_payment_id?: string;
+          p_rep_id?: string;
+          p_source_platform?: string;
+          p_webinar_id?: string;
+        };
+        Returns: boolean;
+      };
+      record_webinar_event: {
+        Args: {
+          p_event_key: string;
+          p_event_type: string;
+          p_lead_id?: string;
+          p_metadata?: Json;
+          p_occurred_at: string;
+          p_org_id: string;
+          p_provider_event_id?: string;
+          p_registration_source?: string;
+          p_source_campaign?: string;
+          p_source_content_id?: string;
+          p_source_format?: string;
+          p_source_platform?: string;
+          p_source_type?: string;
+          p_webinar_id: string;
+        };
+        Returns: boolean;
+      };
       reject_membership_request: {
         Args: { _request_id: string };
         Returns: undefined;
@@ -3963,7 +7275,8 @@ export type Database = {
         | "va"
         | "viewer"
         | "sales_manager"
-        | "growth_ops";
+        | "growth_ops"
+        | "inbound_dialer";
       awareness_stage:
         | "unaware"
         | "problem_aware"
@@ -4147,6 +7460,9 @@ export type CompositeTypes<
     : never;
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       alert_severity: ["info", "warning", "critical"],
@@ -4159,6 +7475,7 @@ export const Constants = {
         "viewer",
         "sales_manager",
         "growth_ops",
+        "inbound_dialer",
       ],
       awareness_stage: [
         "unaware",

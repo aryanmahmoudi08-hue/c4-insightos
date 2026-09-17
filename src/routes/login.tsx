@@ -21,7 +21,7 @@ function LoginPage() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) nav({ to: "/dashboard" });
+      if (data.session) nav({ to: "/home" });
     });
   }, [nav]);
 
@@ -41,7 +41,7 @@ function LoginPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
-      nav({ to: "/dashboard" });
+      nav({ to: "/home" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Auth failed");
     } finally {
@@ -140,7 +140,7 @@ function LoginPage() {
               className="w-full border-dashed border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:text-amber-400"
               onClick={() => {
                 enableDevBypass();
-                window.location.href = "/dashboard";
+                window.location.href = "/home";
               }}
             >
               Dev Bypass (skip login)

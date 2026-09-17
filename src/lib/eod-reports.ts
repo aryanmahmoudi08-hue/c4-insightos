@@ -1,6 +1,7 @@
 import type { ActivityRole } from "@/components/activity-module";
 import type { TeamRole } from "@/components/team-member-picker";
 import { DISPLAY_CURRENCIES } from "@/lib/currency";
+import { OTHER_OBJECTION_VALUE, objectionCategoryLabel } from "@/lib/objection-taxonomy";
 
 /**
  * Shared schema + payload-building layer for the EOD Reports step-flow.
@@ -25,7 +26,9 @@ export type EodQuestionType =
   | "checkbox"
   | "team-member"
   | "lead-picker"
-  | "scale";
+  | "scale"
+  | "objection-multiselect"
+  | "followup-details";
 
 export interface EodSelectOption {
   value: string;
@@ -53,6 +56,11 @@ export interface EodQuestion {
    * value — not a separate question/step. Only meaningful alongside
    * `money: true`. */
   currency?: boolean;
+  /** Conditional step — omitted from the flow entirely (not just hidden)
+   * whenever this returns false for the submission's current values.
+   * Recomputed on every render, so answering an earlier question can make
+   * a later step appear/disappear before the rep reaches it. */
+  showIf?: (values: EodValues) => boolean;
 }
 
 export type EodValues = Record<string, string | number | boolean | undefined>;
@@ -94,6 +102,27 @@ export const CLOSER_LEAD_STATUS_OPTIONS: EodSelectOption[] = [
   { value: "Rescheduling", label: "Rescheduling" },
   { value: "IGNORE", label: "IGNORE" },
 ];
+
+// The two canonical Lead Status values that mean "this needs a structured
+// follow-up" — the ONLY source of truth for whether the Follow-Up Details
+// step shows, and for which follow-up type (short vs long term) a
+// follow-up-pipeline record carries. Never inferred from a date or any
+// other field.
+export const FOLLOWUP_LEAD_STATUSES = ["Follow Up (short term)", "Follow Up (long term)"] as const;
+export function isFollowUpLeadStatus(status: unknown): boolean {
+  return (FOLLOWUP_LEAD_STATUSES as readonly string[]).includes(String(status ?? ""));
+}
+/** Compact type label for wherever the Follow-Up Pipeline needs to
+ * distinguish short vs long term (derived from the same raw eod_lead_status
+ * text the Lead Status question already writes verbatim — no separate
+ * "follow-up type" column). Returns null for a call that was never tagged
+ * as a follow-up at all. */
+export function followUpTypeLabel(eodLeadStatus: unknown): "Short Term" | "Long Term" | null {
+  const raw = String(eodLeadStatus ?? "");
+  if (raw === "Follow Up (short term)") return "Short Term";
+  if (raw === "Follow Up (long term)") return "Long Term";
+  return null;
+}
 
 /** Dialer EOD — exact order requested. */
 export const INBOUND_DIALER_EOD_SCHEMA: EodQuestion[] = [
@@ -281,7 +310,14 @@ export const DM_SETTER_EOD_SCHEMA: EodQuestion[] = [
   { key: "notes", label: "Notes", type: "text", required: true },
 ];
 
-/** Closer Post-Call — exact order requested. */
+/** Closer Post-Call (Closer EOD) — exact order requested:
+ * Name, Date, Email, Offer, Lead Status, Objections?, Call Summary,
+ * Cash Collected, Total Revenue, Call Recording. Existing field labels/
+ * behavior are unchanged; the only new field is Objections?, now a
+ * structured multiple-choice pull from the canonical objection taxonomy
+ * (src/lib/objection-taxonomy.ts) instead of free text, with an "Other"
+ * option that reveals a required explanation input (see
+ * "objection-multiselect" in eod-step-flow.tsx). */
 export const CLOSER_EOD_SCHEMA: EodQuestion[] = [
   {
     key: "closer_name",
@@ -298,7 +334,6 @@ export const CLOSER_EOD_SCHEMA: EodQuestion[] = [
     defaultValue: today(),
   },
   { key: "lead_email", label: "Lead Email", type: "email", required: true },
-  { key: "summary", label: "Call Summary", type: "textarea", required: true },
   {
     key: "offer_made",
     label: "Offer",
@@ -313,6 +348,28 @@ export const CLOSER_EOD_SCHEMA: EodQuestion[] = [
     required: true,
     options: CLOSER_LEAD_STATUS_OPTIONS,
   },
+  // Conditional — only shown when Lead Status is one of the two follow-up
+  // values (isFollowUpLeadStatus above). Connects directly to the existing
+  // Closer Dashboard Follow-Up Pipeline: no new table, this is additional
+  // columns on the same `calls` row a follow-up Lead Status already
+  // creates (see buildClosureCallPayload and the
+  // 20260918090000_closer_followup_details.sql migration).
+  {
+    key: "followup_details",
+    label: "Follow-Up Details",
+    helper: "This lead needs a follow-up — capture when, what was pitched, and why.",
+    type: "followup-details",
+    required: true,
+    showIf: (values) => isFollowUpLeadStatus(values.status),
+  },
+  {
+    key: "objections_categories",
+    label: "Objections?",
+    helper: "What prevented or delayed the prospect from buying? Select all that apply.",
+    type: "objection-multiselect",
+    required: true,
+  },
+  { key: "summary", label: "Call Summary", type: "textarea", required: true },
   {
     key: "cash_collected",
     label: "Cash Collected",
@@ -475,6 +532,7 @@ export function buildClosureCallPayload(orgId: string, values: EodValues) {
   if (rawStatus === "IGNORE") return null;
   const mapped = LEAD_STATUS_MAP[rawStatus];
   const cashCollectedCents = Math.round(NUM(values.cash_collected) * 100);
+  const isFollowUp = isFollowUpLeadStatus(rawStatus);
   return {
     org_id: orgId,
     lead_id: null as string | null,
@@ -497,25 +555,77 @@ export function buildClosureCallPayload(orgId: string, values: EodValues) {
     original_currency: STR(values.original_currency) || "USD",
     call_summary: STR(values.summary) || null,
     recording_url: STR(values.recording_url) || null,
+    // Follow-up detail columns — only ever populated for the two follow-up
+    // Lead Status values. A normal call (Closed, Lost, etc.) always writes
+    // these as null, same as before this feature existed. The requested
+    // follow-up date/time is stored separately from scheduled_for (the
+    // original call date) and from this submission's own timestamp — never
+    // substituted for either.
+    requested_followup_at:
+      isFollowUp && values.followup_requested_at
+        ? new Date(STR(values.followup_requested_at)).toISOString()
+        : null,
+    followup_amount_pitched_cents:
+      isFollowUp && values.followup_amount_pitched !== undefined
+        ? Math.round(NUM(values.followup_amount_pitched) * 100)
+        : null,
+    followup_reason: isFollowUp ? STR(values.followup_reason) || null : null,
+    followup_reason_other:
+      isFollowUp && STR(values.followup_reason) === OTHER_OBJECTION_VALUE
+        ? STR(values.followup_reason_other) || null
+        : null,
+    followup_notes: isFollowUp ? STR(values.followup_notes) || null : null,
   };
 }
 
-export function buildObjectionRows(
-  orgId: string,
-  callId: string,
-  objectionsRaw: unknown,
-  resolved: boolean,
-) {
-  const parts = STR(objectionsRaw)
-    .split(/[,;\n|]+/)
+/** Comma-joined canonical category values (this question's own stored
+ * value, e.g. "money,timing") → the exact shape closer.tsx's "Log a sales
+ * call" objection insert already uses (org_id, call_id, objection,
+ * category, resolved), so both entry points feed the same
+ * objection-frequency instrument / "By category" breakdown unchanged. One
+ * row per selected category — never a duplicate `calls` row and never
+ * duplicated cash/revenue, both of which live on the one `calls` row this
+ * function doesn't touch. */
+export function buildClosureCallObjectionRows(orgId: string, callId: string, values: EodValues) {
+  const selected = STR(values.objections_categories)
+    .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  return parts.map((p) => ({ org_id: orgId, call_id: callId, objection: p, resolved }));
+  return selected.map((category) => ({
+    org_id: orgId,
+    call_id: callId,
+    objection:
+      category === OTHER_OBJECTION_VALUE
+        ? STR(values.objections_other) || objectionCategoryLabel(category)
+        : objectionCategoryLabel(category),
+    category,
+    resolved: false,
+  }));
 }
 
-/** Whether a question's current value counts as "answered" for per-step required-blocking. 0 is a valid answer for numbers (e.g. "Downsells: 0"). */
-export function isAnswered(q: EodQuestion, value: string | number | boolean | undefined): boolean {
+/** Whether a question's current value counts as "answered" for per-step required-blocking. 0 is a valid answer for numbers (e.g. "Downsells: 0"). Takes the whole submission (not just this question's own value) since "objection-multiselect" needs to cross-check the paired objections_other field when "Other" is selected. */
+export function isAnswered(q: EodQuestion, values: EodValues): boolean {
+  const value = values[q.key];
   if (!q.required) return true;
+  if (q.type === "objection-multiselect") {
+    const selected = STR(value)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (selected.length === 0) return false;
+    if (selected.includes(OTHER_OBJECTION_VALUE) && !STR(values.objections_other)) return false;
+    return true;
+  }
+  if (q.type === "followup-details") {
+    if (!STR(values.followup_requested_at)) return false;
+    const amount = values.followup_amount_pitched;
+    if (amount === undefined || amount === "" || Number.isNaN(Number(amount))) return false;
+    const reason = STR(values.followup_reason);
+    if (!reason) return false;
+    if (reason === OTHER_OBJECTION_VALUE && !STR(values.followup_reason_other)) return false;
+    // Follow-Up Notes is explicitly optional — never gates required-ness.
+    return true;
+  }
   if (q.type === "number" || q.type === "scale")
     return value !== undefined && value !== "" && !Number.isNaN(Number(value));
   if (q.type === "checkbox") return value !== undefined;

@@ -94,6 +94,13 @@ import {
 import { clusterObjectionsFn } from "@/lib/objection-clustering.functions";
 import { applyObjectionClusters } from "@/lib/objection-clustering";
 import {
+  OBJECTION_CATEGORIES,
+  objectionCategoryBucket,
+  objectionCategoryLabel,
+  OTHER_OBJECTION_VALUE,
+} from "@/lib/objection-taxonomy";
+import { followUpTypeLabel } from "@/lib/eod-reports";
+import {
   deriveCap,
   deriveWorking,
   deriveMoneyCap,
@@ -270,17 +277,11 @@ const OBJECTION_STAGE_OPTIONS = [
   { value: "unspecified", label: "Unspecified" },
 ] as const;
 
-const OBJECTION_CATEGORY_OPTIONS = [
-  { value: "price", label: "Price" },
-  { value: "timing", label: "Timing" },
-  { value: "trust", label: "Trust" },
-  { value: "partner_spouse", label: "Partner / Spouse" },
-  { value: "competitor", label: "Competitor" },
-  { value: "product_fit", label: "Product Fit" },
-  { value: "no_need", label: "No Need" },
-  { value: "unqualified", label: "Unqualified" },
-  { value: "other", label: "Other" },
-] as const;
+// Canonical objection taxonomy (src/lib/objection-taxonomy.ts) — the same
+// list the Closer EOD's structured Objections? field uses, so this
+// dialog's "Objection category" picker and the "By category" breakdown
+// below never drift from the EOD form's own list.
+const OBJECTION_CATEGORY_OPTIONS = OBJECTION_CATEGORIES;
 
 const GAP_CATEGORY_OPTIONS = [
   { value: "discovery", label: "Discovery" },
@@ -354,6 +355,14 @@ function demoCloserCalls(from: string, to: string) {
         source_format: null as string | null,
         source_content_id: null as string | null,
         source_campaign: c.source_campaign,
+        // Demo Mode never fabricates follow-up detail data (spec: "Do not
+        // use mock data") — these render the honest "—" empty state.
+        eod_lead_status: null as string | null,
+        requested_followup_at: null as string | null,
+        followup_amount_pitched_cents: null as number | null,
+        followup_reason: null as string | null,
+        followup_reason_other: null as string | null,
+        followup_notes: null as string | null,
         leads: lead
           ? { id: lead.id, full_name: lead.full_name, handle: lead.handle, email: lead.email }
           : null,
@@ -462,6 +471,17 @@ function Closer() {
         source_format: string | null;
         source_content_id: string | null;
         source_campaign: string | null;
+        // Follow-up detail fields (20260918090000_closer_followup_details.sql)
+        // — optional and left unpopulated by every mock row below (Dev
+        // Bypass/Demo Mode never fabricate follow-up data for this
+        // feature), so they render the same honest "—" empty state real
+        // legacy follow-up records without these fields do.
+        eod_lead_status?: string | null;
+        requested_followup_at?: string | null;
+        followup_amount_pitched_cents?: number | null;
+        followup_reason?: string | null;
+        followup_reason_other?: string | null;
+        followup_notes?: string | null;
         leads: {
           id: string;
           full_name: string | null;
@@ -668,7 +688,7 @@ function Closer() {
       const { data, error } = await supabase
         .from("calls")
         .select(
-          "id, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, payment_plan, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, disposition, duration_seconds, talk_seconds, recovered_from_call_id, setter_id, source_platform, source_format, source_content_id, source_campaign, leads(id, full_name, handle, email)",
+          "id, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, payment_plan, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, disposition, duration_seconds, talk_seconds, recovered_from_call_id, setter_id, source_platform, source_format, source_content_id, source_campaign, eod_lead_status, requested_followup_at, followup_amount_pitched_cents, followup_reason, followup_reason_other, followup_notes, leads(id, full_name, handle, email)",
         )
         .eq("org_id", orgId!)
         .gte("scheduled_for", `${range.from}T00:00:00`)
@@ -1750,16 +1770,42 @@ function Closer() {
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [list]);
 
-  // Follow-up pipeline (calls flagged as follow_up across whole range)
-  const followUps = useMemo(() => list.filter((c) => c.status === "follow_up"), [list]);
-  // Active vs overdue split (spec section 5) — overdue = the follow-up's last
-  // touch was more than 7 days ago, matching the existing red/default chip
-  // threshold already used in the follow-up pipeline table below.
+  // Follow-up pipeline (calls flagged as follow_up across whole range).
+  // requestedFollowUpDate() is the single source of truth for "when is this
+  // follow-up actually due" everywhere below (sorting, overdue/active
+  // split, the per-row chip) — the requested_followup_at a closer enters on
+  // the EOD's Follow-Up Details step when available, falling back to the
+  // original call's scheduled_for only for follow-up records logged before
+  // that field existed (never substituting one for the other when both are
+  // known).
+  const requestedFollowUpDate = (c: {
+    requested_followup_at?: string | null;
+    scheduled_for: string | null;
+  }) => c.requested_followup_at ?? c.scheduled_for;
+  const followUps = useMemo(
+    () =>
+      [...list]
+        .filter((c) => c.status === "follow_up")
+        .sort((a, b) => {
+          const da = requestedFollowUpDate(a);
+          const db = requestedFollowUpDate(b);
+          if (!da && !db) return 0;
+          if (!da) return 1;
+          if (!db) return -1;
+          return new Date(da).getTime() - new Date(db).getTime();
+        }),
+    [list],
+  );
+  // Overdue = the requested follow-up date has already passed (spec
+  // section 7) — not a fixed "7+ days since the original call" heuristic
+  // anymore, since that was only ever a proxy for a real target date this
+  // schema didn't have yet.
   const overdueFollowUps = useMemo(
     () =>
-      followUps.filter(
-        (c) => c.scheduled_for && Date.now() - new Date(c.scheduled_for).getTime() > 7 * 86400e3,
-      ),
+      followUps.filter((c) => {
+        const due = requestedFollowUpDate(c);
+        return !!due && new Date(due).getTime() < Date.now();
+      }),
     [followUps],
   );
   const activeFollowUpsCount = followUps.length - overdueFollowUps.length;
@@ -2487,11 +2533,53 @@ function Closer() {
             // Overdue Follow-ups (the closest existing analog to "Overdue
             // Payments" — there's no overdue-payment concept in this
             // schema). Real record-level drilldown, not a placeholder.
+            // Follow-up-specific columns appended to the shared base set —
+            // this is the existing detail drawer, reused rather than a new
+            // one, per-row secondary detail (reason, amount pitched,
+            // notes) belongs here, not crammed into the dense pipeline
+            // table below.
             panel = {
-              title: "Overdue Follow-ups (last touch 7+ days ago)",
-              columns: callColumns("Last scheduled", (c) =>
-                c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—",
-              ),
+              title: "Overdue Follow-ups (requested follow-up date has passed)",
+              columns: [
+                ...callColumns("Requested follow-up", (c) => {
+                  const due = requestedFollowUpDate(c);
+                  return due
+                    ? new Date(due).toLocaleString(undefined, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })
+                    : "—";
+                }),
+                {
+                  key: "followup_type",
+                  label: "Type",
+                  render: (c) => followUpTypeLabel(c.eod_lead_status) ?? "—",
+                },
+                {
+                  key: "followup_reason",
+                  label: "Reason",
+                  render: (c) =>
+                    c.followup_reason
+                      ? c.followup_reason === OTHER_OBJECTION_VALUE && c.followup_reason_other
+                        ? `${objectionCategoryLabel(c.followup_reason)} (${c.followup_reason_other})`
+                        : objectionCategoryLabel(c.followup_reason)
+                      : "—",
+                },
+                {
+                  key: "followup_amount",
+                  label: "Pitched",
+                  align: "right",
+                  render: (c) =>
+                    c.followup_amount_pitched_cents
+                      ? "$" + (c.followup_amount_pitched_cents / 100).toLocaleString()
+                      : "—",
+                },
+                {
+                  key: "followup_notes",
+                  label: "Notes",
+                  render: (c) => c.followup_notes || "—",
+                },
+              ],
               rows: overdueFollowUps,
               cap: {
                 status: "insufficient_data",
@@ -3693,16 +3781,35 @@ function Closer() {
                     <tr>
                       <th className="text-left p-3">Closer</th>
                       <th className="text-left p-3">Lead</th>
-                      <th className="text-left p-3">Last call</th>
+                      <th className="text-left p-3">Type</th>
+                      <th className="text-left p-3">Follow-up date</th>
+                      <th className="text-left p-3">Reason</th>
                       <th className="text-left p-3">Summary</th>
-                      <th className="text-right p-3 font-sans tabular-nums">Pending $</th>
+                      <th className="text-right p-3 font-sans tabular-nums">Pitched $</th>
                     </tr>
                   </thead>
                   <tbody>
                     {followUps.map((c) => {
-                      const daysAgo = c.scheduled_for
-                        ? Math.floor((Date.now() - new Date(c.scheduled_for).getTime()) / 86400e3)
+                      // requested_followup_at when the closer captured one
+                      // (Follow-Up Details step) — never scheduled_for (the
+                      // original call date) substituted in its place, only
+                      // used as a fallback for follow-up records logged
+                      // before this field existed.
+                      const dueRaw = requestedFollowUpDate(c);
+                      const dueDate = dueRaw ? new Date(dueRaw) : null;
+                      const daysDiff = dueDate
+                        ? Math.floor((dueDate.getTime() - Date.now()) / 86400e3)
                         : null;
+                      const typeLabel = followUpTypeLabel(c.eod_lead_status);
+                      const reasonLabel = c.followup_reason
+                        ? objectionCategoryLabel(c.followup_reason)
+                        : null;
+                      const reasonTitle =
+                        c.followup_reason === OTHER_OBJECTION_VALUE && c.followup_reason_other
+                          ? c.followup_reason_other
+                          : undefined;
+                      const pitchedCents =
+                        c.followup_amount_pitched_cents ?? c.contract_value_cents;
                       return (
                         <tr key={c.id} className="border-t border-border/70 hover:bg-muted/20">
                           <td className="p-3 font-medium">{c.closer_name || "—"}</td>
@@ -3710,29 +3817,56 @@ function Closer() {
                             {c.lead_email || c.leads?.full_name || "—"}
                           </td>
                           <td className="p-3 text-xs">
-                            {c.scheduled_for ? new Date(c.scheduled_for).toLocaleDateString() : "—"}
-                            {daysAgo !== null && (
+                            {typeLabel ? (
                               <span
-                                className={`ml-2 rounded px-1.5 py-0.5 text-3xs ${daysAgo > 7 ? CHIP_TONE_CLASSES.destructive : CHIP_TONE_CLASSES.default}`}
+                                className={`rounded px-1.5 py-0.5 text-3xs uppercase tracking-wide ${CHIP_TONE_CLASSES.default}`}
                               >
-                                {daysAgo}d ago
+                                {typeLabel}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td className="p-3 text-xs">
+                            {dueDate ? dueDate.toLocaleDateString() : "—"}
+                            {daysDiff !== null && (
+                              <span
+                                className={`ml-2 rounded px-1.5 py-0.5 text-3xs ${
+                                  daysDiff < 0
+                                    ? CHIP_TONE_CLASSES.destructive
+                                    : daysDiff === 0
+                                      ? CHIP_TONE_CLASSES.warning
+                                      : CHIP_TONE_CLASSES.default
+                                }`}
+                              >
+                                {daysDiff < 0
+                                  ? `${Math.abs(daysDiff)}d overdue`
+                                  : daysDiff === 0
+                                    ? "Due today"
+                                    : `in ${daysDiff}d`}
                               </span>
                             )}
                           </td>
-                          <td className="p-3 text-xs text-muted-foreground max-w-[320px] truncate">
+                          <td className="p-3 text-xs" title={reasonTitle}>
+                            {reasonLabel ?? "—"}
+                          </td>
+                          <td className="p-3 text-xs text-muted-foreground max-w-[280px] truncate">
                             {c.call_summary || "—"}
+                            {c.followup_notes && (
+                              <span className="block truncate text-3xs italic">
+                                {c.followup_notes}
+                              </span>
+                            )}
                           </td>
                           <td className="p-3 text-right font-sans tabular-nums">
-                            {c.contract_value_cents
-                              ? "$" + (c.contract_value_cents / 100).toLocaleString()
-                              : "—"}
+                            {pitchedCents ? "$" + (pitchedCents / 100).toLocaleString() : "—"}
                           </td>
                         </tr>
                       );
                     })}
                     {followUps.length === 0 && (
                       <tr>
-                        <td colSpan={5}>
+                        <td colSpan={7}>
                           <EmptyState
                             icon={<Clock3 className="h-4 w-4" />}
                             title="No follow-ups pending"
@@ -3978,7 +4112,13 @@ function Closer() {
                 </div>
                 <div className="mt-3 space-y-1.5">
                   {OBJECTION_CATEGORY_OPTIONS.map((c) => {
-                    const count = (objections ?? []).filter((o) => o.category === c.value).length;
+                    // Rolls legacy category values (e.g. "price" — retired
+                    // when the taxonomy synced to "money") into their
+                    // canonical bucket, so historical rows still count
+                    // toward a real total instead of vanishing.
+                    const count = (objections ?? []).filter(
+                      (o) => objectionCategoryBucket(o.category) === c.value,
+                    ).length;
                     if (!count) return null;
                     return (
                       <div key={c.value} className="flex items-center justify-between text-xs">
@@ -4294,7 +4434,7 @@ function CoachingPanel({ orgId, range }: { orgId: string | undefined; range: Dat
       const { data, error } = await supabase
         .from("call_coaching_reviews")
         .select(
-          "id, rep_name, reviewer_name, what_learned, what_went_wrong, behavior_change, gap_category, created_at",
+          "id, call_id, rep_name, reviewer_name, what_learned, what_went_wrong, behavior_change, gap_category, created_at",
         )
         .eq("org_id", orgId!)
         .gte("created_at", `${range.from}T00:00:00`)
@@ -4305,6 +4445,60 @@ function CoachingPanel({ orgId, range }: { orgId: string | undefined; range: Dat
       return data ?? [];
     },
   });
+
+  // Recent calls to review against — optional linkage only (spec section 7:
+  // "connect the selected objection(s) to the call-review/coaching record
+  // when the underlying data supports it"). call_coaching_reviews.call_id
+  // has existed since the table was created but nothing wrote it, so this
+  // is what makes that connection real going forward without touching any
+  // existing review's data.
+  const { data: reviewableCalls = [] } = useQuery({
+    queryKey: ["coaching-reviewable-calls", orgId, range.from, range.to],
+    enabled: !!orgId && open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("calls")
+        .select("id, closer_name, lead_email, scheduled_for")
+        .eq("org_id", orgId!)
+        .gte("scheduled_for", `${range.from}T00:00:00`)
+        .lte("scheduled_for", `${range.to}T23:59:59`)
+        .order("scheduled_for", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  // Objections for whichever reviewed calls actually have one logged —
+  // batched by the distinct call_ids already on these reviews, not a
+  // per-row query. Reviews with no call_id (the vast majority today, since
+  // linking is brand new) simply show nothing here, same as before.
+  const reviewedCallIds = useMemo(
+    () => Array.from(new Set(reviews.map((r) => r.call_id).filter((id): id is string => !!id))),
+    [reviews],
+  );
+  const { data: reviewedCallObjections = [] } = useQuery({
+    queryKey: ["coaching-review-objections", orgId, reviewedCallIds.join(",")],
+    enabled: !!orgId && reviewedCallIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("call_objections")
+        .select("call_id, objection, category")
+        .in("call_id", reviewedCallIds);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const objectionsByCallId = useMemo(() => {
+    const m = new Map<string, { objection: string; category: string | null }[]>();
+    for (const o of reviewedCallObjections) {
+      if (!o.call_id) continue;
+      const arr = m.get(o.call_id) ?? [];
+      arr.push({ objection: o.objection, category: o.category });
+      m.set(o.call_id, arr);
+    }
+    return m;
+  }, [reviewedCallObjections]);
 
   const recurringGaps = useMemo(() => {
     const counts = new Map<string, number>();
@@ -4321,6 +4515,7 @@ function CoachingPanel({ orgId, range }: { orgId: string | undefined; range: Dat
     mutationFn: async (f: FormData) => {
       const { error } = await supabase.from("call_coaching_reviews").insert({
         org_id: orgId!,
+        call_id: String(f.get("call_id") || "") || null,
         rep_name: String(f.get("rep_name") || ""),
         reviewer_name: String(f.get("reviewer_name") || "") || null,
         what_learned: String(f.get("what_learned") || "") || null,
@@ -4366,6 +4561,27 @@ function CoachingPanel({ orgId, range }: { orgId: string | undefined; range: Dat
                 create.mutate(new FormData(e.currentTarget));
               }}
             >
+              <div className="space-y-1.5">
+                <Label>Call reviewed (optional)</Label>
+                <Select name="call_id">
+                  <SelectTrigger>
+                    <SelectValue placeholder="Link this review to a specific call" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {reviewableCalls.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {(c.lead_email ?? "Unknown lead") +
+                          (c.scheduled_for
+                            ? ` · ${new Date(c.scheduled_for).toLocaleDateString()}`
+                            : "")}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-2xs text-muted-foreground">
+                  Optional — link a call to show its objection(s) and outcome alongside this review.
+                </p>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Rep</Label>
@@ -4439,6 +4655,24 @@ function CoachingPanel({ orgId, range }: { orgId: string | undefined; range: Dat
                   {GAP_CATEGORY_OPTIONS.find((g) => g.value === r.gap_category)?.label ??
                     r.gap_category}
                 </span>
+              )}
+              {r.call_id && (objectionsByCallId.get(r.call_id)?.length ?? 0) > 0 && (
+                <div className="mt-1 flex flex-wrap items-center gap-1">
+                  <span className="text-3xs text-muted-foreground">Objection(s):</span>
+                  {objectionsByCallId.get(r.call_id)!.map((o, i) => (
+                    <span
+                      key={i}
+                      className="rounded bg-spectrum-hot/10 px-1.5 py-0.5 text-3xs text-spectrum-hot"
+                    >
+                      {o.objection}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {r.what_learned && (
+                <p className="mt-1 text-muted-foreground">
+                  <span className="font-medium text-foreground">Learned:</span> {r.what_learned}
+                </p>
               )}
               <p className="mt-1 text-muted-foreground">
                 <span className="font-medium text-foreground">Will change:</span>{" "}

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import {
   LayoutDashboard,
+  Home,
   Video,
   GitBranch,
   MessageSquare,
@@ -87,6 +88,12 @@ type NavItem = {
 // Messaging folded into Content, Traffic + Weekly Report folded into
 // Analytics. No route added, removed, or renamed — only which category it's
 // filed under changed.
+// Home is its own single-item category, separate from Main — a personal,
+// role-aware operating page, not the organizational Main Hub. Both are
+// single-selection categories (see the `activeCategoryHasPanel` derivation
+// below), so neither ever opens a contextual panel.
+const HOME_NAV: NavItem[] = [{ to: "/home", label: "Home", icon: Home }];
+
 const MAIN_NAV: NavItem[] = [{ to: "/dashboard", label: "Main Hub", icon: LayoutDashboard }];
 
 const SALES_NAV: NavItem[] = [
@@ -142,6 +149,7 @@ const SYSTEM_NAV: NavItem[] = [{ to: "/events", label: "Event Bus", icon: Activi
 
 // Routes a non-manager (setter/closer) is allowed to see.
 const RESTRICTED_ALLOW = new Set([
+  "/home",
   "/dashboard",
   "/leads",
   "/team",
@@ -213,6 +221,7 @@ export function AppSidebar() {
   // deliberately excluded from this list (see SYSTEM_NAV above) and handled
   // separately as an eighth, visually-secondary rail icon.
   const categories = [
+    { key: "home", label: "Home", icon: Home, items: filterByRole(HOME_NAV) },
     { key: "main", label: "Main", icon: LayoutDashboard, items: filterByRole(MAIN_NAV) },
     { key: "sales", label: "Sales", icon: Users, items: filterByRole(SALES_NAV) },
     { key: "repdash", label: "Rep Dash", icon: PhoneCall, items: filterByRole(REPDASH_NAV) },
@@ -321,7 +330,13 @@ export function AppSidebar() {
   const collapseOnBlurIfPointerOutside = () => {
     if (!hoveredRef.current) setHovered(false);
   };
-  const showExpanded = !collapsed || hovered;
+  // Home and Main are single-selection categories — there's nothing for a
+  // contextual panel to pick between, so no panel ever opens for them
+  // (rail stays rail-width; the route itself gets the full remaining
+  // width). Every other category is unaffected: this reduces to the
+  // original `!collapsed || hovered` for any category with 2+ items.
+  const activeCategoryHasPanel = activeCategory.items.length > 1;
+  const showExpanded = (!collapsed || hovered) && activeCategoryHasPanel;
 
   const closeMobile = () => setMobileOpen(false);
 
@@ -396,6 +411,13 @@ export function AppSidebar() {
    *  rich hover tooltip since text is hidden here by design. */
   const railCategoryBtn = (cat: { key: string; label: string; icon: typeof LayoutDashboard }) => {
     const isSelected = activeCategoryKey === cat.key;
+    // Home reads as an actual button, not just a tinted icon — a filled
+    // rounded-square badge behind the icon, `bg-sidebar-primary` /
+    // `text-sidebar-primary-foreground` (the same token pair the active-
+    // indicator bar already uses elsewhere on the rail), which is literal
+    // white-fill/black-icon in dark mode and literal black-fill/white-icon
+    // in light mode — an on-system inverse pair, never a one-off color.
+    const isHome = cat.key === "home";
     const Icon = cat.icon;
     return (
       <button
@@ -407,9 +429,11 @@ export function AppSidebar() {
         aria-pressed={isSelected}
         className={cn(
           "group relative flex w-full shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 transition-all",
-          isSelected
-            ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
-            : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+          isSelected ? "bg-sidebar-accent shadow-sm" : "hover:bg-sidebar-accent/50",
+          !isHome &&
+            (isSelected
+              ? "text-sidebar-accent-foreground"
+              : "text-sidebar-foreground/60 hover:text-sidebar-foreground"),
         )}
       >
         {isSelected && (
@@ -419,13 +443,30 @@ export function AppSidebar() {
             transition={{ type: "spring", stiffness: 500, damping: 35 }}
           />
         )}
-        <Icon
+        {isHome ? (
+          <span
+            className={cn(
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground shadow-sm transition-transform",
+              isSelected && "scale-105",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+          </span>
+        ) : (
+          <Icon
+            className={cn(
+              "h-[18px] w-[18px] shrink-0 transition-transform",
+              isSelected && "scale-105",
+            )}
+          />
+        )}
+        <span
           className={cn(
-            "h-[18px] w-[18px] shrink-0 transition-transform",
-            isSelected && "scale-105",
+            "w-full truncate text-center text-[9px] font-medium leading-none tracking-tight",
+            isHome &&
+              (isSelected ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/60"),
           )}
-        />
-        <span className="w-full truncate text-center text-[9px] font-medium leading-none tracking-tight">
+        >
           {cat.label}
         </span>
       </button>
@@ -647,12 +688,14 @@ export function AppSidebar() {
               !showExpanded && "md:hidden",
             )}
           >
-            <nav className="flex-1 space-y-0.5 p-2">
-              <div className="px-2.5 pb-2 pt-1 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/50">
-                {activeCategory.label}
-              </div>
-              {activeCategory.items.map((it) => renderItem(it))}
-            </nav>
+            {activeCategoryHasPanel && (
+              <nav className="flex-1 space-y-0.5 p-2">
+                <div className="px-2.5 pb-2 pt-1 text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground/50">
+                  {activeCategory.label}
+                </div>
+                {activeCategory.items.map((it) => renderItem(it))}
+              </nav>
+            )}
             {identity && (
               <Link
                 to="/settings"

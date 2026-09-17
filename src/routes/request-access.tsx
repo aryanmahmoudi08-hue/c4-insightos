@@ -17,6 +17,7 @@ export const Route = createFileRoute("/request-access")({ component: RequestAcce
 
 const ROLES = [
   { value: "setter", label: "DM Setter" },
+  { value: "inbound_dialer", label: "Inbound Dialer" },
   { value: "closer", label: "Closer" },
   { value: "sales_manager", label: "Sales Manager" },
   { value: "growth_ops", label: "Growth / Ops" },

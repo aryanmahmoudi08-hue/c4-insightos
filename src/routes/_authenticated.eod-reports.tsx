@@ -14,6 +14,7 @@ import {
   CLOSER_EOD_SCHEMA,
   buildSetterActivityPayload,
   buildClosureCallPayload,
+  buildClosureCallObjectionRows,
   type EodValues,
 } from "@/lib/eod-reports";
 import { eodAccessDeniedMessage, getEodAccessProfileFn } from "@/lib/eod-rbac";
@@ -189,8 +190,24 @@ function EodFlowForRole({
       // eod_lead_status isn't in the generated Supabase types yet (new
       // column, see the migration comment).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any).from("calls").insert(payload);
+      const { data: callRow, error } = await (supabase as any)
+        .from("calls")
+        .insert(payload)
+        .select("id")
+        .single();
       if (error) throw error;
+      // One call_objections row per selected category — same table/shape
+      // closer.tsx's "Log a sales call" dialog already writes, so both
+      // entry points feed the same objection-frequency instrument and "By
+      // category" breakdown unchanged.
+      const objectionRows = buildClosureCallObjectionRows(orgId ?? "", callRow!.id, values);
+      if (objectionRows.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: objErr } = await (supabase as any)
+          .from("call_objections")
+          .insert(objectionRows);
+        if (objErr) throw objErr;
+      }
     } else {
       const payload = buildSetterActivityPayload(role, orgId ?? "", values);
       if (devBypass) return;

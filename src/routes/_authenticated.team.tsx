@@ -133,7 +133,7 @@ function Team() {
   } | null>(null);
   const [profileMember, setProfileMember] = useState<ByUserRow | null>(null);
   const [rosterRoleFilter, setRosterRoleFilter] = useState<
-    "all" | "owner_admin" | "setter" | "closer"
+    "all" | "owner_admin" | "setter" | "inbound_dialer" | "closer"
   >("all");
   const [rosterOpen, setRosterOpen] = useState(false);
   const [requestsOpen, setRequestsOpen] = useState(false);
@@ -668,7 +668,8 @@ function Team() {
               options={[
                 { key: "all", label: "All", count: byUser.length },
                 { key: "owner_admin", label: "Owners/Admins" },
-                { key: "setter", label: "Setters" },
+                { key: "setter", label: "DM Setters" },
+                { key: "inbound_dialer", label: "Dialers" },
                 { key: "closer", label: "Closers" },
               ]}
               value={rosterRoleFilter}
@@ -826,6 +827,7 @@ function Team() {
                                     {[
                                       "viewer",
                                       "setter",
+                                      "inbound_dialer",
                                       "closer",
                                       "sales_manager",
                                       "growth_ops",

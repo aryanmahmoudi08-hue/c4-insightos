@@ -5,15 +5,16 @@ import { useAuth } from "@/hooks/use-auth";
 export const Route = createFileRoute("/")({ component: RootRedirect });
 
 /** "/" itself has no content of its own — it just sends visitors to the
- * right place: signed-in users go straight into the app, everyone else
- * lands on the public /welcome page. */
+ * right place: signed-in users go straight into the app (their personal
+ * Home, not the organizational Main Hub — that's still reachable directly
+ * at /dashboard), everyone else lands on the public /welcome page. */
 function RootRedirect() {
   const { user, loading } = useAuth();
   const nav = useNavigate();
 
   useEffect(() => {
     if (loading) return;
-    nav({ to: user ? "/dashboard" : "/welcome", replace: true });
+    nav({ to: user ? "/home" : "/welcome", replace: true });
   }, [loading, user, nav]);
 
   return (
