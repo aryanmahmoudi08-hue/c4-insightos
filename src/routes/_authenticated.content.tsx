@@ -1,10 +1,23 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { useDemoMode } from "@/hooks/use-demo-mode";
+import { DemoModeBanner } from "@/components/demo-mode-banner";
+import {
+  buildDemoAttributionDataset,
+  buildDemoContentSignals,
+  buildDemoContentPieces,
+} from "@/lib/demo-fixtures";
 import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
-import { useMemo, useState, Fragment } from "react";
+import { useMemo, useState, useEffect, Fragment } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,7 +54,6 @@ import {
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { analyzeContent } from "@/lib/analyze-content.functions";
-import { dispatchContentReady } from "@/lib/dispatch.functions";
 import { coachContentFn } from "@/lib/coach-content.functions";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import { PageHero } from "@/components/page-hero";
@@ -54,6 +66,8 @@ import {
   mockContentCoaching,
   mockContentClassification,
   mockTrafficBreakdown,
+  mockStoriesSummary,
+  mockBottleneckRead,
   withMockDelay,
 } from "@/lib/dev-mock-data";
 import {
@@ -74,8 +88,18 @@ import {
   type ContentWeeklySummary,
   type ContentTrafficSummary,
   type ContentAttributionSummary,
+  type ContentStoriesSummary,
 } from "@/components/content-command-center";
-import { contentDemandFn, weeklyContentCheckFn } from "@/lib/content-signals.functions";
+import {
+  contentDemandFn,
+  weeklyContentCheckFn,
+  analyzeContentSystemFn,
+} from "@/lib/content-signals.functions";
+import {
+  getWorkspaceSettingsFn,
+  DEFAULT_WORKSPACE_SETTINGS,
+} from "@/lib/workspace-settings.functions";
+import type { BottleneckReadResult } from "@/lib/content-taxonomy";
 import type { AttributionModel, CanonicalLifecycleAttributionPath } from "@/lib/acquisition";
 import { buildAttributionPathsForModel, ATTRIBUTION_MODELS } from "@/lib/content-attribution";
 import { computeChannelRevenue } from "@/lib/traffic-channel-revenue";
@@ -136,14 +160,6 @@ type PieceRow = {
 const fmtN = (n: number) =>
   new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(n));
 
-const PIPELINE: { key: string; label: string; tone: string }[] = [
-  { key: "draft", label: "Draft", tone: CHIP_TONE_CLASSES.default },
-  { key: "in_review", label: "In Review", tone: CHIP_TONE_CLASSES.warning },
-  { key: "approved", label: "Approved", tone: CHIP_TONE_CLASSES.info },
-  { key: "ready_to_post", label: "Ready to Post", tone: CHIP_TONE_CLASSES.success },
-  { key: "posted", label: "Posted", tone: CHIP_TONE_CLASSES.default },
-];
-
 // Top/Middle/Bottom-of-funnel is literally the spectrum's own cold/mid/hot
 // vocabulary — was previously split across a semantic ChipTone mapping (table)
 // and raw hardcoded blue-500/amber-500/emerald-500 (kanban card + calendar),
@@ -203,7 +219,16 @@ type Prefill = {
   ctaConversionPct?: number;
 };
 
-export const Route = createFileRoute("/_authenticated/content")({ component: ContentIntel });
+/** `section`: an element id on this page to land on and scroll to — same
+ * deep-link idiom `content-signals-panel.tsx`/`vsl.tsx` already use
+ * (`useSearch({ strict: false })` read on mount), so e.g. `/content?section=
+ * traffic-platforms` works as a real link from anywhere in the app. */
+export const Route = createFileRoute("/_authenticated/content")({
+  component: ContentIntel,
+  validateSearch: (s: Record<string, unknown>): { section?: string } => ({
+    section: typeof s.section === "string" ? s.section : undefined,
+  }),
+});
 
 function ContentIntel() {
   const { data: org } = useCurrentOrg();
@@ -224,32 +249,170 @@ function ContentIntel() {
       return next;
     });
 
+  // Section deep-link (?section=<id>) — same idiom content-signals-panel.tsx
+  // / vsl.tsx already use for landing on and scrolling to a specific part of
+  // a page. The embedded Traffic/Attribution sections below carry their own
+  // stable ids (traffic-overview, attribution-flow, ...), so a link from
+  // anywhere else in the app can jump straight to one.
+  const deepLinkSection = useSearch({ strict: false }) as { section?: string };
+  const scrollToSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  };
+  useEffect(() => {
+    if (!deepLinkSection.section) return;
+    requestAnimationFrame(() => scrollToSection(deepLinkSection.section!));
+  }, [deepLinkSection.section]);
+
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
 
   const demandFn = useServerFn(contentDemandFn);
   const { data: commandDemand } = useQuery({
-    queryKey: ["content-command-demand", orgId, range.from, range.to, devBypass],
+    queryKey: ["content-command-demand", orgId, range.from, range.to, devBypass, demoMode],
     enabled: devBypass || !!orgId,
     queryFn: () =>
-      devBypass
-        ? Promise.resolve(mockContentDemand() as unknown as ContentDemandSummary)
-        : demandFn({ data: { from: range.from, to: range.to } }),
+      demoMode
+        ? Promise.resolve(buildDemoContentSignals().demand as unknown as ContentDemandSummary)
+        : devBypass
+          ? Promise.resolve(mockContentDemand() as unknown as ContentDemandSummary)
+          : demandFn({ data: { from: range.from, to: range.to } }),
     retry: false,
   });
   const weeklyFn = useServerFn(weeklyContentCheckFn);
   const { data: commandWeekly } = useQuery({
-    queryKey: ["content-command-weekly", orgId, devBypass],
+    queryKey: ["content-command-weekly", orgId, devBypass, demoMode],
+    enabled: devBypass || !!orgId,
+    queryFn: () =>
+      demoMode
+        ? Promise.resolve(buildDemoContentSignals().weekly as unknown as ContentWeeklySummary)
+        : devBypass
+          ? Promise.resolve(mockWeeklyContentCheck() as unknown as ContentWeeklySummary)
+          : weeklyFn(),
+    retry: false,
+  });
+
+  // Weekly reel target — migrated from the standalone Content Signals page.
+  // Seeded once from the workspace's saved setting (Settings -> Content
+  // Engine); a scratch edit here stays session-local, it doesn't write back.
+  const settingsFn = useServerFn(getWorkspaceSettingsFn);
+  const { data: workspaceSettings } = useQuery({
+    queryKey: ["workspace-settings", orgId, devBypass],
     enabled: devBypass || !!orgId,
     queryFn: () =>
       devBypass
-        ? Promise.resolve(mockWeeklyContentCheck() as unknown as ContentWeeklySummary)
-        : weeklyFn(),
-    retry: false,
+        ? Promise.resolve(DEFAULT_WORKSPACE_SETTINGS)
+        : settingsFn({ data: { orgId: orgId! } }),
   });
+  const [reelTarget, setReelTarget] = useState(
+    DEFAULT_WORKSPACE_SETTINGS.content_engine.weeklyReelTarget,
+  );
+  const [reelTargetSeeded, setReelTargetSeeded] = useState(false);
+  if (workspaceSettings && !reelTargetSeeded) {
+    setReelTarget(workspaceSettings.content_engine.weeklyReelTarget);
+    setReelTargetSeeded(true);
+  }
+
+  // AI Bottleneck Read — migrated + upgraded from the standalone Content
+  // Signals page's "Analyze the system" button. Same analyzeContentSystemFn
+  // server logic; the AI call inside it now returns structured insights
+  // (Finding/Supporting Data/Why It Matters/Recommended Action/Confidence/
+  // Sample Size/Relevant Records/Attribution Limitations) instead of a
+  // markdown blob — see content-signals.server.ts's gatewayInsights().
+  const analyzeSystemFn = useServerFn(analyzeContentSystemFn);
+  const [bottleneckRead, setBottleneckRead] = useState<BottleneckReadResult | undefined>(undefined);
+  const analyzeBottlenecks = useMutation({
+    mutationFn: async () => {
+      if (devBypass) return withMockDelay(mockBottleneckRead());
+      const result = await analyzeSystemFn({ data: { from: range.from, to: range.to } });
+      return result.insights;
+    },
+    onSuccess: (insights) => setBottleneckRead(insights),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const { data: businessBridge } = useQuery({
-    queryKey: ["content-business-bridge", orgId, range.from, range.to, devBypass],
+    queryKey: ["content-business-bridge", orgId, range.from, range.to, devBypass, demoMode],
     enabled: devBypass || !!orgId,
     queryFn: async () => {
+      if (demoMode) {
+        // Same deterministic fixture Attribution's own demo mode resolves
+        // through (buildDemoAttributionDataset) — reusing its leads/calls/
+        // touches/content/traffic rows through the exact same
+        // computeChannelRevenue()/buildAttributionPathsForModel() real
+        // logic below, never a second aggregation engine. Demo leads carry
+        // no separate `clients` record in this fixture universe, so
+        // clientContractedCents honestly stays $0 rather than being
+        // invented from an unrelated dataset.
+        const demo = buildDemoAttributionDataset();
+        const demoSources = demo.trafficRows.map((t) => ({
+          id: t.id,
+          name: t.category.charAt(0).toUpperCase() + t.category.slice(1),
+          category: t.category,
+        }));
+        const closedCallIdsByLead = new Set(
+          demo.callRows.filter((c) => c.closed).map((c) => c.lead_id),
+        );
+        const demoLeadsForRevenue = demo.leadRows.map((l) => ({
+          id: l.id,
+          traffic_source_id: l.traffic_source_id,
+          status: closedCallIdsByLead.has(l.id) ? "closed" : "lead",
+        }));
+        const channels = computeChannelRevenue(demoSources, demoLeadsForRevenue, demo.callRows, []);
+        const modelInput = {
+          leads: demo.leadRows.map((l) => ({
+            id: l.id,
+            created_at: l.created_at,
+            source_content_id: l.source_content_id,
+          })),
+          calls: demo.callRows
+            .filter((c) => c.closed)
+            .map((c) => ({
+              id: c.id,
+              lead_id: c.lead_id,
+              created_at: c.created_at,
+              closed: true,
+              source_content_id: c.source_content_id,
+            })),
+          touches: demo.touchRows,
+          sampleSize: demo.callRows.filter((c) => c.closed).length,
+        };
+        const canonicalPathsByModel = Object.fromEntries(
+          ATTRIBUTION_MODELS.map((model) => [
+            model,
+            buildAttributionPathsForModel(model, modelInput),
+          ]),
+        ) as Record<AttributionModel, CanonicalLifecycleAttributionPath[]>;
+        const callCashById: Record<string, number> = {};
+        for (const c of demo.callRows) {
+          if (c.closed && c.cash_collected_cents > 0) callCashById[c.id] = c.cash_collected_cents;
+        }
+        const totalLeads = demo.leadRows.length;
+        const totalContracted = channels.reduce((sum, row) => sum + row.contractedCents, 0);
+        const closedDemoCalls = demo.callRows.filter((c) => c.closed);
+        return {
+          traffic: {
+            leads: totalLeads,
+            clients: channels.reduce((sum, row) => sum + row.clients, 0),
+            contractedCents: totalContracted,
+            collectedCents: channels.reduce((sum, row) => sum + row.collectedCents, 0),
+            clientContractedCents: 0,
+            revenuePerLeadCents: totalLeads ? Math.round(totalContracted / totalLeads) : 0,
+            noSource: demo.leadRows.filter((lead) => !lead.traffic_source_id).length,
+            channels: channels.slice(0, 5),
+          },
+          attribution: {
+            touches: demo.touchRows.length,
+            leads: totalLeads,
+            attributed: demo.leadRows.filter((lead) => lead.first_touch_content_id).length,
+            closes: closedDemoCalls.length,
+            contractValueCents: closedDemoCalls.reduce((s, c) => s + c.contract_value_cents, 0),
+            cashCollectedCents: closedDemoCalls.reduce((s, c) => s + c.cash_collected_cents, 0),
+          },
+          canonicalPaths: canonicalPathsByModel.first_touch,
+          canonicalPathsByModel,
+          callCashById,
+        } as ContentBusinessBridge;
+      }
       if (devBypass) {
         // Mock preview only (never reachable outside dev-bypass) — reshapes
         // mockTrafficBreakdown()'s already-mock numbers into the corrected
@@ -409,9 +572,10 @@ function ContentIntel() {
     retry: false,
   });
   const { data: pieces } = useQuery({
-    queryKey: ["content", orgId, devBypass],
-    enabled: !!orgId,
+    queryKey: ["content", orgId, devBypass, demoMode],
+    enabled: devBypass || !!orgId,
     queryFn: async () => {
+      if (demoMode) return buildDemoContentPieces() as unknown as PieceRow[];
       if (devBypass) return mockContentPieces() as unknown as PieceRow[];
       const { data, error } = await supabase
         .from("content_pieces")
@@ -426,63 +590,48 @@ function ContentIntel() {
     },
   });
 
-  const dispatchReadyFn = useServerFn(dispatchContentReady);
-  type SchedulePatch = {
-    scheduled_date: string;
-    scheduled_time: string;
-    post_format: string;
-    repurpose_plan: string;
-    voice_notes: string;
-    why_it_works: string;
-    posting_instructions: string;
-  };
-  const [schedulingFor, setSchedulingFor] = useState<PieceRow | null>(null);
-  const moveStatus = useMutation({
-    mutationFn: async ({
-      id,
-      status,
-      schedule,
-    }: {
-      id: string;
-      status: string;
-      schedule?: SchedulePatch;
-    }) => {
-      const patch: Partial<Database["public"]["Tables"]["content_pieces"]["Update"]> = {
-        pipeline_status: status,
-      };
-      if (status === "posted") patch.posted_at = new Date().toISOString();
-      if (schedule) {
-        patch.scheduled_date = schedule.scheduled_date || null;
-        patch.scheduled_time = schedule.scheduled_time || null;
-        patch.post_format = schedule.post_format || null;
-        patch.repurpose_plan = schedule.repurpose_plan || null;
-        patch.voice_notes = schedule.voice_notes || null;
-        patch.why_it_works = schedule.why_it_works || null;
-        patch.posting_instructions = schedule.posting_instructions || null;
-      }
-      const { error } = await supabase.from("content_pieces").update(patch).eq("id", id);
+  // Stories aggregate — real story_slides + slide_metrics tables (see
+  // SlidesPanel below for the per-piece management UI). The discovery found
+  // the Stories availability card hardcoded to "Not connected" even though
+  // this data genuinely exists; this query is what makes that card honest.
+  const { data: storiesSummary } = useQuery({
+    queryKey: ["content-stories-summary", orgId, devBypass],
+    enabled: devBypass || !!orgId,
+    queryFn: async (): Promise<ContentStoriesSummary> => {
+      if (devBypass) return mockStoriesSummary();
+      const { data, error } = await supabase
+        .from("story_slides")
+        .select(
+          "id, content_id, slide_metrics(views, exits, taps_forward, taps_back, replies, link_clicks)",
+        )
+        .eq("org_id", orgId!);
       if (error) throw error;
-
-      if (status === "ready_to_post") {
-        try {
-          await dispatchReadyFn({ data: { contentId: id } });
-        } catch (e) {
-          console.warn("dispatch failed", e);
-        }
-      }
+      const slides = data ?? [];
+      const totals = slides.reduce(
+        (sum, slide) => {
+          const m = (slide.slide_metrics ?? [])[0];
+          sum.views += m?.views ?? 0;
+          sum.exits += m?.exits ?? 0;
+          sum.tapsForward += m?.taps_forward ?? 0;
+          sum.tapsBack += m?.taps_back ?? 0;
+          sum.replies += m?.replies ?? 0;
+          sum.linkClicks += m?.link_clicks ?? 0;
+          return sum;
+        },
+        { views: 0, exits: 0, tapsForward: 0, tapsBack: 0, replies: 0, linkClicks: 0 },
+      );
+      return {
+        sequencesTracked: new Set(slides.map((s) => s.content_id)).size,
+        totalSlides: slides.length,
+        totalViews: totals.views,
+        totalExits: totals.exits,
+        avgExitRatePct: totals.views > 0 ? (totals.exits / totals.views) * 100 : null,
+        totalTapsForward: totals.tapsForward,
+        totalTapsBack: totals.tapsBack,
+        totalReplies: totals.replies,
+        totalLinkClicks: totals.linkClicks,
+      };
     },
-    onSuccess: (_d, vars) => {
-      qc.invalidateQueries({ queryKey: ["content"] });
-      qc.invalidateQueries({ queryKey: ["content-schedule"] });
-      setSchedulingFor(null);
-      if (vars.status === "ready_to_post")
-        toast.success("Scheduled · added to the Content Calendar and sent to the admin channel");
-      else
-        toast.success(
-          "Moved to " + (PIPELINE.find((p) => p.key === vars.status)?.label ?? vars.status),
-        );
-    },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
   const save = useMutation({
@@ -794,7 +943,57 @@ function ContentIntel() {
         subtitle="Performance, audience signals, and content-to-cash intelligence"
         showDateRange
       />
+      {/* Page-scoped section jumps — additive to the Rail → Panel sidebar
+          nav, not a second navigation system. Both dropdowns just scroll
+          within this same page to the embedded Traffic/Attribution sections
+          below (same DropdownMenu + id/scrollIntoView idiom already used on
+          traffic.tsx's row-actions menu and attribution.tsx's journey
+          drill-down). */}
+      <div className="flex items-center gap-2 border-b border-border/60 px-6 py-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted/40 hover:text-foreground">
+            Traffic <ChevronDown className="h-3 w-3" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={() => scrollToSection("traffic-overview")}>
+              Traffic Overview
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => scrollToSection("traffic-platform-mix")}>
+              Platform Mix
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => scrollToSection("traffic-platforms")}>
+              Platform Performance
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => scrollToSection("traffic-funnel")}>
+              Funnel
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => scrollToSection("traffic-comparison")}>
+              What's Working / Comparison
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted/40 hover:text-foreground">
+            Attribution <ChevronDown className="h-3 w-3" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={() => scrollToSection("attribution-overview")}>
+              Attribution Overview
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => scrollToSection("attribution-flow")}>
+              Attribution Flow
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => scrollToSection("attribution-journeys")}>
+              Customer Journeys
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => scrollToSection("detailed-records")}>
+              Detailed Records
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       <div className="p-6 space-y-4">
+        <DemoModeBanner demoMode={demoMode} />
         <ContentCommandCenter
           pieces={pieces ?? []}
           demand={commandDemand as ContentDemandSummary | undefined}
@@ -804,6 +1003,13 @@ function ContentIntel() {
           traffic={businessBridge?.traffic}
           attributionSummary={businessBridge?.attribution}
           callCashById={businessBridge?.callCashById}
+          stories={storiesSummary}
+          bottleneckRead={bottleneckRead}
+          onAnalyzeBottlenecks={() => analyzeBottlenecks.mutate()}
+          analyzingBottlenecks={analyzeBottlenecks.isPending}
+          signalsRange={range}
+          reelTarget={reelTarget}
+          onReelTargetChange={setReelTarget}
         />
 
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/70 pt-3">
@@ -840,117 +1046,16 @@ function ContentIntel() {
           </Dialog>
         </div>
 
-        <Tabs defaultValue="pipeline" className="space-y-3">
+        {/* Pipeline (Draft -> Posted) moved to Content Calendar, gated to
+            Admin/Growth Operator — see content-pipeline.functions.ts and
+            _authenticated.content-calendar.tsx. Content Command Center keeps
+            Table + Calendar, which every role that can view this page
+            already sees. */}
+        <Tabs defaultValue="table" className="space-y-3">
           <TabsList>
-            <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
             <TabsTrigger value="table">Table</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="pipeline">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-              {PIPELINE.map((col, colIdx) => {
-                const items = (pieces ?? []).filter(
-                  (p) => (p.pipeline_status ?? "draft") === col.key,
-                );
-                return (
-                  <div
-                    key={col.key}
-                    className="flex min-h-[300px] flex-col rounded-2xl border border-border bg-card shadow-sm"
-                  >
-                    <div className="flex items-center justify-between border-b border-border bg-background/20 px-3 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`text-3xs font-mono uppercase px-1.5 py-0.5 rounded ${col.tone}`}
-                        >
-                          {col.label}
-                        </span>
-                        <span className="text-2xs text-muted-foreground">{items.length}</span>
-                      </div>
-                    </div>
-                    <div className="p-2 space-y-2 flex-1 overflow-y-auto max-h-[70vh]">
-                      {items.length === 0 && (
-                        <div className="text-2xs text-muted-foreground italic text-center py-6">
-                          Empty
-                        </div>
-                      )}
-                      {items.map((p) => (
-                        <div
-                          key={p.id}
-                          className="space-y-1.5 rounded-lg border border-border bg-background/70 p-2.5 shadow-sm transition-colors hover:border-accent/40"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <button
-                              onClick={() => setOverviewFor(p)}
-                              className="text-xs font-medium leading-snug text-left hover:text-accent line-clamp-2"
-                            >
-                              {p.title || "(untitled)"}
-                            </button>
-                            {p.funnel_stage && (
-                              <span
-                                className={`shrink-0 inline-block rounded px-1 py-0.5 text-4xs font-mono uppercase ${funnelChip(p.funnel_stage)}`}
-                              >
-                                {p.funnel_stage}
-                              </span>
-                            )}
-                          </div>
-                          {p.hook && (
-                            <div className="text-2xs text-muted-foreground line-clamp-2">
-                              {p.hook}
-                            </div>
-                          )}
-                          <div className="flex items-center justify-between pt-1">
-                            <span className="text-3xs uppercase text-muted-foreground">
-                              {p.platform}
-                            </span>
-                            <div className="flex gap-1">
-                              {colIdx > 0 && (
-                                <button
-                                  title="Move back"
-                                  onClick={() =>
-                                    moveStatus.mutate({
-                                      id: p.id,
-                                      status: PIPELINE[colIdx - 1].key,
-                                    })
-                                  }
-                                  className="text-3xs text-muted-foreground hover:text-foreground px-1"
-                                >
-                                  ←
-                                </button>
-                              )}
-                              {colIdx < PIPELINE.length - 1 && (
-                                <button
-                                  title={
-                                    PIPELINE[colIdx + 1].key === "ready_to_post"
-                                      ? "Schedule it · lands on the client calendar"
-                                      : "Advance"
-                                  }
-                                  onClick={() => {
-                                    const next = PIPELINE[colIdx + 1].key;
-                                    if (next === "ready_to_post") setSchedulingFor(p);
-                                    else moveStatus.mutate({ id: p.id, status: next });
-                                  }}
-                                  className="text-3xs text-accent hover:text-accent/80 px-1 font-semibold"
-                                >
-                                  →
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="text-2xs text-muted-foreground mt-3">
-              Tip: when a piece moves to <span className="font-mono">Ready to Post</span> the team's
-              posting-channel automation will fire. New ideas land in{" "}
-              <span className="font-mono">Draft</span> by default — log content above to start the
-              pipeline.
-            </p>
-          </TabsContent>
 
           <TabsContent value="table">
             <GlassTableShell>
@@ -1253,191 +1358,7 @@ function ContentIntel() {
           edit(p);
         }}
       />
-      <ScheduleDialog
-        piece={schedulingFor}
-        pending={moveStatus.isPending}
-        onClose={() => setSchedulingFor(null)}
-        onConfirm={(schedule) =>
-          schedulingFor &&
-          moveStatus.mutate({ id: schedulingFor.id, status: "ready_to_post", schedule })
-        }
-      />
     </>
-  );
-}
-
-const FORMATS = [
-  { key: "short_form", label: "Short-form (Reel / TikTok / Short)" },
-  { key: "long_form", label: "Long-form (YouTube / podcast)" },
-  { key: "long_to_short", label: "Long-form → cut into clips" },
-  { key: "story", label: "Story sequence" },
-  { key: "carousel", label: "Carousel / post" },
-  { key: "email", label: "Email / SMS" },
-];
-
-function ScheduleDialog({
-  piece,
-  pending,
-  onClose,
-  onConfirm,
-}: {
-  piece: PieceRow | null;
-  pending: boolean;
-  onClose: () => void;
-  onConfirm: (s: {
-    scheduled_date: string;
-    scheduled_time: string;
-    post_format: string;
-    repurpose_plan: string;
-    voice_notes: string;
-    why_it_works: string;
-    posting_instructions: string;
-  }) => void;
-}) {
-  const tomorrow = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  }, []);
-  const guessFormat = (pl?: Platform) =>
-    pl === "youtube" || pl === "vsl"
-      ? "long_form"
-      : pl === "story_sequence"
-        ? "story"
-        : pl === "email"
-          ? "email"
-          : pl === "carousel" || pl === "post"
-            ? "carousel"
-            : "short_form";
-
-  const [date, setDate] = useState(tomorrow);
-  const [time, setTime] = useState("18:00");
-  const [format, setFormat] = useState(guessFormat(piece?.platform));
-  const [repurpose, setRepurpose] = useState("");
-  const [voice, setVoice] = useState("");
-  const [why, setWhy] = useState("");
-  const [instr, setInstr] = useState("");
-
-  // Re-seed when a different card is opened.
-  const [seeded, setSeeded] = useState<string | null>(null);
-  if (piece && seeded !== piece.id) {
-    setSeeded(piece.id);
-    setDate(tomorrow);
-    setTime("18:00");
-    setFormat(guessFormat(piece.platform));
-    setRepurpose("");
-    setVoice("");
-    setWhy("");
-    setInstr("");
-  }
-
-  return (
-    <Dialog
-      open={!!piece}
-      onOpenChange={(v) => {
-        if (!v) onClose();
-      }}
-    >
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Schedule this post</DialogTitle>
-        </DialogHeader>
-        {piece && (
-          <div className="space-y-3">
-            <div className="rounded-md border border-border bg-muted/20 p-2.5">
-              <div className="text-xs font-medium">{piece.title || "(untitled)"}</div>
-              {piece.hook && (
-                <div className="text-2xs text-muted-foreground mt-0.5 line-clamp-2 italic">
-                  "{piece.hook}"
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Post on</Label>
-                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">At</Label>
-                <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Format</Label>
-              <Select value={format} onValueChange={setFormat}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FORMATS.map((f) => (
-                    <SelectItem key={f.key} value={f.key}>
-                      {f.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">How it should sound (voice / delivery notes)</Label>
-              <Textarea
-                rows={2}
-                value={voice}
-                onChange={(e) => setVoice(e.target.value)}
-                placeholder="Calm, matter-of-fact, no hype. Talk to camera, walking."
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Repurpose plan</Label>
-              <Textarea
-                rows={2}
-                value={repurpose}
-                onChange={(e) => setRepurpose(e.target.value)}
-                placeholder="Cut 3 clips from 4:10, 8:30, 12:05 → Reels next week."
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Why this works</Label>
-              <Textarea
-                rows={2}
-                value={why}
-                onChange={(e) => setWhy(e.target.value)}
-                placeholder="Proof angle for solution-aware viewers — mirrors the top objection from intakes."
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Posting instructions</Label>
-              <Textarea
-                rows={2}
-                value={instr}
-                onChange={(e) => setInstr(e.target.value)}
-                placeholder="Caption + first comment, pin the CTA, reply to DMs within the hour."
-              />
-            </div>
-            <Button
-              className="w-full"
-              disabled={pending || !date}
-              onClick={() =>
-                onConfirm({
-                  scheduled_date: date,
-                  scheduled_time: time,
-                  post_format: format,
-                  repurpose_plan: repurpose,
-                  voice_notes: voice,
-                  why_it_works: why,
-                  posting_instructions: instr,
-                })
-              }
-            >
-              {pending ? "Scheduling…" : "Confirm · add to client calendar"}
-            </Button>
-            <p className="text-2xs text-muted-foreground">
-              This moves the piece to <span className="font-mono">Ready to Post</span>, drops it on
-              the Content Calendar for that day/time, and pings the admin channel with the script.
-            </p>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }
 

@@ -1,13 +1,27 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { useRole } from "@/hooks/use-role";
+import { useDevPreviewRole } from "@/hooks/use-dev-preview-role";
 import { TopBar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, CHIP_TONE_CLASSES } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   CalendarDays,
   Clock,
@@ -19,10 +33,20 @@ import {
   Mic2,
   Target,
   Lightbulb,
+  Layers,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
-import { SPECTRUM_VAR, SPECTRUM_TEXT_CLASS, type SpectrumPosition } from "@/lib/spectrum";
+import {
+  SPECTRUM_VAR,
+  SPECTRUM_TEXT_CLASS,
+  SPECTRUM_CHIP_CLASS,
+  type SpectrumPosition,
+} from "@/lib/spectrum";
+import { contentPipelineFn, updateContentPipelineStatusFn } from "@/lib/content-pipeline.functions";
+import { dispatchContentReady } from "@/lib/dispatch.functions";
+import { mockContentPipeline } from "@/lib/dev-mock-data";
 
 type Sched = {
   id: string;
@@ -69,6 +93,49 @@ export const FORMAT_LABEL: Record<string, string> = {
   story: "Story sequence",
   carousel: "Carousel",
   email: "Email / SMS",
+};
+
+// Content Pipeline (Draft -> Posted) — moved here from Content Command
+// Center (see content-pipeline.functions.ts for the real Admin/Growth
+// Operator-only enforcement). Same 5 stages, same underlying
+// content_pieces.pipeline_status column — no parallel pipeline data model.
+const PIPELINE: { key: string; label: string; tone: string }[] = [
+  { key: "draft", label: "Draft", tone: CHIP_TONE_CLASSES.default },
+  { key: "in_review", label: "In Review", tone: CHIP_TONE_CLASSES.warning },
+  { key: "approved", label: "Approved", tone: CHIP_TONE_CLASSES.info },
+  { key: "ready_to_post", label: "Ready to Post", tone: CHIP_TONE_CLASSES.success },
+  { key: "posted", label: "Posted", tone: CHIP_TONE_CLASSES.default },
+];
+
+const PIPELINE_FUNNEL_SPECTRUM: Record<string, SpectrumPosition> = {
+  TOF: "cold",
+  MOF: "mid",
+  BOF: "hot",
+};
+const pipelineFunnelChip = (stage: string | null) =>
+  stage && PIPELINE_FUNNEL_SPECTRUM[stage]
+    ? SPECTRUM_CHIP_CLASS[PIPELINE_FUNNEL_SPECTRUM[stage]]
+    : CHIP_TONE_CLASSES.default;
+
+type PipelinePiece = {
+  id: string;
+  title: string | null;
+  platform: string;
+  source_platform: string | null;
+  hook: string | null;
+  body: string | null;
+  cta: string | null;
+  funnel_stage: string | null;
+  angle: string | null;
+  topic: string | null;
+  pipeline_status: string;
+  scheduled_date: string | null;
+  scheduled_time: string | null;
+  post_format: string | null;
+  repurpose_plan: string | null;
+  voice_notes: string | null;
+  why_it_works: string | null;
+  posting_instructions: string | null;
 };
 
 const iso = (d: Date) =>
@@ -194,6 +261,82 @@ function ContentCalendar() {
       qc.invalidateQueries({ queryKey: ["content"] });
       toast.success("Marked posted");
       setOpenPiece(null);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  // Content Pipeline access — Admin/Growth Operator only. This is a UI
+  // convenience gate; the real enforcement (never trusts this) lives
+  // server-side in content-pipeline.server.ts, re-derived from `memberships`
+  // on every call. useDevPreviewRole() lets Dev Bypass preview any role (set
+  // from Home's role switcher) without touching real auth — see that hook's
+  // doc comment.
+  const { devBypass } = useAuth();
+  const { role: realRole } = useRole();
+  const { previewRole, active: devPreviewActive } = useDevPreviewRole();
+  const effectiveRole = devPreviewActive && previewRole ? previewRole : realRole;
+  const canViewPipeline =
+    effectiveRole === "admin" || effectiveRole === "owner" || effectiveRole === "growth_ops";
+
+  const pipelineFn = useServerFn(contentPipelineFn);
+  const { data: pipelinePieces = [] } = useQuery({
+    queryKey: ["content-pipeline", orgId, devBypass, effectiveRole],
+    enabled: canViewPipeline && (devBypass || !!orgId),
+    queryFn: async (): Promise<PipelinePiece[]> => {
+      if (devBypass) return mockContentPipeline();
+      return pipelineFn();
+    },
+    retry: false,
+  });
+
+  const dispatchReadyFn = useServerFn(dispatchContentReady);
+  const updatePipelineFn = useServerFn(updateContentPipelineStatusFn);
+  const [schedulingFor, setSchedulingFor] = useState<PipelinePiece | null>(null);
+  const moveStatus = useMutation({
+    mutationFn: async ({
+      id,
+      status,
+      schedule,
+    }: {
+      id: string;
+      status: string;
+      schedule?: {
+        scheduled_date: string;
+        scheduled_time: string;
+        post_format: string;
+        repurpose_plan: string;
+        voice_notes: string;
+        why_it_works: string;
+        posting_instructions: string;
+      };
+    }) => {
+      if (devBypass) {
+        // Dev Bypass never has a real session (no Bearer token to attach),
+        // so the gated server fn would just 401 — this UI-only optimistic
+        // path lets Pipeline drag/advance be previewed without a backend.
+        toast.success("Dev Bypass preview — no write performed");
+        return;
+      }
+      await updatePipelineFn({ data: { id, status, schedule } });
+      if (status === "ready_to_post") {
+        try {
+          await dispatchReadyFn({ data: { contentId: id } });
+        } catch (e) {
+          console.warn("dispatch failed", e);
+        }
+      }
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["content-pipeline"] });
+      qc.invalidateQueries({ queryKey: ["content-schedule"] });
+      qc.invalidateQueries({ queryKey: ["content"] });
+      setSchedulingFor(null);
+      if (vars.status === "ready_to_post")
+        toast.success("Scheduled · added to the calendar and sent to the admin channel");
+      else
+        toast.success(
+          "Moved to " + (PIPELINE.find((p) => p.key === vars.status)?.label ?? vars.status),
+        );
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
@@ -394,8 +537,8 @@ function ContentCalendar() {
               <CalendarDays className="h-8 w-8 mx-auto mb-2 text-muted-foreground opacity-50" />
               <div className="text-sm font-medium">Nothing scheduled yet</div>
               <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                Move a piece to <span className="font-mono">Ready to Post</span> in Content
-                Intelligence — you'll be asked for the day and time, and it lands right here fully
+                Move a piece to <span className="font-mono">Ready to Post</span> in the content
+                pipeline — you'll be asked for the day and time, and it lands right here fully
                 scripted.
               </p>
             </Card>
@@ -435,7 +578,144 @@ function ContentCalendar() {
             </div>
           )}
         </div>
+
+        {/* Content Pipeline (Draft -> Posted) — visually secondary, bottom
+            of the page, Admin/Growth Operator only. The gate here is a UI
+            convenience; real enforcement is server-side (see
+            content-pipeline.server.ts) so this section rendering at all
+            never depends on trusting the client. */}
+        {canViewPipeline && (
+          <div className="pt-2">
+            <div className="mb-2 flex items-center gap-2">
+              <Layers className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Content Pipeline
+              </h3>
+              <span
+                className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-4xs uppercase tracking-wider text-muted-foreground"
+                title="Visible only to Admin and Growth Operator — enforced server-side, not just by hiding this section."
+              >
+                <ShieldCheck className="h-3 w-3" />
+                Admin · Growth Ops
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+              {PIPELINE.map((col, colIdx) => {
+                const items = pipelinePieces.filter(
+                  (p) => (p.pipeline_status ?? "draft") === col.key,
+                );
+                return (
+                  <div
+                    key={col.key}
+                    className="flex min-h-[260px] flex-col rounded-2xl border border-border bg-card shadow-sm"
+                  >
+                    <div className="flex items-center justify-between border-b border-border bg-background/20 px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`rounded px-1.5 py-0.5 font-mono text-3xs uppercase ${col.tone}`}
+                        >
+                          {col.label}
+                        </span>
+                        <span className="text-2xs text-muted-foreground">{items.length}</span>
+                      </div>
+                    </div>
+                    <div
+                      className="flex-1 space-y-2 overflow-y-auto p-2"
+                      style={{ maxHeight: "60vh" }}
+                    >
+                      {items.length === 0 && (
+                        <div className="py-6 text-center text-2xs italic text-muted-foreground">
+                          Empty
+                        </div>
+                      )}
+                      {items.map((p) => (
+                        <div
+                          key={p.id}
+                          className="space-y-1.5 rounded-lg border border-border bg-background/70 p-2.5 shadow-sm transition-colors hover:border-accent/40"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-xs font-medium leading-snug line-clamp-2">
+                              {p.title || "(untitled)"}
+                            </span>
+                            {p.funnel_stage && (
+                              <span
+                                className={`shrink-0 inline-block rounded px-1 py-0.5 text-4xs font-mono uppercase ${pipelineFunnelChip(p.funnel_stage)}`}
+                              >
+                                {p.funnel_stage}
+                              </span>
+                            )}
+                          </div>
+                          {p.hook && (
+                            <div className="line-clamp-2 text-2xs text-muted-foreground">
+                              {p.hook}
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-3xs uppercase text-muted-foreground">
+                              {p.source_platform || p.platform}
+                            </span>
+                            <div className="flex gap-1">
+                              {colIdx > 0 && (
+                                <button
+                                  type="button"
+                                  title="Move back"
+                                  onClick={() =>
+                                    moveStatus.mutate({
+                                      id: p.id,
+                                      status: PIPELINE[colIdx - 1].key,
+                                    })
+                                  }
+                                  className="px-1 text-3xs text-muted-foreground hover:text-foreground"
+                                >
+                                  ←
+                                </button>
+                              )}
+                              {colIdx < PIPELINE.length - 1 && (
+                                <button
+                                  type="button"
+                                  title={
+                                    PIPELINE[colIdx + 1].key === "ready_to_post"
+                                      ? "Schedule it · lands on the content calendar"
+                                      : "Advance"
+                                  }
+                                  onClick={() => {
+                                    const next = PIPELINE[colIdx + 1].key;
+                                    if (next === "ready_to_post") setSchedulingFor(p);
+                                    else moveStatus.mutate({ id: p.id, status: next });
+                                  }}
+                                  className="px-1 text-3xs font-semibold text-accent hover:text-accent/80"
+                                >
+                                  →
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="mt-3 text-2xs text-muted-foreground">
+              Tip: when a piece moves to <span className="font-mono">Ready to Post</span> the team's
+              posting-channel automation fires and it lands in the calendar above. New ideas land in{" "}
+              <span className="font-mono">Draft</span> by default — log content in Content Command
+              Center to start the pipeline.
+            </p>
+          </div>
+        )}
       </div>
+
+      <PipelineScheduleDialog
+        piece={schedulingFor}
+        pending={moveStatus.isPending}
+        onClose={() => setSchedulingFor(null)}
+        onConfirm={(schedule) =>
+          schedulingFor &&
+          moveStatus.mutate({ id: schedulingFor.id, status: "ready_to_post", schedule })
+        }
+      />
 
       <Sheet open={!!openPiece} onOpenChange={(v) => !v && setOpenPiece(null)}>
         <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
@@ -570,5 +850,173 @@ function Block({
       </div>
       {children}
     </div>
+  );
+}
+
+/** Moved here (from Content Command Center) with the rest of the Pipeline —
+ * the "advance to Ready to Post" scheduling step. Reuses this file's own
+ * FORMAT_LABEL instead of a second, differently-worded format list. */
+function PipelineScheduleDialog({
+  piece,
+  pending,
+  onClose,
+  onConfirm,
+}: {
+  piece: PipelinePiece | null;
+  pending: boolean;
+  onClose: () => void;
+  onConfirm: (s: {
+    scheduled_date: string;
+    scheduled_time: string;
+    post_format: string;
+    repurpose_plan: string;
+    voice_notes: string;
+    why_it_works: string;
+    posting_instructions: string;
+  }) => void;
+}) {
+  const tomorrow = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+  const guessFormat = (platform?: string) =>
+    platform === "youtube" || platform === "vsl"
+      ? "long_form"
+      : platform === "story_sequence"
+        ? "story"
+        : platform === "email"
+          ? "email"
+          : platform === "carousel" || platform === "post"
+            ? "carousel"
+            : "short_form";
+
+  const [date, setDate] = useState(tomorrow);
+  const [time, setTime] = useState("18:00");
+  const [format, setFormat] = useState(guessFormat(piece?.platform));
+  const [repurpose, setRepurpose] = useState("");
+  const [voice, setVoice] = useState("");
+  const [why, setWhy] = useState("");
+  const [instr, setInstr] = useState("");
+
+  const [seeded, setSeeded] = useState<string | null>(null);
+  if (piece && seeded !== piece.id) {
+    setSeeded(piece.id);
+    setDate(tomorrow);
+    setTime("18:00");
+    setFormat(guessFormat(piece.platform));
+    setRepurpose("");
+    setVoice("");
+    setWhy("");
+    setInstr("");
+  }
+
+  return (
+    <Dialog
+      open={!!piece}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Schedule this post</DialogTitle>
+        </DialogHeader>
+        {piece && (
+          <div className="space-y-3">
+            <div className="rounded-md border border-border bg-muted/20 p-2.5">
+              <div className="text-xs font-medium">{piece.title || "(untitled)"}</div>
+              {piece.hook && (
+                <div className="text-2xs text-muted-foreground mt-0.5 line-clamp-2 italic">
+                  "{piece.hook}"
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Post on</Label>
+                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">At</Label>
+                <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Format</Label>
+              <Select value={format} onValueChange={setFormat}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(FORMAT_LABEL).map(([key, label]) => (
+                    <SelectItem key={key} value={key}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">How it should sound (voice / delivery notes)</Label>
+              <Textarea
+                rows={2}
+                value={voice}
+                onChange={(e) => setVoice(e.target.value)}
+                placeholder="Calm, matter-of-fact, no hype. Talk to camera, walking."
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Repurpose plan</Label>
+              <Textarea
+                rows={2}
+                value={repurpose}
+                onChange={(e) => setRepurpose(e.target.value)}
+                placeholder="Cut 3 clips from 4:10, 8:30, 12:05 → Reels next week."
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Why this works</Label>
+              <Textarea
+                rows={2}
+                value={why}
+                onChange={(e) => setWhy(e.target.value)}
+                placeholder="Proof angle for solution-aware viewers — mirrors the top objection from intakes."
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Posting instructions</Label>
+              <Textarea
+                rows={2}
+                value={instr}
+                onChange={(e) => setInstr(e.target.value)}
+                placeholder="Caption + first comment, pin the CTA, reply to DMs within the hour."
+              />
+            </div>
+            <Button
+              className="w-full"
+              disabled={pending || !date}
+              onClick={() =>
+                onConfirm({
+                  scheduled_date: date,
+                  scheduled_time: time,
+                  post_format: format,
+                  repurpose_plan: repurpose,
+                  voice_notes: voice,
+                  why_it_works: why,
+                  posting_instructions: instr,
+                })
+              }
+            >
+              {pending ? "Scheduling…" : "Confirm · add to content calendar"}
+            </Button>
+            <p className="text-2xs text-muted-foreground">
+              This moves the piece to <span className="font-mono">Ready to Post</span>, drops it on
+              the calendar for that day/time, and pings the admin channel with the script.
+            </p>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

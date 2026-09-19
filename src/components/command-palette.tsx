@@ -15,7 +15,6 @@ import {
   GitBranch,
   TrendingUp,
   Video,
-  Radar,
   BadgeCheck,
   Brain,
   Activity,
@@ -37,7 +36,13 @@ export function openCommandPalette() {
   window.dispatchEvent(new Event(OPEN_EVENT));
 }
 
-const ROUTES: { to: string; label: string; group: string; icon: typeof LayoutDashboard }[] = [
+const ROUTES: {
+  to: string;
+  label: string;
+  group: string;
+  icon: typeof LayoutDashboard;
+  search?: Record<string, string>;
+}[] = [
   { to: "/dashboard", label: "Main Hub", group: "Go to", icon: LayoutDashboard },
   { to: "/leads", label: "Leads", group: "Go to", icon: Users },
   { to: "/dm-setter", label: "DM Setter", group: "Go to", icon: MessageSquare },
@@ -48,12 +53,26 @@ const ROUTES: { to: string; label: string; group: string; icon: typeof LayoutDas
   { to: "/team", label: "Team Members", group: "Go to", icon: Users },
   { to: "/team-calendar", label: "Team Calendars", group: "Go to", icon: CalendarDays },
   { to: "/hiring", label: "Hiring", group: "Go to", icon: UserPlus },
-  { to: "/attribution", label: "Attribution", group: "Go to", icon: GitBranch },
-  { to: "/traffic", label: "Traffic", group: "Go to", icon: TrendingUp },
   { to: "/content-calendar", label: "Content Calendar", group: "Go to", icon: CalendarDays },
-  { to: "/content", label: "Content Intelligence", group: "Go to", icon: Video },
-  { to: "/content-signals", label: "Content Signals", group: "Go to", icon: Radar },
-  { to: "/clients", label: "Mentees & Renewals", group: "Go to", icon: BadgeCheck },
+  { to: "/content", label: "Content Command Center", group: "Go to", icon: Video },
+  // Attribution/Traffic are no longer standalone pages in the nav — Content
+  // Command Center embeds the same components, so these jump there and
+  // scroll to that section (same idiom the sidebar's Content sub-items use).
+  {
+    to: "/content",
+    label: "Attribution",
+    group: "Go to",
+    icon: GitBranch,
+    search: { section: "attribution-overview" },
+  },
+  {
+    to: "/content",
+    label: "Traffic",
+    group: "Go to",
+    icon: TrendingUp,
+    search: { section: "traffic-overview" },
+  },
+  { to: "/payments", label: "Payments", group: "Go to", icon: DollarSign },
   { to: "/onboarding", label: "Mentee Onboarding", group: "Go to", icon: Brain },
   { to: "/fulfillment", label: "Mentee Results", group: "Go to", icon: BadgeCheck },
   { to: "/vsl", label: "VSL Analytics", group: "Go to", icon: Video },
@@ -182,8 +201,8 @@ export function CommandPalette() {
             id: `client-${c.id}`,
             label: c.full_name,
             sub: "Client",
-            to: "/clients",
-            search: { q: c.full_name },
+            to: "/payments",
+            search: { client: c.id },
           });
         for (const p of content.data ?? [])
           out.push({
@@ -208,7 +227,11 @@ export function CommandPalette() {
 
   const go = (to: string, search?: Record<string, string>) => {
     setOpen(false);
-    nav({ to, search: (search ?? {}) as never });
+    // Section deep-links (Attribution/Traffic → /content?section=...) land on
+    // and scroll to a spot on the same page — skip the router's default
+    // scroll-to-top reset so the page's own smooth scrollIntoView starts
+    // from wherever the user actually is, not from (0,0).
+    nav({ to, search: (search ?? {}) as never, resetScroll: !search?.section });
   };
 
   return (
@@ -298,9 +321,9 @@ export function CommandPalette() {
                 >
                   {ROUTES.map((r) => (
                     <Command.Item
-                      key={r.to}
+                      key={`${r.to}:${r.label}`}
                       value={r.label}
-                      onSelect={() => go(r.to)}
+                      onSelect={() => go(r.to, r.search)}
                       className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-foreground/90 aria-selected:bg-accent/15 aria-selected:text-accent cursor-pointer"
                     >
                       <r.icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />

@@ -1,8 +1,6 @@
 import React from "react";
 import { useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import {
-  ArrowUpRight,
   BarChart3,
   Eye,
   Heart,
@@ -19,10 +17,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Layer,
-  Rectangle,
   ResponsiveContainer,
-  Sankey,
   Tooltip,
   XAxis,
   YAxis,
@@ -33,15 +28,36 @@ import { SPECTRUM_VAR, type SpectrumPosition } from "@/lib/spectrum";
 import { cn } from "@/lib/utils";
 import type { AttributionModel, CanonicalLifecycleAttributionPath } from "@/lib/acquisition";
 import { FUNNEL_STAGES, normalizeTaxonomy } from "@/lib/content-taxonomy";
-import {
-  ATTRIBUTION_MODELS,
-  ATTRIBUTION_MODEL_LABELS,
-  aggregateCashByContent,
-} from "@/lib/content-attribution";
-import { normalizeSocialPlatform } from "@/lib/social-platform";
+import { ATTRIBUTION_MODELS, ATTRIBUTION_MODEL_LABELS } from "@/lib/content-attribution";
+import { normalizeSocialPlatform, socialPlatformOptions } from "@/lib/social-platform";
+import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
+import type { Derivation } from "@/lib/funnel-derivation";
+import { formatLabel, buildFormatOptions } from "@/lib/platform-format";
 import { PlatformIcon } from "@/components/platform-icon";
 import { useMoney } from "@/hooks/use-money";
 import { ChartTooltip } from "@/components/chart-tooltip";
+import {
+  ContentSignalsSection,
+  type SignalsDemand,
+  type SignalsWeekly,
+} from "@/components/content-signals-panel";
+import type {
+  Driver,
+  DemandEvidence,
+  WeeklyMechanismStat,
+  WeeklyDiagnosis,
+  BottleneckReadResult,
+} from "@/lib/content-taxonomy";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { TaxonomySelect } from "@/components/taxonomy-select";
+import { TrafficPageContent } from "@/routes/_authenticated.traffic";
+import { AttributionPageContent } from "@/routes/_authenticated.attribution";
 
 export type ContentCommandMetric = {
   captured_at?: string | null;
@@ -100,6 +116,15 @@ export type ContentDemandSummary = {
   totalWeight?: number;
   minTotalWeight?: number;
   counts?: { faq: number; setter_calls: number; intakes: number; reels: number };
+  /** Raw demand signals behind the mix (FAQ clicks, setter-call objections,
+   * intake answers, strong-performing reels) — same field computeDemand()
+   * already returns; carried through so the Content Signals section can show
+   * the driver drill-down without a second query. */
+  drivers?: Driver[];
+  /** Every real record behind each count in `counts` (not just the ones that
+   * produced a nonzero driver) — same field computeDemand() already returns;
+   * powers the "Built from N X" evidence drill-down. */
+  evidence?: DemandEvidence;
 };
 
 export type ContentWeeklySummary = {
@@ -109,6 +134,10 @@ export type ContentWeeklySummary = {
   best: string | null;
   worst: string | null;
   total: number;
+  /** Per-mechanism weekly stats (+ "untagged" bucket) and the worst-mechanism
+   * diagnosis — same fields computeWeeklyContentCheck() already returns. */
+  per?: Record<string, WeeklyMechanismStat>;
+  worstDiagnosis?: WeeklyDiagnosis | null;
 };
 
 type SortKey = "views" | "reach" | "engagement" | "cash";
@@ -150,6 +179,22 @@ export type ContentAttributionSummary = {
   cashCollectedCents: number;
 };
 
+/** Aggregate story_slides/slide_metrics read — real tables, joined and
+ * summed by the caller (see _authenticated.content.tsx's content-stories-
+ * summary query). `sequencesTracked === 0` means no story sequence has any
+ * slides logged yet, not that the feature is unavailable. */
+export type ContentStoriesSummary = {
+  sequencesTracked: number;
+  totalSlides: number;
+  totalViews: number;
+  totalExits: number;
+  avgExitRatePct: number | null;
+  totalTapsForward: number;
+  totalTapsBack: number;
+  totalReplies: number;
+  totalLinkClicks: number;
+};
+
 type Props = {
   pieces: ContentCommandPiece[];
   demand?: ContentDemandSummary;
@@ -161,12 +206,35 @@ type Props = {
   /** cash_collected_cents per closed call id — the Sankey's real cash
    * source, joined via canonicalPathsByModel's callId (Priority 2). */
   callCashById?: Record<string, number>;
+  stories?: ContentStoriesSummary;
+  /** AI Bottleneck Read — undefined until the caller has run analyzeContentSystemFn once. */
+  bottleneckRead?: BottleneckReadResult;
+  onAnalyzeBottlenecks: () => void;
+  analyzingBottlenecks: boolean;
+  /** Date range driving the demand/weekly/AI read — display-only here. */
+  signalsRange: { from: string; to: string };
+  reelTarget: number;
+  onReelTargetChange: (n: number) => void;
 };
 
 const fmt = (value: number) =>
   new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(value));
+// Compact axis-tick formatter (12.3K instead of 12,345) so large values don't
+// get clipped against the chart's fixed y-axis width — tooltips still show
+// the exact value via fmt().
+const fmtCompact = (value: number) =>
+  new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 const titleFor = (piece: ContentCommandPiece) => piece.title || piece.hook || "Untitled content";
-const platformFor = (platform: string) => platform.replace(/_/g, " ");
+
+// A format-mix breakdown isn't a sequential funnel — deriveCap/deriveWorking
+// don't apply, so this stays an honest "not applicable" rather than forcing
+// a funnel-shaped sentence onto a non-funnel metric (same precedent as
+// Traffic's NOT_EVALUATED constant).
+const NOT_A_FUNNEL_STAGE: Derivation = {
+  status: "insufficient_data",
+  sentence:
+    "A content-format breakdown, not a sequential funnel stage — no upstream constraint to derive.",
+};
 
 function metricOf(piece: ContentCommandPiece) {
   return (
@@ -180,332 +248,6 @@ function interactionsOf(metric: ContentCommandMetric) {
   return (metric.likes ?? 0) + (metric.comments ?? 0) + (metric.saves ?? 0) + (metric.shares ?? 0);
 }
 
-type MoneySankeyNodePayload = {
-  name: string;
-  kind: "content" | "platform" | "cash";
-  refId: string | null;
-};
-
-/** Custom Sankey node — recharts' default renders a bare rectangle with no
- * label. Mirrors the one already proven out on the old standalone Attribution
- * page (same known recharts quirk: no containerWidth prop reaches a custom
- * node renderer, so the terminal-node side is keyed off its name instead).
- * Content/platform nodes are clickable (Priority 4) — they filter the
- * Canonical Content -> Cash table below via real contentId/platform values,
- * not a decorative interaction. The terminal "Cash Collected" node isn't a
- * specific record, so it stays inert. */
-function MoneySankeyNode(props: { onSelect?: (payload: MoneySankeyNodePayload) => void }) {
-  // recharts clones this element and merges in x/y/width/height/payload/
-  // index at render time — none of that reaches our declared prop type, so
-  // it's read back out via a cast (same approach the pre-existing
-  // attribution.tsx SankeyNodeLabel uses for the same recharts quirk).
-  const { x, y, width, height, payload, onSelect } = props as typeof props & {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    payload: MoneySankeyNodePayload;
-  };
-  const clickable = payload.kind !== "cash" && !!onSelect;
-  const isOut = payload.kind === "cash";
-  return (
-    <Layer>
-      <Rectangle
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        fill="var(--spectrum-hot)"
-        fillOpacity={0.8}
-        style={clickable ? { cursor: "pointer" } : undefined}
-        onClick={clickable ? () => onSelect!(payload) : undefined}
-      />
-      <text
-        x={isOut ? x - 6 : x + width + 6}
-        y={y + height / 2}
-        textAnchor={isOut ? "end" : "start"}
-        dominantBaseline="middle"
-        className={cn("fill-foreground text-[10px]", clickable && "cursor-pointer underline")}
-        style={clickable ? { cursor: "pointer" } : undefined}
-        onClick={clickable ? () => onSelect!(payload) : undefined}
-      >
-        {payload.name}
-      </text>
-    </Layer>
-  );
-}
-
-/** Unified money-origin attribution (spec section 9): Platform → content →
- * cash, as a real flow diagram, plus Traffic channel performance —
- * consolidating what used to be two separate dashboards (standalone
- * Attribution and Traffic pages) into Content Command Center.
- *
- * Priority 2/3 correction: the Sankey no longer reads content_metrics.
- * cash_collected_cents (confirmed to have no write path anywhere in the
- * app). It's built from aggregateCashByContent(canonicalPaths, callCashById)
- * — the SAME model-selected canonical paths driving the table below, joined
- * to calls.cash_collected_cents. This makes the model selector genuinely
- * reshape the diagram, and keeps the diagram and the table unable to
- * disagree about which calls are attributed to which content. */
-function MoneyOriginSection({
-  attributionSummary,
-  traffic,
-  canonicalPaths,
-  callCashById,
-  attributionModel,
-  pieces,
-  onFilterContent,
-  onFilterPlatform,
-  exploreAttributionSearch,
-}: {
-  attributionSummary?: ContentAttributionSummary;
-  traffic?: ContentTrafficSummary;
-  canonicalPaths: CanonicalLifecycleAttributionPath[];
-  callCashById: Record<string, number>;
-  attributionModel: AttributionModel;
-  pieces: ContentCommandPiece[];
-  onFilterContent: (contentId: string) => void;
-  onFilterPlatform: (platform: string) => void;
-  /** Current content/platform/campaign filters (from pathFilters), reused
-   * as-is for the deep link into the Attribution Command Center — never a
-   * separate filter state. */
-  exploreAttributionSearch: { contentId?: string; platform?: string; campaign?: string };
-}) {
-  const money = useMoney();
-  const pieceById = useMemo(() => new Map(pieces.map((p) => [p.id, p])), [pieces]);
-  const attributedCallCount = useMemo(
-    () => new Set(canonicalPaths.map((p) => p.callId).filter(Boolean)).size,
-    [canonicalPaths],
-  );
-
-  const cashRows = useMemo(
-    () => aggregateCashByContent(canonicalPaths, callCashById),
-    [canonicalPaths, callCashById],
-  );
-
-  const sankeyData = useMemo(() => {
-    const top = [...cashRows].sort((a, b) => b.cashCents - a.cashCents).slice(0, 8);
-    if (top.length === 0) return null;
-    const titleFor2 = (contentId: string) => {
-      const piece = pieceById.get(contentId);
-      const t = (piece ? titleFor(piece) : contentId) || contentId;
-      return t.length > 24 ? t.slice(0, 24) + "…" : t;
-    };
-    const platformFor2 = (contentId: string) => {
-      const piece = pieceById.get(contentId);
-      return piece ? pieceSocialPlatform(piece) : "Unknown / Unattributed";
-    };
-    const platformNames: string[] = Array.from(new Set(top.map((r) => platformFor2(r.contentId))));
-    const nodes: MoneySankeyNodePayload[] = [
-      ...top.map((r) => ({
-        name: titleFor2(r.contentId),
-        kind: "content" as const,
-        refId: r.contentId,
-      })),
-      ...platformNames.map((pl) => ({ name: pl, kind: "platform" as const, refId: pl })),
-      { name: "Cash Collected", kind: "cash" as const, refId: null },
-    ];
-    const platformIndex = (pl: string) => top.length + platformNames.indexOf(pl);
-    const cashNodeIndex = nodes.length - 1;
-    const links = [
-      ...top.map((r, i) => ({
-        source: i,
-        target: platformIndex(platformFor2(r.contentId)),
-        // Real cents, no dollar rounding and no artificial floor — Priority
-        // 5: only rows with cashCents > 0 ever reach this array
-        // (aggregateCashByContent already excludes zero/missing cash), so
-        // every link here is a genuinely nonzero, real value.
-        value: r.cashCents,
-      })),
-      ...platformNames.map((pl) => ({
-        source: platformIndex(pl),
-        target: cashNodeIndex,
-        value: top
-          .filter((r) => platformFor2(r.contentId) === pl)
-          .reduce((s, r) => s + r.cashCents, 0),
-      })),
-    ];
-    return { nodes, links, platformNames };
-  }, [cashRows, pieceById]);
-
-  const handleNodeSelect = (payload: MoneySankeyNodePayload) => {
-    if (payload.kind === "content" && payload.refId) onFilterContent(payload.refId);
-    else if (payload.kind === "platform" && payload.refId) onFilterPlatform(payload.refId);
-  };
-
-  const emptyDescription = !canonicalPaths.length
-    ? `No closed calls have a resolvable ${ATTRIBUTION_MODEL_LABELS[attributionModel].toLowerCase()} content attribution in this range.`
-    : `${attributedCallCount} attributed call${attributedCallCount === 1 ? "" : "s"} found for this model, but none have cash_collected_cents logged yet — log cash on the Closer call record to populate this.`;
-
-  return (
-    <div className="space-y-3">
-      {attributionSummary && (
-        <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/70 bg-card/50 p-3 sm:grid-cols-3 lg:grid-cols-6">
-          {[
-            ["Touches", fmt(attributionSummary.touches)],
-            ["Leads", fmt(attributionSummary.leads)],
-            [
-              "Attributed",
-              attributionSummary.leads
-                ? `${Math.round((attributionSummary.attributed / attributionSummary.leads) * 100)}%`
-                : "—",
-            ],
-            ["Closes", fmt(attributionSummary.closes)],
-            ["Contract value", money(attributionSummary.contractValueCents)],
-            [
-              "Cash collected",
-              money(attributionSummary.cashCollectedCents),
-              // This is every closed call in range, regardless of attribution
-              // model — a deliberately different, wider number than the
-              // money-flow diagram/table below, whose total is scoped to
-              // whichever model is selected (and can be smaller when that
-              // model can't resolve a content_id for every call). Not a
-              // discrepancy — two intentionally different totals.
-              "All closed calls, every source — independent of the attribution model selected below",
-            ],
-          ].map(([label, value, tooltip]) => (
-            <div
-              key={label}
-              className="rounded-lg border border-border/60 bg-background/40 p-2"
-              title={tooltip}
-            >
-              <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
-              <div className="mt-0.5 font-sans tabular-nums text-sm font-semibold">{value}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr]">
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
-          <div className="mb-2 flex items-start justify-between gap-3">
-            <div>
-              <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Unified money-origin attribution — {ATTRIBUTION_MODEL_LABELS[attributionModel]}{" "}
-                basis
-              </div>
-              <div className="mt-0.5 text-base font-semibold">
-                Content → platform → cash collected
-              </div>
-            </div>
-            <Link
-              to="/attribution"
-              search={exploreAttributionSearch}
-              className="shrink-0 whitespace-nowrap text-xs text-primary hover:underline"
-            >
-              Explore Full Attribution →
-            </Link>
-          </div>
-          <div className="mb-2">
-            <p className="text-xs text-muted-foreground">
-              Reshapes with the attribution model selected below. Click a content or platform node
-              to filter the table.
-            </p>
-            {attributionModel === "assisted_touch" && (
-              <p className="mt-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 text-3xs text-amber-300">
-                Assisted credit is inferred, not direct: the same call's cash can be attributed to
-                more than one assisting piece here, so totals will legitimately exceed any single
-                call's real amount. Not an aggregate total.
-              </p>
-            )}
-          </div>
-          {sankeyData ? (
-            <>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <Sankey
-                    data={sankeyData}
-                    nodePadding={18}
-                    nodeWidth={10}
-                    linkCurvature={0.5}
-                    link={{ stroke: "var(--spectrum-hot)", strokeOpacity: 0.25 }}
-                    node={<MoneySankeyNode onSelect={handleNodeSelect} />}
-                  >
-                    <Tooltip content={<ChartTooltip formatter={(v: number) => money(v)} />} />
-                  </Sankey>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-3xs text-muted-foreground">
-                {sankeyData.platformNames.map((pl) => (
-                  <span key={pl} className="inline-flex items-center gap-1">
-                    <PlatformIcon platform={pl} className="h-3 w-3" /> {pl}
-                  </span>
-                ))}
-              </div>
-            </>
-          ) : (
-            <EmptyState
-              icon={<ArrowUpRight className="h-4 w-4" />}
-              title="No attributed cash for this model"
-              description={emptyDescription}
-            />
-          )}
-        </div>
-
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
-          <div className="mb-2">
-            <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Traffic & channel performance
-            </div>
-            <div className="mt-0.5 text-base font-semibold">Revenue by traffic source</div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Consolidated from the standalone Traffic page — manage sources and tracking URLs
-              there. Rows aren't individually clickable: there's no per-channel filtered lead view
-              yet to send you to.
-            </p>
-          </div>
-          {traffic && traffic.channels.length ? (
-            <div className="space-y-2">
-              {traffic.channels.map((c) => (
-                <div key={c.id} className="rounded-lg border border-border/60 bg-muted/10 p-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 truncate text-xs font-medium">
-                      <PlatformIcon platform={normalizeSocialPlatform(c.name)} />
-                      {c.name}
-                    </span>
-                    <span className="font-sans tabular-nums text-xs text-spectrum-hot">
-                      {money(c.contractedCents)}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-3xs text-muted-foreground">
-                    <span>{c.leads} leads</span>
-                    <span>{c.clients} clients</span>
-                    <span>{c.closeRate.toFixed(0)}% close</span>
-                    <span>{money(c.revenuePerLeadCents)}/lead</span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-3xs text-muted-foreground">
-                    <span>Collected: {money(c.collectedCents)}</span>
-                    {c.clientContractedCents > 0 && (
-                      <span>Mentee contract LTV: {money(c.clientContractedCents)}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {traffic.noSource > 0 && (
-                <div className="text-3xs text-muted-foreground">
-                  {traffic.noSource} lead{traffic.noSource === 1 ? "" : "s"} with no traffic source
-                  attached — unattributed, not guessed.
-                </div>
-              )}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<Radio className="h-4 w-4" />}
-              title="No traffic channels yet"
-              description="Add traffic sources on the Traffic page and tag leads with a source to populate this."
-              action={
-                <Link to="/traffic" className="text-xs text-primary hover:underline">
-                  Open Traffic →
-                </Link>
-              }
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function ContentCommandCenter({
   pieces,
   demand,
@@ -515,9 +257,21 @@ export function ContentCommandCenter({
   traffic,
   attributionSummary,
   callCashById = {},
+  stories,
+  bottleneckRead,
+  onAnalyzeBottlenecks,
+  analyzingBottlenecks,
+  signalsRange,
+  reelTarget,
+  onReelTargetChange,
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("views");
+  const money = useMoney();
   const [selectedPath, setSelectedPath] = useState<CanonicalLifecycleAttributionPath | null>(null);
+  // Format Mix drill-down (spec: clicking a format bar must open the real
+  // content pieces behind it, preserving every other active filter) — set
+  // by the "Views by content type" chart below.
+  const [formatMixDrill, setFormatMixDrill] = useState<string | null>(null);
   // Transparent attribution model (spec: "show the strength and quality of
   // every attribution path" across a selectable model). Falls back to the
   // single `canonicalPaths` prop (always first-touch) when the caller hasn't
@@ -562,16 +316,21 @@ export function ContentCommandCenter({
     platform: "all",
     format: "all",
   });
+  // Platform vs format: `piece.platform` is a DB enum that conflates the two
+  // (see src/lib/platform-format.ts's doc comment for the full story). Until
+  // that gets a real schema migration, PLATFORM here always resolves through
+  // pieceSocialPlatform() (source_platform-first) and FORMAT reads the
+  // `platform` enum column instead — never the other way around.
+  const taxonomyOf = (piece: ContentCommandPiece) =>
+    normalizeTaxonomy({
+      funnelStage: piece.funnel_stage,
+      mechanism: piece.mechanism,
+      variation: piece.variation,
+      platform: pieceSocialPlatform(piece),
+      format: piece.platform,
+    });
   const taxonomyOptions = useMemo(() => {
-    const normalized = pieces.map((piece) =>
-      normalizeTaxonomy({
-        funnelStage: piece.funnel_stage,
-        mechanism: piece.mechanism,
-        variation: piece.variation,
-        platform: piece.platform,
-        format: piece.post_format,
-      }),
-    );
+    const normalized = pieces.map(taxonomyOf);
     return {
       mechanisms: [
         ...new Set(normalized.map((row) => row.mechanism).filter((value) => value !== "unknown")),
@@ -579,24 +338,31 @@ export function ContentCommandCenter({
       variations: [
         ...new Set(normalized.map((row) => row.variation).filter((value) => value !== "unknown")),
       ],
-      platforms: [
-        ...new Set(normalized.map((row) => row.platform).filter((value) => value !== "unknown")),
-      ],
-      formats: [
-        ...new Set(normalized.map((row) => row.format).filter((value) => value !== "unknown")),
-      ],
+      // Canonical taxonomy (social-platform.ts — the exact same list
+      // normalizeSocialPlatform()/pieceSocialPlatform() resolve real pieces
+      // into, and the same helper Attribution's own platform filter already
+      // reuses), not just whatever happens to be in the currently loaded
+      // pieces — a workspace with only YouTube content logged still sees
+      // Instagram/TikTok/etc. as real, selectable options; selecting one
+      // with no matching pieces just shows the existing honest empty state,
+      // never a fabricated row.
+      platforms: socialPlatformOptions(),
+      // Cascaded: when a platform is selected, only formats real pieces on
+      // that platform actually used are offered — never a fixed list, so a
+      // platform never shows a format nobody has logged (spec: "only expose
+      // formats that are actually supported by the underlying data").
+      formats: buildFormatOptions(
+        pieces,
+        (piece) => taxonomyOf(piece).platform,
+        (piece) => taxonomyOf(piece).format,
+        taxonomyFilters.platform,
+      ).map((option) => option.value),
     };
-  }, [pieces]);
+  }, [pieces, taxonomyFilters.platform]);
   const visiblePieces = useMemo(
     () =>
       pieces.filter((piece) => {
-        const taxonomy = normalizeTaxonomy({
-          funnelStage: piece.funnel_stage,
-          mechanism: piece.mechanism,
-          variation: piece.variation,
-          platform: piece.platform,
-          format: piece.post_format,
-        });
+        const taxonomy = taxonomyOf(piece);
         return (
           (taxonomyFilters.funnelStage === "all" ||
             taxonomy.funnelStage === taxonomyFilters.funnelStage) &&
@@ -621,7 +387,19 @@ export function ContentCommandCenter({
     const closes = rows.reduce((sum, row) => sum + (row.closes ?? 0), 0);
     const cash = rows.reduce((sum, row) => sum + (row.cash_collected_cents ?? 0), 0);
     const hasReach = rows.some((row) => row.reach != null && row.reach > 0);
+    const hasInteractions = rows.some((row) => interactionsOf(row) > 0);
     const hasFollowers = rows.some((row) => row.followers_gained != null);
+    // Replay depth = views ÷ reach, only over pieces that logged both — the
+    // exact ratio Post-Level Performance already computes per row (see
+    // `replay` below), aggregated here for the Replay Depth availability
+    // card instead of a second, differently-scoped definition.
+    const replayRows = rows.filter(
+      (row) => row.reach != null && row.reach > 0 && row.views != null,
+    );
+    const replayViewsSum = replayRows.reduce((sum, row) => sum + (row.views ?? 0), 0);
+    const replayReachSum = replayRows.reduce((sum, row) => sum + (row.reach ?? 0), 0);
+    const averageReplayDepth =
+      replayRows.length && replayReachSum > 0 ? replayViewsSum / replayReachSum : null;
     const retentionRows = rows.filter(
       (row) =>
         row.avg_watch_pct != null ||
@@ -667,12 +445,14 @@ export function ContentCommandCenter({
         label: row.date.slice(5),
       }));
 
+    // Format Mix groups by FORMAT (the `platform` enum column, read as
+    // format — see the platform/format note above `taxonomyOf`), with
+    // proper capitalized labels instead of a raw underscore-replace.
     const typeMap = new Map<string, number>();
-    for (const piece of visiblePieces)
-      typeMap.set(
-        platformFor(piece.platform),
-        (typeMap.get(platformFor(piece.platform)) ?? 0) + (metricOf(piece).views ?? 0),
-      );
+    for (const piece of visiblePieces) {
+      const label = formatLabel(piece.platform);
+      typeMap.set(label, (typeMap.get(label) ?? 0) + (metricOf(piece).views ?? 0));
+    }
     const types = [...typeMap.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([name, views]) => ({ name, views }));
@@ -681,6 +461,7 @@ export function ContentCommandCenter({
       totalViews,
       totalReach,
       totalInteractions,
+      hasInteractions,
       followersGained,
       profileVisits,
       leads,
@@ -689,10 +470,46 @@ export function ContentCommandCenter({
       hasReach,
       hasFollowers,
       averageWatchPct,
+      averageReplayDepth,
+      replaySampleSize: replayRows.length,
       trend,
       types,
     };
   }, [visiblePieces]);
+
+  // Format Mix drill-down rows — scoped to visiblePieces (already filtered
+  // by every active Filter Intelligence dimension: funnel stage/mechanism/
+  // variation/platform/format), narrowed further to exactly the format bar
+  // that was clicked. Never a generic, unfiltered content list.
+  const formatMixRows = useMemo(
+    () =>
+      formatMixDrill
+        ? visiblePieces.filter((piece) => formatLabel(piece.platform) === formatMixDrill)
+        : [],
+    [visiblePieces, formatMixDrill],
+  );
+  const formatMixColumns: DetailColumn<ContentCommandPiece>[] = [
+    { key: "title", label: "Content", render: (p) => titleFor(p) },
+    { key: "platform", label: "Platform", render: (p) => pieceSocialPlatform(p) },
+    {
+      key: "views",
+      label: "Views",
+      align: "right",
+      render: (p) => fmt(metricOf(p).views ?? 0),
+    },
+    {
+      key: "leads",
+      label: "Leads",
+      align: "right",
+      render: (p) => fmt(metricOf(p).leads_generated ?? 0),
+    },
+    {
+      key: "cash",
+      label: "Cash",
+      align: "right",
+      render: (p) => money(metricOf(p).cash_collected_cents ?? 0),
+    },
+  ];
 
   const sortedPieces = useMemo(
     () =>
@@ -713,15 +530,9 @@ export function ContentCommandCenter({
     [visiblePieces, sortKey],
   );
 
-  const mix = MECHANISM_KEYS.map((key) => ({
-    key,
-    label: MECHANISMS[key].label,
-    value: demand?.mix?.[key] ?? 0,
-  }));
-
   return (
     <section aria-labelledby="content-command-center-title" className="space-y-4">
-      <div className="flex flex-col gap-3 border-l-2 border-spectrum-mid pl-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-3 border-l-2 border-spectrum-mid pl-4">
         <div>
           <div className="flex items-center gap-2 text-3xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5 text-spectrum-mid" /> ContentOS · unified intelligence
@@ -733,69 +544,61 @@ export function ContentCommandCenter({
             Content Command Center
           </h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Performance, audience signals, retention, and content demand in one operating view.
-            Existing Content Intelligence and Content Signals remain the source of truth.
+            Performance, audience signals, retention, content-to-cash attribution, content demand
+            signals, and setter-call intelligence — this is the source of truth for content, in one
+            operating view.
           </p>
         </div>
-        <Link
-          to="/content-signals"
-          className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-md border border-border px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-muted/40 sm:self-auto"
-        >
-          Open signal engine <ArrowUpRight className="h-3.5 w-3.5" />
-        </Link>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-card/50 p-3">
         <span className="mr-1 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           Filter intelligence
         </span>
-        {[
-          [
-            "funnelStage",
-            "Funnel stage",
-            FUNNEL_STAGES.map((value) => ({ value, label: value.toUpperCase() })),
-          ],
-          [
-            "mechanism",
-            "Mechanism",
-            taxonomyOptions.mechanisms.map((value) => ({
-              value,
-              label: MECHANISMS[value as MechanismKey]?.label ?? value,
-            })),
-          ],
-          [
-            "variation",
-            "Variation",
-            taxonomyOptions.variations.map((value) => ({ value, label: value.replace(/_/g, " ") })),
-          ],
-          [
-            "platform",
-            "Platform",
-            taxonomyOptions.platforms.map((value) => ({ value, label: platformFor(value) })),
-          ],
-          [
-            "format",
-            "Format",
-            taxonomyOptions.formats.map((value) => ({ value, label: value.replace(/_/g, " ") })),
-          ],
-        ].map(([key, label, options]) => (
-          <select
-            key={key as string}
-            aria-label={label as string}
-            value={taxonomyFilters[key as keyof typeof taxonomyFilters]}
-            onChange={(event) =>
-              setTaxonomyFilters((current) => ({ ...current, [key as string]: event.target.value }))
-            }
-            className="h-8 rounded-md border border-border bg-background px-2 text-xs capitalize text-foreground"
-          >
-            <option value="all">All {label as string}</option>
-            {(options as Array<{ value: string; label: string }>).map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        ))}
+        <TaxonomySelect
+          label="Funnel stage"
+          value={taxonomyFilters.funnelStage}
+          options={FUNNEL_STAGES.map((value) => ({ value, label: value.toUpperCase() }))}
+          onChange={(value) =>
+            setTaxonomyFilters((current) => ({ ...current, funnelStage: value }))
+          }
+        />
+        <TaxonomySelect
+          label="Mechanism"
+          value={taxonomyFilters.mechanism}
+          options={taxonomyOptions.mechanisms.map((value) => ({
+            value,
+            label: MECHANISMS[value as MechanismKey]?.label ?? value,
+          }))}
+          onChange={(value) => setTaxonomyFilters((current) => ({ ...current, mechanism: value }))}
+        />
+        <TaxonomySelect
+          label="Variation"
+          value={taxonomyFilters.variation}
+          options={taxonomyOptions.variations.map((value) => ({
+            value,
+            label: value.replace(/_/g, " "),
+          }))}
+          onChange={(value) => setTaxonomyFilters((current) => ({ ...current, variation: value }))}
+        />
+        {/* Platform means Instagram/TikTok/YouTube/... (source_platform-
+            resolved) — never a format. See taxonomyOf() above. Changing
+            platform resets format, since the format list is scoped to
+            whichever platform is selected. */}
+        <TaxonomySelect
+          label="Platform"
+          value={taxonomyFilters.platform}
+          options={taxonomyOptions.platforms.map((value) => ({ value, label: value }))}
+          onChange={(value) =>
+            setTaxonomyFilters((current) => ({ ...current, platform: value, format: "all" }))
+          }
+        />
+        <TaxonomySelect
+          label="Format"
+          value={taxonomyFilters.format}
+          options={taxonomyOptions.formats.map((value) => ({ value, label: formatLabel(value) }))}
+          onChange={(value) => setTaxonomyFilters((current) => ({ ...current, format: value }))}
+        />
         {Object.values(taxonomyFilters).some((value) => value !== "all") && (
           <button
             type="button"
@@ -888,17 +691,21 @@ export function ContentCommandCenter({
           <div className="flex flex-col items-end gap-1">
             <label className="flex items-center gap-1.5 text-3xs uppercase tracking-wider text-muted-foreground">
               Attribution model
-              <select
+              <Select
                 value={attributionModel}
-                onChange={(e) => setAttributionModel(e.target.value as AttributionModel)}
-                className="h-7 rounded-md border border-border bg-background px-2 text-2xs normal-case tracking-normal text-foreground"
+                onValueChange={(v) => setAttributionModel(v as AttributionModel)}
               >
-                {ATTRIBUTION_MODELS.map((m) => (
-                  <option key={m} value={m}>
-                    {ATTRIBUTION_MODEL_LABELS[m]}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="h-7 w-auto gap-1.5 rounded-md border-border bg-background px-2 text-2xs normal-case tracking-normal text-foreground">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ATTRIBUTION_MODELS.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {ATTRIBUTION_MODEL_LABELS[m]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <div className="text-3xs text-muted-foreground">
               {filteredCanonicalPaths.length} path{filteredCanonicalPaths.length === 1 ? "" : "s"} ·{" "}
@@ -908,8 +715,22 @@ export function ContentCommandCenter({
             </div>
           </div>
         </div>
+        {/* Platform here already resolves through pieceSocialPlatform() via
+            platformByContentId (built above from real source_platform data)
+            — genuinely the true platform, not the format-conflated field.
+            Campaign/Source stay exactly as recorded on the canonical path
+            (no normalized Campaign entity exists yet — see
+            src/lib/platform-format.ts and the discovery report's Section 7);
+            these filters show real values only, never invented ones. */}
         <div className="mt-3 grid gap-2 sm:grid-cols-4">
-          {(["platform", "campaign", "source", "content"] as const).map((key) => {
+          {(
+            [
+              ["platform", "Platform"],
+              ["campaign", "Campaign"],
+              ["source", "Source"],
+              ["content", "Content"],
+            ] as const
+          ).map(([key, label]) => {
             const sourceKey = key === "content" ? "contentId" : key;
             const values =
               key === "platform"
@@ -925,21 +746,31 @@ export function ContentCommandCenter({
                   ) as string[]);
             return (
               <label key={key} className="text-3xs uppercase tracking-wider text-muted-foreground">
-                {key}
-                <select
+                {label}
+                <Select
                   value={pathFilters[key]}
-                  onChange={(event) =>
-                    setPathFilters((current) => ({ ...current, [key]: event.target.value }))
+                  onValueChange={(value) =>
+                    setPathFilters((current) => ({ ...current, [key]: value }))
                   }
-                  className="mt-1 block w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs normal-case tracking-normal text-foreground"
                 >
-                  <option value="all">All</option>
-                  {values.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="mt-1 h-8 w-full rounded-md border-border bg-background px-2 text-xs normal-case tracking-normal text-foreground">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    {values.length === 0 ? (
+                      <div className="px-2 py-1.5 text-3xs text-muted-foreground">
+                        No {label.toLowerCase()} data yet
+                      </div>
+                    ) : (
+                      values.map((value) => (
+                        <SelectItem key={value} value={value}>
+                          {value}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </label>
             );
           })}
@@ -1031,21 +862,13 @@ export function ContentCommandCenter({
         )}
       </section>
 
-      <MoneyOriginSection
-        attributionSummary={attributionSummary}
-        traffic={traffic}
-        canonicalPaths={activeCanonicalPaths}
-        callCashById={callCashById}
-        attributionModel={attributionModel}
-        pieces={pieces}
-        onFilterContent={(contentId) => setPathFilters((prev) => ({ ...prev, content: contentId }))}
-        onFilterPlatform={(platform) => setPathFilters((prev) => ({ ...prev, platform }))}
-        exploreAttributionSearch={{
-          contentId: pathFilters.content !== "all" ? pathFilters.content : undefined,
-          platform: pathFilters.platform !== "all" ? pathFilters.platform : undefined,
-          campaign: pathFilters.campaign !== "all" ? pathFilters.campaign : undefined,
-        }}
-      />
+      {/* Traffic and Attribution used to each get a smaller, separate
+          mini-section here (a second Sankey, a static traffic-by-channel
+          list) — replaced with the exact same components the standalone
+          /traffic and /attribution pages render, so there is one
+          implementation of each system, not a competing summarized copy. */}
+      <TrafficPageContent embedded />
+      <AttributionPageContent embedded />
 
       <div className="grid gap-3 xl:grid-cols-[1.45fr_0.75fr]">
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
@@ -1069,12 +892,18 @@ export function ContentCommandCenter({
                   Reach
                 </span>
               )}
+              {stats.hasInteractions && (
+                <span className="flex items-center gap-1">
+                  <i className="h-1.5 w-1.5 rounded-full bg-spectrum-hot" />
+                  Interactions
+                </span>
+              )}
             </div>
           </div>
           {stats.trend.length > 1 ? (
             <div className="h-60">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={stats.trend} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                <AreaChart data={stats.trend} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
                   <defs>
                     <linearGradient id="contentViewsFill" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={SPECTRUM_VAR.cold} stopOpacity={0.35} />
@@ -1094,8 +923,8 @@ export function ContentCommandCenter({
                     fontSize={10}
                     tickLine={false}
                     axisLine={false}
-                    width={42}
-                    tickFormatter={(value) => fmt(value)}
+                    width={52}
+                    tickFormatter={(value) => fmtCompact(value)}
                   />
                   <Tooltip
                     content={
@@ -1125,6 +954,16 @@ export function ContentCommandCenter({
                       strokeWidth={1.5}
                     />
                   )}
+                  {stats.hasInteractions && (
+                    <Area
+                      type="monotone"
+                      dataKey="interactions"
+                      name="interactions"
+                      stroke={SPECTRUM_VAR.hot}
+                      fill="none"
+                      strokeWidth={1.5}
+                    />
+                  )}
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -1144,6 +983,9 @@ export function ContentCommandCenter({
                 Format mix
               </div>
               <div className="mt-0.5 text-base font-semibold">Views by content type</div>
+              <p className="mt-1 text-3xs text-muted-foreground">
+                Click a bar to see the content pieces behind it.
+              </p>
             </div>
             <Video className="h-4 w-4 text-muted-foreground" />
           </div>
@@ -1176,7 +1018,14 @@ export function ContentCommandCenter({
                   <Tooltip
                     content={<ChartTooltip formatter={(value: number) => [fmt(value), "Views"]} />}
                   />
-                  <Bar dataKey="views" fill={SPECTRUM_VAR.mid} radius={[0, 4, 4, 0]} barSize={16} />
+                  <Bar
+                    dataKey="views"
+                    fill={SPECTRUM_VAR.mid}
+                    radius={[0, 4, 4, 0]}
+                    barSize={16}
+                    cursor="pointer"
+                    onClick={(data: { name?: string }) => data.name && setFormatMixDrill(data.name)}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1190,7 +1039,24 @@ export function ContentCommandCenter({
         </div>
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[1.25fr_0.75fr]">
+      <MetricDetailPanel<ContentCommandPiece>
+        open={!!formatMixDrill}
+        onOpenChange={(v) => !v && setFormatMixDrill(null)}
+        title={formatMixDrill ?? ""}
+        subtitle={
+          formatMixDrill
+            ? `Content pieces logged as ${formatMixDrill}, current filters applied`
+            : undefined
+        }
+        columns={formatMixColumns}
+        rows={formatMixRows}
+        rowKey={(p) => p.id}
+        cap={NOT_A_FUNNEL_STAGE}
+        working={NOT_A_FUNNEL_STAGE}
+        emptyRowsLabel="No content pieces for this format in the current filters."
+      />
+
+      <div>
         <div className="rounded-2xl border border-border bg-card shadow-sm">
           <div className="flex flex-col gap-3 border-b border-border/70 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-5">
             <div>
@@ -1275,7 +1141,7 @@ export function ContentCommandCenter({
                               <div className="mt-1 flex items-center gap-2 text-3xs capitalize text-muted-foreground">
                                 <span className="inline-flex items-center gap-1">
                                   <PlatformIcon platform={pieceSocialPlatform(piece)} />
-                                  {platformFor(piece.platform)}
+                                  {pieceSocialPlatform(piece)} · {formatLabel(piece.platform)}
                                 </span>
                                 {piece.mechanism && <span>· {piece.mechanism}</span>}
                                 <span>· open post ↗</span>
@@ -1289,7 +1155,7 @@ export function ContentCommandCenter({
                               <div className="mt-1 flex items-center gap-2 text-3xs capitalize text-muted-foreground">
                                 <span className="inline-flex items-center gap-1">
                                   <PlatformIcon platform={pieceSocialPlatform(piece)} />
-                                  {platformFor(piece.platform)}
+                                  {pieceSocialPlatform(piece)} · {formatLabel(piece.platform)}
                                 </span>
                                 {piece.mechanism && <span>· {piece.mechanism}</span>}
                               </div>
@@ -1330,9 +1196,18 @@ export function ContentCommandCenter({
             />
           )}
         </div>
-
-        <SignalLayer demand={demand} weekly={weekly} mix={mix} />
       </div>
+
+      <ContentSignalsSection
+        demand={demand as SignalsDemand | undefined}
+        weekly={weekly as SignalsWeekly | undefined}
+        bottleneckRead={bottleneckRead}
+        onAnalyze={onAnalyzeBottlenecks}
+        analyzing={analyzingBottlenecks}
+        rangeLabel={`${signalsRange.from} → ${signalsRange.to}`}
+        reelTarget={reelTarget}
+        onReelTargetChange={onReelTargetChange}
+      />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <AvailabilityCard
@@ -1344,8 +1219,20 @@ export function ContentCommandCenter({
         <AvailabilityCard
           icon={<Radio className="h-4 w-4" />}
           label="Stories"
-          value="Not connected"
-          detail="Active stories, story reach, replies, shares, and exits are not in the current tracker."
+          value={
+            stories && stories.sequencesTracked > 0
+              ? `${fmt(stories.totalViews)} slide views`
+              : "No data yet"
+          }
+          detail={
+            stories && stories.sequencesTracked > 0
+              ? `${stories.sequencesTracked} sequence${stories.sequencesTracked === 1 ? "" : "s"} · ${stories.totalSlides} slides · ${
+                  stories.avgExitRatePct != null
+                    ? `${stories.avgExitRatePct.toFixed(1)}% avg exit`
+                    : "exit rate: insufficient data"
+                }`
+              : "Real data source (story_slides / slide_metrics) — log a story sequence with slides in the content table to populate this card."
+          }
         />
         <AvailabilityCard
           icon={<BarChart3 className="h-4 w-4" />}
@@ -1362,8 +1249,17 @@ export function ContentCommandCenter({
         <AvailabilityCard
           icon={<Sparkles className="h-4 w-4" />}
           label="Replay depth"
-          value="Not connected"
-          detail="Replay rate requires views divided by reach from a source that exposes both."
+          value={
+            stats.averageReplayDepth != null
+              ? `${stats.averageReplayDepth.toFixed(2)}×`
+              : "Insufficient data"
+          }
+          detail={
+            stats.averageReplayDepth != null
+              ? `Views ÷ reach across ${stats.replaySampleSize} tracked piece${stats.replaySampleSize === 1 ? "" : "s"} with both fields logged, within the current filters.`
+              : "Needs at least one visible piece with both views and reach logged."
+          }
+          title="Replay depth = views ÷ reach — how many times, on average, the content was replayed relative to unique reach. Same calculation as the Replay column in Post-level performance."
         />
       </div>
     </section>
@@ -1412,134 +1308,23 @@ function AvailabilityCard({
   label,
   value,
   detail,
+  title,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   detail: string;
+  /** Native tooltip — used for cards that need to spell out a calculation. */
+  title?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-background/45 p-4">
+    <div className="rounded-2xl border border-border bg-background/45 p-4" title={title}>
       <div className="flex items-center gap-2 text-3xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {icon}
         {label}
       </div>
       <div className="mt-3 text-sm font-semibold text-foreground">{value}</div>
       <div className="mt-1 text-3xs leading-relaxed text-muted-foreground">{detail}</div>
-    </div>
-  );
-}
-
-function SignalLayer({
-  demand,
-  weekly,
-  mix,
-}: {
-  demand?: ContentDemandSummary;
-  weekly?: ContentWeeklySummary;
-  mix: { key: MechanismKey; label: string; value: number }[];
-}) {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            <Sparkles className="h-3.5 w-3.5 text-spectrum-mid" /> Content signals
-          </div>
-          <div className="mt-0.5 text-base font-semibold">What to post next</div>
-        </div>
-        <Link
-          to="/content-signals"
-          className="text-3xs text-muted-foreground hover:text-foreground"
-        >
-          Open full view →
-        </Link>
-      </div>
-      {demand ? (
-        <>
-          <div className="mt-4 space-y-3">
-            {mix.map((item) => (
-              <div key={item.key}>
-                <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-                  <span>{item.label}</span>
-                  <span className="font-sans tabular-nums text-muted-foreground">
-                    {item.value}%
-                  </span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-muted/60">
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${Math.max(0, Math.min(100, item.value))}%`,
-                      background:
-                        SPECTRUM_VAR[
-                          item.key === "educational" || item.key === "relatability"
-                            ? "cold"
-                            : item.key === "credibility"
-                              ? "mid"
-                              : "hot"
-                        ],
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border/70 pt-3 text-3xs text-muted-foreground">
-            <div>
-              <span className="font-sans tabular-nums text-foreground">{weekly?.reels ?? 0}</span>{" "}
-              reels this week
-            </div>
-            <div>
-              <span className="font-sans tabular-nums text-foreground">
-                {weekly?.untracked ?? 0}
-              </span>{" "}
-              untracked
-            </div>
-            <div>
-              <span className="font-sans tabular-nums text-foreground">
-                {weekly?.missing?.length ?? 0}
-              </span>{" "}
-              categories missing
-            </div>
-            <div>
-              <span className="font-sans tabular-nums text-foreground">
-                {demand.counts?.faq ?? 0}
-              </span>{" "}
-              FAQ signals
-            </div>
-          </div>
-          {demand.insufficientData && (
-            <div className="mt-3 rounded-lg border border-[color:var(--color-warning)]/25 bg-[color:var(--color-warning)]/[0.06] px-3 py-2 text-3xs text-[color:var(--color-warning)]">
-              Limited data: this is a real computed mix, but the signal weight is below the
-              workspace threshold.
-            </div>
-          )}
-          {(weekly?.best || weekly?.worst) && (
-            <div className="mt-3 rounded-lg border border-border/70 bg-background/40 px-3 py-2 text-3xs text-muted-foreground">
-              <span className="text-[color:var(--color-success)]">
-                Best:{" "}
-                {weekly.best
-                  ? (MECHANISMS[weekly.best as MechanismKey]?.label ?? weekly.best)
-                  : "—"}
-              </span>
-              <span className="mx-2 text-border">·</span>
-              <span className="text-[color:var(--color-warning)]">
-                Needs attention:{" "}
-                {weekly.worst
-                  ? (MECHANISMS[weekly.worst as MechanismKey]?.label ?? weekly.worst)
-                  : "—"}
-              </span>
-            </div>
-          )}
-        </>
-      ) : (
-        <EmptyState
-          icon={<Sparkles className="h-4 w-4" />}
-          title="Signal layer loading"
-          description="The existing Content Signals engine will appear here when the workspace data is available."
-        />
-      )}
     </div>
   );
 }

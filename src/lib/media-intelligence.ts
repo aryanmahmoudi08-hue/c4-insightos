@@ -1,3 +1,5 @@
+import { pctDelta } from "./trend";
+
 export const VSL_CATEGORIES = [
   "Main VSL",
   "Webinar VSL",
@@ -463,6 +465,48 @@ export function deriveLargestLeak(stages: VslFunnelStage[]): VslLargestLeak | nu
     }
   }
   return worst;
+}
+
+/** Stage-to-stage conversion and prior-period volume comparison — additive
+ * to buildVslFunnel()'s stage list, never a replacement for it. Two
+ * genuinely separate metrics per stage, never conflated:
+ *  - conversionPct: this stage vs. the PREVIOUS STAGE IN THE SAME PERIOD.
+ *  - volumeDelta/volumeDeltaPct: this stage vs. the SAME STAGE IN THE PRIOR
+ *    PERIOD. */
+export type VslFunnelStageMetrics = {
+  key: VslFunnelStageKey;
+  conversionPct: number | null;
+  priorValue: number | null;
+  volumeDelta: number | null;
+  volumeDeltaPct: number | null;
+};
+
+export function deriveVslFunnelStageMetrics(
+  stages: VslFunnelStage[],
+  priorStages: VslFunnelStage[],
+): VslFunnelStageMetrics[] {
+  const priorByKey = new Map(priorStages.map((s) => [s.key, s]));
+  return stages.map((stage, i) => {
+    const prevStage = i > 0 ? stages[i - 1] : null;
+    // Same unit-mismatch exclusion deriveLargestLeak() applies: "cash" is a
+    // cents amount, every other stage is a head count, so a stage-to-stage
+    // ratio into "cash" isn't a real conversion rate.
+    const conversionPct =
+      stage.key !== "cash" &&
+      prevStage &&
+      prevStage.value != null &&
+      stage.value != null &&
+      prevStage.value > 0
+        ? (stage.value / prevStage.value) * 100
+        : null;
+    const priorValue = priorByKey.get(stage.key)?.value ?? null;
+    const volumeDelta = stage.value != null && priorValue != null ? stage.value - priorValue : null;
+    const volumeDeltaPct =
+      stage.value != null && priorValue != null
+        ? (pctDelta(stage.value, priorValue) ?? null)
+        : null;
+    return { key: stage.key, conversionPct, priorValue, volumeDelta, volumeDeltaPct };
+  });
 }
 
 export type ContentCashPath = {

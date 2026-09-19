@@ -8,8 +8,8 @@ describe("EOD RBAC policy", () => {
     expect(allowedEodRolesForAppRole("closer")).toEqual(["closer"]);
   });
 
-  it("allows administrative and sales-manager roles to manage all workflows", () => {
-    for (const role of ["owner", "admin", "sales_manager"]) {
+  it("allows administrative, sales-manager, and growth-ops roles to manage all workflows", () => {
+    for (const role of ["owner", "admin", "sales_manager", "growth_ops"]) {
       expect(allowedEodRolesForAppRole(role)).toEqual(["dm_setter", "inbound_dialer", "closer"]);
     }
   });

@@ -23,6 +23,16 @@ export type AttributionModelInput = {
     created_at: string | null;
     closed: boolean | null;
     source_content_id: string | null;
+    /** Real, already-existing columns — threaded through to the canonical
+     * path's setterId/dialerId/closerId/offerId so the lifecycle chain can
+     * show these stages without a second engine. This schema has one rep
+     * column ("setter_id") shared by DM Setter and Inbound Dialer bookings —
+     * see attribution.tsx's own note on the same fact. */
+    setterId?: string | null;
+    closerId?: string | null;
+    /** clients.offer_name for this call's lead, when a client record exists
+     * — the real "Offer/Product" signal (no dedicated offers table/id). */
+    offerName?: string | null;
   }>;
   touches: Array<{ lead_id: string; content_id: string; touched_at: string }>;
   sampleSize: number | null;
@@ -60,6 +70,9 @@ export function buildAttributionPathsForModel(
           outcomeKey: call.id,
           contentId: lead.source_content_id,
           callId: call.id,
+          setterId: call.setterId ?? null,
+          closerId: call.closerId ?? null,
+          offerId: call.offerName ?? null,
           events: [
             { id: lead.id, type: "lead", at: lead.created_at },
             { id: call.id, type: "call_closed", at: String(call.created_at ?? "") },
@@ -85,6 +98,9 @@ export function buildAttributionPathsForModel(
           outcomeKey: call.id,
           contentId: call.source_content_id,
           callId: call.id,
+          setterId: call.setterId ?? null,
+          closerId: call.closerId ?? null,
+          offerId: call.offerName ?? null,
           events: [
             { id: call.id, type: "call_booked_and_closed", at: String(call.created_at ?? "") },
           ],
@@ -110,6 +126,9 @@ export function buildAttributionPathsForModel(
           outcomeKey: call.id,
           contentId: touch.content_id,
           callId: call.id,
+          setterId: call.setterId ?? null,
+          closerId: call.closerId ?? null,
+          offerId: call.offerName ?? null,
           events: [
             { id: touch.content_id, type: `${model}_touch`, at: touch.touched_at },
             { id: call.id, type: "call_closed", at: String(call.created_at ?? "") },
@@ -138,6 +157,9 @@ export function buildAttributionPathsForModel(
             outcomeKey: call.id,
             contentId: touch.content_id,
             callId: call.id,
+            setterId: call.setterId ?? null,
+            closerId: call.closerId ?? null,
+            offerId: call.offerName ?? null,
             events: [
               { id: touch.content_id, type: "assisted_touch", at: touch.touched_at },
               { id: call.id, type: "call_closed", at: String(call.created_at ?? "") },

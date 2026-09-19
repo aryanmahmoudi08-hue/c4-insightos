@@ -19,6 +19,7 @@ export function allowedEodRolesForAppRole(role: string): readonly EodRole[] {
     case "owner":
     case "admin":
     case "sales_manager":
+    case "growth_ops":
       return EOD_ROLES;
     case "setter":
       return ["dm_setter"];

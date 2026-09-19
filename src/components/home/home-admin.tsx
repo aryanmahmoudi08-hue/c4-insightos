@@ -196,7 +196,7 @@ export function HomeAdmin({ orgId }: { orgId: string }) {
               <FocusRow
                 tone="destructive"
                 label={`${overdueRows.length} overdue installment${overdueRows.length === 1 ? "" : "s"} — $${(atRiskCents / 100).toLocaleString()} at risk`}
-                to="/clients"
+                to="/payments"
               />
             )}
             {renewalsAtRisk.length > 0 && (
@@ -207,7 +207,7 @@ export function HomeAdmin({ orgId }: { orgId: string }) {
                   .slice(0, 3)
                   .map((r) => `${r.client.full_name} (${r.reason})`)
                   .join(" · ")}
-                to="/clients"
+                to="/payments"
               />
             )}
           </>
@@ -252,7 +252,8 @@ export function HomeAdmin({ orgId }: { orgId: string }) {
                     ? ` · ${daysUntilDate(client.renewal_date)! >= 0 ? "in" : ""} ${Math.abs(daysUntilDate(client.renewal_date)!)}d ${daysUntilDate(client.renewal_date)! >= 0 ? "" : "overdue"}`
                     : ""
                 }`}
-                to="/clients"
+                to="/payments"
+                search={{ client: client.id }}
               />
             ))
         )}

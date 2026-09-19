@@ -25,6 +25,7 @@ import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.t
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
 import { Route as AuthenticatedSequencesRouteImport } from './routes/_authenticated.sequences'
 import { Route as AuthenticatedPermissionsRouteImport } from './routes/_authenticated.permissions'
+import { Route as AuthenticatedPaymentsRouteImport } from './routes/_authenticated.payments'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated.onboarding'
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated.leads'
 import { Route as AuthenticatedInboundDialerRouteImport } from './routes/_authenticated.inbound-dialer'
@@ -36,11 +37,9 @@ import { Route as AuthenticatedEodReportsRouteImport } from './routes/_authentic
 import { Route as AuthenticatedDmSetterRouteImport } from './routes/_authenticated.dm-setter'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedCopyRouteImport } from './routes/_authenticated.copy'
-import { Route as AuthenticatedContentSignalsRouteImport } from './routes/_authenticated.content-signals'
 import { Route as AuthenticatedContentCalendarRouteImport } from './routes/_authenticated.content-calendar'
 import { Route as AuthenticatedContentRouteImport } from './routes/_authenticated.content'
 import { Route as AuthenticatedCloserRouteImport } from './routes/_authenticated.closer'
-import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated.clients'
 import { Route as AuthenticatedAttributionRouteImport } from './routes/_authenticated.attribution'
 import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typeform'
 import { Route as ApiPublicTwilioEventRouteImport } from './routes/api/public/twilio.$event'
@@ -129,6 +128,11 @@ const AuthenticatedPermissionsRoute =
     path: '/permissions',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedPaymentsRoute = AuthenticatedPaymentsRouteImport.update({
+  id: '/payments',
+  path: '/payments',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
@@ -186,12 +190,6 @@ const AuthenticatedCopyRoute = AuthenticatedCopyRouteImport.update({
   path: '/copy',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedContentSignalsRoute =
-  AuthenticatedContentSignalsRouteImport.update({
-    id: '/content-signals',
-    path: '/content-signals',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
 const AuthenticatedContentCalendarRoute =
   AuthenticatedContentCalendarRouteImport.update({
     id: '/content-calendar',
@@ -206,11 +204,6 @@ const AuthenticatedContentRoute = AuthenticatedContentRouteImport.update({
 const AuthenticatedCloserRoute = AuthenticatedCloserRouteImport.update({
   id: '/closer',
   path: '/closer',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedClientsRoute = AuthenticatedClientsRouteImport.update({
-  id: '/clients',
-  path: '/clients',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedAttributionRoute =
@@ -242,11 +235,9 @@ export interface FileRoutesByFullPath {
   '/request-access': typeof RequestAccessRoute
   '/welcome': typeof WelcomeRoute
   '/attribution': typeof AuthenticatedAttributionRoute
-  '/clients': typeof AuthenticatedClientsRoute
   '/closer': typeof AuthenticatedCloserRoute
   '/content': typeof AuthenticatedContentRoute
   '/content-calendar': typeof AuthenticatedContentCalendarRoute
-  '/content-signals': typeof AuthenticatedContentSignalsRoute
   '/copy': typeof AuthenticatedCopyRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
@@ -258,6 +249,7 @@ export interface FileRoutesByFullPath {
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/payments': typeof AuthenticatedPaymentsRoute
   '/permissions': typeof AuthenticatedPermissionsRoute
   '/sequences': typeof AuthenticatedSequencesRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -279,11 +271,9 @@ export interface FileRoutesByTo {
   '/request-access': typeof RequestAccessRoute
   '/welcome': typeof WelcomeRoute
   '/attribution': typeof AuthenticatedAttributionRoute
-  '/clients': typeof AuthenticatedClientsRoute
   '/closer': typeof AuthenticatedCloserRoute
   '/content': typeof AuthenticatedContentRoute
   '/content-calendar': typeof AuthenticatedContentCalendarRoute
-  '/content-signals': typeof AuthenticatedContentSignalsRoute
   '/copy': typeof AuthenticatedCopyRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
@@ -295,6 +285,7 @@ export interface FileRoutesByTo {
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/payments': typeof AuthenticatedPaymentsRoute
   '/permissions': typeof AuthenticatedPermissionsRoute
   '/sequences': typeof AuthenticatedSequencesRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -318,11 +309,9 @@ export interface FileRoutesById {
   '/request-access': typeof RequestAccessRoute
   '/welcome': typeof WelcomeRoute
   '/_authenticated/attribution': typeof AuthenticatedAttributionRoute
-  '/_authenticated/clients': typeof AuthenticatedClientsRoute
   '/_authenticated/closer': typeof AuthenticatedCloserRoute
   '/_authenticated/content': typeof AuthenticatedContentRoute
   '/_authenticated/content-calendar': typeof AuthenticatedContentCalendarRoute
-  '/_authenticated/content-signals': typeof AuthenticatedContentSignalsRoute
   '/_authenticated/copy': typeof AuthenticatedCopyRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/dm-setter': typeof AuthenticatedDmSetterRoute
@@ -334,6 +323,7 @@ export interface FileRoutesById {
   '/_authenticated/inbound-dialer': typeof AuthenticatedInboundDialerRoute
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
+  '/_authenticated/payments': typeof AuthenticatedPaymentsRoute
   '/_authenticated/permissions': typeof AuthenticatedPermissionsRoute
   '/_authenticated/sequences': typeof AuthenticatedSequencesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
@@ -357,11 +347,9 @@ export interface FileRouteTypes {
     | '/request-access'
     | '/welcome'
     | '/attribution'
-    | '/clients'
     | '/closer'
     | '/content'
     | '/content-calendar'
-    | '/content-signals'
     | '/copy'
     | '/dashboard'
     | '/dm-setter'
@@ -373,6 +361,7 @@ export interface FileRouteTypes {
     | '/inbound-dialer'
     | '/leads'
     | '/onboarding'
+    | '/payments'
     | '/permissions'
     | '/sequences'
     | '/settings'
@@ -394,11 +383,9 @@ export interface FileRouteTypes {
     | '/request-access'
     | '/welcome'
     | '/attribution'
-    | '/clients'
     | '/closer'
     | '/content'
     | '/content-calendar'
-    | '/content-signals'
     | '/copy'
     | '/dashboard'
     | '/dm-setter'
@@ -410,6 +397,7 @@ export interface FileRouteTypes {
     | '/inbound-dialer'
     | '/leads'
     | '/onboarding'
+    | '/payments'
     | '/permissions'
     | '/sequences'
     | '/settings'
@@ -432,11 +420,9 @@ export interface FileRouteTypes {
     | '/request-access'
     | '/welcome'
     | '/_authenticated/attribution'
-    | '/_authenticated/clients'
     | '/_authenticated/closer'
     | '/_authenticated/content'
     | '/_authenticated/content-calendar'
-    | '/_authenticated/content-signals'
     | '/_authenticated/copy'
     | '/_authenticated/dashboard'
     | '/_authenticated/dm-setter'
@@ -448,6 +434,7 @@ export interface FileRouteTypes {
     | '/_authenticated/inbound-dialer'
     | '/_authenticated/leads'
     | '/_authenticated/onboarding'
+    | '/_authenticated/payments'
     | '/_authenticated/permissions'
     | '/_authenticated/sequences'
     | '/_authenticated/settings'
@@ -590,6 +577,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPermissionsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/payments': {
+      id: '/_authenticated/payments'
+      path: '/payments'
+      fullPath: '/payments'
+      preLoaderRoute: typeof AuthenticatedPaymentsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/onboarding': {
       id: '/_authenticated/onboarding'
       path: '/onboarding'
@@ -667,13 +661,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCopyRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/content-signals': {
-      id: '/_authenticated/content-signals'
-      path: '/content-signals'
-      fullPath: '/content-signals'
-      preLoaderRoute: typeof AuthenticatedContentSignalsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/content-calendar': {
       id: '/_authenticated/content-calendar'
       path: '/content-calendar'
@@ -693,13 +680,6 @@ declare module '@tanstack/react-router' {
       path: '/closer'
       fullPath: '/closer'
       preLoaderRoute: typeof AuthenticatedCloserRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/clients': {
-      id: '/_authenticated/clients'
-      path: '/clients'
-      fullPath: '/clients'
-      preLoaderRoute: typeof AuthenticatedClientsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/attribution': {
@@ -735,11 +715,9 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAttributionRoute: typeof AuthenticatedAttributionRoute
-  AuthenticatedClientsRoute: typeof AuthenticatedClientsRoute
   AuthenticatedCloserRoute: typeof AuthenticatedCloserRoute
   AuthenticatedContentRoute: typeof AuthenticatedContentRoute
   AuthenticatedContentCalendarRoute: typeof AuthenticatedContentCalendarRoute
-  AuthenticatedContentSignalsRoute: typeof AuthenticatedContentSignalsRoute
   AuthenticatedCopyRoute: typeof AuthenticatedCopyRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDmSetterRoute: typeof AuthenticatedDmSetterRoute
@@ -751,6 +729,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedInboundDialerRoute: typeof AuthenticatedInboundDialerRoute
   AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
+  AuthenticatedPaymentsRoute: typeof AuthenticatedPaymentsRoute
   AuthenticatedPermissionsRoute: typeof AuthenticatedPermissionsRoute
   AuthenticatedSequencesRoute: typeof AuthenticatedSequencesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
@@ -764,11 +743,9 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAttributionRoute: AuthenticatedAttributionRoute,
-  AuthenticatedClientsRoute: AuthenticatedClientsRoute,
   AuthenticatedCloserRoute: AuthenticatedCloserRoute,
   AuthenticatedContentRoute: AuthenticatedContentRoute,
   AuthenticatedContentCalendarRoute: AuthenticatedContentCalendarRoute,
-  AuthenticatedContentSignalsRoute: AuthenticatedContentSignalsRoute,
   AuthenticatedCopyRoute: AuthenticatedCopyRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDmSetterRoute: AuthenticatedDmSetterRoute,
@@ -780,6 +757,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedInboundDialerRoute: AuthenticatedInboundDialerRoute,
   AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
+  AuthenticatedPaymentsRoute: AuthenticatedPaymentsRoute,
   AuthenticatedPermissionsRoute: AuthenticatedPermissionsRoute,
   AuthenticatedSequencesRoute: AuthenticatedSequencesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,

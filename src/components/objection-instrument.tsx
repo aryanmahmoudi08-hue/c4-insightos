@@ -165,10 +165,10 @@ export function ObjectionInstrument({
                   <span className="italic"> (inferred)</span>
                   {" · "}
                   <a
-                    href={`/content-signals?mechanism=${selected.mechanism}`}
+                    href={`/content?mechanism=${selected.mechanism}`}
                     className="text-primary hover:underline"
                   >
-                    View in Content Signals
+                    View in Content Command Center
                   </a>
                 </div>
               ) : (

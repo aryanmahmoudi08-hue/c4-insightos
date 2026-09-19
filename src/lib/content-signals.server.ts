@@ -27,6 +27,12 @@ import {
   normalizeOnboardingSignal,
   normalizeSettingCallSignal,
   type NormalizedContentSignal,
+  type Driver,
+  type DemandEvidence,
+  type WeeklyMechanismStat,
+  type WeeklyDiagnosis,
+  type BottleneckInsight,
+  type BottleneckReadResult,
 } from "./content-taxonomy";
 
 type Sb = {
@@ -50,8 +56,6 @@ function unwrap<T>(
   return result.data as T;
 }
 
-export type Driver = { source: string; detail: string; mechanism: MechanismKey; weight: number };
-
 export type DemandResult = {
   mix: Record<MechanismKey, number>;
   /** True when total signal weight is below the workspace's configured
@@ -65,6 +69,10 @@ export type DemandResult = {
   drivers: Driver[];
   counts: { faq: number; setter_calls: number; intakes: number; reels: number };
   signals?: NormalizedContentSignal[];
+  /** Every real record behind each count above (not just the ones that
+   * produced a nonzero driver) — the evidence a "Built from N FAQ videos"
+   * click opens. */
+  evidence: DemandEvidence;
 };
 
 export type DateRangeBounds = { from: string; to: string };
@@ -87,19 +95,21 @@ export async function computeDemand(
   const [faqRes, settersRes, intakesRes, reelsRes] = await Promise.all([
     sb
       .from("faq_videos")
-      .select("title, question, mechanism, clicks, plays")
+      .select("id, title, question, mechanism, clicks, plays")
       .eq("org_id", orgId)
       .eq("active", true),
     sb
       .from("setter_call_signals")
-      .select("setter_name, call_date, limiting_beliefs, objections, mechanism, ai_summary, notes")
+      .select(
+        "id, setter_name, call_date, limiting_beliefs, objections, mechanism, ai_summary, notes",
+      )
       .eq("org_id", orgId)
       .gte("call_date", range.from)
       .lte("call_date", range.to)
       .limit(300),
     sb
       .from("onboarding_responses")
-      .select("responses, mechanism_signals, submitted_at, created_at")
+      .select("id, responses, mechanism_signals, submitted_at, created_at")
       .eq("org_id", orgId)
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
@@ -140,6 +150,7 @@ export async function computeDemand(
       detail: `${f.title} · ${clicks} interactions`,
       mechanism: mech,
       weight: w,
+      id: f.id,
     });
   }
 
@@ -157,6 +168,7 @@ export async function computeDemand(
         detail: `${s.setter_name} · ${s.call_date}`,
         mechanism: s.mechanism as MechanismKey,
         weight: 3,
+        id: s.id,
       });
     } else {
       const sc = scoreText(text, 1.5);
@@ -168,6 +180,7 @@ export async function computeDemand(
           detail: truncate(text, 90),
           mechanism: top,
           weight: sc[top],
+          id: s.id,
         });
     }
   }
@@ -207,6 +220,7 @@ export async function computeDemand(
         detail: truncate(text, 90),
         mechanism: top,
         weight: sc[top],
+        id: i.id,
       });
   }
 
@@ -241,12 +255,46 @@ export async function computeDemand(
       detail: `${p.mechanism}${p.variation ? "/" + p.variation : ""} · ${piece.converted ? `${m.leads_generated ?? 0} leads` : `${m.hook_retention_pct ?? m.engagement_rate_pct ?? 0}% retention`} · strong vs. its own baseline (n=${baseline.sampleSize})`,
       mechanism: p.mechanism as MechanismKey,
       weight: w,
+      id: p.id,
     });
   }
 
   drivers.sort((a, b) => b.weight - a.weight);
 
   const mixResult = aggregateMix(weights, config.minTotalSignalWeight);
+
+  // Every real record behind each count above — deliberately the FULL set,
+  // not just the rows that produced a nonzero driver above (e.g. an FAQ
+  // video with 0 clicks still counts toward "6 FAQ videos" and must still
+  // show up when that count is inspected).
+  const evidence: DemandEvidence = {
+    faq: (faq ?? []).map((f: any) => ({
+      id: f.id,
+      title: f.title ?? "(untitled FAQ video)",
+      detail: `${Number(f.clicks ?? 0) + Number(f.plays ?? 0)} interactions${f.mechanism ? ` · tagged ${f.mechanism}` : ""}`,
+    })),
+    setter_calls: (setters ?? []).map((s: any) => ({
+      id: s.id,
+      title: s.setter_name ?? "(unnamed setter)",
+      detail: [s.call_date, s.mechanism ? `tagged ${s.mechanism}` : null, s.ai_summary || s.notes]
+        .filter(Boolean)
+        .join(" · ")
+        .slice(0, 140),
+    })),
+    intakes: (intakes ?? []).map((i: any) => ({
+      id: i.id,
+      title: `Intake · ${(i.submitted_at ?? i.created_at ?? "").slice(0, 10)}`,
+      detail: Object.values((i.responses ?? {}) as Record<string, string>)
+        .filter(Boolean)
+        .join(" · ")
+        .slice(0, 140),
+    })),
+    reels: (reels ?? []).map((p: any) => ({
+      id: p.id,
+      title: p.mechanism ? `${p.mechanism}${p.variation ? "/" + p.variation : ""}` : "(untagged)",
+      detail: `${p.platform ?? "unknown platform"}${p.posted_at ? ` · posted ${String(p.posted_at).slice(0, 10)}` : ""}`,
+    })),
+  };
 
   return {
     mix: mixResult.mix,
@@ -255,6 +303,7 @@ export async function computeDemand(
     minTotalWeight: mixResult.minTotalWeight,
     weights,
     drivers: drivers.slice(0, 24),
+    evidence,
     counts: {
       faq: faq.length,
       setter_calls: setters.length,
@@ -275,21 +324,6 @@ function truncate(s: string, n: number) {
 }
 
 /* ---------------------------- Weekly posting check ---------------------------- */
-
-export type WeeklyMechanismStat = {
-  count: number;
-  dms: number;
-  calls: number;
-  cash: number;
-  views: number;
-  withMetrics: number;
-};
-
-export type WeeklyDiagnosis = {
-  label: "Untracked" | "Not enough data" | "Underperforming" | "Typical";
-  detail: string;
-  verdictsSampled: number;
-};
 
 export type WeeklyCheck = {
   per: Record<string, WeeklyMechanismStat>;
@@ -343,13 +377,21 @@ export async function computeWeeklyContentCheck(
 
   const per: Record<string, WeeklyMechanismStat> = {};
   for (const k of MECHANISM_KEYS)
-    per[k] = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, withMetrics: 0 };
-  per.untagged = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, withMetrics: 0 };
+    per[k] = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, withMetrics: 0, pieces: [] };
+  per.untagged = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, withMetrics: 0, pieces: [] };
 
   for (const p of pieces) {
     const k = (p.mechanism as string) ?? "untagged";
     const bucket = per[k] ?? per.untagged;
     bucket.count += 1;
+    // Reuses the id/platform/posted_at already selected above — no new
+    // query — so "N reels posted" can open the actual pieces instead of
+    // just showing a number.
+    bucket.pieces!.push({
+      id: p.id,
+      platform: p.platform ?? "unknown",
+      posted_at: p.posted_at ?? null,
+    });
     const m = metricsById.get(p.id);
     if (m) {
       bucket.dms += Number(m.dms_generated ?? 0);
@@ -455,6 +497,93 @@ async function gateway(system: string, user: string) {
   if (!res.ok) return `AI error (${res.status}): ${(await res.text()).slice(0, 400)}`;
   const json: any = await res.json();
   return json.choices?.[0]?.message?.content?.trim() ?? "No insight returned.";
+}
+
+/** Structured tool-call variant of gateway() — same Lovable AI Gateway, same
+ * "openai/gpt-5.6-sol" model, but forces JSON output via function-calling
+ * (the same pattern coach-content.server.ts and analyze-content.server.ts
+ * already use) instead of free-form markdown, so the AI Bottleneck Read can
+ * render as real structured cards (Finding/Supporting Data/Why It
+ * Matters/Recommended Action/Confidence/Relevant Records/Attribution
+ * Limitations) instead of parsed prose. */
+async function gatewayInsights(system: string, user: string): Promise<BottleneckReadResult> {
+  const apiKey = process.env["LOVABLE_API_KEY"];
+  if (!apiKey) return { status: "not_configured" };
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "openai/gpt-5.6-sol",
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "bottleneck_read",
+            parameters: {
+              type: "object",
+              properties: {
+                insights: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      finding: { type: "string" },
+                      supportingData: { type: "string" },
+                      whyItMatters: { type: "string" },
+                      recommendedAction: { type: "string" },
+                      confidence: { type: "string", enum: ["high", "medium", "low"] },
+                      sampleSize: { type: "string" },
+                      relevantRecords: { type: "array", items: { type: "string" } },
+                      attributionLimitations: { type: "string" },
+                    },
+                    required: [
+                      "finding",
+                      "supportingData",
+                      "whyItMatters",
+                      "recommendedAction",
+                      "confidence",
+                      "sampleSize",
+                      "relevantRecords",
+                      "attributionLimitations",
+                    ],
+                    additionalProperties: false,
+                  },
+                },
+              },
+              required: ["insights"],
+              additionalProperties: false,
+            },
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "bottleneck_read" } },
+    }),
+  });
+  if (res.status === 429)
+    return { status: "error", message: "AI rate limit hit — try again in a minute." };
+  if (res.status === 402)
+    return {
+      status: "error",
+      message: "AI credits exhausted — add credits to keep using AI insights.",
+    };
+  if (!res.ok)
+    return {
+      status: "error",
+      message: `AI error (${res.status}): ${(await res.text()).slice(0, 400)}`,
+    };
+  const json = await res.json();
+  const args = json.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+  if (!args) return { status: "error", message: "No structured insight returned." };
+  try {
+    const parsed = JSON.parse(args) as { insights: BottleneckInsight[] };
+    return { status: "ok", insights: Array.isArray(parsed.insights) ? parsed.insights : [] };
+  } catch {
+    return { status: "error", message: "AI returned malformed JSON." };
+  }
 }
 
 /** The business bottleneck read: VSL + FAQ + setting calls + intakes + reel performance in one. */
@@ -737,31 +866,23 @@ SALES: ${booked} calls booked · ${showed} showed · ${closed} closed · $${Math
 
   const system = `You are the growth strategist for a high-ticket coaching business that runs a 4-Conversion-Mechanism content system (Educational, Credibility, Authoritative, Relatability).
 
-The operating belief: inconsistent cash is ALWAYS downstream of unknown posting, which is downstream of untracked performance. Cash > Unknown posting > Not tracking. Fix tracking = fix everything. Layer the root cause that way.
+The operating belief: inconsistent cash is ALWAYS downstream of unknown posting, which is downstream of untracked performance. Cash > Unknown posting > Not tracking. Fix tracking = fix everything.
 
-Return markdown with these EXACT sections:
+Produce 3 to 6 ranked bottleneck/opportunity insights from the data below — genuine cross-system relationships (e.g. comparing two mechanisms' or platforms' reach-vs-qualified-demand efficiency, a tracking gap weakening the whole read, a demand signal not yet reflected in the posting mix, an attribution/revenue claim that needs a confidence caveat). Never restate a single KPI in isolation, never invent a number that isn't in the data below.
 
-## Root cause chain
-Walk cash → posting → tracking for THIS data. Say plainly where the chain breaks and what's actually unknown.
+For each insight return exactly these fields:
+- finding: the claim itself, one or two sentences
+- supportingData: the exact numbers from the data below that back it up
+- whyItMatters: the business consequence of ignoring this
+- recommendedAction: one concrete, specific next step
+- confidence: "high" | "medium" | "low" — low whenever the sample size is small or the data is bucketed as not-enough-data
+- sampleSize: the exact count/denominator behind the finding, in words (e.g. "6 Reels tagged educational, 4 with metrics logged")
+- relevantRecords: up to 4 specific piece titles or record identifiers this insight references (empty array if none apply)
+- attributionLimitations: a caveat if the finding touches attribution or revenue but the underlying data is inferred, partial, or unattributed — otherwise the literal string "Not applicable"
 
-## Recommended mix this week
-A table: Mechanism | % of posts | Reels (out of 5-7) | Why (cite the signal: FAQ clicks, intake answer, setter objection, VSL drop-off, reel performance, or onboarding mechanism tag). If the mix is flagged LIMITED DATA above, say so in this section instead of presenting it as settled.
+Ground every number in the BUCKET-RELATIVE PERFORMANCE section when discussing over/underperformance — a mechanism is "underperforming" only relative to ITS OWN (mechanism × platform) baseline, never an absolute number or another format's numbers. If a bucket shows mostly "not-enough-data," say that plainly rather than guessing. Be blunt. If there isn't enough real data for a genuine insight, return fewer insights (an empty array is fine) rather than padding with a weak or fabricated one.`;
 
-## Double down (green)
-3-5 bullets. Formats/variations that produced DMs, calls, or cash. Name the piece and the number.
-
-## Bottlenecks (red)
-3-5 bullets. Ground this in the BUCKET-RELATIVE PERFORMANCE section — a mechanism is "underperforming" only relative to ITS OWN (mechanism × platform) baseline, never an absolute number or another format's numbers. If a bucket shows mostly "not-enough-data," say that plainly instead of guessing. For each real bottleneck: which mechanism, WHY (hook, format, wrong mechanism for current demand), and the exact fix.
-
-## Missing tracking
-What data is absent that makes this read weaker. Be specific about the field or module.
-
-## This week's 5-7 reels
-A numbered list. For each: mechanism, variation, hook direction, and the objection it kills.
-
-Be blunt, use the numbers given, never invent data. If a section has no data, say what to start logging.`;
-
-  return { insight: await gateway(system, payload), demand };
+  return { insights: await gatewayInsights(system, payload), demand };
 }
 
 /** AI screen of a setting-call transcript / setter notes → beliefs, objections, mechanism. */

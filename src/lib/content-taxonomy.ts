@@ -73,6 +73,73 @@ export type NormalizedContentSignal = {
   answerState: "answered" | "unanswered" | "unknown";
 };
 
+/**
+ * Shared shapes between content-signals.server.ts (the computation) and any
+ * client component that renders the result (Content Command Center) — kept
+ * here, not in the .server.ts file, so a UI component can import the type
+ * without importing server-only code (CLAUDE.md: never import a .server.ts
+ * module from client code).
+ */
+export type Driver = {
+  source: string;
+  detail: string;
+  mechanism: MechanismKey;
+  weight: number;
+  /** The real row this driver came from (faq_videos/setter_call_signals/
+   * onboarding_responses/content_pieces id) — undefined only for the rare
+   * keyword-scored driver that isn't tied to one specific row. Lets the UI
+   * open the actual record instead of just showing the summary text. */
+  id?: string;
+};
+
+/** One real underlying record behind a demand-mix count ("6 FAQ videos",
+ * "14 setter call signals", ...) — used for the "Built from N X" drill-down,
+ * which (unlike `drivers`) must show ALL of a source's records within the
+ * window, not just the ones that produced a nonzero mechanism weight. */
+export type DemandEvidenceRow = { id: string; title: string; detail: string };
+
+export type DemandEvidence = {
+  faq: DemandEvidenceRow[];
+  setter_calls: DemandEvidenceRow[];
+  intakes: DemandEvidenceRow[];
+  reels: DemandEvidenceRow[];
+};
+
+export type WeeklyMechanismStat = {
+  count: number;
+  dms: number;
+  calls: number;
+  cash: number;
+  views: number;
+  withMetrics: number;
+  /** The real content_pieces rows behind `count` — reuses ids already
+   * fetched by computeWeeklyContentCheck() (no new query), so "1 reel
+   * posted" opens the actual piece instead of just showing a number. */
+  pieces?: { id: string; platform: string; posted_at: string | null }[];
+};
+
+export type WeeklyDiagnosis = {
+  label: "Untracked" | "Not enough data" | "Underperforming" | "Typical";
+  detail: string;
+  verdictsSampled: number;
+};
+
+export type BottleneckInsight = {
+  finding: string;
+  supportingData: string;
+  whyItMatters: string;
+  recommendedAction: string;
+  confidence: "high" | "medium" | "low";
+  sampleSize: string;
+  relevantRecords: string[];
+  attributionLimitations: string;
+};
+
+export type BottleneckReadResult =
+  | { status: "not_configured" }
+  | { status: "error"; message: string }
+  | { status: "ok"; insights: BottleneckInsight[] };
+
 const UNKNOWN = "unknown";
 
 export function normalizeFunnelStage(value: string | null | undefined): FunnelStage | "unknown" {

@@ -125,19 +125,23 @@
      the accent below still carries the brand hue, the chrome around it
      doesn't need to.
      Priority 8 depth pass: background/card/popover/muted step up with
-     deliberate spacing (0.07 → 0.135 → 0.16 → 0.175) instead of the
-     original ~0.03 gap between background and card — cards should read as
-     visibly elevated charcoal, not the same near-black plane with a
-     border drawn around it. Sidebar is pushed darker than the page
-     canvas (0.05) so it stays a recognizably distinct chrome rail rather
-     than the two surfaces washing into each other. Border opacity moved
-     10%→14% (8%→10% for the sidebar) for the same reason — visible
-     separation without introducing color. */
-  --background: oklch(0.07 0.003 300);
+     deliberate spacing instead of everything washing into the same
+     near-black plane with a border drawn around it.
+     Charcoal-lift refinement pass: background/card/popover/muted/sidebar
+     all nudged up again (0.07→0.145, 0.135→0.185, 0.16→0.215, 0.175→0.2,
+     0.05→0.10) with chroma scaling gently alongside lightness
+     (0.003→0.011) so the app reads as a tinted charcoal rather than
+     literal #000 — still unmistakably black, just with room to breathe
+     between page → card → elevated surface. Hue held at the existing 300
+     (the app's one whisper of cool cast) rather than chasing a literal hex
+     target's slightly different hue, so this doesn't introduce a second,
+     competing tint. Border opacity nudged 14%→15% (10%→11% sidebar) to
+     track the lifted surfaces it sits on. */
+  --background: oklch(0.145 0.006 300);
   --foreground: oklch(0.97 0 0);
-  --card: oklch(0.135 0.005 300);
+  --card: oklch(0.185 0.009 300);
   --card-foreground: oklch(0.97 0 0);
-  --popover: oklch(0.16 0.005 300);
+  --popover: oklch(0.215 0.011 300);
   --popover-foreground: oklch(0.97 0 0);
 
   /* Brand — white on black. White is the primary ACTION color (B4 rule #1). */
@@ -145,9 +149,9 @@
   --primary-foreground: oklch(0.16 0 0);
   --primary-glow: oklch(1 0 0);
 
-  --secondary: oklch(0.19 0 0);
+  --secondary: oklch(0.205 0.006 300);
   --secondary-foreground: oklch(0.97 0 0);
-  --muted: oklch(0.175 0 0);
+  --muted: oklch(0.2 0.007 300);
   --muted-foreground: oklch(0.6 0.004 300);
 
   /* Accent — the one sanctioned chrome color (active-nav/focus-ring/primary
@@ -171,8 +175,8 @@
   --spectrum-mid: oklch(0.62 0.24 295);
   --spectrum-hot: oklch(0.68 0.26 350);
 
-  --border: oklch(1 0 0 / 14%);
-  --input: oklch(0.21 0 0);
+  --border: oklch(1 0 0 / 15%);
+  --input: oklch(0.225 0.006 300);
   --ring: oklch(0.62 0.16 295 / 55%);
 
   /* Charts — a monochrome ramp, with two semantic outliers at the end */
@@ -183,14 +187,17 @@
   --chart-5: oklch(0.56 0.17 22);
 
   /* Sidebar sits deliberately darker than the page canvas — a distinct
-     near-black chrome rail, not a lighter panel floating on top of it. */
-  --sidebar: oklch(0.05 0.002 300);
+     near-black chrome rail, not a lighter panel floating on top of it.
+     Lifted proportionally with the charcoal-lift pass above (0.05→0.10)
+     so it stays the darkest plane in the app without collapsing all the
+     way to literal black now that the page canvas itself sits higher. */
+  --sidebar: oklch(0.1 0.005 300);
   --sidebar-foreground: oklch(0.88 0 0);
   --sidebar-primary: oklch(0.97 0 0);
   --sidebar-primary-foreground: oklch(0.16 0 0);
-  --sidebar-accent: oklch(0.19 0.004 300);
+  --sidebar-accent: oklch(0.22 0.008 300);
   --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: oklch(1 0 0 / 11%);
   --sidebar-ring: oklch(0.62 0.16 295 / 55%);
 
   /* Editorial flourishes — kept, now neutral */
@@ -209,9 +216,12 @@
      active" indicators, never decorative card chrome. */
   --shadow-glow: 0 0 0 1px oklch(1 0 0 / 8%), 0 0 14px -6px oklch(1 0 0 / 10%);
 
-  /* Glass surfaces — translucent + blurred, for chrome (sidebar/topbar/modals), not content */
-  --glass-bg: oklch(0.13 0 0 / 55%);
-  --glass-bg-strong: oklch(0.1 0 0 / 78%);
+  /* Glass surfaces — translucent + blurred, for chrome (sidebar/topbar/modals),
+     not content. Base lightness nudged up with the charcoal-lift pass so a
+     glass panel still composites as visibly elevated chrome over the new,
+     lighter page canvas instead of reading flush with (or darker than) it. */
+  --glass-bg: oklch(0.16 0 0 / 55%);
+  --glass-bg-strong: oklch(0.18 0 0 / 78%);
   /* Fully opaque — the two stacked sticky headers (LiveTicker + TopBar) need
      to stay fully legible no matter what scrolls behind them; both
      glass-strong's 78% and an earlier 96% attempt here still let bright/bold
@@ -219,7 +229,7 @@
      this alpha level, especially under the blur's smearing. 100% + blur
      keeps the same visual texture (blur still softens the border/shadow
      transition) with zero readable bleed-through. */
-  --glass-bg-header: oklch(0.08 0 0 / 100%);
+  --glass-bg-header: oklch(0.115 0 0 / 100%);
   --glass-border: oklch(1 0 0 / 9%);
   --glass-highlight: oklch(1 0 0 / 6%);
 }

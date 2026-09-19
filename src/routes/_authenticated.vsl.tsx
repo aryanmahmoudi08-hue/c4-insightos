@@ -73,8 +73,12 @@ import {
   buildRecommendationEvidence,
   buildVslFunnel,
   deriveLargestLeak,
+  deriveVslFunnelStageMetrics,
   type VslFunnelInput,
+  type VslFunnelStage,
+  type VslFunnelStageMetrics,
 } from "@/lib/media-intelligence";
+import { priorPeriod } from "@/lib/trend";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -161,6 +165,17 @@ function VslFunnelPanel({ vsl }: { vsl: any }) {
         ? Promise.resolve(mockVslFunnel(vsl.id))
         : loadFunnel({ data: { vsl_id: vsl.id, from: range.from, to: range.to } }),
   });
+  // Equivalent prior period for the stage-volume comparison (item 2) — same
+  // funnel data source/shape, just re-fetched with a shifted range. Never a
+  // second data model.
+  const priorRange = priorPeriod(range.from, range.to);
+  const { data: priorFunnelInput } = useQuery({
+    queryKey: ["vsl_funnel", vsl.id, devBypass, priorRange.from, priorRange.to],
+    queryFn: (): Promise<VslFunnelInput> =>
+      devBypass
+        ? Promise.resolve(mockVslFunnel(vsl.id, { prior: true }))
+        : loadFunnel({ data: { vsl_id: vsl.id, from: priorRange.from, to: priorRange.to } }),
+  });
   const [selectedStage, setSelectedStage] = useState<"application" | "show" | "close" | null>(null);
   if (!funnelInput) return null;
   const stages = buildVslFunnel(funnelInput, {
@@ -168,6 +183,11 @@ function VslFunnelPanel({ vsl }: { vsl: any }) {
     show: () => setSelectedStage("show"),
     close: () => setSelectedStage("close"),
   });
+  // Prior-period stages never open a records drilldown — onOpenRecords is
+  // deliberately omitted here (this row is comparison-only, not another
+  // clickable funnel).
+  const priorStages = priorFunnelInput ? buildVslFunnel(priorFunnelInput) : [];
+  const stageMetrics = deriveVslFunnelStageMetrics(stages, priorStages);
   const leak = deriveLargestLeak(stages);
   const path: AttributionPath = {
     id: `vsl-funnel-${vsl.id}`,
@@ -246,6 +266,12 @@ function VslFunnelPanel({ vsl }: { vsl: any }) {
         tag automatically — a real 0 here means "checked, none tagged yet," not that the funnel is
         broken.
       </p>
+      <VslFunnelMetricsGrid
+        stages={stages}
+        metrics={stageMetrics}
+        vslMoney={vslMoney}
+        priorRangeLabel={`${priorRange.from} → ${priorRange.to}`}
+      />
       {leak && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs">
           <div className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-2xs text-destructive">
@@ -272,6 +298,88 @@ function VslFunnelPanel({ vsl }: { vsl: any }) {
           emptyRowsLabel="No records tagged to this VSL in range."
         />
       )}
+    </div>
+  );
+}
+
+/** Stage-to-stage conversion % and same-stage prior-period comparison —
+ * additive to the existing AttributionPathPanel funnel above, not a
+ * replacement for it. Two deliberately separate numbers per stage: this
+ * stage vs. the previous stage (same period), and this stage vs. itself in
+ * the prior period. Never conflated, never fabricated when a side is
+ * unavailable or a denominator is zero. */
+function VslFunnelMetricsGrid({
+  stages,
+  metrics,
+  vslMoney,
+  priorRangeLabel,
+}: {
+  stages: VslFunnelStage[];
+  metrics: VslFunnelStageMetrics[];
+  vslMoney: (cents: number) => string;
+  priorRangeLabel: string;
+}) {
+  const metricsByKey = new Map(metrics.map((m) => [m.key, m]));
+  const fmtStageValue = (stage: VslFunnelStage, value: number) =>
+    stage.key === "cash" ? vslMoney(value) : fmtNum(value);
+  return (
+    <div className="rounded-lg border border-border bg-card/40 p-3">
+      <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Conversion &amp; prior-period comparison
+      </div>
+      <div className="mt-0.5 text-3xs text-muted-foreground">
+        Conversion is this stage vs. the stage before it, same period. Prior-period change compares
+        this stage to itself in {priorRangeLabel} — two different comparisons, shown separately.
+      </div>
+      <div className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+        {stages.map((stage) => {
+          const m = metricsByKey.get(stage.key);
+          const volumeUp = m?.volumeDelta != null && m.volumeDelta > 0;
+          const volumeDown = m?.volumeDelta != null && m.volumeDelta < 0;
+          return (
+            <div
+              key={stage.key}
+              className="rounded-md border border-border/60 bg-background/40 p-2 text-2xs"
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-foreground">{stage.label}</span>
+                <span className="font-sans tabular-nums text-foreground">
+                  {stage.value != null ? fmtStageValue(stage, stage.value) : "—"}
+                </span>
+              </div>
+              <div className="mt-1.5 flex items-center justify-between text-3xs text-muted-foreground">
+                <span>Conversion from previous</span>
+                <span className="font-sans tabular-nums text-foreground">
+                  {m?.conversionPct != null ? fmtPct(m.conversionPct) : "—"}
+                </span>
+              </div>
+              <div className="mt-1 flex items-center justify-between text-3xs text-muted-foreground">
+                <span>vs prior period</span>
+                <span
+                  className={cn(
+                    "flex items-center gap-1 font-sans tabular-nums",
+                    volumeUp && "text-[color:var(--color-success)]",
+                    volumeDown && "text-destructive",
+                  )}
+                >
+                  {m?.volumeDelta == null ? (
+                    "—"
+                  ) : (
+                    <>
+                      {volumeUp && <TrendingUp className="h-3 w-3" />}
+                      {volumeDown && <TrendingDown className="h-3 w-3" />}
+                      {volumeUp ? "+" : ""}
+                      {fmtStageValue(stage, m.volumeDelta)}
+                      {m.volumeDeltaPct != null &&
+                        ` (${m.volumeDeltaPct > 0 ? "+" : ""}${m.volumeDeltaPct.toFixed(1)}%)`}
+                    </>
+                  )}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

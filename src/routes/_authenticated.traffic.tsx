@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
-import { mockTrafficBreakdown } from "@/lib/dev-mock-data";
+import { mockTrafficHierarchy } from "@/lib/dev-mock-data";
 import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
 import { StatCard } from "@/components/stat-card";
@@ -24,29 +24,49 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Plus,
-  TrendingUp,
-  Target,
-  Sparkles,
-  Signpost,
-  MoreVertical,
-  Copy,
-  Power,
-  Trash2,
-} from "lucide-react";
+import { TaxonomySelect } from "@/components/taxonomy-select";
+import { Plus, TrendingUp, Signpost, MoreVertical, Copy, Power, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { GlassTableShell } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
-import { BentoGrid, BentoCell } from "@/components/bento-grid";
-import { ChartTooltip } from "@/components/chart-tooltip";
-import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
+import { PlatformIcon } from "@/components/platform-icon";
+import { FunnelInstrument } from "@/components/funnel-instrument";
+import { FUNNEL_STAGES, type FunnelStage } from "@/lib/content-taxonomy";
+import {
+  MECHANISMS,
+  MECHANISM_KEYS,
+  MECHANISM_COLORS,
+  variationLabel,
+  type MechanismKey,
+} from "@/lib/content-mechanisms";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
+import {
+  buildTrafficHierarchy,
+  rollupByFunnelStage,
+  resolveLead,
+  QUALIFIED_OR_LATER,
+  type TrafficHierarchy,
+  type TrafficPlatformNode,
+  type TrafficFormatNode,
+  type TrafficContentNode,
+  type TrafficMetrics,
+  type Resolved,
+} from "@/lib/traffic-hierarchy";
+import { deriveCap, type Derivation } from "@/lib/funnel-derivation";
+import { MetricDetailPanel, type DetailColumn } from "@/components/metric-detail-panel";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
+import { ChartTooltip } from "@/components/chart-tooltip";
 
 const DONUT_COLORS = [
   "var(--spectrum-hot)",
@@ -58,8 +78,27 @@ const DONUT_COLORS = [
   "var(--color-success)",
 ];
 
+/** Every drill-down on this page narrows to one of these dimensions —
+ * shared at module scope so both the page component and the platform/format
+ * section components below can open the same panel with the same filter
+ * shape (module-level rather than exported: Traffic-page-internal only). */
+type DrillFilter = {
+  platform?: string;
+  format?: string;
+  contentKey?: string;
+  funnelStage?: FunnelStage | "unknown";
+};
+type DrillMetric = "leads" | "qualified" | "bookings" | "shows" | "closes" | "revenue" | "cash";
+type OpenDrillFn = (
+  filter: DrillFilter,
+  metric: DrillMetric,
+  title: string,
+  subtitle: string,
+) => void;
+
 export const Route = createFileRoute("/_authenticated/traffic")({ component: Traffic });
 
+const fmt = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
 const fmtMoney = (cents: number) => `$${Math.round(cents / 100).toLocaleString()}`;
 
 /** Tracking URL generator (Sales Tracking Part 7) — appends whichever UTM
@@ -80,7 +119,53 @@ function buildTrackingUrl(
   return qs ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}${qs}` : baseUrl;
 }
 
+// Minimum sample before a platform is compared/verdicted — same nominal
+// threshold the rest of the app uses for "don't read noise as signal."
+const MIN_SAMPLE = 3;
+
+// No prior-period query exists on this page (Traffic answers "where are
+// leads coming from right now," not a trend page) — "what's working" stays
+// honestly unevaluated here rather than fabricating a comparison; "what's
+// capping it" is real (deriveCap only needs the current period's funnel
+// stages) wherever a drill-down came from the Funnel Instrument.
+const NOT_EVALUATED: Derivation = {
+  status: "insufficient_data",
+  sentence: "Not evaluated on this page — see Content Command Center's funnel trend for that.",
+};
+
+type SortKey = "leads" | "qualifiedLeads" | "bookings" | "shows" | "closes" | "collectedCents";
+
+/** Single source of truth for the sort-metric label — used by the sort
+ * buttons in "What's doing best" and by the "sorted by" indicator on the
+ * platform-sections hierarchy, so both always agree on what "top performer"
+ * currently means. Never hard-code cash as the definition of performance —
+ * this is whichever metric the user has actually selected. */
+const SORT_KEY_LABELS: Record<SortKey, string> = {
+  leads: "Leads",
+  qualifiedLeads: "Qualified",
+  bookings: "Bookings",
+  shows: "Shows",
+  closes: "Closes",
+  collectedCents: "Cash",
+};
+const SORT_KEY_ORDER: SortKey[] = [
+  "leads",
+  "qualifiedLeads",
+  "bookings",
+  "shows",
+  "closes",
+  "collectedCents",
+];
+
+/** Standalone route wrapper — just the page chrome (TopBar) around the real
+ * content below. Content Command Center embeds `TrafficPageContent`
+ * directly instead (`embedded`), so there's exactly one implementation of
+ * Traffic's data/filters/drill-downs, never a second copy. */
 function Traffic() {
+  return <TrafficPageContent />;
+}
+
+export function TrafficPageContent({ embedded = false }: { embedded?: boolean } = {}) {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
@@ -89,6 +174,16 @@ function Traffic() {
   const { range } = useDateRange();
   const fromISO = `${range.from}T00:00:00`;
   const toISO = `${range.to}T23:59:59`;
+
+  const [platformFilter, setPlatformFilter] = useState("all");
+  const [formatFilter, setFormatFilter] = useState("all");
+  const [funnelFilter, setFunnelFilter] = useState<FunnelStage | "unknown" | "all">("all");
+  // Mechanism/variation are cross-cutting filters, not another nesting level
+  // in the hierarchy below — a mechanism can legitimately occur at any
+  // funnel stage, never assumed to correlate with one.
+  const [mechanismFilter, setMechanismFilter] = useState<MechanismKey | "all">("all");
+  const [variationFilter, setVariationFilter] = useState("all");
+  const [sortKey, setSortKey] = useState<SortKey>("collectedCents");
 
   // Catalog of sources — not time-scoped, this is the config list itself.
   const { data: sources } = useQuery({
@@ -100,34 +195,21 @@ function Traffic() {
         .select("id, name, category, is_active, utm_source, utm_medium, utm_campaign, base_url")
         .eq("org_id", orgId!);
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
   });
 
-  // Leads acquired + calls booked in the selected range, by source.
+  // Leads in range, with the fields the platform-first hierarchy needs to
+  // resolve real platform/format/campaign (see traffic-hierarchy.ts).
   const { data: leads } = useQuery({
     queryKey: ["leads-by-source", orgId, range.from, range.to],
     enabled: !!orgId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
-        .select("id, traffic_source_id, status")
-        .eq("org_id", orgId!)
-        .gte("created_at", fromISO)
-        .lte("created_at", toISO);
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  // Pull calls + clients to compute close rate, avg deal, and LTV per source
-  const { data: calls } = useQuery({
-    queryKey: ["traffic-calls", orgId, range.from, range.to],
-    enabled: !!orgId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("calls")
-        .select("lead_id, closed, contract_value_cents, cash_collected_cents")
+        .select(
+          "id, full_name, email, status, created_at, traffic_source_id, source_content_id, first_touch_content_id, source_platform, source_format, source_campaign",
+        )
         .eq("org_id", orgId!)
         .gte("created_at", fromISO)
         .lte("created_at", toISO);
@@ -135,13 +217,31 @@ function Traffic() {
       return data ?? [];
     },
   });
-  const { data: clients } = useQuery({
-    queryKey: ["traffic-clients", orgId],
+
+  const { data: calls } = useQuery({
+    queryKey: ["traffic-calls", orgId, range.from, range.to],
     enabled: !!orgId,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("clients")
-        .select("lead_id, contract_value_cents")
+        .from("calls")
+        .select(
+          "id, lead_id, closed, showed, scheduled_for, contract_value_cents, cash_collected_cents",
+        )
+        .eq("org_id", orgId!)
+        .gte("created_at", fromISO)
+        .lte("created_at", toISO);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: contentPieces } = useQuery({
+    queryKey: ["traffic-content-pieces", orgId],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("content_pieces")
+        .select("id, title, platform, source_platform, funnel_stage, mechanism, variation")
         .eq("org_id", orgId!);
       if (error) throw error;
       return data ?? [];
@@ -187,469 +287,775 @@ function Traffic() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Channel removed");
+      toast.success("Source removed");
       qc.invalidateQueries({ queryKey: ["traffic-sources"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to remove"),
   });
 
-  const breakdown = useMemo(() => {
-    const leadsBySource = new Map<string, string[]>(); // sourceId -> leadIds
-    for (const l of leads ?? []) {
-      if (!l.traffic_source_id) continue;
-      const arr = leadsBySource.get(l.traffic_source_id) ?? [];
-      arr.push(l.id);
-      leadsBySource.set(l.traffic_source_id, arr);
-    }
-    const callsByLead = new Map<string, typeof calls>();
-    for (const c of calls ?? []) {
-      if (!c.lead_id) continue;
-      const arr = callsByLead.get(c.lead_id) ?? [];
-      arr.push(c);
-      callsByLead.set(c.lead_id, arr);
-    }
-    const clientsByLead = new Map<string, number>();
-    for (const cl of clients ?? []) {
-      if (!cl.lead_id) continue;
-      clientsByLead.set(
-        cl.lead_id,
-        (clientsByLead.get(cl.lead_id) ?? 0) + (cl.contract_value_cents ?? 0),
-      );
-    }
-
-    // Real computation always runs (all 4 queries fire real requests, even
-    // under devBypass — same reasoning as attribution.tsx's own devBypass
-    // fix: a full short-circuit here would've silently broken the /traffic
-    // date-range regression test, which verifies a real request re-fires
-    // with new bounds). Only the *display* falls back to a mock breakdown
-    // when the real, RLS-empty-under-devBypass result has nothing to show.
-    const real = (sources ?? []).map((s) => {
-      const leadIds = leadsBySource.get(s.id) ?? [];
-      const matched = (leads ?? []).filter((l) => l.traffic_source_id === s.id);
-      const won = matched.filter((l) => l.status === "closed").length;
-      let totalDealCents = 0;
-      let dealCount = 0;
-      let ltvCents = 0;
-      for (const lid of leadIds) {
-        const cs = callsByLead.get(lid) ?? [];
-        for (const c of cs) {
-          if (c.closed) {
-            totalDealCents += c.contract_value_cents ?? 0;
-            dealCount += 1;
-          }
-        }
-        ltvCents += clientsByLead.get(lid) ?? 0;
-      }
-      const closeRate = matched.length ? (won / matched.length) * 100 : 0;
-      const avgDeal = dealCount ? totalDealCents / dealCount : 0;
-      // Revenue double-count fix: totalDealCents (verified closed-call
-      // contract value) and ltvCents (the client/mentee record's own,
-      // independently-entered contract value for the same lead) are two
-      // unlinked records for the same real-world deal — summing them
-      // inflates revenue whenever both exist, exactly the bug Phase 4
-      // already fixed for Content Command Center via
-      // computeChannelRevenue/traffic-channel-revenue.ts. This page had its
-      // own separate computation that never got that fix. "Client LTV" is
-      // shown as its own stat right next to "Total revenue" below — it must
-      // not also be folded silently into that number.
-      const revenuePerLead = matched.length ? totalDealCents / matched.length : 0;
-      // Score: close rate (%) × avg deal ($, in thousands) — surfaces revenue-efficient channels
-      const score = closeRate * (avgDeal / 100000);
-      return {
-        id: s.id,
-        name: s.name,
-        category: s.category,
-        isActive: s.is_active,
-        trackingUrl: buildTrackingUrl(s.base_url, s.utm_source, s.utm_medium, s.utm_campaign),
-        leads: matched.length,
-        clients: won,
-        closeRate: Number(closeRate.toFixed(1)),
-        avgDeal: Math.round(avgDeal / 100),
-        ltv: Math.round(ltvCents / 100),
-        revenue: Math.round(totalDealCents / 100),
-        revenuePerLead: Math.round(revenuePerLead / 100),
-        score: Number(score.toFixed(2)),
-      };
-    });
-    return devBypass && real.length === 0 ? mockTrafficBreakdown() : real;
-  }, [sources, leads, calls, clients, devBypass]);
-
-  const unattributed = (leads ?? []).filter((l) => !l.traffic_source_id).length;
-  const totalLeads = leads?.length ?? 0;
-  // Confirmed real bug while verifying: this read the real (RLS-empty under
-  // devBypass) `sources` query directly, showing "0 channels" right next to
-  // a breakdown grid full of channels once `breakdown` fell back to its
-  // mock. `breakdown` is the actual effective source of truth for what's
-  // displayed (real when real data exists, mock only as a last resort), so
-  // this now derives from the same place every other number on this page does.
-  const totalSources = breakdown.length;
-
-  // Best source: highest score, requires at least 3 leads to avoid noise
-  const bestSource = useMemo(() => {
-    const eligible = breakdown.filter((b) => b.leads >= 3);
-    return eligible.sort((a, b) => b.score - a.score)[0] ?? null;
-  }, [breakdown]);
-
-  const ranked = useMemo(
+  // Real computation always runs (every query above fires for real, even
+  // under devBypass) — only the *display* falls back to a deterministic
+  // fixture when the real, RLS-empty-under-devBypass result has nothing to
+  // show. Same rule this page has followed since before this pass.
+  const realHierarchy = useMemo(
     () =>
-      [...breakdown].sort((a, b) => b.revenuePerLead - a.revenuePerLead || b.revenue - a.revenue),
-    [breakdown],
+      buildTrafficHierarchy(
+        (leads ?? []).map((l) => ({ ...l, status: l.status as string })),
+        calls ?? [],
+        contentPieces ?? [],
+        (sources ?? []).map((s) => ({
+          id: s.id,
+          name: s.name,
+          category: s.category,
+          utm_source: s.utm_source,
+          utm_campaign: s.utm_campaign,
+        })),
+      ),
+    [leads, calls, contentPieces, sources],
   );
-  const totalRevenue = ranked.reduce((s, b) => s + b.revenue, 0);
-  const attributedLeads = ranked.reduce((s, b) => s + b.leads, 0);
-  const avgRevPerLead = attributedLeads ? Math.round(totalRevenue / attributedLeads) : 0;
+  const hierarchy: TrafficHierarchy =
+    devBypass && realHierarchy.totals.leads === 0 ? mockTrafficHierarchy() : realHierarchy;
 
-  const verdict = (b: (typeof ranked)[number]) => {
-    if (b.leads < 3)
-      return { label: "Not enough data", tone: "border-border text-muted-foreground bg-muted/40" };
-    if (b.revenuePerLead >= avgRevPerLead * 1.25)
-      return {
-        label: "Double down",
-        tone: "border-[color:var(--color-success)]/40 text-[color:var(--color-success)] bg-[color:var(--color-success)]/10",
-      };
-    if (b.revenuePerLead >= avgRevPerLead * 0.6)
-      return { label: "Keep steady", tone: "border-border text-foreground bg-muted/40" };
-    if (b.leads >= 10 && b.clients === 0)
-      return {
-        label: "Cut or fix",
-        tone: "border-destructive/40 text-destructive bg-destructive/10",
-      };
-    return {
-      label: "Needs work",
-      tone: "border-[color:var(--color-warning)]/40 text-[color:var(--color-warning)] bg-[color:var(--color-warning)]/10",
-    };
+  const platformOptions = hierarchy.platforms.map((p) => p.platform);
+  const formatOptions = useMemo(() => {
+    const scoped =
+      platformFilter === "all"
+        ? hierarchy.platforms
+        : hierarchy.platforms.filter((p) => p.platform === platformFilter);
+    const set = new Set<string>();
+    for (const p of scoped) for (const f of p.formats) set.add(f.format);
+    return Array.from(set);
+  }, [hierarchy, platformFilter]);
+
+  // Only real mechanisms/variations actually present in the data — never
+  // the full taxonomy regardless of what's tagged, so an option only shows
+  // up when there's something real behind it.
+  const mechanismOptions = useMemo(() => {
+    const set = new Set<MechanismKey>();
+    for (const p of hierarchy.platforms)
+      for (const f of p.formats) for (const c of f.content) if (c.mechanism) set.add(c.mechanism);
+    return MECHANISM_KEYS.filter((k) => set.has(k));
+  }, [hierarchy]);
+  const variationOptions = useMemo(() => {
+    // Keyed by the real per-record (mechanism, variation) pairing — never
+    // guessed — so the label is always looked up against the mechanism that
+    // content piece actually carries, not whatever the filter happens to be
+    // set to.
+    const byValue = new Map<string, { mechanism: MechanismKey; variation: string }>();
+    for (const p of hierarchy.platforms)
+      for (const f of p.formats)
+        for (const c of f.content) {
+          if (!c.variation || !c.mechanism) continue;
+          if (mechanismFilter !== "all" && c.mechanism !== mechanismFilter) continue;
+          byValue.set(c.variation, { mechanism: c.mechanism, variation: c.variation });
+        }
+    return Array.from(byValue.values()).map(({ mechanism, variation }) => ({
+      value: variation,
+      label: variationLabel(mechanism, variation) ?? variation,
+    }));
+  }, [hierarchy, mechanismFilter]);
+
+  const filteredPlatforms = useMemo(() => {
+    return hierarchy.platforms
+      .filter((p) => platformFilter === "all" || p.platform === platformFilter)
+      .map((p) => ({
+        ...p,
+        formats: p.formats
+          .filter((f) => formatFilter === "all" || f.format === formatFilter)
+          .map((f) => ({
+            ...f,
+            content: f.content.filter(
+              (c) =>
+                (funnelFilter === "all" || c.funnelStage === funnelFilter) &&
+                (mechanismFilter === "all" || c.mechanism === mechanismFilter) &&
+                (variationFilter === "all" || c.variation === variationFilter),
+            ),
+          }))
+          .filter((f) => f.content.length > 0),
+      }))
+      .filter((p) => p.formats.length > 0);
+  }, [hierarchy, platformFilter, formatFilter, funnelFilter, mechanismFilter, variationFilter]);
+
+  const funnelRollup = useMemo(() => rollupByFunnelStage(hierarchy), [hierarchy]);
+  const funnelStages = FUNNEL_STAGES.map((stage) => ({
+    key: stage,
+    label: stage.toUpperCase(),
+    value: funnelRollup[stage].leads,
+    spectrum:
+      stage === "tof" ? ("cold" as const) : stage === "mof" ? ("mid" as const) : ("hot" as const),
+  }));
+
+  const comparisonRows = useMemo(
+    () => [...hierarchy.platforms].sort((a, b) => b.metrics[sortKey] - a.metrics[sortKey]),
+    [hierarchy, sortKey],
+  );
+
+  const maxPlatformLeads = Math.max(1, ...hierarchy.platforms.map((p) => p.metrics.leads));
+
+  // --- Drill-down data layer: every meaningful number on this page is a
+  // real, filtered slice of these same `leads`/`calls` arrays, resolved via
+  // the exact same resolveLead() the hierarchy above was built from — never
+  // a second aggregation engine, and every click preserves whatever
+  // platform/format/content/funnel-stage dimensions it was scoped to plus
+  // the page's own active date range (leads/calls are already range-scoped
+  // queries) and the current top-of-page filters (sections only render
+  // nodes that already passed those filters).
+  const contentById = useMemo(
+    () => new Map((contentPieces ?? []).map((c) => [c.id, c])),
+    [contentPieces],
+  );
+  const sourceById = useMemo(() => new Map((sources ?? []).map((s) => [s.id, s])), [sources]);
+  const resolvedLeads = useMemo(
+    () =>
+      (leads ?? []).map((l) => ({
+        lead: l,
+        resolved: resolveLead({ ...l, status: l.status as string }, contentById, sourceById),
+      })),
+    [leads, contentById, sourceById],
+  );
+  const resolvedCalls = useMemo(() => {
+    const byLeadId = new Map(resolvedLeads.map((r) => [r.lead.id, r]));
+    return (calls ?? []).map((c) => ({
+      call: c,
+      leadInfo: c.lead_id ? byLeadId.get(c.lead_id) : undefined,
+    }));
+  }, [calls, resolvedLeads]);
+
+  type DrillState = {
+    filter: DrillFilter;
+    metric: DrillMetric;
+    title: string;
+    subtitle: string;
+  } | null;
+  const [drill, setDrill] = useState<DrillState>(null);
+
+  const matchesDrillFilter = (r: Resolved, f: DrillFilter) => {
+    if (f.platform && r.platform !== f.platform) return false;
+    if (f.format && r.format !== f.format) return false;
+    if (f.contentKey && r.contentKey !== f.contentKey) return false;
+    if (f.funnelStage && r.funnelStage !== f.funnelStage) return false;
+    return true;
   };
+
+  type DrillRow =
+    | { kind: "lead"; lead: (typeof resolvedLeads)[number]["lead"]; resolved: Resolved }
+    | {
+        kind: "call";
+        call: (typeof resolvedCalls)[number]["call"];
+        resolved: Resolved;
+        leadName: string;
+      };
+
+  const drillRows: DrillRow[] = useMemo(() => {
+    if (!drill) return [];
+    if (drill.metric === "leads" || drill.metric === "qualified") {
+      return resolvedLeads
+        .filter(
+          (r) =>
+            matchesDrillFilter(r.resolved, drill.filter) &&
+            (drill.metric === "leads" || QUALIFIED_OR_LATER.has(r.lead.status)),
+        )
+        .map((r) => ({ kind: "lead" as const, lead: r.lead, resolved: r.resolved }));
+    }
+    return resolvedCalls
+      .filter(
+        (rc) =>
+          rc.leadInfo &&
+          matchesDrillFilter(rc.leadInfo.resolved, drill.filter) &&
+          (drill.metric === "shows"
+            ? !!rc.call.showed
+            : drill.metric === "bookings" || !!rc.call.closed),
+      )
+      .map((rc) => ({
+        kind: "call" as const,
+        call: rc.call,
+        resolved: rc.leadInfo!.resolved,
+        leadName: rc.leadInfo!.lead.full_name || rc.leadInfo!.lead.email || "Unnamed lead",
+      }));
+  }, [drill, resolvedLeads, resolvedCalls]);
+
+  const openDrill = (filter: DrillFilter, metric: DrillMetric, title: string, subtitle: string) =>
+    setDrill({ filter, metric, title, subtitle });
+
+  const drillColumns: DetailColumn<DrillRow>[] = [
+    {
+      key: "who",
+      label: "Lead",
+      render: (r) =>
+        r.kind === "lead" ? r.lead.full_name || r.lead.email || "Unnamed lead" : r.leadName,
+    },
+    { key: "platform", label: "Platform", render: (r) => r.resolved.platform },
+    { key: "format", label: "Format", render: (r) => r.resolved.formatLbl },
+    { key: "content", label: "Content / Campaign", render: (r) => r.resolved.contentLabel },
+    {
+      key: "status",
+      label: "Status",
+      render: (r) =>
+        r.kind === "lead"
+          ? r.lead.status
+          : r.call.closed
+            ? "Closed"
+            : r.call.showed
+              ? "Showed"
+              : "Booked",
+    },
+    {
+      key: "cash",
+      label: "Cash",
+      align: "right",
+      render: (r) => (r.kind === "call" ? fmtMoney(r.call.cash_collected_cents ?? 0) : "—"),
+    },
+    {
+      key: "revenue",
+      label: "Revenue",
+      align: "right",
+      render: (r) =>
+        r.kind === "call" ? (
+          <span className="text-spectrum-cold">{fmtMoney(r.call.contract_value_cents ?? 0)}</span>
+        ) : (
+          "—"
+        ),
+    },
+  ];
+
+  const drillCap: Derivation = useMemo(() => {
+    if (!drill?.filter.funnelStage || drill.filter.funnelStage === "unknown") return NOT_EVALUATED;
+    const index = FUNNEL_STAGES.indexOf(drill.filter.funnelStage);
+    if (index < 0) return NOT_EVALUATED;
+    return deriveCap(funnelStages, index, MIN_SAMPLE);
+  }, [drill, funnelStages]);
 
   return (
     <>
-      <TopBar
-        title="Traffic"
-        subtitle="Where leads come from — and which channels actually turn into cash"
-        showDateRange
-      />
-      <div className="p-4 md:p-6 space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-spectrum-mid/30 bg-spectrum-mid/5 px-3 py-2 text-xs">
-          <span className="text-muted-foreground">
-            Manage sources and tracking URLs here. The revenue/close-rate performance read on these
-            same channels is also consolidated into Content Command Center, alongside content
-            performance, so they're not two disconnected dashboards.
-          </span>
-          <Link to="/content" className="shrink-0 font-medium text-primary hover:underline">
-            Open Content Command Center →
-          </Link>
-        </div>
-        {/* Plain-language headline numbers */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard
-            label="Contracted revenue from tracked channels"
-            value={fmtMoney(totalRevenue * 100)}
-            spectrum="hot"
-            icon={<TrendingUp className="h-4 w-4" />}
-          />
-          <StatCard
-            label="Revenue per lead"
-            value={`$${avgRevPerLead.toLocaleString()}`}
-            spectrum="hot"
-            hint="Across every tracked channel"
-          />
+      {!embedded && (
+        <TopBar
+          title="Traffic"
+          subtitle="Where attention and leads are coming from — platform first"
+          showDateRange
+        />
+      )}
+      <div className={embedded ? "space-y-5" : "p-4 md:p-6 space-y-5"}>
+        {!embedded && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-spectrum-mid/30 bg-spectrum-mid/5 px-3 py-2 text-xs">
+            <span className="text-muted-foreground">
+              This page answers "where are leads coming from." For what content is producing them
+              and how it's contributing to the business, see Content Command Center; for how a
+              specific lead/booking/revenue outcome moved through the system, see Attribution.
+            </span>
+            <div className="flex shrink-0 gap-3">
+              <Link to="/content" className="font-medium text-primary hover:underline">
+                Content Command Center →
+              </Link>
+              <Link to="/attribution" className="font-medium text-primary hover:underline">
+                Attribution →
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Overview */}
+        <div id="traffic-overview" className="scroll-mt-24 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
             label="Leads tracked"
-            value={attributedLeads}
+            value={fmt(hierarchy.totals.leads)}
             spectrum="cold"
-            hint={`${totalSources} channels`}
+            icon={<TrendingUp className="h-4 w-4" />}
+            hint={`${hierarchy.platforms.length} platform${hierarchy.platforms.length === 1 ? "" : "s"}`}
+            onClick={() => openDrill({}, "leads", "All leads", "Every lead tracked in this range")}
           />
-          {/* Threshold-based at-risk signal (unattributed share crossing 25%) — a
-              genuine state indicator, not a funnel-position miscolor. */}
           <StatCard
-            label="Leads with no source"
-            value={unattributed}
-            accent={unattributed > totalLeads / 4 ? "warning" : "primary"}
+            label="Qualified leads"
+            value={fmt(hierarchy.totals.qualifiedLeads)}
+            spectrum="mid"
             hint={
-              totalLeads
-                ? `${Math.round((unattributed / totalLeads) * 100)}% of all leads — tag these`
+              hierarchy.totals.leads
+                ? `${Math.round((hierarchy.totals.qualifiedLeads / hierarchy.totals.leads) * 100)}% of tracked leads`
                 : ""
+            }
+            onClick={() =>
+              openDrill({}, "qualified", "Qualified leads", "Leads that reached qualified or later")
+            }
+          />
+          <StatCard
+            label="Bookings → shows → closes"
+            value={`${fmt(hierarchy.totals.bookings)} → ${fmt(hierarchy.totals.shows)} → ${fmt(hierarchy.totals.closes)}`}
+            spectrum="hot"
+            onClick={() =>
+              openDrill(
+                {},
+                "bookings",
+                "Booked calls",
+                "Every call booked from a lead in this range",
+              )
+            }
+          />
+          <StatCard
+            label="Cash collected"
+            value={fmtMoney(hierarchy.totals.collectedCents)}
+            spectrum="hot"
+            hint={`${fmtMoney(hierarchy.totals.contractedCents)} contracted`}
+            onClick={() =>
+              openDrill({}, "cash", "Cash collected", "Closed calls with cash collected")
             }
           />
         </div>
+        {hierarchy.unattributedLeads > 0 && (
+          <p className="text-3xs text-muted-foreground">
+            {hierarchy.unattributedLeads} lead{hierarchy.unattributedLeads === 1 ? "" : "s"} in this
+            range have no resolvable platform, content, or source link —{" "}
+            <span className="font-medium text-foreground">Unknown / Unattributed</span>, not
+            guessed.
+          </p>
+        )}
 
-        {/* Page hero (B1) — the "what the data says" read, promoted into a bento
-            hero. Same content as before, richer container. */}
-        <BentoGrid cols={2} rowHeight="8rem">
-          <BentoCell span="wide">
-            {bestSource ? (
-              <div className="hover-lift relative flex h-full flex-col justify-center overflow-hidden rounded-2xl border border-border bg-card p-5">
-                <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
-                <div className="relative flex items-start gap-3">
-                  <Target className="mt-0.5 h-5 w-5 shrink-0 text-spectrum-hot" />
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-0.5 flex items-center gap-1 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      <Sparkles className="h-3 w-3" /> What the data says
-                    </div>
-                    <p className="display-serif text-lg leading-snug">
-                      <span className="font-semibold text-spectrum-hot">{bestSource.name}</span> is
-                      your strongest channel: {bestSource.leads} leads turned into{" "}
-                      {bestSource.clients} clients ({bestSource.closeRate}% close rate) at{" "}
-                      <span className="font-sans tabular-nums text-base">
-                        ${bestSource.avgDeal.toLocaleString()}
-                      </span>{" "}
-                      per deal.
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Put more time and budget here first.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex h-full items-center rounded-2xl border border-dashed border-border bg-card/50 p-5 text-sm text-muted-foreground">
-                Tag at least 3 leads to a channel and close one deal — then this box tells you
-                exactly where to double down.
-              </div>
-            )}
-          </BentoCell>
-        </BentoGrid>
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-card/50 p-3">
+          <span className="mr-1 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Filters
+          </span>
+          <TaxonomySelect
+            label="Platform"
+            value={platformFilter}
+            onChange={(v) => {
+              setPlatformFilter(v);
+              setFormatFilter("all");
+            }}
+            options={platformOptions.map((p) => ({ value: p, label: p }))}
+          />
+          <TaxonomySelect
+            label="Format"
+            value={formatFilter}
+            onChange={setFormatFilter}
+            options={formatOptions.map((f) => ({
+              value: f,
+              label: f === "unknown" ? "Unidentified" : f.replace(/_/g, " "),
+            }))}
+          />
+          <TaxonomySelect
+            label="Funnel stage"
+            value={funnelFilter}
+            onChange={(v) => setFunnelFilter(v as FunnelStage | "unknown" | "all")}
+            options={[
+              ...FUNNEL_STAGES.map((s) => ({ value: s, label: s.toUpperCase() })),
+              { value: "unknown", label: "Unknown" },
+            ]}
+          />
+          {mechanismOptions.length > 0 && (
+            <TaxonomySelect
+              label="Mechanism"
+              value={mechanismFilter}
+              onChange={(v) => {
+                setMechanismFilter(v as MechanismKey | "all");
+                setVariationFilter("all");
+              }}
+              options={mechanismOptions.map((k) => ({ value: k, label: MECHANISMS[k].label }))}
+            />
+          )}
+          {variationOptions.length > 0 && (
+            <TaxonomySelect
+              label="Variation"
+              value={variationFilter}
+              onChange={setVariationFilter}
+              options={variationOptions}
+            />
+          )}
+        </div>
 
-        {/* Share of leads — real donut chart (recharts PieChart, this app's
-            existing chart library — no new dependency), replacing the old
-            proportional-bar list per Sales Tracking Part 7. */}
+        {/* Share of leads by platform — real donut chart, proportional
+            reading is genuinely the point here (unlike a bar list). */}
+        <section
+          id="traffic-platform-mix"
+          className="scroll-mt-24 rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5"
+        >
+          <div className="mb-3">
+            <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Platform mix
+            </div>
+            <div className="mt-0.5 text-base font-semibold">Share of leads by platform</div>
+          </div>
+          {hierarchy.platforms.length === 0 ? (
+            <EmptyState icon={<Signpost className="h-4 w-4" />} title="No leads tracked yet" />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,240px)_1fr]">
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={hierarchy.platforms.map((p) => ({
+                        name: p.platform,
+                        value: p.metrics.leads,
+                      }))}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius="55%"
+                      outerRadius="90%"
+                      paddingAngle={2}
+                      onClick={(d: { name?: string }) =>
+                        d.name &&
+                        openDrill(
+                          { platform: d.name },
+                          "leads",
+                          d.name,
+                          `All leads attributed to ${d.name}`,
+                        )
+                      }
+                      className="cursor-pointer"
+                    >
+                      {hierarchy.platforms.map((p, i) => (
+                        <Cell key={p.platform} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip
+                      content={<ChartTooltip formatter={(v: number) => `${v} leads`} />}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex flex-col justify-center gap-1.5">
+                {hierarchy.platforms.map((p, i) => {
+                  const share = hierarchy.totals.leads
+                    ? (p.metrics.leads / hierarchy.totals.leads) * 100
+                    : 0;
+                  return (
+                    <button
+                      key={p.platform}
+                      type="button"
+                      onClick={() =>
+                        openDrill(
+                          { platform: p.platform },
+                          "leads",
+                          p.platform,
+                          `All leads attributed to ${p.platform}`,
+                        )
+                      }
+                      className="flex items-center gap-2 rounded px-1 py-0.5 text-left text-xs hover:bg-muted/30"
+                    >
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }}
+                      />
+                      <span className="flex-1 truncate font-medium">{p.platform}</span>
+                      <span className="shrink-0 font-sans tabular-nums text-2xs text-muted-foreground">
+                        {p.metrics.leads} · {share.toFixed(0)}%
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Platform-first hierarchy, now full sections instead of a cramped
+            nested list — one spacious card per real platform, each with
+            clickable KPIs and bigger format sub-cards. */}
+        <section id="traffic-platforms" className="scroll-mt-24">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Platform sections
+              </div>
+              <div className="mt-0.5 text-base font-semibold">
+                Platform → format → funnel stage → content
+              </div>
+            </div>
+            <div className="text-3xs text-muted-foreground">
+              Content within each funnel stage sorted by{" "}
+              <span className="font-semibold text-foreground">{SORT_KEY_LABELS[sortKey]}</span>
+            </div>
+          </div>
+          {hierarchy.platforms.length === 0 ? (
+            <EmptyState
+              icon={<Signpost className="h-4 w-4" />}
+              title="No leads tracked yet"
+              description="Once leads carry a platform, content, or source link, they'll show up here grouped by real platform — never by an ad-hoc channel name."
+            />
+          ) : filteredPlatforms.length === 0 ? (
+            <EmptyState
+              icon={<Signpost className="h-4 w-4" />}
+              title="No leads match the current filters"
+              description="Widen the platform, format, or funnel-stage filter above."
+            />
+          ) : (
+            <Accordion
+              type="multiple"
+              className="space-y-3"
+              defaultValue={[filteredPlatforms[0]?.platform]}
+            >
+              {filteredPlatforms.map((p) => (
+                <PlatformSection
+                  key={p.platform}
+                  node={p}
+                  maxLeads={maxPlatformLeads}
+                  sortKey={sortKey}
+                  onOpenDrill={openDrill}
+                />
+              ))}
+            </Accordion>
+          )}
+        </section>
+
+        {/* Funnel stage analysis */}
+        <section id="traffic-funnel" className="scroll-mt-24 grid gap-3 lg:grid-cols-[1.4fr_0.6fr]">
+          <FunnelInstrument
+            title="Funnel stage"
+            subtitle="Leads by TOF / MOF / BOF, from real content funnel_stage tags"
+            stages={funnelStages}
+            onStageClick={(i) => {
+              const stage = FUNNEL_STAGES[i];
+              if (!stage) return;
+              openDrill(
+                { funnelStage: stage },
+                "leads",
+                `${stage.toUpperCase()} leads`,
+                `Leads whose linked content is tagged ${stage.toUpperCase()}`,
+              );
+            }}
+          />
+          <button
+            type="button"
+            onClick={() =>
+              openDrill(
+                { funnelStage: "unknown" },
+                "leads",
+                "Unknown / insufficient data",
+                "Leads whose source has no content link, so no funnel_stage tag exists to classify them",
+              )
+            }
+            className="rounded-2xl border border-border bg-background/45 p-4 text-left transition hover:border-ring/40"
+          >
+            <div className="text-3xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Unknown / insufficient data
+            </div>
+            <div className="mt-3 font-sans text-2xl font-semibold tabular-nums text-muted-foreground">
+              {fmt(funnelRollup.unknown.leads)}
+            </div>
+            <div className="mt-1 text-3xs leading-relaxed text-muted-foreground">
+              Leads whose source has no content link (so no funnel_stage tag exists to classify
+              them) — shown separately rather than folded into TOF by default.
+            </div>
+          </button>
+        </section>
+
+        {/* What's doing best — real metrics, no arbitrary score */}
+        <section
+          id="traffic-comparison"
+          className="scroll-mt-24 rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5"
+        >
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                What's doing best
+              </div>
+              <div className="mt-0.5 text-base font-semibold">Platform comparison</div>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {SORT_KEY_ORDER.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSortKey(key)}
+                  className={`rounded border px-2 py-1 text-3xs font-medium transition ${
+                    sortKey === key
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border text-muted-foreground hover:bg-muted/40"
+                  }`}
+                >
+                  {SORT_KEY_LABELS[key]}
+                </button>
+              ))}
+            </div>
+          </div>
+          {comparisonRows.length === 0 ? (
+            <EmptyState icon={<Signpost className="h-4 w-4" />} title="Nothing to compare yet" />
+          ) : (
+            <GlassTableShell>
+              <table className="w-full text-sm">
+                <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="p-3 text-left">Platform</th>
+                    <th className="p-3 text-right font-sans tabular-nums">Leads</th>
+                    <th className="p-3 text-right font-sans tabular-nums">Qualified</th>
+                    <th className="p-3 text-right font-sans tabular-nums">Bookings</th>
+                    <th className="p-3 text-right font-sans tabular-nums">Shows</th>
+                    <th className="p-3 text-right font-sans tabular-nums">Closes</th>
+                    <th className="p-3 text-right font-sans tabular-nums">Contracted</th>
+                    <th className="p-3 text-right font-sans tabular-nums">Cash collected</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {comparisonRows.map((r) => {
+                    const cell = (metric: DrillMetric, label: string, value: string, cls = "") => (
+                      <td className="p-0 text-right">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openDrill(
+                              { platform: r.platform },
+                              metric,
+                              `${r.platform} — ${label}`,
+                              `${label} for ${r.platform} in this range`,
+                            )
+                          }
+                          className={`w-full p-3 text-right font-sans tabular-nums hover:underline ${cls}`}
+                        >
+                          {value}
+                        </button>
+                      </td>
+                    );
+                    return (
+                      <tr key={r.platform} className="border-t border-border/70 hover:bg-muted/20">
+                        <td className="p-3">
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <PlatformIcon platform={r.platform} className="h-3.5 w-3.5" />
+                            {r.platform}
+                            {r.metrics.leads < MIN_SAMPLE && (
+                              <span
+                                className="rounded border border-[color:var(--color-warning)]/40 bg-[color:var(--color-warning)]/10 px-1 py-0.5 text-4xs uppercase tracking-wide text-[color:var(--color-warning)]"
+                                title={`Only ${r.metrics.leads} lead${r.metrics.leads === 1 ? "" : "s"} — too small a sample to read as signal.`}
+                              >
+                                Small sample
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        {cell("leads", "Leads", fmt(r.metrics.leads))}
+                        {cell("qualified", "Qualified leads", fmt(r.metrics.qualifiedLeads))}
+                        {cell("bookings", "Bookings", fmt(r.metrics.bookings))}
+                        {cell("shows", "Shows", fmt(r.metrics.shows))}
+                        {cell("closes", "Closes", fmt(r.metrics.closes), "text-spectrum-hot")}
+                        {cell("cash", "Contracted value", fmtMoney(r.metrics.contractedCents))}
+                        {cell(
+                          "cash",
+                          "Cash collected",
+                          fmtMoney(r.metrics.collectedCents),
+                          "font-semibold text-spectrum-hot",
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </GlassTableShell>
+          )}
+        </section>
+
+        {/* Source / tracking-URL management — the genuinely useful CRUD, kept */}
         <section className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-2.5">
-            <div className="text-2xs font-semibold uppercase tracking-wider">
-              Share of leads by channel
+            <div>
+              <div className="text-2xs font-semibold uppercase tracking-wider">
+                Manage sources & tracking URLs
+              </div>
+              <div className="mt-0.5 text-3xs text-muted-foreground">
+                Configuration only — performance for these lives in the platform hierarchy above.
+              </div>
             </div>
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="h-7 text-2xs">
                   <Plus className="h-3 w-3 mr-1" />
-                  Add channel
+                  Add source
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>New traffic channel</DialogTitle>
+                  <DialogTitle>New traffic source</DialogTitle>
                 </DialogHeader>
                 <AddChannelForm onSubmit={(f) => create.mutate(f)} pending={create.isPending} />
               </DialogContent>
             </Dialog>
           </div>
-          <div className="p-4">
-            {ranked.length > 0 ? (
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,240px)_1fr]">
-                <div className="h-56">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={ranked.map((b) => ({ name: b.name, value: b.leads }))}
-                        dataKey="value"
-                        nameKey="name"
-                        innerRadius="55%"
-                        outerRadius="90%"
-                        paddingAngle={2}
-                      >
-                        {ranked.map((b, i) => (
-                          <Cell key={b.id} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <RechartsTooltip
-                        content={<ChartTooltip formatter={(v: number) => `${v} leads`} />}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex flex-col justify-center gap-1.5">
-                  {ranked.map((b, i) => {
-                    const share = attributedLeads ? (b.leads / attributedLeads) * 100 : 0;
-                    return (
-                      <div key={b.id} className="flex items-center gap-2 text-xs">
-                        <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }}
-                        />
-                        <span className="flex-1 truncate font-medium">{b.name}</span>
-                        <span className="shrink-0 font-sans tabular-nums text-2xs text-muted-foreground">
-                          {b.leads} · {share.toFixed(0)}%
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <EmptyState
-                icon={<Signpost className="h-4 w-4" />}
-                title="No channels yet"
-                description="Add a channel, then tag leads to it to see the share of leads breakdown."
-                action={
-                  <Button size="sm" onClick={() => setOpen(true)}>
-                    <Plus className="h-3.5 w-3.5 mr-1.5" /> Add your first channel
-                  </Button>
-                }
-              />
-            )}
-          </div>
-        </section>
-
-        {/* Channel cards — the readable version of the old multi-metric chart */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {ranked.map((b) => {
-            const v = verdict(b);
-            const bar = Math.min(
-              100,
-              avgRevPerLead ? (b.revenuePerLead / (avgRevPerLead * 2)) * 100 : 0,
-            );
-            return (
-              <div key={b.id} className="rounded-lg border border-border bg-card p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold">{b.name}</div>
-                    <div className="text-3xs uppercase tracking-wider text-muted-foreground">
-                      {b.category}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <span
-                      className={`rounded border px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wider ${v.tone}`}
-                    >
-                      {v.label}
-                    </span>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-                          aria-label="Channel actions"
-                        >
-                          <MoreVertical className="h-3.5 w-3.5" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {b.trackingUrl && (
-                          <DropdownMenuItem
-                            onClick={() => {
-                              navigator.clipboard.writeText(b.trackingUrl!);
-                              toast.success("Tracking URL copied");
-                            }}
-                          >
-                            <Copy className="h-3.5 w-3.5 mr-2" /> Copy tracking URL
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          onClick={() => toggleActive.mutate({ id: b.id, is_active: b.isActive })}
-                        >
-                          <Power className="h-3.5 w-3.5 mr-2" />{" "}
-                          {b.isActive ? "Deactivate" : "Activate"}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => {
-                            if (confirm(`Remove ${b.name}?`)) deleteSource.mutate(b.id);
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 mr-2" /> Remove
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-3xs uppercase tracking-wider text-muted-foreground">
-                      Revenue per lead
-                    </span>
-                    <span className="font-sans tabular-nums text-lg font-semibold text-spectrum-hot">
-                      ${b.revenuePerLead.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="mt-1 h-1.5 overflow-hidden rounded bg-muted">
-                    <div
-                      className="h-full bg-spectrum-hot"
-                      style={{ width: `${Math.max(2, bar)}%` }}
-                    />
-                  </div>
-                  <div className="mt-1 text-3xs text-muted-foreground">
-                    Workspace average ${avgRevPerLead.toLocaleString()}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <Stat label="Leads" value={b.leads.toString()} />
-                  <Stat label="Became clients" value={b.clients.toString()} />
-                  <Stat label="Close rate" value={`${b.closeRate}%`} />
-                  <Stat label="Avg deal" value={`$${b.avgDeal.toLocaleString()}`} />
-                  <Stat label="Contracted revenue" value={`$${b.revenue.toLocaleString()}`} />
-                  <Stat label="Client LTV (separate)" value={`$${b.ltv.toLocaleString()}`} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Ranked table — plain-English headers */}
-        <section className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="border-b border-border bg-muted/30 px-4 py-2.5">
-            <div className="text-2xs font-semibold uppercase tracking-wider">
-              Every channel, best to worst
-            </div>
-            <div className="mt-0.5 text-2xs text-muted-foreground">
-              Sorted by revenue per lead — the honest measure of a channel.
-            </div>
-          </div>
           <GlassTableShell>
             <table className="w-full text-sm">
               <thead className="sticky-thead bg-muted/40 text-2xs uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="p-3 text-left">#</th>
-                  <th className="p-3 text-left">Channel</th>
-                  <th className="p-3 text-left">Type</th>
-                  <th className="p-3 text-right font-sans tabular-nums">Leads</th>
-                  <th className="p-3 text-right font-sans tabular-nums">Clients</th>
-                  <th className="p-3 text-right font-sans tabular-nums">Close rate</th>
-                  <th className="p-3 text-right font-sans tabular-nums">Avg deal</th>
-                  <th className="p-3 text-right font-sans tabular-nums">Revenue / lead</th>
-                  <th className="p-3 text-left">Verdict</th>
+                  <th className="p-3 text-left">Name</th>
+                  <th className="p-3 text-left">Category</th>
+                  <th className="p-3 text-left">Tracking URL</th>
+                  <th className="p-3 text-left">Status</th>
+                  <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {ranked.map((b, i) => {
-                  const v = verdict(b);
+                {(sources ?? []).map((s) => {
+                  const trackingUrl = buildTrackingUrl(
+                    s.base_url,
+                    s.utm_source,
+                    s.utm_medium,
+                    s.utm_campaign,
+                  );
                   return (
-                    <tr key={b.id} className="border-t border-border/70 hover:bg-muted/20">
-                      <td className="p-3 font-sans tabular-nums text-xs text-muted-foreground">
-                        {i + 1}
-                      </td>
-                      <td className="p-3 font-medium">{b.name}</td>
-                      <td className="p-3 text-xs uppercase text-muted-foreground">{b.category}</td>
-                      <td className="p-3 text-right font-sans tabular-nums">{b.leads}</td>
-                      <td className="p-3 text-right font-sans tabular-nums text-spectrum-hot">
-                        {b.clients}
-                      </td>
-                      <td className="p-3 text-right font-sans tabular-nums">{b.closeRate}%</td>
-                      <td className="p-3 text-right font-sans tabular-nums">
-                        ${b.avgDeal.toLocaleString()}
-                      </td>
-                      <td className="p-3 text-right font-sans tabular-nums font-semibold">
-                        ${b.revenuePerLead.toLocaleString()}
+                    <tr key={s.id} className="border-t border-border/70 hover:bg-muted/20">
+                      <td className="p-3 font-medium">{s.name}</td>
+                      <td className="p-3 text-xs uppercase text-muted-foreground">{s.category}</td>
+                      <td className="p-3 max-w-[280px] truncate font-sans text-2xs text-muted-foreground">
+                        {trackingUrl ?? "—"}
                       </td>
                       <td className="p-3">
                         <span
-                          className={`rounded border px-1.5 py-0.5 text-3xs uppercase tracking-wider ${v.tone}`}
+                          className={`rounded border px-1.5 py-0.5 text-3xs uppercase tracking-wider ${
+                            s.is_active
+                              ? "border-[color:var(--color-success)]/40 text-[color:var(--color-success)] bg-[color:var(--color-success)]/10"
+                              : "border-border text-muted-foreground bg-muted/40"
+                          }`}
                         >
-                          {v.label}
+                          {s.is_active ? "Active" : "Inactive"}
                         </span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                              aria-label="Source actions"
+                            >
+                              <MoreVertical className="h-3.5 w-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {trackingUrl && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  navigator.clipboard.writeText(trackingUrl);
+                                  toast.success("Tracking URL copied");
+                                }}
+                              >
+                                <Copy className="h-3.5 w-3.5 mr-2" /> Copy tracking URL
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              onClick={() =>
+                                toggleActive.mutate({ id: s.id, is_active: s.is_active })
+                              }
+                            >
+                              <Power className="h-3.5 w-3.5 mr-2" />{" "}
+                              {s.is_active ? "Deactivate" : "Activate"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => {
+                                if (confirm(`Remove ${s.name}?`)) deleteSource.mutate(s.id);
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-2" /> Remove
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   );
                 })}
-                {ranked.length === 0 && (
+                {(sources ?? []).length === 0 && (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={5}>
                       <EmptyState
                         icon={<Signpost className="h-4 w-4" />}
-                        title="No channels yet"
-                        description="Add one, then tag leads to it."
+                        title="No sources yet"
+                        description="Add one to generate a tracking URL for it."
                         action={
                           <Button size="sm" onClick={() => setOpen(true)}>
-                            <Plus className="h-3.5 w-3.5 mr-1.5" /> Add channel
+                            <Plus className="h-3.5 w-3.5 mr-1.5" /> Add source
                           </Button>
                         }
                       />
@@ -661,16 +1067,326 @@ function Traffic() {
           </GlassTableShell>
         </section>
       </div>
+
+      <MetricDetailPanel<DrillRow>
+        open={!!drill}
+        onOpenChange={(v) => !v && setDrill(null)}
+        title={drill?.title ?? ""}
+        subtitle={drill?.subtitle}
+        columns={drillColumns}
+        rows={drillRows}
+        rowKey={(r) => (r.kind === "lead" ? `lead-${r.lead.id}` : `call-${r.call.id}`)}
+        cap={drillCap}
+        working={NOT_EVALUATED}
+        emptyRowsLabel="No records for this drill-down in the current range."
+      />
     </>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function MetricRow({ metrics }: { metrics: TrafficMetrics }) {
   return (
-    <div className="rounded border border-border px-2 py-1.5">
-      <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="font-sans tabular-nums text-sm">{value}</div>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-3xs text-muted-foreground">
+      <span>{fmt(metrics.leads)} leads</span>
+      <span>{fmt(metrics.qualifiedLeads)} qualified</span>
+      <span>{fmt(metrics.bookings)} booked</span>
+      <span>{fmt(metrics.shows)} showed</span>
+      <span>{fmt(metrics.closes)} closed</span>
+      <span className="font-medium text-spectrum-hot">{fmtMoney(metrics.collectedCents)} cash</span>
+      <span className="font-medium text-spectrum-cold">
+        {fmtMoney(metrics.contractedCents)} revenue
+      </span>
     </div>
+  );
+}
+
+function sumMetrics(items: TrafficContentNode[]): TrafficMetrics {
+  const totals: TrafficMetrics = {
+    leads: 0,
+    qualifiedLeads: 0,
+    bookings: 0,
+    shows: 0,
+    closes: 0,
+    contractedCents: 0,
+    collectedCents: 0,
+  };
+  for (const item of items) {
+    totals.leads += item.metrics.leads;
+    totals.qualifiedLeads += item.metrics.qualifiedLeads;
+    totals.bookings += item.metrics.bookings;
+    totals.shows += item.metrics.shows;
+    totals.closes += item.metrics.closes;
+    totals.contractedCents += item.metrics.contractedCents;
+    totals.collectedCents += item.metrics.collectedCents;
+  }
+  return totals;
+}
+
+const FUNNEL_STAGE_ORDER: (FunnelStage | "unknown")[] = ["tof", "mof", "bof", "unknown"];
+const FUNNEL_STAGE_LABELS: Record<FunnelStage | "unknown", string> = {
+  tof: "Top of funnel",
+  mof: "Middle of funnel",
+  bof: "Bottom of funnel",
+  unknown: "Unknown stage",
+};
+
+/** Groups a format's content leaves by real funnel_stage tag (never
+ * assumed from mechanism/platform/format) and sorts each group by whichever
+ * metric the page's sort control is currently set to — "top performer"
+ * always means the same thing here as it does in "What's doing best" above.
+ * Empty stage buckets are dropped, never rendered as a hollow "0" group. */
+function groupContentByFunnelStage(content: TrafficContentNode[], sortKey: SortKey) {
+  const groups = new Map<FunnelStage | "unknown", TrafficContentNode[]>();
+  for (const c of content) {
+    const arr = groups.get(c.funnelStage) ?? [];
+    arr.push(c);
+    groups.set(c.funnelStage, arr);
+  }
+  return FUNNEL_STAGE_ORDER.filter((stage) => groups.has(stage)).map((stage) => {
+    const items = [...groups.get(stage)!].sort((a, b) => b.metrics[sortKey] - a.metrics[sortKey]);
+    return { stage, items, metrics: sumMetrics(items) };
+  });
+}
+
+/** A full, spacious section per real platform, now a real dropdown —
+ * collapsed by default reads as a scannable list, expanding reveals the
+ * full format → funnel-stage → content drill-down underneath. Clickable KPI
+ * tiles and content leaves all drill through the same `onOpenDrill`, so
+ * every number here opens the real leads/calls behind it, scoped to
+ * platform (+format+content when clicked deeper), never a generic
+ * unfiltered list. */
+function PlatformSection({
+  node,
+  maxLeads,
+  sortKey,
+  onOpenDrill,
+}: {
+  node: TrafficPlatformNode;
+  maxLeads: number;
+  sortKey: SortKey;
+  onOpenDrill: OpenDrillFn;
+}) {
+  const width = Math.max(4, Math.round((node.metrics.leads / maxLeads) * 100));
+  const tiles: [DrillMetric, string, string][] = [
+    ["leads", "Leads", fmt(node.metrics.leads)],
+    ["qualified", "Qualified", fmt(node.metrics.qualifiedLeads)],
+    ["bookings", "Booked", fmt(node.metrics.bookings)],
+    ["shows", "Showed", fmt(node.metrics.shows)],
+    ["closes", "Closed", fmt(node.metrics.closes)],
+    ["cash", "Cash", fmtMoney(node.metrics.collectedCents)],
+    ["revenue", "Revenue", fmtMoney(node.metrics.contractedCents)],
+  ];
+  return (
+    <AccordionItem
+      value={node.platform}
+      className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
+    >
+      <div className="border-b border-border/60 bg-muted/20 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <AccordionTrigger className="flex-1 py-0 hover:no-underline [&>svg]:h-5 [&>svg]:w-5">
+            <div className="flex items-center gap-3">
+              <PlatformIcon platform={node.platform} className="h-6 w-6 shrink-0" />
+              <span className="text-2xl font-bold">{node.platform}</span>
+            </div>
+          </AccordionTrigger>
+          <span className="shrink-0 font-sans text-xs tabular-nums text-muted-foreground">
+            {fmt(node.metrics.leads)} leads
+          </span>
+        </div>
+        <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded bg-muted/60">
+          <div className="h-full rounded bg-spectrum-mid" style={{ width: `${width}%` }} />
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-px bg-border/60 sm:grid-cols-4 lg:grid-cols-7">
+        {tiles.map(([metric, label, value]) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() =>
+              onOpenDrill(
+                { platform: node.platform },
+                metric,
+                `${node.platform} — ${label}`,
+                `${label} for ${node.platform} in this range`,
+              )
+            }
+            className="bg-card p-3 text-left transition hover:bg-muted/30"
+          >
+            <div className="text-4xs uppercase tracking-wider text-muted-foreground">{label}</div>
+            <div
+              className={`mt-1 font-sans text-base font-semibold tabular-nums ${
+                metric === "revenue"
+                  ? "text-spectrum-cold"
+                  : metric === "cash"
+                    ? "text-spectrum-hot"
+                    : ""
+              }`}
+            >
+              {value}
+            </div>
+          </button>
+        ))}
+      </div>
+      <AccordionContent className="p-0">
+        <Accordion type="multiple" className="space-y-2 p-4 pt-3">
+          {node.formats.map((f) => (
+            <FormatCard
+              key={f.format}
+              node={f}
+              platform={node.platform}
+              sortKey={sortKey}
+              onOpenDrill={onOpenDrill}
+            />
+          ))}
+        </Accordion>
+      </AccordionContent>
+    </AccordionItem>
+  );
+}
+
+/** One format's dropdown within a platform section. Expanding it reveals
+ * the format's content grouped by real funnel stage (TOF/MOF/BOF/Unknown),
+ * each group sorted by the page's active sort metric. */
+function FormatCard({
+  node,
+  platform,
+  sortKey,
+  onOpenDrill,
+}: {
+  node: TrafficFormatNode;
+  platform: string;
+  sortKey: SortKey;
+  onOpenDrill: OpenDrillFn;
+}) {
+  const stageGroups = useMemo(
+    () => groupContentByFunnelStage(node.content, sortKey),
+    [node.content, sortKey],
+  );
+  return (
+    <AccordionItem
+      value={node.format}
+      className="rounded-xl border border-border/60 bg-background/40"
+    >
+      <div className="flex items-center justify-between gap-2 p-3">
+        <AccordionTrigger className="flex-1 py-0 hover:no-underline">
+          <span className="text-sm font-semibold">{node.formatLabel}</span>
+        </AccordionTrigger>
+        <button
+          type="button"
+          onClick={() =>
+            onOpenDrill(
+              { platform, format: node.format },
+              "leads",
+              `${platform} · ${node.formatLabel}`,
+              `Leads for ${platform} · ${node.formatLabel} in this range`,
+            )
+          }
+          className="shrink-0 rounded px-1.5 py-0.5 font-sans text-2xs tabular-nums text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-foreground"
+        >
+          {fmt(node.metrics.leads)} leads
+        </button>
+      </div>
+      <div className="px-3 pb-2">
+        <MetricRow metrics={node.metrics} />
+      </div>
+      <AccordionContent className="px-3 pb-3">
+        <Accordion type="multiple" className="space-y-2">
+          {stageGroups.map(({ stage, items, metrics }) => (
+            <AccordionItem
+              key={stage}
+              value={stage}
+              className="rounded-lg border border-border/50 bg-muted/10"
+            >
+              <div className="flex items-center justify-between gap-2 px-2.5 py-2">
+                <AccordionTrigger className="flex-1 py-0 hover:no-underline">
+                  <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span className="rounded bg-muted px-1.5 py-0.5">
+                      {FUNNEL_STAGE_LABELS[stage]}
+                    </span>
+                    <span className="font-sans tabular-nums">{items.length}</span>
+                  </div>
+                </AccordionTrigger>
+              </div>
+              <div className="px-2.5 pb-2">
+                <MetricRow metrics={metrics} />
+              </div>
+              <AccordionContent className="px-2.5 pb-2.5">
+                <div className="grid gap-1.5 sm:grid-cols-2">
+                  {items.map((c) => (
+                    <ContentLeafTile
+                      key={c.key}
+                      content={c}
+                      platform={platform}
+                      format={node.format}
+                      onOpenDrill={onOpenDrill}
+                    />
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </AccordionContent>
+    </AccordionItem>
+  );
+}
+
+/** One content/campaign leaf — shows Mechanism → Variation → Funnel Stage
+ * as compact badges (cross-cutting metadata, never a nesting level) plus
+ * its real leads/cash, and drills into exactly those leads on click. */
+function ContentLeafTile({
+  content: c,
+  platform,
+  format,
+  onOpenDrill,
+}: {
+  content: TrafficContentNode;
+  platform: string;
+  format: string;
+  onOpenDrill: OpenDrillFn;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        onOpenDrill(
+          { platform, format, contentKey: c.key },
+          "leads",
+          c.label,
+          `Leads for ${platform} · ${format} · ${c.label} in this range`,
+        )
+      }
+      className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-card/60 px-2.5 py-2 text-left text-3xs transition hover:border-ring/40"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium text-foreground">{c.label}</div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-muted-foreground">
+          {c.mechanism && (
+            <span
+              className="rounded px-1 py-px font-medium uppercase"
+              style={{
+                color: MECHANISM_COLORS[c.mechanism],
+                backgroundColor: `color-mix(in oklch, ${MECHANISM_COLORS[c.mechanism]} 15%, transparent)`,
+              }}
+            >
+              {MECHANISMS[c.mechanism].label}
+            </span>
+          )}
+          {c.mechanism && c.variation && (
+            <span className="rounded bg-muted px-1 py-px">
+              {variationLabel(c.mechanism, c.variation) ?? c.variation}
+            </span>
+          )}
+          <span className="rounded bg-muted px-1 py-px uppercase">
+            {c.funnelStage === "unknown" ? "Unknown" : c.funnelStage}
+          </span>
+          <span className="font-sans tabular-nums">
+            {fmt(c.metrics.leads)} leads · {fmtMoney(c.metrics.collectedCents)}
+          </span>
+        </div>
+      </div>
+      <PlatformIcon platform={platform} className="h-3 w-3 shrink-0 text-muted-foreground" />
+    </button>
   );
 }
 

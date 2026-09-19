@@ -1859,7 +1859,7 @@ function Dashboard() {
                 activeTierCounts ? `of ${fmt(activeTierCounts.total)} active clients` : undefined
               }
               spectrum="cold"
-              onClick={() => navigate({ to: "/clients" } as never)}
+              onClick={() => navigate({ to: "/payments" } as never)}
             />
             <KpiCard
               label="High Ticket Active"
@@ -1868,7 +1868,7 @@ function Dashboard() {
                 activeTierCounts ? `of ${fmt(activeTierCounts.total)} active clients` : undefined
               }
               spectrum="mid"
-              onClick={() => navigate({ to: "/clients" } as never)}
+              onClick={() => navigate({ to: "/payments" } as never)}
             />
           </div>
         )}

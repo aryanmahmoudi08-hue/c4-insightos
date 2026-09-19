@@ -5,7 +5,16 @@ import { useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
-import { Briefcase, Target, TrendingUp, Search } from "lucide-react";
+import {
+  Briefcase,
+  Target,
+  TrendingUp,
+  Search,
+  DollarSign,
+  Brain,
+  Dumbbell,
+  TriangleAlert,
+} from "lucide-react";
 import { DailyWinsPanel } from "@/components/daily-wins-panel";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
 
@@ -19,6 +28,15 @@ type ClientLite = {
   status: string | null;
   start_date: string;
   pre_close_summary: string | null;
+};
+
+type CheckpointRow = {
+  win_date: string;
+  win_description: string;
+  win_types: string[] | null;
+  financial_amount_cents: number | null;
+  energy_score: number | null;
+  blocker: string | null;
 };
 
 function Fulfillment() {
@@ -54,6 +72,30 @@ function Fulfillment() {
         .order("created_at", { ascending: false })
         .limit(1);
       return data?.[0] ?? null;
+    },
+  });
+
+  // Progress Checkpoints — real dated daily_wins rows for the selected
+  // mentee, scoped by the actual client_id foreign key (not the fuzzy
+  // student_name matching DailyWinsPanel uses for its own aggregate stats).
+  const {
+    data: checkpoints,
+    isLoading: checkpointsLoading,
+    isError: checkpointsError,
+  } = useQuery({
+    queryKey: ["fulfillment-checkpoints", orgId, selected],
+    enabled: !!orgId && !!selected,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("daily_wins")
+        .select(
+          "win_date, win_description, win_types, financial_amount_cents, energy_score, blocker",
+        )
+        .eq("org_id", orgId!)
+        .eq("client_id", selected!)
+        .order("win_date", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as CheckpointRow[];
     },
   });
 
@@ -151,8 +193,8 @@ function Fulfillment() {
               <div>
                 <div className="text-xs text-muted-foreground">Mentee</div>
                 <Link
-                  to="/clients"
-                  search={{ openId: activeClient.id } as never}
+                  to="/payments"
+                  search={{ client: activeClient.id } as never}
                   className="display-serif text-xl hover:text-primary hover:underline"
                   title="Open full mentee profile"
                 >
@@ -183,15 +225,11 @@ function Fulfillment() {
                 <SignalCard label="Belief that shifted" value={answers.beliefs_shifted} />
               </div>
 
-              <div className="rounded-md border border-border p-3">
-                <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground mb-2">
-                  <TrendingUp className="h-3 w-3" /> Progress checkpoints
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Use the Mentees & Renewals page to update health score + renewal stage as progress
-                  milestones are hit.
-                </p>
-              </div>
+              <ProgressCheckpoints
+                checkpoints={checkpoints}
+                isLoading={checkpointsLoading}
+                isError={checkpointsError}
+              />
 
               <div className="rounded-md border border-border p-3">
                 <DailyWinsPanel studentName={activeClient.full_name} formRole="client" />
@@ -209,6 +247,90 @@ function Fulfillment() {
         </div>
       )}
     </>
+  );
+}
+
+function ProgressCheckpoints({
+  checkpoints,
+  isLoading,
+  isError,
+}: {
+  checkpoints?: CheckpointRow[];
+  isLoading: boolean;
+  isError: boolean;
+}) {
+  return (
+    <div className="rounded-md border border-border p-3">
+      <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground mb-2">
+        <TrendingUp className="h-3 w-3" /> Progress checkpoints
+      </div>
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Loading checkpoints…</p>
+      ) : isError ? (
+        <p className="text-xs text-destructive">
+          Couldn't load checkpoints — try again in a moment.
+        </p>
+      ) : !checkpoints || checkpoints.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No checkpoints logged yet.</p>
+      ) : (
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {checkpoints.map((c, i) => (
+            <CheckpointCard key={`${c.win_date}-${i}`} checkpoint={c} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CheckpointCard({ checkpoint }: { checkpoint: CheckpointRow }) {
+  const financial = (checkpoint.win_types ?? []).includes("financial");
+  return (
+    <div
+      className={`rounded-md border p-2.5 space-y-1.5 text-xs ${
+        financial
+          ? "border-[color:var(--color-success)]/45 bg-[color:var(--color-success)]/5"
+          : "border-border bg-background/40"
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="font-sans tabular-nums text-3xs text-muted-foreground">
+          {checkpoint.win_date}
+        </span>
+        {(checkpoint.win_types ?? []).map((t) => (
+          <span
+            key={t}
+            className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-3xs uppercase tracking-wider text-muted-foreground"
+          >
+            {t === "financial" ? (
+              <DollarSign className="h-3 w-3" />
+            ) : t === "mental" ? (
+              <Brain className="h-3 w-3" />
+            ) : t === "physical" ? (
+              <Dumbbell className="h-3 w-3" />
+            ) : null}
+            {t}
+          </span>
+        ))}
+        {checkpoint.energy_score != null && (
+          <span className="ml-auto font-sans tabular-nums text-3xs text-muted-foreground">
+            energy {checkpoint.energy_score}/10
+          </span>
+        )}
+      </div>
+      <div className="whitespace-pre-wrap break-words">{checkpoint.win_description}</div>
+      {checkpoint.financial_amount_cents != null && (
+        <div className="font-sans tabular-nums text-[color:var(--color-success)]">
+          ${Math.round(checkpoint.financial_amount_cents / 100).toLocaleString()}
+        </div>
+      )}
+      {checkpoint.blocker && (
+        <div className="flex items-start gap-1.5 text-[color:var(--color-warning)]">
+          <TriangleAlert className="h-3 w-3 mt-0.5 shrink-0" />
+          <span className="whitespace-pre-wrap break-words">{checkpoint.blocker}</span>
+        </div>
+      )}
+    </div>
   );
 }
 

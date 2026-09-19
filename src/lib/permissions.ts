@@ -23,6 +23,7 @@ export const RESOURCE_GROUPS = [
   "Team",
   "Marketing",
   "Mentees",
+  "Payments",
   "Reporting",
   "System",
 ] as const;
@@ -145,14 +146,6 @@ export const RESOURCES: ResourceDef[] = [
     edit: "Create lists, compose, schedule and queue email / SMS blasts.",
   },
   {
-    key: "clients",
-    label: "Mentees & Renewals",
-    group: "Mentees",
-    sensitive: true,
-    view: "Mentee roster with contract values, payment plans, renewals and health scores.",
-    edit: "Edit mentee records, payments, renewal stage and notes.",
-  },
-  {
     key: "onboarding",
     label: "Mentee Onboarding",
     group: "Mentees",
@@ -165,6 +158,14 @@ export const RESOURCES: ResourceDef[] = [
     group: "Mentees",
     view: "Logged mentee wins, screenshots and magnitude.",
     edit: "Add, edit and delete wins (these also feed Client DNA proof memory).",
+  },
+  {
+    key: "payments",
+    label: "Payments",
+    group: "Payments",
+    sensitive: true,
+    view: "Master payment ledger — every payment with processor, payment type (deposit / installment / PIF / renewal), cash collected vs. contract value, real catalog-linked payment-plan structure, and ticket tier, company-wide — plus the full mentee roster, renewal pipeline, health/at-risk tracking, and retention analytics (formerly the separate Mentees & Renewals page).",
+    edit: "Manually log processor, payment type, and failure reason on individual payment records; edit mentee records, financial terms at intake, renewal stage and notes.",
   },
   {
     key: "weekly_report",
@@ -254,14 +255,9 @@ export function defaultPerm(
       };
     case "closer":
       return {
-        can_view: [
-          "dashboard",
-          "leads",
-          "closer",
-          "eod_reports",
-          "clients",
-          "content_calendar",
-        ].includes(resource),
+        can_view: ["dashboard", "leads", "closer", "eod_reports", "content_calendar"].includes(
+          resource,
+        ),
         can_edit: ["leads", "closer", "eod_reports"].includes(resource),
       };
     default: // viewer

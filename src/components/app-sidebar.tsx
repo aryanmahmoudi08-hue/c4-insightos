@@ -30,11 +30,11 @@ import {
   ShieldCheck,
   Sun,
   Moon,
-  Radar,
-  Command,
   FileText,
   ClipboardCheck,
   FlaskConical,
+  DollarSign,
+  Radar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -78,9 +78,14 @@ type NavItem = {
   icon: typeof LayoutDashboard;
   soon?: boolean;
   search?: Record<string, string>;
+  /** Renders indented, as a child of the item directly above it — used for
+   * the Content Command Center section deep-links (Traffic/Attribution/
+   * Content Signals), which all point at "/content" with a different
+   * `search.section` rather than being real separate routes. */
+  sub?: boolean;
 };
 
-// Seven primary rail categories (the category selector) — each maps to a
+// Primary rail categories (the category selector) — each maps to a
 // flat list of existing routes (the actual route selector, rendered in the
 // secondary panel). Regrouped from the app's real IA: Rep Dash split out of
 // Sales (sales-process/pipeline vs. individual rep execution dashboards are
@@ -113,36 +118,78 @@ const TEAM_NAV: NavItem[] = [
   { to: "/hiring", label: "Hiring", icon: UserPlus },
 ];
 
+// Mentees & Renewals retired as its own route — its full renewal-pipeline/
+// health/notes functionality now lives inside Payments (MenteeRenewalPanel),
+// alongside the payment ledger. Onboarding and Results are untouched.
 const MENTEES_NAV: NavItem[] = [
-  { to: "/clients", label: "Mentees & Renewals", icon: BadgeCheck },
   { to: "/onboarding", label: "Mentee Onboarding", icon: Brain },
   { to: "/fulfillment", label: "Mentee Results", icon: BadgeCheck },
 ];
 
+// PAYMENTS — the master payment ledger (which processor, deposit vs.
+// installment vs. PIF vs. renewal, real catalog-linked plan structure,
+// high/low ticket split). Single-item category, same treatment as Home/
+// Main — payments only ever attach to a closed client, never a pre-close
+// lead, so it's grouped right after Mentees.
+const PAYMENTS_NAV: NavItem[] = [{ to: "/payments", label: "Payments", icon: DollarSign }];
+
 // Messaging (Email & SMS) intentionally deferred — its nav entry was
 // removed from here (used to point at /outreach). The route/component are
 // preserved, not deleted; see src/deferred-features/outreach-route.tsx.deferred.
+// Content Signals retired as a standalone page — its Root Cause Chain,
+// recommended-mix driver drill-down, weekly diagnosis, drivers log, AI
+// Bottleneck Read and Setter Signals all now live inside Content Command
+// Center (see content-signals-panel.tsx). Route/component were deleted, not
+// hidden — grep the deleted _authenticated.content-signals.tsx in git
+// history if this ever needs revisiting.
+// Traffic and Attribution are no longer their own Analytics-category nav
+// entries (their standalone pages still exist — Content Command Center
+// embeds the exact same components — just unlinked from the sidebar/command
+// palette as separate destinations) — every deep-link below lands on
+// "/content" and scrolls to that embedded section's existing anchor id.
 const CONTENT_NAV: NavItem[] = [
-  { to: "/content-calendar", label: "Content Calendar", icon: CalendarDays },
   { to: "/content", label: "Content Command Center", icon: Video },
-  { to: "/content-signals", label: "Content Signals", icon: Radar },
+  {
+    to: "/content",
+    label: "Traffic",
+    icon: TrendingUp,
+    search: { section: "traffic-overview" },
+    sub: true,
+  },
+  {
+    to: "/content",
+    label: "Attribution",
+    icon: GitBranch,
+    search: { section: "attribution-overview" },
+    sub: true,
+  },
+  {
+    to: "/content",
+    label: "Content Signals",
+    icon: Radar,
+    search: { section: "content-signals" },
+    sub: true,
+  },
+  { to: "/content-calendar", label: "Content Calendar", icon: CalendarDays },
 ];
 
 // CLIENT DNA — pulled out of Content (it's client profile/offer data, not a
 // content-production surface) into its own rail icon, same treatment as
-// System: not one of the seven primary categories, so it lives in the
+// System: not one of the primary categories, so it lives in the
 // utility footer instead.
 const CLIENT_DNA_NAV: NavItem[] = [{ to: "/copy", label: "Client DNA", icon: Sparkles }];
 
+// Attribution and Traffic moved out of here — Content Command Center embeds
+// the exact same page components now, so they're reachable as section
+// deep-links under Content Command Center in the sidebar instead of as their
+// own Analytics-category destinations (see CONTENT_NAV above).
 const ANALYTICS_NAV: NavItem[] = [
-  { to: "/attribution", label: "Attribution", icon: GitBranch },
   { to: "/vsl", label: "VSL Analytics", icon: Video },
   { to: "/webinar-analytics", label: "Webinar Analytics", icon: CalendarDays },
-  { to: "/traffic", label: "Traffic", icon: TrendingUp },
   { to: "/weekly-report", label: "Weekly Report", icon: FileText },
 ];
 
-// SYSTEM — deliberately not one of the seven primary categories (admin/
+// SYSTEM — deliberately not one of the primary categories (admin/
 // account routes don't fit any of them), so it lives as its own rail icon
 // down in the utility footer instead of the primary category list.
 const SYSTEM_NAV: NavItem[] = [{ to: "/events", label: "Event Bus", icon: Activity }];
@@ -158,7 +205,6 @@ const RESTRICTED_ALLOW = new Set([
   "/inbound-dialer",
   "/closer",
   "/eod-reports",
-  "/clients",
   "/onboarding",
   "/fulfillment",
   "/vsl",
@@ -216,7 +262,7 @@ export function AppSidebar() {
   const filterByRole = (items: NavItem[]) =>
     canManage ? items : items.filter((it) => RESTRICTED_ALLOW.has(it.to));
 
-  // The seven primary rail categories — each a category button in the rail
+  // The primary rail categories — each a category button in the rail
   // plus the flat item list it reveals in the secondary panel. System is
   // deliberately excluded from this list (see SYSTEM_NAV above) and handled
   // separately as an eighth, visually-secondary rail icon.
@@ -227,15 +273,16 @@ export function AppSidebar() {
     { key: "repdash", label: "Rep Dash", icon: PhoneCall, items: filterByRole(REPDASH_NAV) },
     { key: "team", label: "Team", icon: UserPlus, items: filterByRole(TEAM_NAV) },
     { key: "mentees", label: "Mentees", icon: BadgeCheck, items: filterByRole(MENTEES_NAV) },
+    { key: "payments", label: "Payments", icon: DollarSign, items: filterByRole(PAYMENTS_NAV) },
     { key: "content", label: "Content", icon: Video, items: filterByRole(CONTENT_NAV) },
     { key: "analytics", label: "Analytics", icon: TrendingUp, items: filterByRole(ANALYTICS_NAV) },
   ].filter((c) => c.items.length > 0);
 
-  // Utility-footer categories — not among the seven primary rail categories,
+  // Utility-footer categories — not among the primary rail categories,
   // but still real category selectors with their own panel content. Client
   // DNA lives here rather than nested in Content (it's client profile/offer
   // data, not a content-production surface); System lives here because
-  // admin/account routes don't fit any of the seven primary categories.
+  // admin/account routes don't fit any of the primary categories.
   const extraCategories = [
     {
       key: "clientdna",
@@ -368,8 +415,10 @@ export function AppSidebar() {
 
   /** A route inside the currently-open category panel — always a real
    *  navigation link (this is "the route selector" half of the rail/panel
-   *  split). Flat by design: none of the seven categories nest a sub-group
-   *  anymore now that Rep Dash is its own top-level category. */
+   *  split). Flat by design, with one exception: `sub` items (the Content
+   *  Command Center section deep-links) render indented directly under the
+   *  item above them — a lightweight visual nesting, not a real
+   *  collapsible/expandable sub-group. */
   const renderItem = (it: NavItem) => {
     const searchObj = (loc.search ?? {}) as Record<string, unknown>;
     const matchesSearch = it.search
@@ -380,13 +429,21 @@ export function AppSidebar() {
     const Icon = it.icon;
     return (
       <Link
-        key={it.to}
+        key={`${it.to}:${it.label}`}
         to={it.to}
         search={it.search as never}
+        // Section deep-links (Traffic/Attribution/Content Signals) land on
+        // and scroll to a spot on the same page — the router's own default
+        // scroll-restoration otherwise snaps to (0,0) first, so the page's
+        // own smooth scrollIntoView always starts from the top instead of
+        // from wherever the user actually is. Everything else keeps the
+        // normal reset-to-top behavior.
+        resetScroll={!it.search?.section}
         onClick={closeMobile}
         title={it.label}
         className={cn(
           "group relative flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm transition-all",
+          it.sub && "ml-3 min-h-8 py-1 text-[13px]",
           active
             ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm ring-1 ring-white/[0.04]"
             : "text-sidebar-foreground/65 hover:bg-sidebar-accent/55 hover:text-sidebar-foreground hover:translate-x-[1px]",
@@ -399,7 +456,13 @@ export function AppSidebar() {
             transition={{ type: "spring", stiffness: 500, damping: 35 }}
           />
         )}
-        <Icon className={cn("h-4 w-4 shrink-0 transition-transform", active && "scale-105")} />
+        <Icon
+          className={cn(
+            "shrink-0 transition-transform",
+            it.sub ? "h-3.5 w-3.5" : "h-4 w-4",
+            active && "scale-105",
+          )}
+        />
         <span className="flex-1 truncate">{it.label}</span>
       </Link>
     );
@@ -612,7 +675,7 @@ export function AppSidebar() {
               only changes which category the panel shows (selectCategory).
               System sits below a spacer as an eighth, visually-secondary
               icon alongside the other utility controls (search/theme/sign
-              out/pin), since it's not one of the seven primary categories. */}
+              out/pin), since it's not one of the primary categories. */}
           <div className="flex w-16 shrink-0 flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]">
             <nav className="flex flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
               {categories.map((cat) => railCategoryBtn(cat))}
@@ -626,7 +689,7 @@ export function AppSidebar() {
                 aria-label="Search"
                 className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg text-sidebar-foreground/70 transition-all hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
               >
-                <Command className="h-[18px] w-[18px]" />
+                <Search className="h-[18px] w-[18px]" />
               </button>
               <button
                 type="button"
@@ -736,7 +799,7 @@ export function TopBar({
     e.preventDefault();
     const term = q.trim();
     if (!term) return;
-    nav({ to: "/clients", search: { q: term } as never });
+    nav({ to: "/payments", search: { q: term } as never });
   };
   return (
     <div className="glass-header sticky top-8 z-20 border-b px-4 md:px-6 py-4">

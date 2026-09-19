@@ -63,7 +63,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "get_content_mix",
     description:
-      "The recommended content-mechanism mix (educational/credibility/authoritative/relatability) computed from real FAQ clicks, setter-call signals, onboarding intakes, and posted reels — same computation /content-signals shows. Explicitly flags insufficientData when total signal weight is too thin to be confident. Defaults to the last 30 days if no range given.",
+      "The recommended content-mechanism mix (educational/credibility/authoritative/relatability) computed from real FAQ clicks, setter-call signals, onboarding intakes, and posted reels — same computation Content Command Center's Content Signals section shows. Explicitly flags insufficientData when total signal weight is too thin to be confident. Defaults to the last 30 days if no range given.",
     parameters: {
       type: "object",
       properties: {

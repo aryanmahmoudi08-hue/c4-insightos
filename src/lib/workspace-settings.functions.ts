@@ -19,7 +19,7 @@ const ContentEngineSettings = z.object({
   /** Below this total demand-signal weight, the recommended-mix card is
    * badged "limited data" instead of presented as equally confident. */
   minTotalSignalWeight: z.number().min(0).max(10000).default(15),
-  /** Default weekly reel target shown on /content-signals. */
+  /** Default weekly reel target shown in Content Command Center's Content Signals section. */
   weeklyReelTarget: z.number().int().min(1).max(50).default(6),
 });
 

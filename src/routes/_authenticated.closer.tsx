@@ -1354,7 +1354,7 @@ function Closer() {
               key: "retention",
               label: "Retention / Refund",
               value: null,
-              detail: "Lives on Mentees & Renewals, not on calls — not connected here",
+              detail: "Lives on Payments' mentee renewal panel, not on calls — not connected here",
             },
           ];
         })(),

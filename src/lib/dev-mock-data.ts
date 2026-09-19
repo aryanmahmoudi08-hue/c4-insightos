@@ -338,8 +338,20 @@ export function mockContentDemand(): {
   totalWeight: number;
   minTotalWeight: number;
   weights: Record<MechanismKey, number>;
-  drivers: { source: string; detail: string; mechanism: MechanismKey; weight: number }[];
+  drivers: {
+    source: string;
+    detail: string;
+    mechanism: MechanismKey;
+    weight: number;
+    id?: string;
+  }[];
   counts: { faq: number; setter_calls: number; intakes: number; reels: number };
+  evidence: {
+    faq: { id: string; title: string; detail: string }[];
+    setter_calls: { id: string; title: string; detail: string }[];
+    intakes: { id: string; title: string; detail: string }[];
+    reels: { id: string; title: string; detail: string }[];
+  };
 } {
   return {
     mix: { educational: 35, credibility: 30, authoritative: 15, relatability: 20 },
@@ -353,21 +365,95 @@ export function mockContentDemand(): {
         detail: '"Does this actually work?" · 38 clicks',
         mechanism: "credibility",
         weight: 76,
+        id: "mock-faq-1",
       },
       {
         source: "Setting call",
         detail: 'Jordan Blake · 2026-08-04 · "I\'ve tried this before"',
         mechanism: "educational",
         weight: 12,
+        id: "mock-setter-1",
       },
       {
         source: "Onboarding intake",
         detail: 'Decision moment: "saw the exact system breakdown"',
         mechanism: "educational",
         weight: 9,
+        id: "mock-intake-1",
       },
     ],
     counts: { faq: 6, setter_calls: 14, intakes: 9, reels: 21 },
+    evidence: {
+      faq: [
+        {
+          id: "mock-faq-1",
+          title: '"Does this actually work?"',
+          detail: "38 interactions · tagged credibility",
+        },
+        {
+          id: "mock-faq-2",
+          title: '"How long until I see results?"',
+          detail: "22 interactions · tagged educational",
+        },
+        {
+          id: "mock-faq-3",
+          title: '"What makes you different from other coaches?"',
+          detail: "17 interactions · tagged authoritative",
+        },
+        {
+          id: "mock-faq-4",
+          title: '"Is this a good fit for beginners?"',
+          detail: "14 interactions",
+        },
+        {
+          id: "mock-faq-5",
+          title: '"Can I see a real client result?"',
+          detail: "11 interactions · tagged credibility",
+        },
+        { id: "mock-faq-6", title: '"What\'s the time commitment?"', detail: "6 interactions" },
+      ],
+      setter_calls: [
+        {
+          id: "mock-setter-1",
+          title: "Jordan Blake",
+          detail: '2026-08-04 · tagged educational · "I\'ve tried this before"',
+        },
+        {
+          id: "mock-setter-2",
+          title: "Priya Nair",
+          detail:
+            '2026-08-06 · tagged credibility · "Not sure this actually works for someone like me"',
+        },
+        {
+          id: "mock-setter-3",
+          title: "Marcus Webb",
+          detail:
+            '2026-08-09 · tagged authoritative · "Why should I trust you over the other program?"',
+        },
+        ...Array.from({ length: 11 }, (_, i) => ({
+          id: `mock-setter-${i + 4}`,
+          title: ["Dana Kim", "Alex Torres", "Sam Okafor"][i % 3],
+          detail: `2026-08-${String(10 + i).padStart(2, "0")} · call signal logged`,
+        })),
+      ],
+      intakes: [
+        {
+          id: "mock-intake-1",
+          title: "Intake · 2026-08-05",
+          detail: 'Decision moment: "saw the exact system breakdown"',
+        },
+        ...Array.from({ length: 8 }, (_, i) => ({
+          id: `mock-intake-${i + 2}`,
+          title: `Intake · 2026-08-${String(6 + i).padStart(2, "0")}`,
+          detail: "Decision moment logged during onboarding",
+        })),
+      ],
+      reels: Array.from({ length: 21 }, (_, i) => ({
+        id: `mock-reel-${i + 1}`,
+        title: (["educational", "credibility", "authoritative", "relatability"] as const)[i % 4],
+        detail: `${["instagram", "tiktok", "youtube"][i % 3]} · posted 2026-08-${String((i % 28) + 1).padStart(2, "0")}`,
+      })),
+    },
   };
 }
 
@@ -376,7 +462,15 @@ export function mockContentDemand(): {
 export function mockWeeklyContentCheck(): {
   per: Record<
     string,
-    { count: number; dms: number; calls: number; cash: number; views: number; withMetrics: number }
+    {
+      count: number;
+      dms: number;
+      calls: number;
+      cash: number;
+      views: number;
+      withMetrics: number;
+      pieces?: { id: string; platform: string; posted_at: string | null }[];
+    }
   >;
   reels: number;
   missing: MechanismKey[];
@@ -386,13 +480,44 @@ export function mockWeeklyContentCheck(): {
   worstDiagnosis: { label: string; detail: string; verdictsSampled: number } | null;
   total: number;
 } {
-  const zero = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, withMetrics: 0 };
+  const zero = { count: 0, dms: 0, calls: 0, cash: 0, views: 0, withMetrics: 0, pieces: [] };
   return {
     per: {
-      educational: { count: 2, dms: 4, calls: 1, cash: 0, views: 3400, withMetrics: 2 },
-      credibility: { count: 3, dms: 11, calls: 3, cash: 250000, views: 5200, withMetrics: 3 },
-      authoritative: { count: 1, dms: 2, calls: 0, cash: 0, views: 1100, withMetrics: 1 },
-      relatability: { count: 0, dms: 0, calls: 0, cash: 0, views: 0, withMetrics: 0 },
+      educational: {
+        count: 2,
+        dms: 4,
+        calls: 1,
+        cash: 0,
+        views: 3400,
+        withMetrics: 2,
+        pieces: [
+          { id: "mock-week-edu-1", platform: "instagram", posted_at: "2026-09-10" },
+          { id: "mock-week-edu-2", platform: "youtube", posted_at: "2026-09-12" },
+        ],
+      },
+      credibility: {
+        count: 3,
+        dms: 11,
+        calls: 3,
+        cash: 250000,
+        views: 5200,
+        withMetrics: 3,
+        pieces: [
+          { id: "mock-week-cred-1", platform: "tiktok", posted_at: "2026-09-09" },
+          { id: "mock-week-cred-2", platform: "instagram", posted_at: "2026-09-11" },
+          { id: "mock-week-cred-3", platform: "youtube", posted_at: "2026-09-13" },
+        ],
+      },
+      authoritative: {
+        count: 1,
+        dms: 2,
+        calls: 0,
+        cash: 0,
+        views: 1100,
+        withMetrics: 1,
+        pieces: [{ id: "mock-week-auth-1", platform: "linkedin", posted_at: "2026-09-14" }],
+      },
+      relatability: { count: 0, dms: 0, calls: 0, cash: 0, views: 0, withMetrics: 0, pieces: [] },
       untagged: zero,
     },
     reels: 5,
@@ -604,6 +729,100 @@ export function mockContentFunnel() {
   return { views: 308_800, leads: 90, calls: 34, closes: 12, cash: 3_890_000 };
 }
 
+/** Content Pipeline board fixture (Draft -> Posted), dev-bypass only. The
+ * real contentPipelineFn requires a Bearer token Dev Bypass never has (see
+ * content-pipeline.server.ts), so this fills the same shape directly —
+ * deterministic, never touches Supabase. Spans all 5 pipeline_status
+ * columns (mockContentPieces() above only ever produces posted/
+ * ready_to_post/in_review) so the Kanban board has something in every
+ * column during preview. */
+export function mockContentPipeline() {
+  const now = Date.now();
+  const rows = [
+    {
+      title: "The $50K Month Breakdown",
+      platform: "reel",
+      source_platform: "Instagram",
+      status: "posted",
+      stage: "tof",
+    },
+    {
+      title: "Why Most Coaches Undercharge",
+      platform: "youtube_short",
+      source_platform: "YouTube",
+      status: "posted",
+      stage: "mof",
+    },
+    {
+      title: "Client Win: 0 to $20K in 90 Days",
+      platform: "story_sequence",
+      source_platform: "Instagram",
+      status: "ready_to_post",
+      stage: "bof",
+    },
+    {
+      title: "POV: Meeting Your Mentor After a Year",
+      platform: "reel",
+      source_platform: "Instagram",
+      status: "approved",
+      stage: "tof",
+    },
+    {
+      title: "How I Went From Broke to $40K/mo",
+      platform: "reel",
+      source_platform: "TikTok",
+      status: "in_review",
+      stage: "mof",
+    },
+    {
+      title: "The Exact DM Script That Books Calls",
+      platform: "carousel",
+      source_platform: "Instagram",
+      status: "draft",
+      stage: "tof",
+    },
+  ];
+  return rows.map((r, i) => ({
+    id: `mock-pipeline-${i}`,
+    title: r.title,
+    platform: r.platform,
+    source_platform: r.source_platform,
+    hook: `${r.title} — hook line for dev preview.`,
+    body: `${r.title} — mock transcript for dev bypass preview.`,
+    cta: "DM the word GROWTH to get the framework.",
+    funnel_stage: r.stage,
+    angle: "proof",
+    topic: null as string | null,
+    pipeline_status: r.status,
+    scheduled_date:
+      r.status === "ready_to_post" ? new Date(now + 2 * 86400e3).toISOString().slice(0, 10) : null,
+    scheduled_time: r.status === "ready_to_post" ? "18:00" : null,
+    post_format: r.status === "ready_to_post" ? "short_form" : null,
+    repurpose_plan: null as string | null,
+    voice_notes: null as string | null,
+    why_it_works: null as string | null,
+    posting_instructions: null as string | null,
+  }));
+}
+
+/** Aggregate Stories card fixture (story_slides + slide_metrics), dev-bypass
+ * only — deterministic numbers standing in for what a couple of tracked
+ * story sequences would look like. See content-command-center.tsx's Stories
+ * AvailabilityCard. */
+export function mockStoriesSummary() {
+  return {
+    sequencesTracked: 2,
+    totalSlides: 9,
+    totalViews: 18_400,
+    totalExits: 2_760,
+    avgExitRatePct: 15,
+    totalTapsForward: 6_100,
+    totalTapsBack: 540,
+    totalReplies: 88,
+    totalLinkClicks: 214,
+  };
+}
+
 /** Top revenue-driving content paths, for the Attribution page's Sankey +
  * table preview — reuses MOCK_HOOKS' real title/platform/views/leads/cash,
  * closes derived as a plausible ~20% of leads (this mock has no separate
@@ -693,6 +912,163 @@ export function mockTrafficBreakdown() {
       score: Number((r.closeRate * (r.avgDeal / 100000)).toFixed(2)),
     };
   });
+}
+
+/** Deterministic Traffic platform-first hierarchy fixture (Platform -> Format
+ * -> Content/Campaign), matching TrafficHierarchy from traffic-hierarchy.ts.
+ * Dev-bypass only — the real page always fires real queries and only falls
+ * back to this when the real (RLS-empty under devBypass) result is empty,
+ * same pattern mockTrafficBreakdown() above already established. */
+export function mockTrafficHierarchy() {
+  const metrics = (
+    leads: number,
+    qualifiedLeads: number,
+    bookings: number,
+    shows: number,
+    closes: number,
+    contractedCents: number,
+    collectedCents: number,
+  ) => ({ leads, qualifiedLeads, bookings, shows, closes, contractedCents, collectedCents });
+
+  const platforms = [
+    {
+      platform: "Instagram",
+      metrics: metrics(84, 52, 30, 24, 14, 812_000, 780_000),
+      formats: [
+        {
+          format: "reel",
+          formatLabel: "Reels",
+          metrics: metrics(58, 36, 20, 16, 9, 520_000, 500_000),
+          content: [
+            {
+              key: "mock-content-1",
+              label: "The $50K Month Breakdown",
+              funnelStage: "tof" as const,
+              mechanism: "educational" as const,
+              variation: "value",
+              metrics: metrics(34, 22, 12, 10, 6, 340_000, 330_000),
+            },
+            {
+              key: "mock-content-4",
+              label: "How I Went From Broke to $40K/mo",
+              funnelStage: "mof" as const,
+              mechanism: "relatability" as const,
+              variation: "storytelling",
+              metrics: metrics(24, 14, 8, 6, 3, 180_000, 170_000),
+            },
+          ],
+        },
+        {
+          format: "story_sequence",
+          formatLabel: "Story Sequences",
+          metrics: metrics(16, 10, 6, 5, 3, 180_000, 170_000),
+          content: [
+            {
+              key: "mock-content-3",
+              label: "Client Win: 0 to $20K in 90 Days",
+              funnelStage: "bof" as const,
+              mechanism: "credibility" as const,
+              variation: "case_study",
+              metrics: metrics(16, 10, 6, 5, 3, 180_000, 170_000),
+            },
+          ],
+        },
+        {
+          format: "carousel",
+          formatLabel: "Carousels",
+          metrics: metrics(10, 6, 4, 3, 2, 112_000, 110_000),
+          content: [
+            {
+              key: "mock-content-6",
+              label: "The Exact DM Script That Books Calls",
+              funnelStage: "tof" as const,
+              mechanism: "educational" as const,
+              variation: "value",
+              metrics: metrics(10, 6, 4, 3, 2, 112_000, 110_000),
+            },
+          ],
+        },
+      ],
+    },
+    {
+      platform: "YouTube",
+      metrics: metrics(29, 16, 9, 7, 4, 268_000, 250_000),
+      formats: [
+        {
+          format: "youtube_short",
+          formatLabel: "YouTube Shorts",
+          metrics: metrics(29, 16, 9, 7, 4, 268_000, 250_000),
+          content: [
+            {
+              key: "mock-content-2",
+              label: "Why Most Coaches Undercharge",
+              funnelStage: "mof" as const,
+              mechanism: "authoritative" as const,
+              variation: "industry_leader",
+              metrics: metrics(29, 16, 9, 7, 4, 268_000, 250_000),
+            },
+          ],
+        },
+      ],
+    },
+    {
+      platform: "Meta Ads",
+      metrics: metrics(38, 19, 12, 8, 5, 298_000, 240_000),
+      formats: [
+        {
+          format: "unknown",
+          formatLabel: "Unidentified",
+          metrics: metrics(38, 19, 12, 8, 5, 298_000, 240_000),
+          content: [
+            {
+              key: "q3-retarget",
+              label: "q3-retarget",
+              funnelStage: "unknown" as const,
+              mechanism: null,
+              variation: null,
+              metrics: metrics(38, 19, 12, 8, 5, 298_000, 240_000),
+            },
+          ],
+        },
+      ],
+    },
+    {
+      platform: "Unknown / Unattributed",
+      metrics: metrics(11, 3, 1, 1, 0, 0, 0),
+      formats: [
+        {
+          format: "unknown",
+          formatLabel: "Unidentified",
+          metrics: metrics(11, 3, 1, 1, 0, 0, 0),
+          content: [
+            {
+              key: "unattributed",
+              label: "Unattributed",
+              funnelStage: "unknown" as const,
+              mechanism: null,
+              variation: null,
+              metrics: metrics(11, 3, 1, 1, 0, 0, 0),
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const totals = platforms.reduce(
+    (sum, p) => ({
+      leads: sum.leads + p.metrics.leads,
+      qualifiedLeads: sum.qualifiedLeads + p.metrics.qualifiedLeads,
+      bookings: sum.bookings + p.metrics.bookings,
+      shows: sum.shows + p.metrics.shows,
+      closes: sum.closes + p.metrics.closes,
+      contractedCents: sum.contractedCents + p.metrics.contractedCents,
+      collectedCents: sum.collectedCents + p.metrics.collectedCents,
+    }),
+    metrics(0, 0, 0, 0, 0, 0, 0),
+  );
+
+  return { platforms, totals, unattributedLeads: 11 };
 }
 
 /** mechanism (row) x variation-slot (col: "Var 1" / "Var 2") avg views, for the ContentOS heatmap. */
@@ -1048,39 +1424,43 @@ export function mockContentClassification() {
   };
 }
 
-export function mockContentSystemInsight(demand: ReturnType<typeof mockContentDemand>) {
+/** Structured AI Bottleneck Read fixture for Content Command Center's
+ * migrated Content Signals section — matches BottleneckReadResult
+ * (content-taxonomy.ts), the structured schema analyzeContentSystem() now
+ * returns in place of its old markdown blob. Dev-bypass only. */
+export function mockBottleneckRead() {
   return {
-    insight: `[MOCK — Dev Bypass, no live AI key]
-
-## Root cause chain
-Cash is inconsistent because posting is inconsistent, and posting is inconsistent because performance isn't tracked closely enough to know what to repeat. Connect a real LOVABLE_API_KEY to get a live read.
-
-## Recommended mix this week
-| Mechanism | % of posts | Reels | Why |
-|---|---|---|---|
-| Educational | 35% | 2 | Highest FAQ-click volume this window |
-| Credibility | 30% | 2 | Case studies converting best to booked calls |
-| Authoritative | 15% | 1 | Underused relative to demand |
-| Relatability | 20% | 1 | Steady DM driver |
-
-## Double down (green)
-- "The $50K Month Breakdown" — 84K views, 61% retention, $12.4K attributed cash
-- Case-study format converting to calls at 2x the account average
-
-## Bottlenecks (red)
-- Authoritative content underposted relative to demand signal — add 1 more this week
-- Hook retention below 40% on 2 of the last 5 posts — open on the result, not the setup
-
-## Missing tracking
-Setter-call objection logging is thin this window — log more to sharpen the demand signal.
-
-## This week's 5-7 reels
-1. Educational — value reveal — "the exact system" — pre-handles "I've tried this before"
-2. Educational — problem/solution — narrow niche pain — pre-handles "not sure it'll work for me"
-3. Credibility — case study — replicable proof — pre-handles "does this actually work"
-4. Credibility — testimonial — client screen recording — pre-handles "is this real"
-5. Authoritative — industry leader POV — pre-handles "why you over a competitor"`,
-    demand,
+    status: "ok" as const,
+    insights: [
+      {
+        finding:
+          "[MOCK] Educational Reels are converting to booked calls at roughly 2x the rate of Authoritative content this window, but Authoritative is underposted relative to FAQ demand.",
+        supportingData:
+          'Educational: 2 pieces, 4 DMs, 1 call booked. Authoritative: 1 piece, 2 DMs, 0 calls booked. FAQ clicks skew credibility (38 clicks on "Does this actually work?").',
+        whyItMatters:
+          "The mechanism most likely to convert is being posted least relative to what buyers are actually asking about — that's a direct lever on booked-call volume.",
+        recommendedAction:
+          "Add one more Authoritative reel this week using the industry-leader POV angle to close the gap.",
+        confidence: "medium" as const,
+        sampleSize: "6 posts this week, 1 tagged authoritative",
+        relevantRecords: ["The $50K Month Breakdown", "Why Most Coaches Undercharge"],
+        attributionLimitations: "Not applicable",
+      },
+      {
+        finding:
+          "[MOCK] Relatability had zero posts this week despite being 20% of the recommended mix.",
+        supportingData:
+          "0 of 6 posts this week tagged relatability; recommended mix target is 20%.",
+        whyItMatters:
+          "A fully missing category means that segment of demand signal is going unanswered.",
+        recommendedAction:
+          "Schedule one storytelling or personality-angle piece before the week closes.",
+        confidence: "high" as const,
+        sampleSize: "6 posts logged this week, 0 tagged relatability",
+        relevantRecords: [],
+        attributionLimitations: "Not applicable",
+      },
+    ],
   };
 }
 
@@ -1391,6 +1771,7 @@ export function mockClients() {
   return [
     {
       id: "mock-client-1",
+      lead_id: null,
       full_name: "Jordan Ellis",
       email: "jordan.ellis@example.com",
       phone: null,
@@ -1413,6 +1794,7 @@ export function mockClients() {
     },
     {
       id: "mock-client-2",
+      lead_id: null,
       full_name: "Casey Nguyen",
       email: "casey.nguyen@example.com",
       phone: null,
@@ -1436,6 +1818,7 @@ export function mockClients() {
     },
     {
       id: "mock-client-3",
+      lead_id: null,
       full_name: "Morgan Blake",
       email: "morgan.blake@example.com",
       phone: null,
@@ -1455,6 +1838,315 @@ export function mockClients() {
       renewal_stage: "not_started",
       notes: "Low engagement last 3 weeks.",
       pre_close_summary: null,
+    },
+    {
+      id: "mock-client-4",
+      lead_id: null,
+      full_name: "Priya Advani",
+      email: "priya.advani@example.com",
+      phone: null,
+      offer_name: "Operator System",
+      start_date: new Date(now - 70 * 86400e3).toISOString().slice(0, 10),
+      contract_value_cents: 500_000,
+      invested_to_date_cents: 125_000,
+      expected_next_payment_cents: 125_000,
+      expected_next_payment_date: new Date(now - 3 * 86400e3).toISOString().slice(0, 10),
+      payment_plan: true,
+      installments_remaining: 3,
+      installment_amount_cents: 125_000,
+      status: "active",
+      health_score: 55,
+      renewal_date: new Date(now + 90 * 86400e3).toISOString().slice(0, 10),
+      renewal_conv_started: false,
+      renewal_stage: "not_started",
+      notes: "Card on file declined twice this cycle.",
+      pre_close_summary: null,
+    },
+    {
+      id: "mock-client-5",
+      lead_id: null,
+      full_name: "Devon Ashworth",
+      email: "devon.ashworth@example.com",
+      phone: null,
+      offer_name: "Starter Track",
+      start_date: new Date(now - 200 * 86400e3).toISOString().slice(0, 10),
+      contract_value_cents: 250_000,
+      invested_to_date_cents: 125_000,
+      expected_next_payment_cents: 125_000,
+      expected_next_payment_date: new Date(now - 25 * 86400e3).toISOString().slice(0, 10),
+      payment_plan: true,
+      installments_remaining: 1,
+      installment_amount_cents: 125_000,
+      status: "at_risk",
+      health_score: 30,
+      renewal_date: new Date(now + 40 * 86400e3).toISOString().slice(0, 10),
+      renewal_conv_started: false,
+      renewal_stage: "not_started",
+      notes: "Installment 25 days past due, no response to outreach.",
+      pre_close_summary: null,
+    },
+  ];
+}
+
+/** Real schedule rows derived from mockClients()'s own payment-plan fields
+ * via the same generatePaymentSchedule() the production path uses — so a
+ * plain (non-demo) Dev Bypass session can exercise payment-plan/analytics UI
+ * without inventing a second, disconnected fixture. One installment per
+ * mock client is force-marked "paid"/"failed" so recovery-queue and
+ * analytics states are visible without a real payments table. */
+export function mockPaymentScheduleItems() {
+  const clients = mockClients();
+  const rows: Array<{
+    id: string;
+    client_id: string;
+    due_date: string;
+    amount_cents: number;
+    status: string;
+    payment_id: string | null;
+  }> = [];
+  for (const c of clients) {
+    if (!c.payment_plan || !c.installments_remaining) continue;
+    const cursor = c.expected_next_payment_date
+      ? new Date(`${c.expected_next_payment_date}T00:00:00`)
+      : new Date();
+    for (let i = 0; i < c.installments_remaining; i++) {
+      const dueDate = new Date(cursor);
+      dueDate.setMonth(dueDate.getMonth() + i);
+      const isPastDue = dueDate.getTime() < Date.now();
+      const isFirstPaidInstallment = i === 0 && c.id === "mock-client-1";
+      rows.push({
+        id: `mock-schedule-${c.id}-${i}`,
+        client_id: c.id,
+        due_date: isFirstPaidInstallment
+          ? new Date(Date.now() - 30 * 86400e3).toISOString().slice(0, 10)
+          : dueDate.toISOString().slice(0, 10),
+        amount_cents: c.installment_amount_cents ?? 0,
+        status: isFirstPaidInstallment
+          ? "paid"
+          : i === 0 && c.id === "mock-client-4"
+            ? "failed"
+            : isPastDue
+              ? "overdue"
+              : "scheduled",
+        payment_id: isFirstPaidInstallment ? "mock-payment-1" : null,
+      });
+    }
+  }
+  return rows;
+}
+
+/** Real payment rows for the same mockClients() scenarios — kept small (one
+ * paid/failed/refunded example each) so payment-analytics rates have a
+ * genuine, non-empty sample under plain Dev Bypass rather than showing
+ * "not enough data" everywhere. */
+/** Processor/payment-type fields deliberately mixed — some rows fully
+ * logged, some (mock-payment-5) with no processor at all — so the Payments
+ * module's Dev Bypass path honestly exercises the "Not logged" empty state
+ * instead of implying every payment is always fully classified. */
+export function mockPayments() {
+  const now = Date.now();
+  return [
+    {
+      id: "mock-payment-1",
+      client_id: "mock-client-1",
+      amount_cents: 125_000,
+      status: "paid",
+      collected_at: new Date(now - 30 * 86400e3).toISOString(),
+      currency: "USD",
+      processor: "whop",
+      payment_type: "installment",
+      failure_reason: null,
+    },
+    {
+      id: "mock-payment-2",
+      client_id: "mock-client-2",
+      amount_cents: 500_000,
+      status: "paid",
+      collected_at: new Date(now - 118 * 86400e3).toISOString(),
+      currency: "USD",
+      processor: "wise",
+      payment_type: "pif",
+      failure_reason: null,
+    },
+    {
+      id: "mock-payment-3",
+      client_id: "mock-client-4",
+      amount_cents: 125_000,
+      status: "failed",
+      collected_at: new Date(now - 3 * 86400e3).toISOString(),
+      currency: "USD",
+      processor: "fanbasis",
+      payment_type: "installment",
+      failure_reason: "Card declined — insufficient funds (logged by team, not processor-sourced)",
+    },
+    {
+      id: "mock-payment-4",
+      client_id: "mock-client-2",
+      amount_cents: 50_000,
+      status: "refunded",
+      collected_at: new Date(now - 60 * 86400e3).toISOString(),
+      currency: "USD",
+      processor: "paypal",
+      payment_type: "other",
+      failure_reason: null,
+    },
+    {
+      id: "mock-payment-5",
+      client_id: "mock-client-3",
+      amount_cents: 250_000,
+      status: "paid",
+      collected_at: new Date(now - 260 * 86400e3).toISOString(),
+      currency: "USD",
+      processor: null,
+      payment_type: "pif",
+      failure_reason: null,
+    },
+    {
+      id: "mock-payment-6",
+      client_id: "mock-client-5",
+      amount_cents: 125_000,
+      status: "paid",
+      collected_at: new Date(now - 200 * 86400e3).toISOString(),
+      currency: "USD",
+      processor: "stripe",
+      payment_type: "deposit",
+      failure_reason: null,
+    },
+    {
+      id: "mock-payment-7",
+      client_id: "mock-client-1",
+      amount_cents: 125_000,
+      status: "paid",
+      collected_at: new Date(now - 90 * 86400e3).toISOString(),
+      currency: "USD",
+      processor: "whop",
+      payment_type: "deposit",
+      failure_reason: null,
+    },
+  ];
+}
+
+/** Ticket tier per mock client, keyed by offer name — mock-only shorthand
+ * (real tier comes from `leads.ticket_tier`, which plain Dev Bypass has no
+ * realistic lead graph to join against, same reasoning as menteeAttribution
+ * elsewhere in this app). "Operator System" mentees are the high-ticket
+ * cohort, "Starter Track" the low-ticket one, purely for this fixture. */
+export function mockTicketTierByOffer(): Record<string, "high" | "low"> {
+  return { "Operator System": "high", "Starter Track": "low" };
+}
+
+export function mockOfferTiers() {
+  return [
+    { id: "mock-tier-high", key: "high", label: "High Ticket", sort_order: 2 },
+    { id: "mock-tier-low", key: "low", label: "Low Ticket", sort_order: 1 },
+  ];
+}
+
+export function mockOffers() {
+  return [
+    {
+      id: "mock-offer-operator",
+      name: "Operator System",
+      tier_key: "high",
+      pricing_type: "single",
+    },
+    { id: "mock-offer-starter", name: "Starter Track", tier_key: "low", pricing_type: "single" },
+  ];
+}
+
+/** Only mock-client-1 is linked to a real catalog plan (source: "catalog"
+ * in resolvePlanStructure) — the other payment-plan mentees (4, 5) stay
+ * unlinked so the Payments UI's "Custom (unlinked)" honesty path is
+ * actually exercised in Dev Bypass, not just theoretical. */
+export function mockOfferPaymentPlans() {
+  return [
+    {
+      id: "mock-plan-operator-2pay",
+      offer_id: "mock-offer-operator",
+      label: "2-pay",
+      cadence: "monthly",
+      installment_amount_cents: 125_000,
+      installment_count: 4,
+      total_contracted_value_cents: 500_000,
+      deposit_cents: 125_000,
+    },
+  ];
+}
+
+/** client_id -> linked offer_payment_plans.id, mock-only stand-in for the
+ * real `clients.offer_payment_plan_id` column. */
+export function mockClientPlanLinks(): Record<string, string> {
+  return { "mock-client-1": "mock-plan-operator-2pay" };
+}
+
+/** Mirrors payment_recovery_items — one real failed attempt (matches
+ * mock-payment-3) and one real overdue installment (matches mock-client-5's
+ * 25-days-past-due note in mockClients()), never invented beyond what those
+ * records already say. `provider_execution_status` stays "unavailable"
+ * honestly — no live processor is connected in this fixture either. */
+export function mockPaymentRecoveryItems() {
+  const now = Date.now();
+  return [
+    {
+      id: "mock-recovery-1",
+      client_id: "mock-client-4",
+      payment_id: "mock-payment-3",
+      amount_cents: 125_000,
+      due_at: new Date(now - 3 * 86400e3).toISOString(),
+      status: "failed",
+      owner_id: null,
+      next_action: "Retry card or request updated payment method",
+      next_action_at: new Date(now + 1 * 86400e3).toISOString(),
+      provider_execution_status: "unavailable",
+    },
+    {
+      id: "mock-recovery-2",
+      client_id: "mock-client-5",
+      payment_id: null,
+      amount_cents: 125_000,
+      due_at: new Date(now - 25 * 86400e3).toISOString(),
+      status: "overdue",
+      owner_id: null,
+      next_action: "Reach out — 25 days past due, no response",
+      next_action_at: new Date(now + 1 * 86400e3).toISOString(),
+      provider_execution_status: "unavailable",
+    },
+  ];
+}
+
+/** Mirrors renewal_work_items rows for the same 5 mockClients() scenarios —
+ * only the fields MenteeOperationsPanel/the kanban board actually read. */
+export function mockRenewalWorkItems() {
+  return [
+    {
+      id: "mock-renewal-1",
+      client_id: "mock-client-1",
+      owner_id: null,
+      next_action: "Send renewal offer",
+      next_action_at: null,
+      stage: "not_started",
+      reason: null,
+      risk: "low",
+    },
+    {
+      id: "mock-renewal-2",
+      client_id: "mock-client-2",
+      owner_id: null,
+      next_action: "Confirm start date for next cohort",
+      next_action_at: null,
+      stage: "conversation",
+      reason: null,
+      risk: "low",
+    },
+    {
+      id: "mock-renewal-3",
+      client_id: "mock-client-3",
+      owner_id: null,
+      next_action: "Re-engage — no response in 2 weeks",
+      next_action_at: null,
+      stage: "not_started",
+      reason: null,
+      risk: "high",
     },
   ];
 }
@@ -1564,8 +2256,14 @@ export function mockVslSnapshots(vslId: string) {
   }));
 }
 
-export function mockVslFunnel(vslId: string) {
-  const variant = [...vslId].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 140;
+export function mockVslFunnel(vslId: string, opts?: { prior?: boolean }) {
+  // Deterministic per vslId, same as before — `prior: true` salts the seed
+  // string so the prior-period fixture is a distinct-but-still-deterministic
+  // snapshot (not a live query), letting the VSL funnel's prior-period
+  // comparison have real-looking mock data under Dev Bypass rather than
+  // comparing a snapshot against an identical copy of itself.
+  const seed = opts?.prior ? `${vslId}:prior` : vslId;
+  const variant = [...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 140;
   return {
     pageLoads: 1900 + variant * 2,
     totalPlays: 1160 + variant,
@@ -1650,6 +2348,7 @@ export function mockWeeklyReport(): WeeklyReport {
       minTotalWeight: 15,
       weights: { educational: 15, credibility: 13, authoritative: 6, relatability: 8 },
       drivers: [],
+      evidence: { faq: [], setter_calls: [], intakes: [], reels: [] },
       counts: { faq: 3, setter_calls: 5, intakes: 2, reels: 6 },
     },
     weeklyContentCheck: {
@@ -1694,6 +2393,12 @@ export function mockWeeklyReport(): WeeklyReport {
 export function mockLeadResponseEvents() {
   const now = Date.now();
   const platforms = ["instagram", "instagram", "tiktok", "youtube"];
+  // Rotating rep/campaign values (including some null, matching real-world
+  // partial tagging) so the Speed-to-Lead rep/campaign filters have real
+  // variety to filter against under Dev Bypass rather than an all-null
+  // column that could never exercise the filtering logic.
+  const reps = ["mock-rep-1", "mock-rep-2", null];
+  const campaigns = ["Fall Launch", "Evergreen Retarget", null];
   return platforms.flatMap((platform, pi) =>
     Array.from({ length: 6 - pi }).map((_, i) => {
       const idx = pi * 10 + i;
@@ -1704,10 +2409,10 @@ export function mockLeadResponseEvents() {
         lead_assigned_at: createdAt,
         first_attempt_at: new Date(now - idx * 4 * 3600e3 + 3 * 60e3).toISOString(),
         first_connection_at: null,
-        rep_id: null,
+        rep_id: reps[idx % reps.length],
         source_platform: platform,
         lead_source: platform,
-        campaign: null,
+        campaign: campaigns[idx % campaigns.length],
         connected: idx % 2 === 0,
         qualified: idx % 3 === 0,
         set: idx % 4 === 0,

@@ -407,6 +407,8 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     useWebinars();
   const [speedWeekday, setSpeedWeekday] = useState("all");
   const [speedTimeWindow, setSpeedTimeWindow] = useState("all");
+  const [speedRep, setSpeedRep] = useState("all");
+  const [speedCampaign, setSpeedCampaign] = useState("all");
   const [speedSlaSelected, setSpeedSlaSelected] = useState<"within" | "outside" | null>(null);
   const isDialer = role === "inbound_dialer";
   // Part C3 — leaderboard's own metric selector + independent date range,
@@ -647,6 +649,12 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     for (const m of roleTeamMembers) map.set(m.name, [...(map.get(m.name) ?? []), m.id]);
     return map;
   }, [roleTeamMembers]);
+  // Speed-to-Lead rep filter options — this page's own roster (same
+  // role-scoped list the member filter already uses), sorted by name.
+  const speedRepOptions = useMemo(
+    () => [...roleTeamMembers].sort((a, b) => a.name.localeCompare(b.name)),
+    [roleTeamMembers],
+  );
 
   // Disqualified Leads (Priority 2/3) — canonical source is `leads.status`/
   // `calls.status === "disqualified"` (see src/lib/disqualification.ts), not
@@ -1020,6 +1028,17 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       return data ?? [];
     },
   });
+  // Speed-to-Lead campaign filter options — distinct real campaign values
+  // present in the fetched events themselves (there is no separate campaign
+  // table), null/empty ignored rather than shown as a fake "Unknown" option.
+  const speedCampaignOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const event of speedEvents as any[]) {
+      const campaign = String(event.campaign ?? "").trim();
+      if (campaign) set.add(campaign);
+    }
+    return [...set].sort();
+  }, [speedEvents]);
   // Real per-lead webinar attribution (lead_response_events.webinar_id) —
   // the only granular-enough instrument on this page to honestly support
   // per-webinar filtering; the main rep-activity table is a daily aggregate
@@ -1060,6 +1079,8 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         sourcePlatform:
           platformFilter === "all" || platformFilter === "__webinar__" ? undefined : platformFilter,
         leadSource: sourceFilter === "all" ? undefined : sourceFilter,
+        repId: speedRep === "all" ? undefined : speedRep,
+        campaign: speedCampaign === "all" ? undefined : speedCampaign,
         weekday,
         hourStart,
         hourEnd,
@@ -1091,7 +1112,15 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         minutesToAttempt: calculateSpeedToLead(event).minutesToAttempt,
       })),
     };
-  }, [webinarFilteredSpeedEvents, platformFilter, sourceFilter, speedWeekday, speedTimeWindow]);
+  }, [
+    webinarFilteredSpeedEvents,
+    platformFilter,
+    sourceFilter,
+    speedRep,
+    speedCampaign,
+    speedWeekday,
+    speedTimeWindow,
+  ]);
   const operationalSpeedQueue = useMemo(
     () =>
       buildSpeedToLeadQueue(
@@ -2813,6 +2842,32 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                   );
                 })()}
                 <div className="mb-3 flex flex-wrap gap-2">
+                  <Select value={speedRep} onValueChange={setSpeedRep}>
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue placeholder="Rep" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Reps</SelectItem>
+                      {speedRepOptions.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={speedCampaign} onValueChange={setSpeedCampaign}>
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue placeholder="Campaign" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Campaigns</SelectItem>
+                      {speedCampaignOptions.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Select value={speedWeekday} onValueChange={setSpeedWeekday}>
                     <SelectTrigger className="w-[150px]">
                       <SelectValue placeholder="Day of week" />

@@ -16,6 +16,7 @@
  */
 
 import type { AcquisitionSource } from "./acquisition-source";
+import { MECHANISM_KEYS, type MechanismKey } from "./content-mechanisms";
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
@@ -60,50 +61,87 @@ export const DEMO_CLOSERS = [
   { id: "demo-closer-casey", name: "Casey Nguyen (Demo)" },
 ];
 
+// Mechanism/variation/funnel_stage tags below are the same 4-mechanism
+// vocabulary content-mechanisms.ts defines (educational/credibility/
+// authoritative/relatability) — added so Content Command Center's demand
+// mix / weekly check can be genuinely computed from these same 8 pieces
+// (see buildDemoContentSignals() below) instead of a second, disconnected
+// fixture. Real FAQ-video/setter-call-signal/onboarding-intake evidence has
+// no demo equivalent anywhere in this fixture universe, so those specific
+// counts stay honestly at 0 rather than being invented.
 export const DEMO_CONTENT = [
   {
     id: "demo-c1",
     title: "5 Signs You Need a Coach (Reel)",
     platform: "reel",
     source_platform: "Instagram",
+    mechanism: "educational" as const,
+    variation: "problem_solution",
+    funnel_stage: "tof",
   },
   {
     id: "demo-c2",
     title: "Client Win Tuesday (Story)",
     platform: "story_sequence",
     source_platform: "Instagram",
+    mechanism: "credibility" as const,
+    variation: "case_study",
+    funnel_stage: "mof",
   },
   {
     id: "demo-c3",
     title: "POV: You Fixed Your Offer (TikTok)",
     platform: "tiktok",
     source_platform: "TikTok",
+    mechanism: "relatability" as const,
+    variation: "storytelling",
+    funnel_stage: "tof",
   },
   {
     id: "demo-c4",
     title: "Why Your Funnel Leaks (Long-form)",
     platform: "youtube",
     source_platform: "YouTube",
+    mechanism: "educational" as const,
+    variation: "value",
+    funnel_stage: "mof",
   },
   {
     id: "demo-c5",
     title: "60 Seconds on Pricing (Short)",
     platform: "youtube_short",
     source_platform: "YouTube",
+    mechanism: "authoritative" as const,
+    variation: "industry_leader",
+    funnel_stage: "bof",
   },
   {
     id: "demo-c6",
     title: "Why I Stopped Chasing Leads (Post)",
     platform: "post",
     source_platform: "LinkedIn",
+    mechanism: "relatability" as const,
+    variation: "personality",
+    funnel_stage: "tof",
   },
   {
     id: "demo-c7",
     title: "Free Training Signup (Ad)",
     platform: "ad_creative",
     source_platform: "Meta",
+    mechanism: "authoritative" as const,
+    variation: "attention_lifestyle",
+    funnel_stage: "bof",
   },
-  { id: "demo-c8", title: "Weekly Insight (Email)", platform: "email", source_platform: "Email" },
+  {
+    id: "demo-c8",
+    title: "Weekly Insight (Email)",
+    platform: "email",
+    source_platform: "Email",
+    mechanism: "educational" as const,
+    variation: "value",
+    funnel_stage: "mof",
+  },
 ];
 
 export const DEMO_TRAFFIC = [
@@ -1212,6 +1250,9 @@ export interface DemoCorePayment {
   status: string;
   collected_at: string;
   currency: string;
+  processor: string | null;
+  payment_type: string | null;
+  failure_reason: string | null;
 }
 
 export interface DemoCoreContentMetric {
@@ -1403,6 +1444,11 @@ export function buildDemoCoreDataset(): DemoCoreDataset {
     const churned = idx % 9 === 0;
     const installments = call.payment_plan ? 3 : 0;
     const installmentAmount = installments > 0 ? Math.round(call.contract_value_cents * 0.2) : 0;
+    // One processor per client (a mentee doesn't switch rails mid-plan) —
+    // every 4th client is left honestly unlogged rather than backfilled
+    // to look artificially complete.
+    const processorCycle = ["wise", "paypal", "fanbasis", "whop", "stripe"];
+    const clientProcessor = idx % 4 === 0 ? null : processorCycle[idx % processorCycle.length];
 
     clients.push({
       id: clientId,
@@ -1437,21 +1483,33 @@ export function buildDemoCoreDataset(): DemoCoreDataset {
       status: "paid",
       collected_at: startDate.toISOString(),
       currency: "USD",
+      processor: clientProcessor,
+      payment_type: call.payment_plan ? "deposit" : "pif",
+      failure_reason: null,
     });
     // Payment-plan clients get their remaining installments spread monthly
     // after the deposit — some already paid, some still upcoming/overdue,
-    // matching what installments_remaining above claims.
+    // matching what installments_remaining above claims. Every 7th
+    // installment is a real failed attempt (staff-logged reason, never a
+    // fabricated processor decline code) so the Failed/At-Risk section has
+    // something honest to show in Demo Mode.
     if (call.payment_plan) {
       for (let n = 1; n <= installments; n++) {
         const dueDate = new Date(startDate.getTime() + n * 30 * DAY_MS);
         const isPast = dueDate.getTime() < now;
+        const isFailed = isPast && (idx * installments + n) % 7 === 0;
         payments.push({
           id: `demo-core-payment-${idx}-${n}`,
           client_id: clientId,
           amount_cents: installmentAmount,
-          status: isPast ? "paid" : "pending",
+          status: isFailed ? "failed" : isPast ? "paid" : "pending",
           collected_at: dueDate.toISOString(),
           currency: "USD",
+          processor: clientProcessor,
+          payment_type: "installment",
+          failure_reason: isFailed
+            ? "Card declined — flagged by team, not processor-sourced"
+            : null,
         });
       }
     }
@@ -1496,4 +1554,209 @@ export function buildDemoCoreDataset(): DemoCoreDataset {
   };
   _demoCoreCache = { at: now, data };
   return data;
+}
+
+/**
+ * Content Command Center's demand-mix / weekly-check, computed for real from
+ * the SAME 8 DEMO_CONTENT pieces and their real (leads/calls-tied)
+ * contentMetrics from buildDemoCoreDataset() — never a second, disconnected
+ * fixture. Real production computeDemand()/computeWeeklyContentCheck() also
+ * weigh FAQ-video clicks, setter-call signals, and onboarding intakes — none
+ * of those tables have a demo equivalent anywhere in this fixture universe,
+ * so their counts stay honestly at 0 here rather than being invented.
+ */
+export function buildDemoContentSignals() {
+  const core = buildDemoCoreDataset();
+  const metricsByContent = new Map<string, DemoCoreContentMetric[]>();
+  for (const m of core.contentMetrics) {
+    const arr = metricsByContent.get(m.content_id) ?? [];
+    arr.push(m);
+    metricsByContent.set(m.content_id, arr);
+  }
+
+  const zeroBucket = () => ({ views: 0, leads: 0, cash: 0, count: 0 });
+  const totalsByMechanism = Object.fromEntries(
+    MECHANISM_KEYS.map((key) => [key, zeroBucket()]),
+  ) as Record<MechanismKey, ReturnType<typeof zeroBucket>>;
+  for (const piece of DEMO_CONTENT) {
+    const metrics = metricsByContent.get(piece.id) ?? [];
+    const bucket = totalsByMechanism[piece.mechanism];
+    bucket.views += metrics.reduce((s, m) => s + m.views, 0);
+    bucket.leads += metrics.reduce((s, m) => s + m.leads_generated, 0);
+    bucket.cash += metrics.reduce((s, m) => s + m.cash_collected_cents, 0);
+    bucket.count += 1;
+  }
+  const totalWeight = MECHANISM_KEYS.reduce((s, k) => s + totalsByMechanism[k].views, 0);
+  const mix: Record<string, number> = {};
+  const weights: Record<string, number> = {};
+  for (const key of MECHANISM_KEYS) {
+    weights[key] = totalsByMechanism[key].views;
+    mix[key] = totalWeight > 0 ? Math.round((totalsByMechanism[key].views / totalWeight) * 100) : 0;
+  }
+  const drivers = DEMO_CONTENT.map((piece) => {
+    const views = (metricsByContent.get(piece.id) ?? []).reduce((s, m) => s + m.views, 0);
+    return {
+      source: "Content piece",
+      detail: `${piece.title} · ${views.toLocaleString()} views`,
+      mechanism: piece.mechanism,
+      weight: views,
+      id: piece.id,
+    };
+  }).sort((a, b) => b.weight - a.weight);
+  const minTotalWeight = 500;
+  // Real production computeDemand() also draws on faq_videos/setter_call_signals/
+  // onboarding_responses — none of those tables have a demo equivalent in this
+  // fixture universe, so their evidence stays honestly empty rather than invented.
+  const evidence = {
+    faq: [] as { id: string; title: string; detail: string }[],
+    setter_calls: [] as { id: string; title: string; detail: string }[],
+    intakes: [] as { id: string; title: string; detail: string }[],
+    reels: DEMO_CONTENT.map((piece) => {
+      const views = (metricsByContent.get(piece.id) ?? []).reduce((s, m) => s + m.views, 0);
+      const postedAt = new Date(
+        Date.now() - DAY_MS * (2 + DEMO_CONTENT.indexOf(piece) * 5),
+      ).toISOString();
+      return {
+        id: piece.id,
+        title: piece.title,
+        detail: `${piece.source_platform} · ${piece.mechanism}${piece.variation ? "/" + piece.variation : ""} · posted ${postedAt.slice(0, 10)} · ${views.toLocaleString()} views`,
+      };
+    }),
+  };
+  const demand = {
+    mix,
+    insufficientData: totalWeight < minTotalWeight,
+    totalWeight,
+    minTotalWeight,
+    weights,
+    drivers,
+    counts: {
+      faq: 0,
+      setter_calls: 0,
+      intakes: 0,
+      // Matches real computeDemand(): `reels`/counts.reels is every
+      // content_pieces row considered (not platform-filtered to Instagram
+      // Reels specifically) — kept equal to evidence.reels.length so the
+      // displayed count and its drill-down never disagree.
+      reels: evidence.reels.length,
+    },
+    evidence,
+  };
+
+  const now = Date.now();
+  const weekAgo = now - 7 * DAY_MS;
+  const zeroWeekly = () => ({
+    count: 0,
+    dms: 0,
+    calls: 0,
+    cash: 0,
+    views: 0,
+    withMetrics: 0,
+    pieces: [] as { id: string; platform: string; posted_at: string | null }[],
+  });
+  const per: Record<string, ReturnType<typeof zeroWeekly>> = {
+    ...Object.fromEntries(MECHANISM_KEYS.map((key) => [key, zeroWeekly()])),
+    untagged: zeroWeekly(),
+  };
+  let reelsThisWeek = 0;
+  for (const piece of DEMO_CONTENT) {
+    const metrics = (metricsByContent.get(piece.id) ?? []).filter(
+      (m) => new Date(m.captured_at).getTime() >= weekAgo,
+    );
+    if (!metrics.length) continue;
+    const bucket = per[piece.mechanism];
+    bucket.count += 1;
+    bucket.withMetrics += 1;
+    bucket.views += metrics.reduce((s, m) => s + m.views, 0);
+    bucket.calls += metrics.reduce((s, m) => s + m.calls_booked, 0);
+    bucket.cash += metrics.reduce((s, m) => s + m.cash_collected_cents, 0);
+    bucket.pieces.push({
+      // Matches real computeWeeklyContentCheck(): `platform` here is the
+      // content_pieces format enum ("reel"/"tiktok"/"youtube_short"/...),
+      // not the display-friendly source_platform label — the reels filter
+      // in content-signals-panel.tsx keys off this exact enum.
+      id: piece.id,
+      platform: piece.platform,
+      posted_at: new Date(
+        Date.now() - DAY_MS * (2 + DEMO_CONTENT.indexOf(piece) * 5),
+      ).toISOString(),
+    });
+    // Matches real computeWeeklyContentCheck(): "reels" is reel/tiktok/
+    // youtube_short formats, not just the literal "reel" format value —
+    // kept consistent with that definition so the displayed count and its
+    // evidence drill-down (content-signals-panel.tsx) never disagree.
+    if (["reel", "tiktok", "youtube_short"].includes(piece.platform)) reelsThisWeek += 1;
+  }
+  const present = MECHANISM_KEYS.filter((k) => per[k].count > 0);
+  const missing = MECHANISM_KEYS.filter((k) => per[k].count === 0);
+  const ranked = [...present].sort((a, b) => per[b].views - per[a].views);
+  const best = ranked[0] ?? null;
+  const worst = ranked.length > 1 ? ranked[ranked.length - 1] : null;
+  const totalPiecesThisWeek = DEMO_CONTENT.filter((p) =>
+    (metricsByContent.get(p.id) ?? []).some((m) => new Date(m.captured_at).getTime() >= weekAgo),
+  ).length;
+  const weekly = {
+    per,
+    reels: reelsThisWeek,
+    missing,
+    untracked: 0,
+    best,
+    worst,
+    // This demo universe only has 8 content pieces total — genuinely too
+    // small a sample to compare a mechanism against its own baseline, so
+    // this honestly reports "not enough data" rather than a fabricated
+    // verdict, the same gate classifyPerformance() applies to real data.
+    worstDiagnosis:
+      totalPiecesThisWeek < 6
+        ? {
+            label: "Not enough data",
+            detail: `Only ${totalPiecesThisWeek} demo content piece${totalPiecesThisWeek === 1 ? "" : "s"} posted this week — not enough to compare mechanisms against their own baseline.`,
+            verdictsSampled: totalPiecesThisWeek,
+          }
+        : null,
+    total: totalPiecesThisWeek,
+  };
+
+  return { demand, weekly };
+}
+
+/**
+ * Content Command Center's `pieces` prop, built from the same DEMO_CONTENT
+ * pieces + their real contentMetrics (buildDemoCoreDataset()) — the same
+ * entities Traffic/Attribution/buildDemoContentSignals() all resolve leads,
+ * calls, and cash through, so a piece clicked here is the same piece
+ * attributed elsewhere. Fields the real content_pieces table has but this
+ * fixture doesn't track (body, angle, pipeline_status, variation_answers)
+ * are left undefined rather than invented.
+ */
+export function buildDemoContentPieces() {
+  const core = buildDemoCoreDataset();
+  const metricsByContent = new Map<string, DemoCoreContentMetric[]>();
+  for (const m of core.contentMetrics) {
+    const arr = metricsByContent.get(m.content_id) ?? [];
+    arr.push(m);
+    metricsByContent.set(m.content_id, arr);
+  }
+  return DEMO_CONTENT.map((piece) => ({
+    id: piece.id,
+    title: piece.title,
+    platform: piece.platform,
+    source_platform: piece.source_platform,
+    post_format: piece.platform,
+    funnel_stage: piece.funnel_stage,
+    mechanism: piece.mechanism,
+    variation: piece.variation,
+    posted_at: new Date(Date.now() - DAY_MS * (2 + DEMO_CONTENT.indexOf(piece) * 5)).toISOString(),
+    hook: null,
+    cta: null,
+    url: null,
+    content_metrics: (metricsByContent.get(piece.id) ?? []).map((m) => ({
+      captured_at: m.captured_at,
+      views: m.views,
+      leads_generated: m.leads_generated,
+      calls_booked: m.calls_booked,
+      closes: m.closes,
+      cash_collected_cents: m.cash_collected_cents,
+    })),
+  }));
 }
