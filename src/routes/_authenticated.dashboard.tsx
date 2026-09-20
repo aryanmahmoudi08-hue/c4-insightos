@@ -1906,122 +1906,14 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Executive portfolio row — money + portfolio state, above everything
-            else on the page. Cash Collected/Total Revenue aren't repeated as
-            plain KpiCards anywhere else on Main Hub (the CashHero below is a
-            distinct hero visualization, not a duplicate KPI card), and the
-            old "Contract Value / Cash" Company KPIs entry was removed in
-            favor of this row. Ad Cash Collected/Ad Total Revenue are a
-            DIFFERENT, narrower figure than the two before them — only the
-            portion of cash/revenue from closed calls whose lead is
-            attributed to a paid channel (real leads.traffic_source_id →
-            traffic_sources.category join), never the same number relabeled.
-            Ad Spend/ROAS read the same real acquisition_spend table Webinar
-            Analytics uses, just org-wide instead of per-webinar — honestly
-            "Not tracked" (not a fake number) wherever no spend/attribution
-            data exists yet. */}
-        {!!stats && (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
-            <KpiCard
-              label="Total Cash Collected"
-              value={money(c?.cash ?? 0)}
-              spectrum="hot"
-              supporting={formatRangeLabel(range)}
-            />
-            <KpiCard
-              label="Total Revenue Generated"
-              value={money(c?.contractValue ?? 0)}
-              spectrum="hot"
-              supporting={formatRangeLabel(range)}
-            />
-            <KpiCard
-              label="Ad Cash Collected"
-              value={adAttributed?.hasData ? money(adAttributed.cashCents) : "Not tracked"}
-              spectrum="hot"
-              supporting={
-                adAttributed?.hasData
-                  ? `${formatRangeLabel(range)} · Meta/Google leads only`
-                  : "No traffic-source attribution connected yet."
-              }
-              className={adAttributed?.hasData ? undefined : "opacity-70"}
-            />
-            <KpiCard
-              label="Ad Total Revenue"
-              value={adAttributed?.hasData ? money(adAttributed.revenueCents) : "Not tracked"}
-              spectrum="hot"
-              supporting={
-                adAttributed?.hasData
-                  ? `${formatRangeLabel(range)} · Meta/Google leads only`
-                  : "No traffic-source attribution connected yet."
-              }
-              className={adAttributed?.hasData ? undefined : "opacity-70"}
-            />
-            <KpiCard
-              label="Ad Spend"
-              value={adSpend?.hasData ? money(adSpend.spendCents) : "Not tracked"}
-              spectrum="hot"
-              supporting={
-                adSpend?.hasData ? formatRangeLabel(range) : "No acquisition spend connected yet."
-              }
-              className={adSpend?.hasData ? undefined : "opacity-70"}
-            />
-            <KpiCard
-              label="ROAS"
-              value={
-                adSpend?.hasData &&
-                adSpend.spendCents > 0 &&
-                adAttributed?.hasData &&
-                adAttributed.revenueCents > 0
-                  ? `${(adAttributed.revenueCents / adSpend.spendCents).toFixed(2)}x`
-                  : "Not tracked"
-              }
-              spectrum="hot"
-              supporting={
-                adSpend?.hasData && adAttributed?.hasData
-                  ? "Ad total revenue ÷ ad spend"
-                  : "Requires connected acquisition spend and traffic-source attribution."
-              }
-              className={
-                adSpend?.hasData &&
-                adSpend.spendCents > 0 &&
-                adAttributed?.hasData &&
-                adAttributed.revenueCents > 0
-                  ? undefined
-                  : "opacity-70"
-              }
-            />
-            <KpiCard
-              label="MRR — Low Ticket"
-              value="Not tracked"
-              supporting="Requires a client-level recurring-revenue field this schema doesn't have yet."
-              className="opacity-70"
-            />
-            <KpiCard
-              label="Low Ticket Active"
-              value={fmt(activeTierCounts?.low ?? 0)}
-              supporting={
-                activeTierCounts ? `of ${fmt(activeTierCounts.total)} active clients` : undefined
-              }
-              spectrum="cold"
-              onClick={() => navigate({ to: "/payments" } as never)}
-            />
-            <KpiCard
-              label="High Ticket Active"
-              value={fmt(activeTierCounts?.high ?? 0)}
-              supporting={
-                activeTierCounts ? `of ${fmt(activeTierCounts.total)} active clients` : undefined
-              }
-              spectrum="mid"
-              onClick={() => navigate({ to: "/payments" } as never)}
-            />
-          </div>
-        )}
-
         {/* Cash Collected mega-hero (Phase 4) — the page's one hero moment (B1): mega
             number + count-up, daily-cash area chart as an ambient background, delta vs
             prior period, and month-end pace folded in. Replaces the standalone PaceCard
             (relocated here, not removed — same monthCash/projection/dailyPace/progress
-            values, now paired with the number they're pacing against). */}
+            values, now paired with the number they're pacing against). Promoted to the
+            very top of the page — the first content block after the filter bar — so the
+            two numbers that matter most (cash collected vs. revenue, and where the month
+            is pacing to land) are the first thing anyone sees. */}
         {/* cols=3: hero (col-span-2) + tall (col-span-1) sum to exactly 3 —
             the default cols=4 left the 4th column empty at wide viewports,
             a real regression this project's own bento-gap assertion should
@@ -2060,6 +1952,56 @@ function Dashboard() {
           </>
         )}
 
+        {/* Executive portfolio row — the rest of the money + portfolio state,
+            right under the cash hero above. Cash Collected/Total Revenue
+            aren't repeated as plain KpiCards here (the hero above already
+            owns that number) — this row now covers what the hero doesn't:
+            MRR and portfolio tier counts. Ad Cash Collected/Ad Total Revenue/
+            Ad Spend/ROAS moved into their own "Paid Ad Performance" section
+            further down the page — a distinct, narrower figure from the cash/
+            revenue above, kept out of the top row so it doesn't compete with
+            the page's real headline numbers. */}
+        {!!stats && (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <KpiCard
+              label="Total Cash Collected"
+              value={money(c?.cash ?? 0)}
+              spectrum="hot"
+              supporting={formatRangeLabel(range)}
+            />
+            <KpiCard
+              label="Total Revenue Generated"
+              value={money(c?.contractValue ?? 0)}
+              spectrum="hot"
+              supporting={formatRangeLabel(range)}
+            />
+            <KpiCard
+              label="MRR — Low Ticket"
+              value="Not tracked"
+              supporting="Requires a client-level recurring-revenue field this schema doesn't have yet."
+              className="opacity-70"
+            />
+            <KpiCard
+              label="Low Ticket Active"
+              value={fmt(activeTierCounts?.low ?? 0)}
+              supporting={
+                activeTierCounts ? `of ${fmt(activeTierCounts.total)} active clients` : undefined
+              }
+              spectrum="cold"
+              onClick={() => navigate({ to: "/payments" } as never)}
+            />
+            <KpiCard
+              label="High Ticket Active"
+              value={fmt(activeTierCounts?.high ?? 0)}
+              supporting={
+                activeTierCounts ? `of ${fmt(activeTierCounts.total)} active clients` : undefined
+              }
+              spectrum="mid"
+              onClick={() => navigate({ to: "/payments" } as never)}
+            />
+          </div>
+        )}
+
         {/* Company KPIs stay focused on executive-level measures. Detailed
             funnel stages remain in Level 3 and are not duplicated here.
             Revenue Generated (formerly labeled "Contract Value / Cash" here)
@@ -2096,6 +2038,83 @@ function Dashboard() {
               },
             ]}
           />
+        )}
+
+        {/* Paid Ad Performance — Ad Cash Collected/Ad Total Revenue are a
+            DIFFERENT, narrower figure than Total Cash Collected/Total Revenue
+            Generated above — only the portion of cash/revenue from closed
+            calls whose lead is attributed to a paid channel (real
+            leads.traffic_source_id → traffic_sources.category join), never
+            the same number relabeled. Ad Spend/ROAS read the same real
+            acquisition_spend table Webinar Analytics uses, just org-wide
+            instead of per-webinar — honestly "Not tracked" (not a fake
+            number) wherever no spend/attribution data exists yet. Kept in
+            its own section, below the headline cash numbers, so it never
+            competes with them for top-of-page attention. */}
+        {!!stats && (
+          <div>
+            <div className="mb-3 text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Paid Ad Performance
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <KpiCard
+                label="Ad Cash Collected"
+                value={adAttributed?.hasData ? money(adAttributed.cashCents) : "Not tracked"}
+                spectrum="hot"
+                supporting={
+                  adAttributed?.hasData
+                    ? `${formatRangeLabel(range)} · Meta/Google leads only`
+                    : "No traffic-source attribution connected yet."
+                }
+                className={adAttributed?.hasData ? undefined : "opacity-70"}
+              />
+              <KpiCard
+                label="Ad Total Revenue"
+                value={adAttributed?.hasData ? money(adAttributed.revenueCents) : "Not tracked"}
+                spectrum="hot"
+                supporting={
+                  adAttributed?.hasData
+                    ? `${formatRangeLabel(range)} · Meta/Google leads only`
+                    : "No traffic-source attribution connected yet."
+                }
+                className={adAttributed?.hasData ? undefined : "opacity-70"}
+              />
+              <KpiCard
+                label="Ad Spend"
+                value={adSpend?.hasData ? money(adSpend.spendCents) : "Not tracked"}
+                spectrum="hot"
+                supporting={
+                  adSpend?.hasData ? formatRangeLabel(range) : "No acquisition spend connected yet."
+                }
+                className={adSpend?.hasData ? undefined : "opacity-70"}
+              />
+              <KpiCard
+                label="ROAS"
+                value={
+                  adSpend?.hasData &&
+                  adSpend.spendCents > 0 &&
+                  adAttributed?.hasData &&
+                  adAttributed.revenueCents > 0
+                    ? `${(adAttributed.revenueCents / adSpend.spendCents).toFixed(2)}x`
+                    : "Not tracked"
+                }
+                spectrum="hot"
+                supporting={
+                  adSpend?.hasData && adAttributed?.hasData
+                    ? "Ad total revenue ÷ ad spend"
+                    : "Requires connected acquisition spend and traffic-source attribution."
+                }
+                className={
+                  adSpend?.hasData &&
+                  adSpend.spendCents > 0 &&
+                  adAttributed?.hasData &&
+                  adAttributed.revenueCents > 0
+                    ? undefined
+                    : "opacity-70"
+                }
+              />
+            </div>
+          </div>
         )}
 
         <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">

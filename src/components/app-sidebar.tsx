@@ -35,6 +35,7 @@ import {
   FlaskConical,
   DollarSign,
   Radar,
+  HelpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -195,6 +196,11 @@ const ANALYTICS_NAV: NavItem[] = [
 // down in the utility footer instead of the primary category list.
 const SYSTEM_NAV: NavItem[] = [{ to: "/events", label: "Event Bus", icon: Activity }];
 
+// HELP — every role's SOP library. Not resource-gated (no PATH_TO_RESOURCE
+// entry for /help): everyone gets a Help icon, the page itself decides
+// which single document to show based on the signed-in user's own role.
+const HELP_NAV: NavItem[] = [{ to: "/help", label: "Help", icon: HelpCircle }];
+
 export function AppSidebar() {
   const loc = useLocation();
   const navigate = useNavigate();
@@ -294,6 +300,12 @@ export function AppSidebar() {
         { to: "/settings", label: "Settings", icon: Settings },
         ...(isAdmin ? [{ to: "/permissions", label: "Access Control", icon: ShieldCheck }] : []),
       ]),
+    },
+    {
+      key: "help",
+      label: "Help",
+      icon: HelpCircle,
+      items: filterByRole(HELP_NAV),
     },
   ].filter((c) => c.items.length > 0);
 

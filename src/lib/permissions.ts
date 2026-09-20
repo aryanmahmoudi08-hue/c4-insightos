@@ -267,28 +267,29 @@ export const ROLE_LABELS: Record<ManagedRole, string> = {
 
 export const ROLE_BLURBS: Record<ManagedRole, string> = {
   admin: "Full operator access — money, personnel and integrations.",
-  sales_manager: "Runs the sales floor: leads, reps, payouts, hiring.",
+  sales_manager: "Runs the sales floor: leads, reps, team, hiring.",
   growth_ops:
-    "Content, copy and attribution, plus manual data-entry access (EOD reports, rep dashboards, payments, fulfillment, onboarding) to backfill a KPI when automation misses it. No personnel or hiring editing.",
+    "Full operator access, same as owner — content, personnel, payments, hiring, reporting and the event bus, plus the only role (besides the owner) trusted to manually correct EOD reports, rep dashboards, and payment records when automation misses.",
   setter: "Own DM pipeline and lead notes only.",
   inbound_dialer: "Own inbound call queue, callbacks and lead notes only.",
-  closer: "Own calls, cash logging and booked-lead context only.",
+  closer: "Own calls, cash logging, payment context and booked-lead context only.",
   viewer: "Read-only observer — no edits anywhere.",
 };
 
 /** The manual-backfill resource set — lets someone correct or fill in a KPI
  * card's underlying row when an automated log/import fails. Deliberately
- * exclusive to growth_ops (per explicit instruction: "only I should be able
- * to access the edit feature — not even the admin") — admin's normal
- * full-access grant below carves these back out to read-only. */
+ * exclusive to growth_ops/owner (per explicit instruction: "only I should be
+ * able to access the edit feature — not even the admin") — admin's normal
+ * full-access grant below carves these back out to read-only. Narrowed from
+ * an earlier, wider list: admin regained edit rights on Mentee
+ * Onboarding/Results, so only the rep-activity-logging and payment-record
+ * surfaces stay admin-exclusive-to-growth-ops. */
 const GROWTH_OPS_BACKFILL_RESOURCES = [
   "eod_reports",
   "dm_setter",
   "inbound_dialer",
   "closer",
   "payments",
-  "fulfillment",
-  "onboarding",
 ];
 
 /** What a non-manager rep (setter/inbound_dialer/closer) — and, read-only,
@@ -296,8 +297,9 @@ const GROWTH_OPS_BACKFILL_RESOURCES = [
  * RESTRICTED_ALLOW route set, the thing that actually gates their nav).
  * Kept as one shared list so the two never drift apart again: a rep sees
  * their own dashboard for logging, everyone's rep dashboards + Team/Team
- * Calendars for context, and Home/Onboarding/Fulfillment/VSL/Content
- * Calendar as reference. */
+ * Calendars for context, and Home/Onboarding/Fulfillment as reference. VSL
+ * Analytics and Content Calendar were removed from rep visibility — those
+ * are marketing-reference surfaces now scoped to managers/growth ops only. */
 const REP_VISIBLE_RESOURCES = [
   "home",
   "dashboard",
@@ -310,8 +312,47 @@ const REP_VISIBLE_RESOURCES = [
   "eod_reports",
   "onboarding",
   "fulfillment",
+];
+
+/** Sales manager's real, narrowed view — runs the sales floor (reps, leads,
+ * hiring, team) plus enough money/marketing-performance visibility to do the
+ * job, but no longer touches Content/Copy/Sequences/Attribution/Traffic/
+ * Messaging at all (that's growth ops' exclusive marketing domain now). */
+const SALES_MANAGER_VISIBLE = [
+  "home",
+  "dashboard",
+  "leads",
+  "eod_reports",
+  "dm_setter",
+  "inbound_dialer",
+  "closer",
+  "team",
+  "team_calendar",
+  "hiring",
   "vsl",
-  "content_calendar",
+  "webinar_analytics",
+  "onboarding",
+  "fulfillment",
+  "payments",
+  "weekly_report",
+];
+
+/** Of what sales manager can see, what they can actually change — narrower
+ * than view: they run people and pipeline (reps, leads, team, hiring,
+ * mentee onboarding/results), but no longer edit Main Hub, Payments, VSL,
+ * Webinar Analytics or Weekly Report — those stay read-only reference for
+ * them even though they're visible. */
+const SALES_MANAGER_EDITABLE = [
+  "leads",
+  "eod_reports",
+  "dm_setter",
+  "inbound_dialer",
+  "closer",
+  "team",
+  "team_calendar",
+  "hiring",
+  "onboarding",
+  "fulfillment",
 ];
 
 /** Sensible starting point when no explicit row exists yet. */
@@ -319,8 +360,6 @@ export function defaultPerm(
   role: string,
   resource: string,
 ): { can_view: boolean; can_edit: boolean } {
-  const def = RESOURCES.find((r) => r.key === resource);
-  const sensitive = !!def?.sensitive;
   switch (role) {
     case "owner":
       // The account holder — always full access, no carve-out (unlike
@@ -329,34 +368,24 @@ export function defaultPerm(
       return { can_view: true, can_edit: true };
     case "admin":
       // Full access everywhere EXCEPT the backfill resource set, which is
-      // deliberately exclusive to growth_ops — admin can still view these
-      // (running the business), just not log/correct data through them.
+      // deliberately exclusive to growth_ops/owner — admin can still view
+      // these (running the business), just not log/correct data through
+      // them.
       return {
         can_view: true,
         can_edit: !GROWTH_OPS_BACKFILL_RESOURCES.includes(resource),
       };
-    case "sales_manager":
-      return { can_view: true, can_edit: resource !== "events" };
     case "growth_ops":
+      // Full operator access, same as owner — the only role (besides
+      // owner) trusted with the backfill resource set above, and now also
+      // trusted with everything else: content, personnel, hiring, payments,
+      // weekly report and the event bus. Nothing is carved out for this
+      // role — it is a second full-access seat, deliberately.
+      return { can_view: true, can_edit: true };
+    case "sales_manager":
       return {
-        can_view: !sensitive || ["attribution", "dashboard", "payments"].includes(resource),
-        // Content/copy/attribution/webinar analytics stay fully editable
-        // (the role's core marketing scope); the backfill resource set
-        // above is ALSO editable — exclusively so, per instruction (admin
-        // is carved out above, sales_manager/setter/closer/dialer keep
-        // only their own pre-existing self-service resources via their own
-        // branches, untouched here). Team roster and Hiring (personnel)
-        // stay read-only.
-        can_edit: [
-          "content",
-          "content_calendar",
-          "sequences",
-          "copy",
-          "traffic",
-          "vsl",
-          "webinar_analytics",
-          ...GROWTH_OPS_BACKFILL_RESOURCES,
-        ].includes(resource),
+        can_view: SALES_MANAGER_VISIBLE.includes(resource),
+        can_edit: SALES_MANAGER_EDITABLE.includes(resource),
       };
     case "setter":
       return {
@@ -369,9 +398,13 @@ export function defaultPerm(
         can_edit: ["leads", "inbound_dialer", "eod_reports"].includes(resource),
       };
     case "closer":
+      // Closer sees everything a rep sees, plus Payments (so they can see
+      // real cash-collected context on their own deals), and can edit Team
+      // Calendars (so they can manage their own booked-call confirmations)
+      // on top of their usual own-dashboard/leads/EOD editing.
       return {
-        can_view: REP_VISIBLE_RESOURCES.includes(resource),
-        can_edit: ["leads", "closer", "eod_reports"].includes(resource),
+        can_view: REP_VISIBLE_RESOURCES.includes(resource) || resource === "payments",
+        can_edit: ["leads", "closer", "eod_reports", "team_calendar"].includes(resource),
       };
     default: // viewer — same reach as a rep, but read-only everywhere.
       return { can_view: REP_VISIBLE_RESOURCES.includes(resource), can_edit: false };

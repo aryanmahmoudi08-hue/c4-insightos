@@ -31,6 +31,7 @@ import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated.
 import { Route as AuthenticatedInboundDialerRouteImport } from './routes/_authenticated.inbound-dialer'
 import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated.home'
 import { Route as AuthenticatedHiringRouteImport } from './routes/_authenticated.hiring'
+import { Route as AuthenticatedHelpRouteImport } from './routes/_authenticated.help'
 import { Route as AuthenticatedFulfillmentRouteImport } from './routes/_authenticated.fulfillment'
 import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated.events'
 import { Route as AuthenticatedEodReportsRouteImport } from './routes/_authenticated.eod-reports'
@@ -159,6 +160,11 @@ const AuthenticatedHiringRoute = AuthenticatedHiringRouteImport.update({
   path: '/hiring',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedHelpRoute = AuthenticatedHelpRouteImport.update({
+  id: '/help',
+  path: '/help',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedFulfillmentRoute =
   AuthenticatedFulfillmentRouteImport.update({
     id: '/fulfillment',
@@ -244,6 +250,7 @@ export interface FileRoutesByFullPath {
   '/eod-reports': typeof AuthenticatedEodReportsRoute
   '/events': typeof AuthenticatedEventsRoute
   '/fulfillment': typeof AuthenticatedFulfillmentRoute
+  '/help': typeof AuthenticatedHelpRoute
   '/hiring': typeof AuthenticatedHiringRoute
   '/home': typeof AuthenticatedHomeRoute
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
@@ -280,6 +287,7 @@ export interface FileRoutesByTo {
   '/eod-reports': typeof AuthenticatedEodReportsRoute
   '/events': typeof AuthenticatedEventsRoute
   '/fulfillment': typeof AuthenticatedFulfillmentRoute
+  '/help': typeof AuthenticatedHelpRoute
   '/hiring': typeof AuthenticatedHiringRoute
   '/home': typeof AuthenticatedHomeRoute
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
@@ -318,6 +326,7 @@ export interface FileRoutesById {
   '/_authenticated/eod-reports': typeof AuthenticatedEodReportsRoute
   '/_authenticated/events': typeof AuthenticatedEventsRoute
   '/_authenticated/fulfillment': typeof AuthenticatedFulfillmentRoute
+  '/_authenticated/help': typeof AuthenticatedHelpRoute
   '/_authenticated/hiring': typeof AuthenticatedHiringRoute
   '/_authenticated/home': typeof AuthenticatedHomeRoute
   '/_authenticated/inbound-dialer': typeof AuthenticatedInboundDialerRoute
@@ -356,6 +365,7 @@ export interface FileRouteTypes {
     | '/eod-reports'
     | '/events'
     | '/fulfillment'
+    | '/help'
     | '/hiring'
     | '/home'
     | '/inbound-dialer'
@@ -392,6 +402,7 @@ export interface FileRouteTypes {
     | '/eod-reports'
     | '/events'
     | '/fulfillment'
+    | '/help'
     | '/hiring'
     | '/home'
     | '/inbound-dialer'
@@ -429,6 +440,7 @@ export interface FileRouteTypes {
     | '/_authenticated/eod-reports'
     | '/_authenticated/events'
     | '/_authenticated/fulfillment'
+    | '/_authenticated/help'
     | '/_authenticated/hiring'
     | '/_authenticated/home'
     | '/_authenticated/inbound-dialer'
@@ -619,6 +631,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHiringRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/help': {
+      id: '/_authenticated/help'
+      path: '/help'
+      fullPath: '/help'
+      preLoaderRoute: typeof AuthenticatedHelpRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/fulfillment': {
       id: '/_authenticated/fulfillment'
       path: '/fulfillment'
@@ -724,6 +743,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedEodReportsRoute: typeof AuthenticatedEodReportsRoute
   AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
   AuthenticatedFulfillmentRoute: typeof AuthenticatedFulfillmentRoute
+  AuthenticatedHelpRoute: typeof AuthenticatedHelpRoute
   AuthenticatedHiringRoute: typeof AuthenticatedHiringRoute
   AuthenticatedHomeRoute: typeof AuthenticatedHomeRoute
   AuthenticatedInboundDialerRoute: typeof AuthenticatedInboundDialerRoute
@@ -752,6 +772,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedEodReportsRoute: AuthenticatedEodReportsRoute,
   AuthenticatedEventsRoute: AuthenticatedEventsRoute,
   AuthenticatedFulfillmentRoute: AuthenticatedFulfillmentRoute,
+  AuthenticatedHelpRoute: AuthenticatedHelpRoute,
   AuthenticatedHiringRoute: AuthenticatedHiringRoute,
   AuthenticatedHomeRoute: AuthenticatedHomeRoute,
   AuthenticatedInboundDialerRoute: AuthenticatedInboundDialerRoute,
