@@ -940,6 +940,7 @@ function Leads() {
             value={stats.total}
             icon={<Users className="h-3 w-3" />}
             spectrum="cold"
+            emphasis="subtle"
             deltaPct={pctDelta(stats.total, priorFunnelStages[0].value)}
             onClick={() => {
               setDetailStageFilter(null);
@@ -961,6 +962,7 @@ function Leads() {
             value={stats.booked}
             icon={<CalendarDays className="h-3 w-3" />}
             spectrum="mid"
+            emphasis="subtle"
             deltaPct={pctDelta(stats.booked, priorFunnelStages[1].value)}
             onClick={() => {
               setDetailStageFilter(null);
@@ -972,6 +974,7 @@ function Leads() {
             value={stats.closed}
             icon={<Sparkles className="h-3 w-3" />}
             spectrum="hot"
+            emphasis="strong"
             deltaPct={pctDelta(stats.closed, priorFunnelStages[2].value)}
             onClick={() => {
               setDetailStageFilter(null);

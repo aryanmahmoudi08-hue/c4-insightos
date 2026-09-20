@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { KpiCard } from "@/components/kpi-card";
 import { InteractiveSparkline } from "@/components/interactive-sparkline";
-import { SPECTRUM_VAR, type SpectrumPosition } from "@/lib/spectrum";
+import { SPECTRUM_VAR, type SpectrumPosition, type KpiEmphasis } from "@/lib/spectrum";
 
 const KPI_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Views: Eye,
@@ -68,6 +68,12 @@ export interface KpiBandItem {
   deltaPct?: number;
   priorValue?: string;
   featured?: boolean;
+  /** Opts this one tile into the gradient-KPI-card treatment (see
+   * MetricCard) — deliberately separate from `featured`, which several
+   * bands set on most/all of their items and was never actually wired to
+   * a visual effect. Leave unset (the default, no gradient) unless this is
+   * genuinely one of the 1-3 top-tier metrics in the band. */
+  emphasis?: KpiEmphasis;
   wide?: boolean;
   empty?: boolean;
   emptyHint?: string;
@@ -174,6 +180,7 @@ export function KpiBand({
                 )
               }
               spectrum={it.spectrum}
+              emphasis={it.emphasis}
               onClick={it.onClick}
               className={it.wide ? "sm:col-span-2" : undefined}
             />

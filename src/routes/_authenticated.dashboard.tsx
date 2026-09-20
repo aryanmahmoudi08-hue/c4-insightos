@@ -44,7 +44,7 @@ import {
   type WebinarFilterValue,
   type WebinarRecord,
 } from "@/lib/webinar-filter";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { cn } from "@/lib/utils";
 import {
@@ -103,7 +103,12 @@ import {
 } from "@/lib/kpi-targets";
 import { pctDelta, formatRangeLabel } from "@/lib/trend";
 import { disqualifiedLeadCount, computeDisqualified } from "@/lib/disqualification";
-import { SPECTRUM_VAR, type SpectrumPosition } from "@/lib/spectrum";
+import {
+  SPECTRUM_VAR,
+  type SpectrumPosition,
+  kpiGradient,
+  kpiGradientBorder,
+} from "@/lib/spectrum";
 import type { DateRange } from "@/components/date-range-picker";
 import {
   Select,
@@ -541,6 +546,81 @@ function Dashboard() {
       const low = rows.filter((r) => r.leads?.ticket_tier === "low").length;
       const high = rows.filter((r) => r.leads?.ticket_tier === "high").length;
       return { low, high, unclassified: rows.length - low - high, total: rows.length };
+    },
+  });
+
+  // Company-wide ad spend for the selected range, from the same real
+  // acquisition_spend table Webinar Analytics reads (there, per-webinar; here,
+  // an unscoped org-wide sum) — never CAC/LTV/churn/margin (that's the
+  // unbuilt "Money Layer"), just a real, already-existing spend total and the
+  // simple revenue ÷ spend ratio. Dev bypass/demo mode have no seeded spend
+  // rows, so this stays honestly "Not tracked" there rather than a fake number.
+  const { data: adSpend } = useQuery({
+    queryKey: ["hub-ad-spend-total", orgId, range.from, range.to, devBypass, demoMode],
+    enabled: !!orgId,
+    queryFn: async () => {
+      if (devBypass || demoMode) return { spendCents: 0, hasData: false };
+      const { data, error } = await supabase
+        .from("acquisition_spend")
+        .select("spend_amount_cents")
+        .eq("org_id", orgId!)
+        .gte("spend_date", range.from)
+        .lte("spend_date", range.to);
+      if (error) throw error;
+      const rows = data ?? [];
+      const spendCents = rows.reduce((sum, r) => sum + (Number(r.spend_amount_cents) || 0), 0);
+      return { spendCents, hasData: rows.length > 0 };
+    },
+  });
+
+  // "Ad Cash Collected" / "Ad Total Revenue" — cash/contract value from
+  // closed calls whose LEAD is attributed to a paid channel (via the real
+  // leads.traffic_source_id → traffic_sources.category join, same source
+  // Attribution Command Center's own Paid Cash figure uses — "only counts
+  // the two channels that are unambiguously ad-spend by name," same
+  // rationale as there), company-wide for the selected range. Deliberately
+  // a separate, narrow query rather than folded into the exec-dash query
+  // above, which explicitly documents that it has no traffic_sources join
+  // at that level — this adds a real one instead of faking the distinction
+  // through source_platform. Dev bypass/demo mode have no seeded traffic
+  // source data, so this stays honestly "Not tracked" there.
+  const { data: adAttributed } = useQuery({
+    queryKey: ["hub-ad-attributed-cash", orgId, range.from, range.to, devBypass, demoMode],
+    enabled: !!orgId,
+    queryFn: async () => {
+      if (devBypass || demoMode) return { cashCents: 0, revenueCents: 0, hasData: false };
+      const fromISO = `${range.from}T00:00:00`;
+      const toISO = `${range.to}T23:59:59`;
+      const [callsRes, leadsRes, sourcesRes] = await Promise.all([
+        supabase
+          .from("calls")
+          .select("lead_id, cash_collected_cents, contract_value_cents")
+          .eq("org_id", orgId!)
+          .eq("closed", true)
+          .gte("created_at", fromISO)
+          .lte("created_at", toISO),
+        supabase.from("leads").select("id, traffic_source_id").eq("org_id", orgId!),
+        supabase.from("traffic_sources").select("id, category").eq("org_id", orgId!),
+      ]);
+      if (callsRes.error) throw callsRes.error;
+      if (leadsRes.error) throw leadsRes.error;
+      if (sourcesRes.error) throw sourcesRes.error;
+      const categoryBySourceId = new Map((sourcesRes.data ?? []).map((s) => [s.id, s.category]));
+      const categoryByLeadId = new Map(
+        (leadsRes.data ?? []).map((l) => [
+          l.id,
+          l.traffic_source_id ? (categoryBySourceId.get(l.traffic_source_id) ?? null) : null,
+        ]),
+      );
+      const paidCalls = (callsRes.data ?? []).filter((c) => {
+        const category = c.lead_id ? categoryByLeadId.get(c.lead_id) : null;
+        return category === "Meta Ads" || category === "Google";
+      });
+      return {
+        cashCents: paidCalls.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0),
+        revenueCents: paidCalls.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0),
+        hasData: (leadsRes.data ?? []).some((l) => l.traffic_source_id),
+      };
     },
   });
 
@@ -1827,13 +1907,21 @@ function Dashboard() {
         )}
 
         {/* Executive portfolio row — money + portfolio state, above everything
-            else on the page. One home for each of these 5 figures: Cash
-            Collected/Revenue Generated aren't repeated as plain KpiCards
-            anywhere else on Main Hub (the CashHero below is a distinct hero
-            visualization, not a duplicate KPI card), and the old "Contract
-            Value / Cash" Company KPIs entry was removed in favor of this row. */}
+            else on the page. Cash Collected/Total Revenue aren't repeated as
+            plain KpiCards anywhere else on Main Hub (the CashHero below is a
+            distinct hero visualization, not a duplicate KPI card), and the
+            old "Contract Value / Cash" Company KPIs entry was removed in
+            favor of this row. Ad Cash Collected/Ad Total Revenue are a
+            DIFFERENT, narrower figure than the two before them — only the
+            portion of cash/revenue from closed calls whose lead is
+            attributed to a paid channel (real leads.traffic_source_id →
+            traffic_sources.category join), never the same number relabeled.
+            Ad Spend/ROAS read the same real acquisition_spend table Webinar
+            Analytics uses, just org-wide instead of per-webinar — honestly
+            "Not tracked" (not a fake number) wherever no spend/attribution
+            data exists yet. */}
         {!!stats && (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
             <KpiCard
               label="Total Cash Collected"
               value={money(c?.cash ?? 0)}
@@ -1845,6 +1933,62 @@ function Dashboard() {
               value={money(c?.contractValue ?? 0)}
               spectrum="hot"
               supporting={formatRangeLabel(range)}
+            />
+            <KpiCard
+              label="Ad Cash Collected"
+              value={adAttributed?.hasData ? money(adAttributed.cashCents) : "Not tracked"}
+              spectrum="hot"
+              supporting={
+                adAttributed?.hasData
+                  ? `${formatRangeLabel(range)} · Meta/Google leads only`
+                  : "No traffic-source attribution connected yet."
+              }
+              className={adAttributed?.hasData ? undefined : "opacity-70"}
+            />
+            <KpiCard
+              label="Ad Total Revenue"
+              value={adAttributed?.hasData ? money(adAttributed.revenueCents) : "Not tracked"}
+              spectrum="hot"
+              supporting={
+                adAttributed?.hasData
+                  ? `${formatRangeLabel(range)} · Meta/Google leads only`
+                  : "No traffic-source attribution connected yet."
+              }
+              className={adAttributed?.hasData ? undefined : "opacity-70"}
+            />
+            <KpiCard
+              label="Ad Spend"
+              value={adSpend?.hasData ? money(adSpend.spendCents) : "Not tracked"}
+              spectrum="hot"
+              supporting={
+                adSpend?.hasData ? formatRangeLabel(range) : "No acquisition spend connected yet."
+              }
+              className={adSpend?.hasData ? undefined : "opacity-70"}
+            />
+            <KpiCard
+              label="ROAS"
+              value={
+                adSpend?.hasData &&
+                adSpend.spendCents > 0 &&
+                adAttributed?.hasData &&
+                adAttributed.revenueCents > 0
+                  ? `${(adAttributed.revenueCents / adSpend.spendCents).toFixed(2)}x`
+                  : "Not tracked"
+              }
+              spectrum="hot"
+              supporting={
+                adSpend?.hasData && adAttributed?.hasData
+                  ? "Ad total revenue ÷ ad spend"
+                  : "Requires connected acquisition spend and traffic-source attribution."
+              }
+              className={
+                adSpend?.hasData &&
+                adSpend.spendCents > 0 &&
+                adAttributed?.hasData &&
+                adAttributed.revenueCents > 0
+                  ? undefined
+                  : "opacity-70"
+              }
             />
             <KpiCard
               label="MRR — Low Ticket"
@@ -1929,6 +2073,7 @@ function Dashboard() {
                 label: "New Leads",
                 value: fmt(c?.newLeads ?? 0),
                 spectrum: "cold",
+                emphasis: "subtle",
                 spark: stats.series.map((point) => point.leads),
                 sparkLabels: stats.series.map((point) => point.d),
                 sparkVariant: "bar",
@@ -2388,8 +2533,22 @@ function CashHero({
       ? cashRate - prevCashRatePct
       : undefined;
 
+  // The page's one hero moment (B1) — the single strongest gradient
+  // treatment on Main Hub, so the top KpiCard row above deliberately stays
+  // neutral for this same cash figure rather than doubling up on it.
+  const heroGradient = kpiGradient(SPECTRUM_VAR.hot, "strong");
+  const heroBorder = kpiGradientBorder(SPECTRUM_VAR.hot, "strong");
   return (
-    <div className="group relative flex h-full flex-col justify-between overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+    <div
+      className="kpi-gradient group relative flex h-full flex-col justify-between overflow-hidden rounded-xl border p-4 shadow-sm"
+      style={
+        {
+          background: heroGradient,
+          "--kpi-border": heroBorder.border,
+          "--kpi-border-hover": heroBorder.borderHover,
+        } as CSSProperties
+      }
+    >
       <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
       <div className="relative flex items-center justify-between gap-3 border-b border-border/60 pb-2.5">
         <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -2414,7 +2573,12 @@ function CashHero({
           <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Cash Collected
           </div>
-          <div className="mt-0.5 text-3xl font-bold tracking-tight text-spectrum-hot md:text-4xl">
+          {/* text-foreground, not text-spectrum-hot — now that the card
+              itself carries the magenta gradient, keeping the number
+              magenta-on-magenta measured under 3.5:1 contrast at the
+              gradient's brightest corner; white reads clearly and the
+              color still comes through unmistakably via the card fill. */}
+          <div className="mt-0.5 text-3xl font-bold tracking-tight text-foreground md:text-4xl">
             {money(animated)}
           </div>
         </div>
@@ -2544,8 +2708,22 @@ function PaceTallCard({
   const progress = Math.min(100, (pace.dayOfMonth / pace.daysInMonth) * 100);
   const remaining = Math.max(0, pace.daysInMonth - pace.dayOfMonth);
   const hasTarget = targetProgress && targetProgress.status !== "no_target";
+  // Tier-2 companion to CashHero's strong treatment — a genuinely important
+  // forward-looking number (projected month-end cash), restrained enough
+  // not to compete with the page's one strong-emphasis card.
+  const paceGradient = kpiGradient(SPECTRUM_VAR.mid, "subtle");
+  const paceBorder = kpiGradientBorder(SPECTRUM_VAR.mid, "subtle");
   return (
-    <div className="relative flex h-full flex-col gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+    <div
+      className="kpi-gradient relative flex h-full flex-col gap-3 overflow-hidden rounded-xl border p-4 shadow-sm"
+      style={
+        {
+          background: paceGradient,
+          "--kpi-border": paceBorder.border,
+          "--kpi-border-hover": paceBorder.borderHover,
+        } as CSSProperties
+      }
+    >
       <div className="flex items-center gap-2">
         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted/60 text-spectrum-mid">
           <Target className="h-4 w-4" />

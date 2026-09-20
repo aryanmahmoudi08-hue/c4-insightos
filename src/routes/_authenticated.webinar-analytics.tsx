@@ -427,6 +427,7 @@ function WebinarAnalyticsPage() {
                     label: "Total Leads",
                     value: number(summary.capture.totalLeads),
                     spectrum: "cold",
+                    emphasis: "subtle",
                     icon: <UsersRound className="h-4 w-4" />,
                   },
                   {
@@ -437,6 +438,7 @@ function WebinarAnalyticsPage() {
                         ? "Unavailable"
                         : `${(summary.webinar.showUpRate * 100).toFixed(1)}%`,
                     spectrum: "mid",
+                    emphasis: summary.webinar.showUpRate == null ? undefined : "subtle",
                     icon: <Video className="h-4 w-4" />,
                     empty: summary.webinar.showUpRate == null,
                     emptyHint: "Requires event-backed live-attendance data.",
@@ -462,13 +464,68 @@ function WebinarAnalyticsPage() {
                     label: "Total Revenue",
                     value: currency(summary.revenue.totalRevenueCents),
                     spectrum: "hot",
+                    emphasis: "strong",
                     icon: <CircleDollarSign className="h-4 w-4" />,
+                  },
+                  {
+                    // No column on webinar_metrics or the event pipeline
+                    // guarantees a "cash collected" figure distinct from
+                    // contracted/closed revenue — unlike calls.cash_collected_cents
+                    // elsewhere in the app (see the webinarProfit() call
+                    // below, which has the same limitation). Shown honestly
+                    // unavailable rather than reusing totalRevenueCents
+                    // under a new label.
+                    key: "cashCollected",
+                    label: "Cash Collected",
+                    value: "Not tracked",
+                    spectrum: "hot",
+                    icon: <CircleDollarSign className="h-4 w-4" />,
+                    empty: true,
+                    emptyHint: "Requires linking webinar leads to a closed call's cash collected.",
+                  },
+                  {
+                    // Same limitation, one level narrower: even if cash
+                    // collected were linkable, this table has no per-lead
+                    // paid-vs-organic split of revenue/cash — only lead
+                    // COUNTS are split (paid_leads/organic_leads below), not
+                    // dollars. Genuinely a different, unavailable figure —
+                    // not the same number as Cash Collected under a new label.
+                    key: "adCashCollected",
+                    label: "Ad Cash Collected",
+                    value: "Not tracked",
+                    spectrum: "hot",
+                    icon: <CircleDollarSign className="h-4 w-4" />,
+                    empty: true,
+                    emptyHint: "Requires a paid-vs-organic split of cash collected, per lead.",
+                  },
+                  {
+                    key: "adTotalRevenue",
+                    label: "Ad Total Revenue",
+                    value: "Not tracked",
+                    spectrum: "hot",
+                    icon: <CircleDollarSign className="h-4 w-4" />,
+                    empty: true,
+                    emptyHint: "Requires a paid-vs-organic split of revenue, per lead.",
+                  },
+                  {
+                    key: "adSpend",
+                    label: "Ad Spend",
+                    value: acquisition.hasSpend ? currency(acquisition.spendCents) : "—",
+                    spectrum: "hot",
+                    emphasis: acquisition.hasSpend ? "subtle" : undefined,
+                    icon: <CircleDollarSign className="h-4 w-4" />,
+                    empty: !acquisition.hasSpend,
+                    emptyHint: "Requires connected acquisition spend.",
                   },
                   {
                     key: "roas",
                     label: "ROAS",
                     value: roasLabel(summary.revenue.roas),
                     spectrum: "hot",
+                    emphasis:
+                      scopeType === "organic" || summary.revenue.roas == null
+                        ? undefined
+                        : "subtle",
                     icon: <CircleDollarSign className="h-4 w-4" />,
                     empty: scopeType === "organic" || summary.revenue.roas == null,
                     emptyHint:

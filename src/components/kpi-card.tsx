@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { MetricCard } from "@/components/metric-card";
-import type { SpectrumPosition } from "@/lib/spectrum";
+import type { SpectrumPosition, KpiEmphasis } from "@/lib/spectrum";
 
 export type KpiCardProps = {
   label: string;
@@ -8,6 +8,8 @@ export type KpiCardProps = {
   supporting?: ReactNode;
   spectrum?: SpectrumPosition;
   accentColor?: string;
+  /** Opts this card into the gradient-KPI-card treatment — see MetricCard. */
+  emphasis?: KpiEmphasis;
   icon?: ReactNode;
   trend?: ReactNode;
   chart?: ReactNode;
@@ -26,6 +28,7 @@ export function KpiCard({
   supporting,
   spectrum,
   accentColor,
+  emphasis,
   icon,
   trend,
   chart,
@@ -50,6 +53,7 @@ export function KpiCard({
       supporting={secondary}
       spectrum={spectrum}
       accentColor={accentColor}
+      emphasis={emphasis}
       icon={icon}
       trend={trend}
       chart={chart}

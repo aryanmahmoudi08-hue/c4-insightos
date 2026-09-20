@@ -642,8 +642,9 @@ function Onboarding() {
             value={total}
             icon={<Brain className="h-4 w-4" />}
             spectrum="cold"
+            emphasis="subtle"
           />
-          <StatCard label="Submitted" value={submitted} spectrum="hot" />
+          <StatCard label="Submitted" value={submitted} spectrum="hot" emphasis="subtle" />
           <StatCard label="Pending" value={total - submitted} accent="warning" />
           <StatCard
             label="Insight signals"

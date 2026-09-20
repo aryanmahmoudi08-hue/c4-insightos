@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 /* eslint-disable @typescript-eslint/no-explicit-any -- legacy dynamic Supabase rows in this shared module */
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg, useAuth } from "@/hooks/use-auth";
+import { useResourcePermissions } from "@/hooks/use-resource-permission";
 import { useServerFn } from "@tanstack/react-start";
 import { TopBar } from "@/components/app-sidebar";
 import type { DateRange } from "@/components/date-range-picker";
@@ -357,6 +358,11 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
+  // `role` ("dm_setter" | "inbound_dialer") is already the exact resource
+  // key Access Control uses for this page — real edit enforcement, not just
+  // hiding the page.
+  const { getPerm } = useResourcePermissions();
+  const canLogDay = getPerm(role).can_edit;
   const { demoMode } = useDemoMode();
   const qc = useQueryClient();
   const money = useMoney();
@@ -392,7 +398,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const actionSearch = useSearch({ strict: false }) as { action?: string };
   const paletteNav = useNavigate();
   useEffect(() => {
-    if (actionSearch.action === "log-day") {
+    if (actionSearch.action === "log-day" && canLogDay) {
       setOpen(true);
       paletteNav({ search: {} as never, replace: true });
     }
@@ -1852,6 +1858,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         value: money(cashCents),
         spectrum: "hot",
         featured: true,
+        emphasis: "strong",
         wide: true,
         deltaPct: pctDelta(cashCents, prevCashCents),
         priorValue: money(prevCashCents),
@@ -1865,6 +1872,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         value: money(revCents),
         spectrum: "hot",
         featured: true,
+        emphasis: "subtle",
         wide: true,
         deltaPct: pctDelta(revCents, prevRevCents),
         priorValue: money(prevRevCents),
@@ -1879,6 +1887,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               label: "Dials",
               value: fmtN0(dials),
               spectrum: "cold" as const,
+              emphasis: "subtle" as const,
               deltaPct: pctDelta(dials, prevDials),
               priorValue: fmtN0(prevDials),
               empty: dials === 0,
@@ -1912,6 +1921,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               label: "Sets",
               value: fmtN0(sets),
               spectrum: "mid" as const,
+              emphasis: "subtle" as const,
               deltaPct: pctDelta(sets, prevSets),
               priorValue: fmtN0(prevSets),
               empty: sets === 0,
@@ -1925,6 +1935,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               label: "Leads Contacted",
               value: fmtN0(contacted),
               spectrum: "cold" as const,
+              emphasis: "subtle" as const,
               deltaPct: pctDelta(contacted, prevContacted),
               priorValue: fmtN0(prevContacted),
               empty: contacted === 0,
@@ -1947,6 +1958,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               label: "Sets",
               value: fmtN0(sets),
               spectrum: "mid" as const,
+              emphasis: "subtle" as const,
               deltaPct: pctDelta(sets, prevSets),
               priorValue: fmtN0(prevSets),
               empty: sets === 0,
@@ -2477,9 +2489,13 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                 : "This rep-activity log is logged per rep/day, not per lead — it has no per-webinar link to filter by."}
             </div>
           )}
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open && canLogDay} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">
+              <Button
+                size="sm"
+                disabled={!canLogDay}
+                title={canLogDay ? undefined : "You don't have edit access to this page."}
+              >
                 <Plus className="h-4 w-4" />
                 Log day
               </Button>

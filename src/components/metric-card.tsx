@@ -1,9 +1,15 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InteractiveSparkline } from "@/components/interactive-sparkline";
 import { useCountUp } from "@/hooks/use-count-up";
-import { SPECTRUM_VAR, type SpectrumPosition } from "@/lib/spectrum";
+import {
+  SPECTRUM_VAR,
+  type SpectrumPosition,
+  type KpiEmphasis,
+  kpiGradient,
+  kpiGradientBorder,
+} from "@/lib/spectrum";
 
 type Tone = "default" | "success" | "warning" | "destructive" | "accent";
 
@@ -15,10 +21,30 @@ const TONE_TEXT: Record<Tone, string> = {
   accent: "text-accent",
 };
 
+// Gradient KPI cards derive their color from whichever of `accentColor`/
+// `spectrum`/`tone` the card already passes (in that priority — same
+// priority `accent` below already uses) — no separate color prop to keep in
+// sync. "default" tone has no real semantic hue, so `emphasis` on a card
+// with none of the three set is a deliberate no-op, not an arbitrary color.
+const TONE_TO_VAR: Partial<Record<Tone, string>> = {
+  success: "var(--success)",
+  warning: "var(--warning)",
+  destructive: "var(--destructive)",
+  accent: "var(--accent)",
+};
+
 /**
  * Canonical InsightOS metric tile. The four Content Intelligence outcome cards
  * (Views, Leads Generated, Closes Attributed, Cash Attributed) are the visual
  * source of truth for every KPI surface in the application.
+ *
+ * `emphasis` opts a card into the gradient-KPI-card treatment ("subtle" or
+ * "strong" — see kpiGradient() in spectrum.ts) instead of the plain --card
+ * surface every card uses by default. It derives its color from whichever
+ * of `spectrum`/`tone` the card already passes, so there's no second color
+ * prop to keep in sync — omit it (the default) and nothing changes. Reserve
+ * it for the 1-3 genuinely top-tier metrics on a page; the scarcity is what
+ * makes a colored card read as important.
  */
 export function MetricCard({
   label,
@@ -29,6 +55,7 @@ export function MetricCard({
   tone = "default",
   spectrum,
   accentColor,
+  emphasis,
   deltaPct,
   trend,
   spark,
@@ -47,6 +74,7 @@ export function MetricCard({
   tone?: Tone;
   spectrum?: SpectrumPosition;
   accentColor?: string;
+  emphasis?: KpiEmphasis;
   deltaPct?: number;
   trend?: ReactNode;
   spark?: number[];
@@ -69,6 +97,14 @@ export function MetricCard({
   const sparkColor =
     accent ??
     (up ? "var(--color-success)" : down ? "var(--destructive)" : "var(--muted-foreground)");
+  // Separate from `accent` above (which intentionally leaves tone-only cards
+  // with no spark color override) — the gradient explicitly also honors
+  // `tone`, since a card styled tone="destructive" etc. with no spectrum is
+  // exactly the kind of card `emphasis` should still be able to color.
+  const gradientColor = accent ?? TONE_TO_VAR[tone];
+  const gradient = emphasis && gradientColor ? kpiGradient(gradientColor, emphasis) : undefined;
+  const gradientBorder =
+    emphasis && gradientColor ? kpiGradientBorder(gradientColor, emphasis) : undefined;
   const generatedTrend = hasDelta ? (
     <span
       className={cn(
@@ -160,16 +196,31 @@ export function MetricCard({
     </>
   );
   const classes = cn(
-    "group relative w-full overflow-hidden rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-all duration-200 hover:border-foreground/20",
+    "group relative w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm",
+    gradient
+      ? "kpi-gradient"
+      : "border-border bg-card transition-all duration-200 hover:border-foreground/20",
     onClick && "cursor-pointer",
     className,
   );
+  const style: CSSProperties | undefined =
+    gradient && gradientBorder
+      ? ({
+          background: gradient,
+          "--kpi-border": gradientBorder.border,
+          "--kpi-border-hover": gradientBorder.borderHover,
+        } as CSSProperties)
+      : undefined;
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} className={classes}>
+      <button type="button" onClick={onClick} className={classes} style={style}>
         {surface}
       </button>
     );
   }
-  return <div className={classes}>{surface}</div>;
+  return (
+    <div className={classes} style={style}>
+      {surface}
+    </div>
+  );
 }

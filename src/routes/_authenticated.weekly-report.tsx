@@ -122,6 +122,7 @@ function WeeklyReportPage() {
                 label="Cash Collected"
                 value={fmtMoneyCents(report.cash.curr)}
                 spectrum="hot"
+                emphasis="strong"
                 hint={
                   report.cash.deltaPct !== undefined
                     ? `${report.cash.deltaPct >= 0 ? "+" : ""}${report.cash.deltaPct.toFixed(0)}% vs prior week`
@@ -132,11 +133,13 @@ function WeeklyReportPage() {
                 label="New Leads"
                 value={report.newLeads.toLocaleString()}
                 spectrum="cold"
+                emphasis="subtle"
               />
               <StatCard
                 label="Calls Booked → Closed"
                 value={`${report.calls.booked} → ${report.calls.closes}`}
                 spectrum="mid"
+                emphasis="subtle"
                 hint={`${report.calls.showRate.toFixed(0)}% showed · ${report.calls.closeRate.toFixed(0)}% closed on show`}
               />
               <StatCard

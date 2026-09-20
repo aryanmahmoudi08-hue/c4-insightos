@@ -30,6 +30,13 @@ export const RESOURCE_GROUPS = [
 
 export const RESOURCES: ResourceDef[] = [
   {
+    key: "home",
+    label: "Home",
+    group: "Main",
+    view: "Personal, role-aware daily feed — today's numbers, focus items and alerts for your own role.",
+    edit: "No separate edit actions of its own — a computed summary of data logged elsewhere.",
+  },
+  {
     key: "dashboard",
     label: "Main Hub",
     group: "Main",
@@ -81,6 +88,13 @@ export const RESOURCES: ResourceDef[] = [
     edit: "Add / deactivate members, change their role, and open per-person permission overrides.",
   },
   {
+    key: "team_calendar",
+    label: "Team Calendars",
+    group: "Team",
+    view: "Combined Google Calendar view of every connected rep's booked sales calls, plus confirmation status.",
+    edit: "Connect/disconnect a rep's calendar and change a booking's confirmation status.",
+  },
+  {
     key: "hiring",
     label: "Hiring",
     group: "Team",
@@ -122,6 +136,13 @@ export const RESOURCES: ResourceDef[] = [
     group: "Marketing",
     view: "Wistia metrics, retention KPIs, transcript timeline and drop-off analysis.",
     edit: "Import metrics, edit scripts / transcripts and run bottleneck analysis.",
+  },
+  {
+    key: "webinar_analytics",
+    label: "Webinar Analytics",
+    group: "Marketing",
+    view: "Acquisition, attendance and revenue metrics for every webinar.",
+    edit: "Import/link acquisition spend and webinar-provider metrics.",
   },
   {
     key: "attribution",
@@ -185,6 +206,44 @@ export const RESOURCES: ResourceDef[] = [
   },
 ];
 
+/** Route path → resource key — the one place that decides what a URL is
+ * "gated as," reused by both the sidebar's nav filtering and the real
+ * route-level access gate (RouteAccessGate in resource-gate.tsx), so the
+ * two can never drift into showing a nav item for a page the route gate
+ * then blocks (or vice versa). A path with no entry here (e.g. /settings,
+ * /permissions, /login) is intentionally NOT resource-gated — either a
+ * personal-account page every signed-in user needs regardless of role, or
+ * already hard-gated its own way. `/content` deliberately maps to
+ * "content" even for its Traffic/Attribution/Content-Signals section
+ * anchors below, since those are the same page/component — see the
+ * override list. */
+export const PATH_TO_RESOURCE: Record<string, string> = {
+  "/home": "home",
+  "/dashboard": "dashboard",
+  "/leads": "leads",
+  "/eod-reports": "eod_reports",
+  "/dm-setter": "dm_setter",
+  "/inbound-dialer": "inbound_dialer",
+  "/closer": "closer",
+  "/team": "team",
+  "/team-calendar": "team_calendar",
+  "/hiring": "hiring",
+  "/content-calendar": "content_calendar",
+  "/content": "content",
+  "/sequences": "sequences",
+  "/copy": "copy",
+  "/vsl": "vsl",
+  "/webinar-analytics": "webinar_analytics",
+  "/attribution": "attribution",
+  "/traffic": "traffic",
+  "/outreach": "outreach",
+  "/onboarding": "onboarding",
+  "/fulfillment": "fulfillment",
+  "/payments": "payments",
+  "/weekly-report": "weekly_report",
+  "/events": "events",
+};
+
 export const ROLES = [
   "admin",
   "sales_manager",
@@ -209,12 +268,51 @@ export const ROLE_LABELS: Record<ManagedRole, string> = {
 export const ROLE_BLURBS: Record<ManagedRole, string> = {
   admin: "Full operator access — money, personnel and integrations.",
   sales_manager: "Runs the sales floor: leads, reps, payouts, hiring.",
-  growth_ops: "Content, copy and attribution; no personnel or payout editing.",
+  growth_ops:
+    "Content, copy and attribution, plus manual data-entry access (EOD reports, rep dashboards, payments, fulfillment, onboarding) to backfill a KPI when automation misses it. No personnel or hiring editing.",
   setter: "Own DM pipeline and lead notes only.",
   inbound_dialer: "Own inbound call queue, callbacks and lead notes only.",
   closer: "Own calls, cash logging and booked-lead context only.",
   viewer: "Read-only observer — no edits anywhere.",
 };
+
+/** The manual-backfill resource set — lets someone correct or fill in a KPI
+ * card's underlying row when an automated log/import fails. Deliberately
+ * exclusive to growth_ops (per explicit instruction: "only I should be able
+ * to access the edit feature — not even the admin") — admin's normal
+ * full-access grant below carves these back out to read-only. */
+const GROWTH_OPS_BACKFILL_RESOURCES = [
+  "eod_reports",
+  "dm_setter",
+  "inbound_dialer",
+  "closer",
+  "payments",
+  "fulfillment",
+  "onboarding",
+];
+
+/** What a non-manager rep (setter/inbound_dialer/closer) — and, read-only,
+ * a plain viewer — can already reach today (mirrors app-sidebar.tsx's own
+ * RESTRICTED_ALLOW route set, the thing that actually gates their nav).
+ * Kept as one shared list so the two never drift apart again: a rep sees
+ * their own dashboard for logging, everyone's rep dashboards + Team/Team
+ * Calendars for context, and Home/Onboarding/Fulfillment/VSL/Content
+ * Calendar as reference. */
+const REP_VISIBLE_RESOURCES = [
+  "home",
+  "dashboard",
+  "leads",
+  "team",
+  "team_calendar",
+  "dm_setter",
+  "inbound_dialer",
+  "closer",
+  "eod_reports",
+  "onboarding",
+  "fulfillment",
+  "vsl",
+  "content_calendar",
+];
 
 /** Sensible starting point when no explicit row exists yet. */
 export function defaultPerm(
@@ -224,44 +322,59 @@ export function defaultPerm(
   const def = RESOURCES.find((r) => r.key === resource);
   const sensitive = !!def?.sensitive;
   switch (role) {
-    case "admin":
+    case "owner":
+      // The account holder — always full access, no carve-out (unlike
+      // admin below). "Owners always keep full access" is an existing,
+      // literal promise made in the Access Control UI's own copy.
       return { can_view: true, can_edit: true };
+    case "admin":
+      // Full access everywhere EXCEPT the backfill resource set, which is
+      // deliberately exclusive to growth_ops — admin can still view these
+      // (running the business), just not log/correct data through them.
+      return {
+        can_view: true,
+        can_edit: !GROWTH_OPS_BACKFILL_RESOURCES.includes(resource),
+      };
     case "sales_manager":
       return { can_view: true, can_edit: resource !== "events" };
     case "growth_ops":
       return {
-        can_view: !sensitive || resource === "attribution" || resource === "dashboard",
-        can_edit: ["content", "content_calendar", "sequences", "copy", "traffic", "vsl"].includes(
-          resource,
-        ),
+        can_view: !sensitive || ["attribution", "dashboard", "payments"].includes(resource),
+        // Content/copy/attribution/webinar analytics stay fully editable
+        // (the role's core marketing scope); the backfill resource set
+        // above is ALSO editable — exclusively so, per instruction (admin
+        // is carved out above, sales_manager/setter/closer/dialer keep
+        // only their own pre-existing self-service resources via their own
+        // branches, untouched here). Team roster and Hiring (personnel)
+        // stay read-only.
+        can_edit: [
+          "content",
+          "content_calendar",
+          "sequences",
+          "copy",
+          "traffic",
+          "vsl",
+          "webinar_analytics",
+          ...GROWTH_OPS_BACKFILL_RESOURCES,
+        ].includes(resource),
       };
     case "setter":
       return {
-        can_view: ["dashboard", "leads", "dm_setter", "eod_reports", "content_calendar"].includes(
-          resource,
-        ),
+        can_view: REP_VISIBLE_RESOURCES.includes(resource),
         can_edit: ["leads", "dm_setter", "eod_reports"].includes(resource),
       };
     case "inbound_dialer":
       return {
-        can_view: [
-          "dashboard",
-          "leads",
-          "inbound_dialer",
-          "eod_reports",
-          "content_calendar",
-        ].includes(resource),
+        can_view: REP_VISIBLE_RESOURCES.includes(resource),
         can_edit: ["leads", "inbound_dialer", "eod_reports"].includes(resource),
       };
     case "closer":
       return {
-        can_view: ["dashboard", "leads", "closer", "eod_reports", "content_calendar"].includes(
-          resource,
-        ),
+        can_view: REP_VISIBLE_RESOURCES.includes(resource),
         can_edit: ["leads", "closer", "eod_reports"].includes(resource),
       };
-    default: // viewer
-      return { can_view: !sensitive, can_edit: false };
+    default: // viewer — same reach as a rep, but read-only everywhere.
+      return { can_view: REP_VISIBLE_RESOURCES.includes(resource), can_edit: false };
   }
 }
 

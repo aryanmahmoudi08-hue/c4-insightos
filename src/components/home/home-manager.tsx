@@ -114,6 +114,7 @@ export function HomeManager({ orgId }: { orgId: string }) {
             value={booked}
             icon={<CalendarClock className="h-4 w-4" />}
             tone="cold"
+            emphasis="subtle"
           />
           <HomeStat
             label="Showed"
@@ -126,6 +127,7 @@ export function HomeManager({ orgId }: { orgId: string }) {
             value={offers}
             icon={<ListChecks className="h-4 w-4" />}
             tone="mid"
+            emphasis="subtle"
           />
           <HomeStat
             label="Closes"
@@ -138,6 +140,7 @@ export function HomeManager({ orgId }: { orgId: string }) {
             value={`$${(cashToday / 100).toLocaleString()}`}
             icon={<DollarSign className="h-4 w-4" />}
             tone="hot"
+            emphasis="strong"
           />
         </div>
         <div className="mt-2 text-2xs text-muted-foreground">

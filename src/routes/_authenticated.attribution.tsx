@@ -458,6 +458,7 @@ export function AttributionPageContent({ embedded = false }: { embedded?: boolea
       label: "Total Leads",
       value: (data?.leadRows.length ?? 0).toLocaleString(),
       spectrum: "cold",
+      emphasis: "subtle",
     },
     {
       key: "booked",
@@ -470,6 +471,7 @@ export function AttributionPageContent({ embedded = false }: { embedded?: boolea
       label: "Shows",
       value: (data?.callRows.filter((c) => c.showed).length ?? 0).toLocaleString(),
       spectrum: "mid",
+      emphasis: "subtle",
     },
     {
       key: "closes",
@@ -482,8 +484,15 @@ export function AttributionPageContent({ embedded = false }: { embedded?: boolea
       label: "Revenue Generated",
       value: money(totalContractCents),
       spectrum: "hot",
+      emphasis: "subtle",
     },
-    { key: "cash", label: "Cash Collected", value: money(totalCashCents), spectrum: "hot" },
+    {
+      key: "cash",
+      label: "Cash Collected",
+      value: money(totalCashCents),
+      spectrum: "hot",
+      emphasis: "strong",
+    },
     {
       key: "attributed",
       label: "Attributed Cash",

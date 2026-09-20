@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, CheckCircle2, ChevronRight, Clock3, Info, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { type KpiEmphasis, kpiGradient, kpiGradientBorder } from "@/lib/spectrum";
 
 /**
  * Home's own semantic color language — reuses the app's existing spectrum
@@ -30,6 +31,18 @@ const TONE_BORDER: Record<HomeTone, string> = {
   warning: "border-t-[color:var(--color-warning)]",
   destructive: "border-t-destructive",
   neutral: "border-t-border",
+};
+
+/** Raw color var per tone, for the gradient-KPI-card treatment (kpiGradient
+ * in spectrum.ts) — "neutral" has none, so `emphasis` on a neutral-tone
+ * HomeStat is a deliberate no-op rather than an arbitrary fallback color. */
+const TONE_VAR: Partial<Record<HomeTone, string>> = {
+  cold: "var(--spectrum-cold)",
+  mid: "var(--spectrum-mid)",
+  hot: "var(--spectrum-hot)",
+  success: "var(--success)",
+  warning: "var(--warning)",
+  destructive: "var(--destructive)",
 };
 
 /** Card shell every Home section uses — same border/radius/card surface as
@@ -97,16 +110,41 @@ export function HomeStat({
   icon,
   tone = "neutral",
   hint,
+  emphasis,
 }: {
   label: string;
   value: ReactNode;
   icon?: ReactNode;
   tone?: HomeTone;
   hint?: string;
+  /** Opts this tile into the gradient-KPI-card treatment (see MetricCard) —
+   * reserve for the 1 genuinely top-tier metric on a Home variant (usually
+   * Cash Collected where it appears). Value text already renders neutral
+   * (text-foreground) regardless of tone, so there's no contrast risk to
+   * manage here the way hand-rolled tone-colored value text elsewhere
+   * needed fixing. */
+  emphasis?: KpiEmphasis;
 }) {
+  const color = TONE_VAR[tone];
+  const gradient = emphasis && color ? kpiGradient(color, emphasis) : undefined;
+  const gradientBorder = emphasis && color ? kpiGradientBorder(color, emphasis) : undefined;
   return (
     <div
-      className="rounded-xl border border-border bg-background/40 p-3.5 transition-colors hover:border-foreground/15"
+      className={cn(
+        "rounded-xl border p-3.5",
+        gradient
+          ? "kpi-gradient"
+          : "border-border bg-background/40 transition-colors hover:border-foreground/15",
+      )}
+      style={
+        gradient
+          ? ({
+              background: gradient,
+              "--kpi-border": gradientBorder!.border,
+              "--kpi-border-hover": gradientBorder!.borderHover,
+            } as CSSProperties)
+          : undefined
+      }
       title={hint}
     >
       <div className="flex items-center gap-2">

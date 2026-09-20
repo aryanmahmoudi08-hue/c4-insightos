@@ -272,6 +272,7 @@ export function HomeCloser({ orgId }: { orgId: string }) {
                   value={booked}
                   icon={<PhoneCall className="h-4 w-4" />}
                   tone="cold"
+                  emphasis="subtle"
                 />
                 <HomeStat
                   label="Showed"
@@ -284,6 +285,7 @@ export function HomeCloser({ orgId }: { orgId: string }) {
                   value={offers}
                   icon={<ListChecks className="h-4 w-4" />}
                   tone="mid"
+                  emphasis="subtle"
                 />
                 <HomeStat
                   label="Closes"
@@ -296,6 +298,7 @@ export function HomeCloser({ orgId }: { orgId: string }) {
                   value={`$${(cashCents / 100).toLocaleString()}`}
                   icon={<DollarSign className="h-4 w-4" />}
                   tone="hot"
+                  emphasis="strong"
                 />
               </div>
             )}

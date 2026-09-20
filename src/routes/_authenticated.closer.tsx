@@ -2,6 +2,7 @@ import { createFileRoute, useSearch, useNavigate, Link } from "@tanstack/react-r
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { useResourcePermissions } from "@/hooks/use-resource-permission";
 import { useDemoMode } from "@/hooks/use-demo-mode";
 import { buildDemoCoreDataset } from "@/lib/demo-fixtures";
 import { TopBar } from "@/components/app-sidebar";
@@ -376,6 +377,8 @@ function Closer() {
   const { devBypass } = useAuth();
   const { demoMode } = useDemoMode();
   const qc = useQueryClient();
+  const { getPerm } = useResourcePermissions();
+  const canLogCall = getPerm("closer").can_edit;
   // Shadows the old module-level USD-only helper of the same name — every
   // existing fmtMoney(...) call site below is unchanged, but now resolves
   // through the global display-currency selection.
@@ -422,7 +425,7 @@ function Closer() {
   const actionSearch = useSearch({ strict: false }) as { action?: string };
   const paletteNav = useNavigate();
   useEffect(() => {
-    if (actionSearch.action === "log-call") {
+    if (actionSearch.action === "log-call" && canLogCall) {
       setOpen(true);
       paletteNav({ search: {} as never, replace: true });
     }
@@ -2104,9 +2107,13 @@ function Closer() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open && canLogCall} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">
+              <Button
+                size="sm"
+                disabled={!canLogCall}
+                title={canLogCall ? undefined : "You don't have edit access to this page."}
+              >
                 <Plus className="h-4 w-4" />
                 Log call
               </Button>
@@ -3092,6 +3099,7 @@ function Closer() {
               value: fmtMoney(cashCents),
               spectrum: "hot",
               featured: true,
+              emphasis: "strong",
               wide: true,
               deltaPct: pctDelta(cashCents, prevCashCents),
               priorValue: fmtMoney(prevCashCents),
@@ -3105,6 +3113,7 @@ function Closer() {
               value: fmtMoney(revCents),
               spectrum: "hot",
               featured: true,
+              emphasis: "subtle",
               wide: true,
               deltaPct: pctDelta(revCents, prevRevCents),
               priorValue: fmtMoney(prevRevCents),
@@ -3200,6 +3209,7 @@ function Closer() {
               label: "Showed",
               value: fmtN0(showed),
               spectrum: "mid",
+              emphasis: "subtle",
               deltaPct: pctDelta(showed, prevShowed),
               priorValue: fmtN0(prevShowed),
               empty: showed === 0,

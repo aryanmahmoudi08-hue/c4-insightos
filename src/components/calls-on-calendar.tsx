@@ -298,26 +298,37 @@ const STATUS_TONE: Record<OverallConfirmationStatus, string> = {
 // Solid, borderless status color — the one true color-per-status mapping
 // (matches STATUS_LABEL/LEGEND_DOT exactly: confirmed=green, overdue=red,
 // at_risk=amber, cancelled=neutral, rescheduled=blue, awaiting=gray) used
-// for booking blocks, month-grid chips, and the status legend cards. Light
-// mode = the bright/saturated shade with white text; dark mode = a deeper
-// shade of the SAME hue with near-black text — never opacity tricks, two
-// intentional color values per status (Google Calendar-style behavior).
-// Shades tuned one step richer than the original 700/800 dark values (item
-// 17 — those read as muddy/flat against the near-black calendar surface;
-// 600 keeps the "deep, not neon" intent while staying visibly saturated).
+// for booking blocks, month-grid chips, and the status legend cards. Each
+// status is a smooth bottom(dark)-to-top(light) gradient within its OWN
+// hue — never a flat single color, never a different hue mixed in. Light
+// mode = a bright/saturated pair with white text; dark mode = a deeper
+// pair of the SAME hue with near-black text — never opacity tricks, two
+// intentional color pairs per status (Google Calendar-style behavior).
 const STATUS_SOLID: Record<OverallConfirmationStatus, { bg: string; text: string }> = {
   confirmed: {
-    bg: "bg-emerald-500 dark:bg-emerald-600",
+    bg: "bg-gradient-to-t from-emerald-600 to-emerald-400 dark:from-emerald-800 dark:to-emerald-500",
     text: "text-white dark:text-emerald-950",
   },
-  awaiting: { bg: "bg-slate-400 dark:bg-slate-600", text: "text-white dark:text-slate-950" },
-  overdue: { bg: "bg-red-500 dark:bg-red-600", text: "text-white dark:text-red-950" },
-  at_risk: { bg: "bg-amber-500 dark:bg-amber-600", text: "text-white dark:text-amber-950" },
+  awaiting: {
+    bg: "bg-gradient-to-t from-slate-500 to-slate-300 dark:from-slate-800 dark:to-slate-600",
+    text: "text-white dark:text-slate-950",
+  },
+  overdue: {
+    bg: "bg-gradient-to-t from-red-600 to-red-400 dark:from-red-800 dark:to-red-600",
+    text: "text-white dark:text-red-950",
+  },
+  at_risk: {
+    bg: "bg-gradient-to-t from-amber-600 to-amber-400 dark:from-amber-800 dark:to-amber-600",
+    text: "text-white dark:text-amber-950",
+  },
   cancelled: {
-    bg: "bg-neutral-300 dark:bg-neutral-600",
+    bg: "bg-gradient-to-t from-neutral-400 to-neutral-200 dark:from-neutral-700 dark:to-neutral-500",
     text: "text-neutral-800 dark:text-neutral-100",
   },
-  rescheduled: { bg: "bg-blue-500 dark:bg-blue-600", text: "text-white dark:text-blue-950" },
+  rescheduled: {
+    bg: "bg-gradient-to-t from-blue-600 to-blue-400 dark:from-blue-800 dark:to-blue-600",
+    text: "text-white dark:text-blue-950",
+  },
 };
 
 // The ORIGINAL status's color, used only for cancelled/rescheduled booking

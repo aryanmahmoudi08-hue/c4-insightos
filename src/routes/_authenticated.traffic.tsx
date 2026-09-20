@@ -559,6 +559,7 @@ export function TrafficPageContent({ embedded = false }: { embedded?: boolean } 
             label="Leads tracked"
             value={fmt(hierarchy.totals.leads)}
             spectrum="cold"
+            emphasis="subtle"
             icon={<TrendingUp className="h-4 w-4" />}
             hint={`${hierarchy.platforms.length} platform${hierarchy.platforms.length === 1 ? "" : "s"}`}
             onClick={() => openDrill({}, "leads", "All leads", "Every lead tracked in this range")}
@@ -567,6 +568,7 @@ export function TrafficPageContent({ embedded = false }: { embedded?: boolean } 
             label="Qualified leads"
             value={fmt(hierarchy.totals.qualifiedLeads)}
             spectrum="mid"
+            emphasis="subtle"
             hint={
               hierarchy.totals.leads
                 ? `${Math.round((hierarchy.totals.qualifiedLeads / hierarchy.totals.leads) * 100)}% of tracked leads`
@@ -580,6 +582,7 @@ export function TrafficPageContent({ embedded = false }: { embedded?: boolean } 
             label="Bookings → shows → closes"
             value={`${fmt(hierarchy.totals.bookings)} → ${fmt(hierarchy.totals.shows)} → ${fmt(hierarchy.totals.closes)}`}
             spectrum="hot"
+            emphasis="subtle"
             onClick={() =>
               openDrill(
                 {},
@@ -593,6 +596,7 @@ export function TrafficPageContent({ embedded = false }: { embedded?: boolean } 
             label="Cash collected"
             value={fmtMoney(hierarchy.totals.collectedCents)}
             spectrum="hot"
+            emphasis="strong"
             hint={`${fmtMoney(hierarchy.totals.contractedCents)} contracted`}
             onClick={() =>
               openDrill({}, "cash", "Cash collected", "Closed calls with cash collected")

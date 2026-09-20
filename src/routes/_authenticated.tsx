@@ -11,6 +11,7 @@ import { DemoModeProvider } from "@/hooks/use-demo-mode";
 import { SidebarCollapsedProvider, useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { LiveTicker } from "@/components/live-ticker";
 import { CommandPalette } from "@/components/command-palette";
+import { RouteAccessGate } from "@/components/resource-gate";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated")({ component: AuthedLayout });
@@ -84,7 +85,9 @@ function AuthedShell() {
         )}
       >
         <LiveTicker />
-        <Outlet />
+        <RouteAccessGate>
+          <Outlet />
+        </RouteAccessGate>
       </main>
     </div>
   );

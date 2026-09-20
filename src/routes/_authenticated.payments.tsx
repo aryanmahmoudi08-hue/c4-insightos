@@ -988,6 +988,7 @@ function PaymentsPage() {
             label="Total collected"
             value={money(totalCollectedCents)}
             spectrum="hot"
+            emphasis="strong"
             icon={<Banknote className="h-4 w-4" />}
             hint={`${filteredRows.filter((r) => r.payment.status === "paid").length} payments in range`}
             onClick={() => setSelectedMetric("collected")}
@@ -996,6 +997,7 @@ function PaymentsPage() {
             label="Total contracted"
             value={money(totalContractedCents)}
             spectrum="cold"
+            emphasis="subtle"
             hint={`${distinctClientIds.length} client${distinctClientIds.length === 1 ? "" : "s"} active in this range`}
             onClick={() => setSelectedMetric("contracted")}
           />

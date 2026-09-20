@@ -1,5 +1,5 @@
 import React from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import {
   BarChart3,
   Eye,
@@ -24,7 +24,13 @@ import {
 } from "recharts";
 import { EmptyState } from "@/components/empty-state";
 import { MECHANISMS, MECHANISM_KEYS, type MechanismKey } from "@/lib/content-mechanisms";
-import { SPECTRUM_VAR, type SpectrumPosition } from "@/lib/spectrum";
+import {
+  SPECTRUM_VAR,
+  type SpectrumPosition,
+  type KpiEmphasis,
+  kpiGradient,
+  kpiGradientBorder,
+} from "@/lib/spectrum";
 import { cn } from "@/lib/utils";
 import type { AttributionModel, CanonicalLifecycleAttributionPath } from "@/lib/acquisition";
 import { FUNNEL_STAGES, normalizeTaxonomy } from "@/lib/content-taxonomy";
@@ -624,6 +630,7 @@ export function ContentCommandCenter({
           value={fmt(stats.totalViews)}
           sub="Tracked content"
           spectrum="cold"
+          emphasis="strong"
           icon={<Eye className="h-4 w-4" />}
         />
         <CommandKpi
@@ -643,6 +650,7 @@ export function ContentCommandCenter({
           }
           sub={`${fmt(stats.totalInteractions)} interactions`}
           spectrum="mid"
+          emphasis={stats.totalInteractions === 0 ? undefined : "subtle"}
           icon={<Heart className="h-4 w-4" />}
           muted={stats.totalInteractions === 0}
         />
@@ -1273,6 +1281,7 @@ function CommandKpi({
   spectrum,
   icon,
   muted,
+  emphasis,
 }: {
   label: string;
   value: string;
@@ -1280,21 +1289,48 @@ function CommandKpi({
   spectrum: SpectrumPosition;
   icon: React.ReactNode;
   muted?: boolean;
+  /** Opts this tile into the gradient-KPI-card treatment (see MetricCard) —
+   * reserve for the 1-2 genuinely top-tier metrics in the row. Never set
+   * alongside `muted` (an unavailable/untracked metric shouldn't visually
+   * compete for attention). */
+  emphasis?: KpiEmphasis;
 }) {
+  const gradient = emphasis && !muted ? kpiGradient(SPECTRUM_VAR[spectrum], emphasis) : undefined;
+  const gradientBorder =
+    emphasis && !muted ? kpiGradientBorder(SPECTRUM_VAR[spectrum], emphasis) : undefined;
+  // "Strong" already makes the color unmistakable via the fill itself —
+  // keep the value neutral there (same reasoning as MetricCard/CashHero) so
+  // it doesn't sit same-hue-on-same-hue at reduced contrast. "Subtle" stays
+  // close enough to the plain card that the existing spectrum-tinted value
+  // text keeps comfortable contrast, so it's left as-is.
+  const valueColor = emphasis === "strong" ? undefined : SPECTRUM_VAR[spectrum];
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border bg-card p-4 shadow-sm",
+        "rounded-2xl border p-4 shadow-sm",
+        gradient ? "kpi-gradient" : "border-border bg-card",
         muted && "opacity-75",
       )}
+      style={
+        gradient
+          ? ({
+              background: gradient,
+              "--kpi-border": gradientBorder!.border,
+              "--kpi-border-hover": gradientBorder!.borderHover,
+            } as CSSProperties)
+          : undefined
+      }
     >
       <div className="flex items-center justify-between gap-2 text-3xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         <span>{label}</span>
         <span style={{ color: SPECTRUM_VAR[spectrum] }}>{icon}</span>
       </div>
       <div
-        className="mt-3 font-sans text-2xl font-semibold tabular-nums"
-        style={{ color: SPECTRUM_VAR[spectrum] }}
+        className={cn(
+          "mt-3 font-sans text-2xl font-semibold tabular-nums",
+          valueColor === undefined && "text-foreground",
+        )}
+        style={valueColor ? { color: valueColor } : undefined}
       >
         {value}
       </div>

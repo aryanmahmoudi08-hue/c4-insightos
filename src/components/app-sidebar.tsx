@@ -40,8 +40,9 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg, disableDevBypass } from "@/hooks/use-auth";
 import { useRole } from "@/hooks/use-role";
+import { useResourcePermissions } from "@/hooks/use-resource-permission";
 import { useDemoMode } from "@/hooks/use-demo-mode";
-import { ROLE_LABELS, type ManagedRole } from "@/lib/permissions";
+import { ROLE_LABELS, PATH_TO_RESOURCE, type ManagedRole } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { Switch } from "@/components/ui/switch";
@@ -194,29 +195,12 @@ const ANALYTICS_NAV: NavItem[] = [
 // down in the utility footer instead of the primary category list.
 const SYSTEM_NAV: NavItem[] = [{ to: "/events", label: "Event Bus", icon: Activity }];
 
-// Routes a non-manager (setter/closer) is allowed to see.
-const RESTRICTED_ALLOW = new Set([
-  "/home",
-  "/dashboard",
-  "/leads",
-  "/team",
-  "/team-calendar",
-  "/dm-setter",
-  "/inbound-dialer",
-  "/closer",
-  "/eod-reports",
-  "/onboarding",
-  "/fulfillment",
-  "/vsl",
-  "/content-calendar",
-  "/settings",
-]);
-
 export function AppSidebar() {
   const loc = useLocation();
   const navigate = useNavigate();
   const { data: org } = useCurrentOrg();
-  const { canManage, isAdmin, role } = useRole();
+  const { isAdmin, role } = useRole();
+  const { getPerm, ready: permsReady } = useResourcePermissions();
   const { demoMode, setDemoMode } = useDemoMode();
   const { theme, toggle } = useTheme();
   const { collapsed, toggle: toggleCollapsed } = useSidebarCollapsed();
@@ -259,8 +243,19 @@ export function AppSidebar() {
         .map((w) => w[0].toUpperCase() + w.slice(1))
         .join(" "))
     : "Member";
+  // Real per-resource view permission (Access Control's own role_permissions/
+  // member_permissions tables — see useResourcePermissions) rather than the
+  // old blanket "manager vs. everyone else" split. Items with no
+  // PATH_TO_RESOURCE mapping (none currently in these nav lists) always show.
+  // Nothing hides while permissions are still loading, to avoid a flash of
+  // an empty sidebar.
   const filterByRole = (items: NavItem[]) =>
-    canManage ? items : items.filter((it) => RESTRICTED_ALLOW.has(it.to));
+    !permsReady
+      ? items
+      : items.filter((it) => {
+          const resource = PATH_TO_RESOURCE[it.to];
+          return !resource || getPerm(resource).can_view;
+        });
 
   // The primary rail categories — each a category button in the rail
   // plus the flat item list it reveals in the secondary panel. System is
@@ -792,15 +787,7 @@ export function TopBar({
   subtitle?: string;
   showDateRange?: boolean;
 }) {
-  const nav = useNavigate();
-  const [q, setQ] = useState("");
   const { range, setRange } = useDateRange();
-  const submitSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const term = q.trim();
-    if (!term) return;
-    nav({ to: "/payments", search: { q: term } as never });
-  };
   return (
     <div className="glass-header sticky top-8 z-20 border-b px-4 md:px-6 py-4">
       <div className="flex items-center justify-between gap-4">
@@ -812,15 +799,21 @@ export function TopBar({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <form onSubmit={submitSearch} className="relative hidden md:block">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground transition-colors" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search clients, leads, content…"
-              className="h-8 w-72 rounded-md border border-input bg-input/40 pl-8 pr-3 text-xs outline-none transition-all hover:border-ring/30 focus:border-ring focus:ring-1 focus:ring-ring focus:bg-input/70"
-            />
-          </form>
+          {/* Opens the real Cmd+K command palette (leads/clients/content/
+              metrics search + page nav) rather than owning a second, parallel
+              search implementation — this box used to submit to a hardcoded
+              /payments route no matter what was typed. */}
+          <button
+            type="button"
+            onClick={() => openCommandPalette()}
+            className="relative hidden h-8 w-72 items-center rounded-md border border-input bg-input/40 pl-8 pr-3 text-xs text-muted-foreground outline-none transition-all hover:border-ring/30 md:flex"
+          >
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <span className="truncate">Search leads, metrics, clients, content…</span>
+            <span className="badge-glass ml-auto shrink-0 text-3xs normal-case tracking-normal">
+              ⌘K
+            </span>
+          </button>
           <Button variant="ghost" size="icon" className="relative h-8 w-8 hidden sm:inline-flex">
             <Bell className="h-4 w-4" />
           </Button>

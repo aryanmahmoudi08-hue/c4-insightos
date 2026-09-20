@@ -167,6 +167,7 @@ export function HomeAdmin({ orgId }: { orgId: string }) {
             value={`$${(cashToday / 100).toLocaleString()}`}
             icon={<DollarSign className="h-4 w-4" />}
             tone="hot"
+            emphasis="strong"
           />
           <HomeStat
             label="Closes"
@@ -179,6 +180,7 @@ export function HomeAdmin({ orgId }: { orgId: string }) {
             value={clients.length}
             icon={<Users className="h-4 w-4" />}
             tone="cold"
+            emphasis="subtle"
           />
         </div>
       </HomeSection>

@@ -815,6 +815,29 @@ export function MenteeRenewalPanel({
       const current = clients?.find((c) => c.id === id);
       const fromStage = (current?.renewal_stage as string | null) ?? "not_started";
       if (fromStage === stage) return;
+      // Demo data is a static, non-persisted fixture — dragging a card would
+      // visually snap back on the next refetch with nothing actually saved,
+      // so this is refused with an honest message instead (same convention
+      // as notes above). Dev bypass has no real membership row for RLS to
+      // accept a write against, so it patches the cached mock rows directly
+      // instead of hitting Supabase — same pattern preClose already uses.
+      if (demoMode) throw new Error("Renewal stage can't be changed on demo data.");
+      if (devBypass) {
+        qc.setQueryData<MenteeRow[]>(["clients", orgId, devBypass, demoMode], (prev) =>
+          (prev ?? []).map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  renewal_stage: stage,
+                  ...(stage === "conversation" ? { renewal_conv_started: true } : {}),
+                  ...(stage === "churned" ? { status: "churned" } : {}),
+                  ...(stage === "won" ? { status: "active" } : {}),
+                }
+              : c,
+          ),
+        );
+        return;
+      }
       const patch: { renewal_stage: string; renewal_conv_started?: boolean; status?: string } = {
         renewal_stage: stage,
       };
@@ -865,9 +888,11 @@ export function MenteeRenewalPanel({
       }
     },
     onSuccess: () => {
-      toast.success("Stage updated · team notified");
-      qc.invalidateQueries({ queryKey: ["clients"] });
-      qc.invalidateQueries({ queryKey: ["renewal-work-items", orgId] });
+      toast.success(devBypass ? "Stage updated" : "Stage updated · team notified");
+      if (!devBypass) {
+        qc.invalidateQueries({ queryKey: ["clients"] });
+        qc.invalidateQueries({ queryKey: ["renewal-work-items", orgId] });
+      }
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });

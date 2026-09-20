@@ -3,6 +3,7 @@
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant light (&:is(.light *));
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
@@ -97,10 +98,18 @@
    focus ring (--ring / --accent), which carry spectrum-mid. The spectrum
    lives in DATA only: chart series, heatmap scales, funnel stages, progress
    bars, rank indicators, sparklines, KPI value colors, card glows — never a
-   filled button, never a card background, never gradient text. Two-stop
-   gradients only (blue→purple or purple→pink, adjacent stops) — never all
-   three stops in one element; the full spectrum only ever appears across a
-   SEQUENCE (funnel stages, heatmap scale, rank ladder).
+   filled button, never gradient text. Two-stop gradients only (blue→purple
+   or purple→pink, adjacent stops) — never all three stops in one element;
+   the full spectrum only ever appears across a SEQUENCE (funnel stages,
+   heatmap scale, rank ladder).
+   Amendment — gradient KPI cards: card BACKGROUNDS are now also sanctioned,
+   but only for a small number (1-3) of top-tier metrics per page, via
+   kpiGradient()/kpiGradientBorder() in spectrum.ts and MetricCard's
+   `emphasis` prop — see the .kpi-gradient rule below. This is deliberate
+   scarcity, not a reversal: color = importance + semantic meaning, so most
+   cards on any page still stay plain --card. Every other rule above still
+   holds (chrome stays achromatic, buttons stay unfilled, gradient text is
+   still unused).
    Semantic accents are separate from the spectrum and stay grounded: success
    green, warning amber, danger red. Danger red is deliberately pushed toward
    crimson — lower chroma AND lower lightness than spectrum-hot pink, plus
@@ -557,6 +566,27 @@
   }
   .light .hover-lift:hover {
     border-color: oklch(0.16 0 0 / 18%);
+  }
+
+  /* Gradient KPI card surface (see kpiGradient()/kpiGradientBorder() in
+     spectrum.ts) — owns only the hover/focus behavior so every gradient
+     card gets the same restrained lift: border strengthens a touch, a
+     slight brightness lift, never a dramatic animation or glow/halo. The
+     background/border colors themselves come from the two custom
+     properties the component sets inline per card. */
+  .kpi-gradient {
+    border-color: var(--kpi-border);
+    transition:
+      transform 150ms ease,
+      border-color 200ms ease,
+      filter 200ms ease,
+      box-shadow 200ms ease;
+  }
+  .kpi-gradient:hover,
+  .kpi-gradient:focus-visible {
+    transform: translateY(-1px);
+    border-color: var(--kpi-border-hover);
+    filter: brightness(1.08);
   }
 
   /* AscendOS logo: two real theme-specific assets per lockup (inline for the
