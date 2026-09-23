@@ -44,6 +44,7 @@ import { Route as AuthenticatedCloserRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedAttributionRouteImport } from './routes/_authenticated.attribution'
 import { Route as ApiPublicWiseRouteImport } from './routes/api/public/wise'
 import { Route as ApiPublicWhopRouteImport } from './routes/api/public/whop'
+import { Route as ApiPublicWebinarjamRouteImport } from './routes/api/public/webinarjam'
 import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typeform'
 import { Route as ApiPublicStripeRouteImport } from './routes/api/public/stripe'
 import { Route as ApiPublicPaypalRouteImport } from './routes/api/public/paypal'
@@ -233,6 +234,11 @@ const ApiPublicWhopRoute = ApiPublicWhopRouteImport.update({
   path: '/api/public/whop',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicWebinarjamRoute = ApiPublicWebinarjamRouteImport.update({
+  id: '/api/public/webinarjam',
+  path: '/api/public/webinarjam',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicTypeformRoute = ApiPublicTypeformRouteImport.update({
   id: '/api/public/typeform',
   path: '/api/public/typeform',
@@ -301,6 +307,7 @@ export interface FileRoutesByFullPath {
   '/api/public/paypal': typeof ApiPublicPaypalRoute
   '/api/public/stripe': typeof ApiPublicStripeRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
+  '/api/public/webinarjam': typeof ApiPublicWebinarjamRoute
   '/api/public/whop': typeof ApiPublicWhopRoute
   '/api/public/wise': typeof ApiPublicWiseRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
@@ -343,6 +350,7 @@ export interface FileRoutesByTo {
   '/api/public/paypal': typeof ApiPublicPaypalRoute
   '/api/public/stripe': typeof ApiPublicStripeRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
+  '/api/public/webinarjam': typeof ApiPublicWebinarjamRoute
   '/api/public/whop': typeof ApiPublicWhopRoute
   '/api/public/wise': typeof ApiPublicWiseRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
@@ -387,6 +395,7 @@ export interface FileRoutesById {
   '/api/public/paypal': typeof ApiPublicPaypalRoute
   '/api/public/stripe': typeof ApiPublicStripeRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
+  '/api/public/webinarjam': typeof ApiPublicWebinarjamRoute
   '/api/public/whop': typeof ApiPublicWhopRoute
   '/api/public/wise': typeof ApiPublicWiseRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
@@ -431,6 +440,7 @@ export interface FileRouteTypes {
     | '/api/public/paypal'
     | '/api/public/stripe'
     | '/api/public/typeform'
+    | '/api/public/webinarjam'
     | '/api/public/whop'
     | '/api/public/wise'
     | '/api/public/ingest/$token'
@@ -473,6 +483,7 @@ export interface FileRouteTypes {
     | '/api/public/paypal'
     | '/api/public/stripe'
     | '/api/public/typeform'
+    | '/api/public/webinarjam'
     | '/api/public/whop'
     | '/api/public/wise'
     | '/api/public/ingest/$token'
@@ -516,6 +527,7 @@ export interface FileRouteTypes {
     | '/api/public/paypal'
     | '/api/public/stripe'
     | '/api/public/typeform'
+    | '/api/public/webinarjam'
     | '/api/public/whop'
     | '/api/public/wise'
     | '/api/public/ingest/$token'
@@ -534,6 +546,7 @@ export interface RootRouteChildren {
   ApiPublicPaypalRoute: typeof ApiPublicPaypalRoute
   ApiPublicStripeRoute: typeof ApiPublicStripeRoute
   ApiPublicTypeformRoute: typeof ApiPublicTypeformRoute
+  ApiPublicWebinarjamRoute: typeof ApiPublicWebinarjamRoute
   ApiPublicWhopRoute: typeof ApiPublicWhopRoute
   ApiPublicWiseRoute: typeof ApiPublicWiseRoute
   ApiPublicIngestTokenRoute: typeof ApiPublicIngestTokenRoute
@@ -787,6 +800,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWhopRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/webinarjam': {
+      id: '/api/public/webinarjam'
+      path: '/api/public/webinarjam'
+      fullPath: '/api/public/webinarjam'
+      preLoaderRoute: typeof ApiPublicWebinarjamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/typeform': {
       id: '/api/public/typeform'
       path: '/api/public/typeform'
@@ -906,6 +926,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicPaypalRoute: ApiPublicPaypalRoute,
   ApiPublicStripeRoute: ApiPublicStripeRoute,
   ApiPublicTypeformRoute: ApiPublicTypeformRoute,
+  ApiPublicWebinarjamRoute: ApiPublicWebinarjamRoute,
   ApiPublicWhopRoute: ApiPublicWhopRoute,
   ApiPublicWiseRoute: ApiPublicWiseRoute,
   ApiPublicIngestTokenRoute: ApiPublicIngestTokenRoute,

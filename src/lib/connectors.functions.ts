@@ -78,6 +78,16 @@ const connectorRequirements = {
     clientSecret: z.string().trim().min(8, "Paste your PayPal REST API Secret").max(200),
     env: z.enum(["live", "sandbox"]).default("live"),
   }),
+  webinarjam: z.object({
+    webhookSecret: z
+      .string()
+      .trim()
+      .min(
+        12,
+        "Make up a random string, 12+ characters — you'll paste this exact value into WebinarJam's custom webhook Authorization field",
+      )
+      .max(200),
+  }),
 } as const;
 
 function validateConnectorConfig(connectorId: string, rawConfig: Record<string, unknown>) {
@@ -158,7 +168,15 @@ async function getOrgId(supabase: SupabaseClient<Database>, userId: string) {
  * order from Discord/Zapier (where you paste in a URL/secret you already
  * have) and Typeform (whose secret is self-chosen up front). All five of
  * these need a stable URL to exist before the real credential is known. */
-const URL_BASED_CONNECTORS = new Set(["typeform", "stripe", "whop", "fanbasis", "wise", "paypal"]);
+const URL_BASED_CONNECTORS = new Set([
+  "typeform",
+  "stripe",
+  "whop",
+  "fanbasis",
+  "wise",
+  "paypal",
+  "webinarjam",
+]);
 
 async function upsertDefaultSync(
   supabase: SupabaseClient<Database>,

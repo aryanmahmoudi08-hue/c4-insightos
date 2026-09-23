@@ -5,8 +5,9 @@ roadmap prompt, a prior audit, a plan-mode file), this document wins — it was 
 every claim against the current code, current tests, and current git history, not by merging old
 text. Older documents are preserved for their evidence/reasoning, not as active requirements.
 
-Status reconciliation only — no product behavior, schema, UI, or integration changed to produce
-this document. No commit/push.
+Originally a status-reconciliation-only pass. Updated 2026-09-24 with real n8n-readiness
+implementation work (see "WebinarJam ingest readiness" below) — that update is noted inline
+rather than pretending this has stayed a read-only document throughout.
 
 ---
 
@@ -140,7 +141,7 @@ written) cross-checked against current code — not re-audited from scratch here
 
 | Integration | Status | Priority |
 |---|---|---|
-| **WebinarJam** (confirmed platform) | No writer exists into `webinar_events`/`webinars`; `n8n/` contains only the Wistia workflow. Explicitly **deferred by user** ("skip to 13 for now") | **F + H** — P0 when resumed (unlocks 54 blocked Webinar Analytics metrics, zero new schema needed) |
+| **WebinarJam** (confirmed platform) | **Ingest receiver now exists** (2026-09-24): `src/routes/api/public/webinarjam.ts` + `webinarjam` Connections panel card + connector-registry row (migration `20260924000000_webinarjam_connector_registry_row.sql`), following the exact pattern already used for the 5 payment webhooks. Not an n8n workflow — per the contract doc's own §5 recommendation, a first-party route is correct here, n8n is not in the critical path. Two real gaps remain, see "WebinarJam ingest readiness" below | **D** for the plumbing (registry/route/UI); **F** for the two remaining prerequisites (payload mapping needs a real test delivery; no UI exists to create a `public.webinars` row) |
 | **Meta / Instagram Ads** | `MAIN-0019` partially connected; `acquisition_spend` table exists, unused. Requires OAuth (connector registry has none today) | **F** — P1 |
 | **TikTok / YouTube / LinkedIn Ads** | No evidence of real paid spend on these platforms in the current dictionary | **F, not prioritized** — confirm real spend exists before building |
 | **Wistia auto-sync** | Manual/CSV path is honest and functional today; API automation is a real but low-urgency upgrade | **F** — P2 |
@@ -148,6 +149,49 @@ written) cross-checked against current code — not re-audited from scratch here
 | **Telephony / messaging** (Inbound Dialer, DM Setter) | Per `implementation-status.md`: activity module + Speed-to-Lead queue exist; full provider-backed ingestion is connector-dependent | **F** — other initiative's scope |
 | **Typeform, Stripe, PayPal, Fanbasis, Wise, Whop, Calendly** | Already live, webhook-secret auth, no verified gap | Not applicable — done |
 | **Connector-registry OAuth capability** | Cross-cutting prerequisite: registry only supports webhook-secret/plain-URL auth today; Meta/TikTok/YouTube/LinkedIn all need OAuth | **F** — real scoped infrastructure work, blocks P1 regardless of which ad platform is picked |
+
+### WebinarJam ingest readiness (built 2026-09-24)
+
+Real implementation, not just documentation — done as part of "make sure everything's ready for
+n8n workflows." Researched against WebinarJam's actual support docs and Zapier's own WebinarJam
+integration listing first (`WebSearch`/`WebFetch`, cited below) rather than guessing, consistent
+with this project's no-fabrication standard.
+
+**What's ready:**
+- `supabase/migrations/20260924000000_webinarjam_connector_registry_row.sql` — registry row,
+  `auth_method: 'webhook'` (WebinarJam's own "Custom Webhook" feature supports a bearer token or a
+  custom header/value pair — no HMAC signature scheme, unlike Stripe/Whop).
+- `src/lib/connectors.functions.ts` — `webinarjam` added to `connectorRequirements` (a
+  self-chosen `webhookSecret`, 12+ chars) and to `URL_BASED_CONNECTORS` (its webhook URL is
+  generated *after* connecting, same order as Typeform — WebinarJam needs a destination URL
+  before it can hand back nothing, since the secret is user-chosen, not provider-issued).
+- `src/components/connections-panel.tsx` — a WebinarJam card with real setup steps (Settings →
+  Integrations → Custom Webhook → paste URL → choose "Bearer Token" → paste the same token). The
+  previously Typeform-only `generatedWebhookUrl` display logic was generalized
+  (`POST_CONNECT_URL_CONNECTORS`) rather than duplicated.
+- `src/routes/api/public/webinarjam.ts` — validates the bearer token (constant-time compare,
+  same pattern as every other webhook check in this app), looks up the org's connection, and
+  captures every delivery verbatim into `public.raw_payloads` (the same staging table Whop's own
+  route uses before parsing).
+- Browser-verified (Dev Bypass, `/settings`): card renders, all copy/steps correct, input works.
+- `npx tsc --noEmit` clean, `eslint` clean on all touched files.
+
+**What's deliberately NOT built, and why:**
+- **No `record_webinar_event()` call yet.** WebinarJam's own support article
+  (support.webinarjam.com, "Connect and use a custom webhook") documents the auth setup but not
+  the JSON payload's real field names — confirmed by direct fetch of that page, not assumed. Every
+  delivery is captured raw instead of guessing a field mapping. **Next step, requires you**: send
+  one real registration/attendance event (or use WebinarJam's own test-send if their custom-webhook
+  screen offers one) so the real payload can be inspected and the mapping written — same "run
+  once, inspect, adjust" discipline already used for the Wistia workflow's field mapping.
+- **No UI to create a `public.webinars` row.** `record_webinar_event(p_webinar_id uuid, ...)` is a
+  hard foreign key — an event can't attach to a webinar that doesn't exist as a row, and grepping
+  the whole `src/` tree turns up zero insert/create paths into `public.webinars` today. This is a
+  real, separate gap (flagged but not solved in `docs/ascendos-external-integration-contract.md`
+  §5 originally) — needs a small admin form, not yet built, genuinely out of scope for a
+  connector-plumbing pass.
+
+Sources consulted: [WebinarJam custom webhook setup](https://support.webinarjam.com/support/solutions/articles/153000254989-connect-and-use-a-custom-webhook), [WebinarJam/EverWebinar on Zapier](https://help.zapier.com/hc/en-us/articles/38844104455949-How-to-get-started-with-WebinarJam-EverWebinar-on-Zapier).
 
 ---
 
@@ -193,23 +237,34 @@ written) cross-checked against current code — not re-audited from scratch here
 
 ## Uncommitted Work
 
-Not modified to produce this document. Classified by apparent origin only.
+**Update, 2026-09-24: the AscendOS-owned changes below were committed** —
+`3d0807a` ("fix: currency-mixing remediation, payment FX normalization, connector registry UI",
+60 files) and `bc0cecc` (a small follow-up for `live-ticker.tsx`, missed in the first commit).
+The WebinarJam readiness work (registry migration, route, connector entry, panel card) landed
+after that commit and is **still uncommitted** as of this update — everything else in this list
+is now on `HEAD`, not in the working tree.
 
-**AscendOS session's own work (this initiative), uncommitted:**
+**AscendOS session's own work — committed (`3d0807a`, `bc0cecc`):**
 `currency.ts`/`currency.test.ts`, `fx.functions.ts`/`fx.server.ts`/`fx.server.test.ts`,
 `use-fx-rates.ts`, `rep-kpi-actuals.ts`/`.test.ts`, `acquisition.test.ts`,
 `content-attribution.ts`/`.test.ts`, `vsl.functions.ts`, `weekly-report.server.ts`,
-`eod-reports.ts`/`.tsx`/`.test.ts`, routes `attribution.tsx`, `content.tsx`, `dashboard.tsx`,
-`leads.tsx`, `live-ticker.tsx`, `traffic.tsx`, `team.tsx`, `closer.tsx`, `copy.tsx`,
+`eod-reports.ts`/`.tsx`/`.test.ts`, `live-ticker.tsx`, routes `attribution.tsx`, `content.tsx`,
+`dashboard.tsx`, `leads.tsx`, `traffic.tsx`, `team.tsx`, `closer.tsx`, `copy.tsx`,
 `onboarding.tsx`, `webinar-analytics.tsx`, `api/public/{stripe,paypal,fanbasis,wise,whop}.ts`,
-`api/public/ingest.$token.ts` (Prettier reformat, Prompt 7), `connections-panel.tsx` (new),
-expanded `connectors.functions.ts`, `settings.tsx` (+8 lines, wires `ConnectionsPanel`),
-migrations `20260920200000_zapier_connector_registry_row.sql`,
+`api/public/ingest.$token.ts`, `connections-panel.tsx`, expanded `connectors.functions.ts`,
+`settings.tsx`, migrations `20260920200000_zapier_connector_registry_row.sql`,
 `20260920210000_payment_processor_connector_rows.sql`,
 `20260923000000_vsl_metric_snapshots_daily_uniqueness.sql`, `n8n/`, all `docs/ascendos-*.md`/`.csv`
-files, `.claude/`.
+files.
 
-**Other initiative's work (InsightOS completion-enforcement), uncommitted on top of `44909e45`:**
+**AscendOS session's own work — still uncommitted (WebinarJam readiness, 2026-09-24):**
+`supabase/migrations/20260924000000_webinarjam_connector_registry_row.sql`,
+`src/routes/api/public/webinarjam.ts` (new), further edits to `connectors.functions.ts` and
+`connections-panel.tsx`, this document's own edits. `.claude/` and `supabase/.temp/` remain
+untracked (local tooling state, not source — not committed on purpose).
+
+**Other initiative's work (InsightOS completion-enforcement), still uncommitted on top of
+`44909e45`:**
 `activity-module.tsx`, `calls-on-calendar.tsx`, `hub-operating-metrics.tsx`,
 `mentee-operations-panel.tsx`, `operational-workflow-panel.tsx`, `speed-to-lead.ts`/`.test.ts`.
 **Not inspected in depth or modified** — per instruction, these are treated as belonging to a
@@ -232,21 +287,27 @@ None of the above were changed to produce this document.
 
 ## Current Recommended Next Task
 
-**Decide whether to commit the accumulated uncommitted AscendOS work.**
+**Send one real WebinarJam test delivery, then confirm you want a "create webinar" admin form
+built.**
 
-Content Signals is resolved and the Connections panel is now browser-verified (rendering and
-error-handling confirmed correct; only the live-write round-trip remains untestable in this
-sandbox, for environmental reasons, not a code defect). Every other open item in this document is
-either already shipped (Main Hub, currency/FX remediation, the Payments page), correctly blocked
-on something outside this session's control (historical FX backfill needs data access + approval;
-WebinarJam and Meta both need external integration/OAuth work), or correctly deferred by your own
-prior instruction (Sales CRM, WebinarJam). There is no remaining technically-ready, undecided,
-unblocked implementation task left in this initiative's scope — what's left is a standing-rule
-decision only you can make: this session has real, tested, verified work (currency/FX remediation,
-payment webhook fixes, the Connections panel, several new migrations) sitting uncommitted. Per
-this project's own standing rule, nothing gets committed without an explicit ask — so the next
-step is you saying whether to commit it now, not more implementation.
+The prior "commit the accumulated work" task is done. What's left in AscendOS's own scope is no
+longer a decision or a commit — it's two concrete, small prerequisites for finishing the WebinarJam
+integration, both already documented under "WebinarJam ingest readiness" above:
+
+1. **You**: connect WebinarJam in Settings → Connections, point its custom webhook at the
+   generated URL, and trigger one real registration or attendance event. That's the only way to
+   see WebinarJam's actual payload field names — they're not in their public docs.
+2. **Me, once you confirm**: inspect the row that lands in `raw_payloads`, wire the real
+   `record_webinar_event()` field mapping, and build the small missing "create/edit webinar" form
+   (`public.webinars` has no insert path anywhere in the app today — a hard prerequisite for any
+   event to attach to).
+
+Everything else remains as previously stated: Main Hub, currency/FX remediation, and the Payments
+page are shipped; the historical FX backfill stays blocked on data access + approval; Meta Ads
+needs the separate OAuth infrastructure track; Content Signals and Sales CRM are resolved/deferred.
 
 ---
 
-No commit/push. No files outside this document were changed.
+No commit/push in this update — the WebinarJam readiness code changes (route, migration, registry
+entry, panel card) were made to the application per your request; this document's own edits are
+the only change made to produce this particular status update.

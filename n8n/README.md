@@ -50,20 +50,26 @@ application code, backed by a real DB unique index added in migration
 `20260923000000_vsl_metric_snapshots_daily_uniqueness.sql` — manual/CSV-imported rows are
 excluded from that constraint, so this never blocks or collides with a user's own manual entries).
 
-## Why only Wistia so far
+## Why only Wistia has an n8n workflow
 
 `docs/ascendos-external-integration-contract.md` scoped three integrations: Webinar Platform
 Event Feed (P0, largest impact), Ad Platform Spend Feed (P1), and Wistia (P2). Wistia is the only
-one built here because it's the only one with no unresolved blocker:
+one that's a genuine n8n job — it's a **daily poll**, which is exactly what n8n is for. The other
+two aren't n8n workflows at all, by design (the contract doc's own recommendation, §5): a webhook
+push needs a stable first-party receiving URL, not an n8n instance sitting in the critical path as
+a single point of failure. n8n can still sit downstream of either for secondary fan-out if you ever
+want that, but it's not required for data to land in AscendOS.
 
-- **Webinar platform** needs you to confirm which platform you actually use (WebinarJam,
-  EverWebinar, Zoom Webinar, etc.) — the webhook payload shape and signature scheme differ enough
-  between them that guessing would mean shipping a workflow tuned to the wrong provider.
-- **Ad Platform Spend Feed (Meta/TikTok/YouTube/LinkedIn)** is blocked on a real gap: AscendOS's
-  connector system (`src/lib/connectors.functions.ts`) has no OAuth flow implemented yet, and
-  every ad-platform API in that group requires OAuth. That's real engineering work on the
+- **WebinarJam** (confirmed platform) — the receiving side now exists:
+  `src/routes/api/public/webinarjam.ts` + a `webinarjam` card in Settings → Connections, same
+  pattern as every payment processor. **What's still open, tracked in
+  `docs/ascendos-current-state.md`:** (1) WebinarJam's own docs don't publicly specify their
+  custom-webhook payload field names, so incoming events are captured verbatim into
+  `raw_payloads` rather than guessed — one real test delivery needs to be sent and inspected
+  before the real `record_webinar_event()` field mapping can be written; (2) `record_webinar_event()`
+  requires an existing `public.webinars` row to attach events to, and there is currently no UI
+  anywhere in AscendOS to create one — a real prerequisite, not yet built.
+- **Ad Platform Spend Feed (Meta/TikTok/YouTube/LinkedIn)** is still blocked on a real gap:
+  AscendOS's connector system (`src/lib/connectors.functions.ts`) has no OAuth flow implemented,
+  and every ad-platform API in that group requires OAuth. That's real engineering work on the
   AscendOS side, not something an n8n workflow alone can route around.
-
-Once you tell me which webinar platform you're on (or if you want the OAuth work scoped first),
-the same pattern — a real importable `.json` file plus the matching AscendOS-side route/migration
-— extends to those.

@@ -267,6 +267,14 @@ const CONNECTOR_FIELDS: Record<string, FieldSpec[]> = {
     { key: "clientId", label: "REST API Client ID", placeholder: "From your PayPal app" },
     { key: "clientSecret", label: "REST API Secret", placeholder: "From your PayPal app" },
   ],
+  webinarjam: [
+    {
+      key: "webhookSecret",
+      label: "Bearer token (you choose this)",
+      placeholder: "A random string, 12+ characters",
+      hint: "Make one up — a password generator works fine. You'll paste this exact value into WebinarJam's custom webhook Authorization field in step 2 below.",
+    },
+  ],
 };
 
 const CONNECTOR_COPY: Record<string, { name: string; blurb: string; steps: string[] }> = {
@@ -354,9 +362,24 @@ const CONNECTOR_COPY: Record<string, { name: string; blurb: string; steps: strin
       "Paste all three below and click Connect.",
     ],
   },
+  webinarjam: {
+    name: "WebinarJam",
+    blurb:
+      "Registration and attendance events start landing as real webinar data. Early stage: incoming events are captured verbatim for now while the exact field mapping gets confirmed against your first real delivery — see docs/ascendos-current-state.md for what's left before this reaches Webinar Analytics.",
+    steps: [
+      "Make up a bearer token below and click Connect (WebinarJam needs this before it can hand you anything back — same self-chosen-secret order as Typeform).",
+      "Copy the webhook URL this app generates for you (appears once connected).",
+      'In WebinarJam: Settings → Integrations → Custom Webhook → paste that URL, choose "Bearer Token" as the authentication method, and paste the SAME token into WebinarJam\'s Authorization field.',
+      "Trigger one real registration or attendance event (or use WebinarJam's own test-send if their custom-webhook screen offers one) so the real payload shape can be confirmed.",
+    ],
+  },
 };
 
 const PRE_CONNECT_URL_CONNECTORS = new Set(["stripe", "whop", "fanbasis", "wise", "paypal"]);
+/** Connectors whose secret is self-chosen up front (like Typeform) — their
+ * webhook URL is only known AFTER connecting, generated from the new
+ * connection's id, and shown back via `row.config.webhookUrl`. */
+const POST_CONNECT_URL_CONNECTORS = new Set(["typeform", "webinarjam"]);
 
 function ConnectorCard({
   connectorId,
@@ -414,7 +437,7 @@ function ConnectorCard({
   });
 
   const generatedWebhookUrl =
-    connectorId === "typeform" && row?.config?.webhookUrl
+    POST_CONNECT_URL_CONNECTORS.has(connectorId) && row?.config?.webhookUrl
       ? String(row.config.webhookUrl)
       : undefined;
 
@@ -448,7 +471,10 @@ function ConnectorCard({
           </ol>
 
           {connected && generatedWebhookUrl && (
-            <CopyField label="Webhook URL to paste into Typeform" value={generatedWebhookUrl} />
+            <CopyField
+              label={`Webhook URL to paste into ${copy.name}`}
+              value={generatedWebhookUrl}
+            />
           )}
 
           {needsPreConnectUrl && preConnectLoading && (
@@ -594,6 +620,12 @@ export function ConnectionsPanel({ orgId, isAdmin }: { orgId?: string; isAdmin: 
           <ConnectorCard
             connectorId="discord"
             row={byId.get("discord")}
+            isAdmin={isAdmin}
+            orgId={orgId}
+          />
+          <ConnectorCard
+            connectorId="webinarjam"
+            row={byId.get("webinarjam")}
             isAdmin={isAdmin}
             orgId={orgId}
           />
