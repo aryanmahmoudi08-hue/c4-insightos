@@ -91,6 +91,39 @@ export interface CallActualRow {
   cash_collected_cents?: number | null;
   contract_value_cents?: number | null;
   status?: string | null;
+  // Remediation (currency-mixing audit,
+  // docs/ascendos-currency-mixing-audit.md — rep-kpi-actuals.ts item):
+  // calls.cash_collected_cents/contract_value_cents carry a real
+  // original_currency never converted before this fix. This module is
+  // deliberately pure/synchronous (no Supabase import, independently unit-
+  // testable — see the file header) and has no access to historical FX
+  // rates, so it cannot convert a non-USD row to USD itself. The smallest
+  // correct fix consistent with that constraint: extend the row type to
+  // carry the real currency tag, and never fold a non-USD row into a money
+  // total as if it were USD (see actualFromCalls below) — excluded, not
+  // guessed, same rule sumNormalizedCents/usdCentsForRow enforce everywhere
+  // else in this app.
+  original_currency?: string | null;
+}
+
+/** True if any of this rep's rows for a money metric ("cash_collected_cents"
+ * / "contract_value_cents") are in a non-USD currency — callers that want to
+ * surface an honest "FX incomplete" disclosure (this module has no FX-rate
+ * access to convert them, so those rows are excluded from
+ * `actualFromCalls`'s totals below, not guessed as USD) can check this
+ * without every caller needing to change its own return-type contract. */
+export function callActualHasNonUsdRows(
+  rows: CallActualRow[],
+  closerName: string,
+  metricKey: string,
+): boolean {
+  if (metricKey !== "cash_collected_cents" && metricKey !== "contract_value_cents") return false;
+  return rows.some(
+    (r) =>
+      r.closer_name === closerName &&
+      typeof r.original_currency === "string" &&
+      r.original_currency.toUpperCase() !== "USD",
+  );
 }
 
 export function actualFromCalls(
@@ -106,20 +139,39 @@ export function actualFromCalls(
       return repRows.filter((r) => r.showed).length;
     case "offers_made":
       return repRows.filter((r) => r.offer_made).length;
+    // Remediation (metric-dictionary audit, SALE-0369): "closes" previously
+    // counted only r.closed, while every other "Closes" tile on the Closer
+    // page (Money & closing, Rate charts, Disposition mix, Revenue Source
+    // Mix, Scorecard — closer.tsx) counts `closed || status === "closed"`.
+    // A call can be marked closed via status without the boolean flag set
+    // (or vice versa in older rows); this was the one outlier that could
+    // under-count relative to every other Closes number on the same page.
+    // Canonical predicate: `closed || status === "closed"`.
     case "closes":
-      return repRows.filter((r) => r.closed).length;
+      return repRows.filter((r) => r.closed || r.status === "closed").length;
     case "close_rate_pct": {
       // Closes ÷ Showed — the same defensible denominator the closer
       // dashboard itself already uses (not Offers, not all calls).
       const shows = repRows.filter((r) => r.showed).length;
       if (shows === 0) return null;
-      const closes = repRows.filter((r) => r.closed).length;
+      const closes = repRows.filter((r) => r.closed || r.status === "closed").length;
       return (closes / shows) * 100;
     }
+    // Remediation (currency-mixing audit): a row whose original_currency is
+    // set and non-USD is excluded here, never summed as if it were USD —
+    // this module has no FX rate access to convert it correctly. Rows with
+    // no original_currency at all (demo/mock fixtures, or a value genuinely
+    // unset) default to USD, same convention as sumNormalizedCents.
     case "cash_collected_cents":
-      return repRows.reduce((sum, r) => sum + (r.cash_collected_cents ?? 0), 0);
+      return repRows.reduce((sum, r) => {
+        const cur = (r.original_currency || "USD").toUpperCase();
+        return cur === "USD" ? sum + (r.cash_collected_cents ?? 0) : sum;
+      }, 0);
     case "contract_value_cents":
-      return repRows.reduce((sum, r) => sum + (r.contract_value_cents ?? 0), 0);
+      return repRows.reduce((sum, r) => {
+        const cur = (r.original_currency || "USD").toUpperCase();
+        return cur === "USD" ? sum + (r.contract_value_cents ?? 0) : sum;
+      }, 0);
     case "follow_ups_logged":
       return repRows.filter((r) => r.status === "follow_up").length;
     default:

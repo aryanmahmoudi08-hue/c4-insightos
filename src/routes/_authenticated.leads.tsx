@@ -81,6 +81,8 @@ import {
   type Derivation,
 } from "@/lib/funnel-derivation";
 import { priorPeriod, pctDelta } from "@/lib/trend";
+import { usdCentsForRow } from "@/lib/currency";
+import { useFxRates } from "@/hooks/use-fx-rates";
 import {
   deriveLeadAvailability,
   pipelineStageInfo,
@@ -1652,7 +1654,9 @@ function LeadDetail({
           .limit(50),
         supabase
           .from("calls")
-          .select("id, status, scheduled_for, showed, closed, cash_collected_cents, call_summary")
+          .select(
+            "id, status, scheduled_for, showed, closed, cash_collected_cents, call_summary, original_currency",
+          )
           .eq("lead_id", lead.id)
           .eq("org_id", orgId!)
           .order("scheduled_for", { ascending: false })
@@ -1781,7 +1785,29 @@ function LeadDetail({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const totalCash = (timeline?.calls ?? []).reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
+  // Remediation (currency-mixing audit, docs/ascendos-currency-mixing-audit.md
+  // — "leads.tsx" item): calls.cash_collected_cents carries a real
+  // original_currency, and nothing in this schema guarantees one lead's
+  // calls all share a currency (each call is logged independently, possibly
+  // by different people over time) — normalize before summing rather than
+  // assume single-currency. Same proven usdCentsForRow infrastructure as
+  // closer.tsx.
+  const leadTimelineFxRates = useFxRates({
+    rows: timeline?.calls ?? [],
+    getCurrency: (c: NonNullable<typeof timeline>["calls"][number]) => c.original_currency,
+    getDate: (c: NonNullable<typeof timeline>["calls"][number]) => c.scheduled_for?.slice(0, 10),
+  });
+  let totalCashFxIncomplete = false;
+  const totalCash = (timeline?.calls ?? []).reduce((s, c) => {
+    const r = usdCentsForRow(
+      c.cash_collected_cents,
+      c.original_currency,
+      c.scheduled_for?.slice(0, 10),
+      leadTimelineFxRates,
+    );
+    if (r.excluded) totalCashFxIncomplete = true;
+    return s + r.usd;
+  }, 0);
   const app = lead.application_data ?? {};
   const stage = pipelineStageInfo(lead.status);
   const entryAt = lead.first_touch_at ?? lead.created_at;
@@ -1988,6 +2014,7 @@ function LeadDetail({
               <div className="font-sans tabular-nums font-bold">{timeline?.calls.length ?? 0}</div>
               <div className="text-3xs text-muted-foreground">
                 calls · ${Math.round(totalCash / 100).toLocaleString()}
+                {totalCashFxIncomplete ? " (FX incomplete)" : ""}
               </div>
             </div>
           </div>

@@ -1,0 +1,94 @@
+{
+  "name": "AscendOS — Wistia VSL Stats Daily Sync",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Every day at 6am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-660, 0],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "days", "triggerAtHour": 6 }]
+        }
+      }
+    },
+    {
+      "id": "video-ids",
+      "name": "VSL video IDs to poll (edit me)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-440, 0],
+      "notes": "REQUIRED SETUP: replace the placeholder list below with the real Wistia video IDs you want synced — one output item per video ID. wistia_video_id must exactly match the value already stored on that VSL's row in AscendOS (public.vsls.wistia_video_id) or the push step at the end of this workflow will be rejected with a 404, on purpose — AscendOS will not create a VSL record from this data, only attach a snapshot to one that already exists.",
+      "parameters": {
+        "jsCode": "// Replace with your real Wistia video IDs (public.vsls.wistia_video_id in AscendOS).\nconst wistiaVideoIds = [\n  \"REPLACE_WITH_REAL_WISTIA_VIDEO_ID_1\",\n  \"REPLACE_WITH_REAL_WISTIA_VIDEO_ID_2\"\n];\nreturn wistiaVideoIds.map((id) => ({ json: { wistia_video_id: id } }));"
+      }
+    },
+    {
+      "id": "get-wistia-stats",
+      "name": "GET Wistia video stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-220, 0],
+      "notes": "REQUIRED SETUP: create an n8n credential (Header Auth) named 'Wistia API Token' with header name 'Authorization' and value 'Bearer <your Wistia API token>', then select it below. Response field names here (stats.play_count, stats.load_count, stats.hours_watched, stats.visitors, stats.engagement) are Wistia's Stats API v1 shape as documented publicly — verify them against a real response from your own Wistia account before trusting the mapping in the next node, Wistia's API has changed field names across versions before.",
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.wistia.com/v1/stats/medias/{{$json.wistia_video_id}}.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Wistia API Token"
+        }
+      }
+    },
+    {
+      "id": "transform",
+      "name": "Map to AscendOS ingest payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "notes": "Builds the exact { event_type, data } shape AscendOS's /api/public/ingest/{token} route expects for event_type 'vsl_metric_snapshot' (src/routes/api/public/ingest.$token.ts). Field names on the AscendOS side (total_plays, unique_viewers, play_rate, avg_percent_watched, page_loads) are real columns on public.vsl_metric_snapshots — adjust the LEFT side of each mapping below only if you confirm Wistia's actual response uses different field names than assumed.",
+      "parameters": {
+        "jsCode": "const wistiaResponse = $input.item.json;\nconst videoId = $('VSL video IDs to poll (edit me)').item.json.wistia_video_id;\nconst stats = wistiaResponse.stats ?? wistiaResponse;\n\nreturn [{\n  json: {\n    event_type: \"vsl_metric_snapshot\",\n    data: {\n      wistia_video_id: videoId,\n      video_name: wistiaResponse.name ?? undefined,\n      total_plays: stats.play_count ?? 0,\n      unique_viewers: stats.visitors ?? 0,\n      play_rate: stats.play_rate ?? 0,\n      avg_percent_watched: stats.engagement ?? 0,\n      page_loads: stats.load_count ?? 0,\n      engagement_json: stats.engagement_json ?? null,\n      captured_at: new Date().toISOString()\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "push-to-ascendos",
+      "name": "POST to AscendOS ingest endpoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "notes": "REQUIRED SETUP: in AscendOS, open Settings → Connections as an admin, copy the 'Ingest endpoint' URL shown there (it already contains your org's real token: https://<your-ascendos-domain>/api/public/ingest/<token>) and paste the FULL URL below. That page can also rotate the token if it's ever exposed — rotating it will require updating this URL too.",
+      "parameters": {
+        "method": "POST",
+        "url": "REPLACE_WITH_YOUR_ASCENDOS_INGEST_URL",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Every day at 6am": {
+      "main": [[{ "node": "VSL video IDs to poll (edit me)", "type": "main", "index": 0 }]]
+    },
+    "VSL video IDs to poll (edit me)": {
+      "main": [[{ "node": "GET Wistia video stats", "type": "main", "index": 0 }]]
+    },
+    "GET Wistia video stats": {
+      "main": [[{ "node": "Map to AscendOS ingest payload", "type": "main", "index": 0 }]]
+    },
+    "Map to AscendOS ingest payload": {
+      "main": [[{ "node": "POST to AscendOS ingest endpoint", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "ascendos-wistia-vsl-stats-sync"
+  }
+}

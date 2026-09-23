@@ -104,6 +104,13 @@ import {
 import { pctDelta, formatRangeLabel } from "@/lib/trend";
 import { disqualifiedLeadCount, computeDisqualified } from "@/lib/disqualification";
 import {
+  sumNormalizedCents,
+  usdCentsForRow as usdCentsFor,
+  type HistoricalFxRateMap,
+} from "@/lib/currency";
+import { getHistoricalFxRatesFn } from "@/lib/fx.functions";
+import { fetchFxRates } from "@/hooks/use-fx-rates";
+import {
   SPECTRUM_VAR,
   type SpectrumPosition,
   kpiGradient,
@@ -223,6 +230,9 @@ async function fetchPeriod(
     webinarsById: Map<string, WebinarRecord>;
   },
   demoMode = false,
+  fxFn?: (opts: {
+    data: { pairs: { currency: string; date: string }[] };
+  }) => Promise<{ rates: HistoricalFxRateMap }>,
 ) {
   const fromISO = `${from}T00:00:00`;
   const toISO = `${to}T23:59:59`;
@@ -253,6 +263,11 @@ async function fetchPeriod(
     lead_email: string | null;
     closer_name: string | null;
     scheduled_for: string | null;
+    // Optional: demo-mode fixture rows don't carry this (sumNormalizedCents
+    // defaults a missing currency to USD, same as this app's implicit
+    // behavior everywhere before original_currency existed — demo mode's
+    // numbers are unaffected by this fix either way).
+    original_currency?: string | null;
   }[];
   let contentRaw: { views: number | null; leads_generated: number | null; captured_at: string }[];
   // Real per-call webinar attribution, only ever fetched when the Webinar
@@ -267,6 +282,7 @@ async function fetchPeriod(
     sets: number | null;
     closes: number | null;
     activity_date: string;
+    original_currency?: string | null;
   }[];
 
   if (demoMode) {
@@ -320,7 +336,7 @@ async function fetchPeriod(
       supabase
         .from("calls")
         .select(
-          "id, lead_id, status, showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at, source_platform, source_campaign, lead_email, closer_name, scheduled_for",
+          "id, lead_id, status, showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at, source_platform, source_campaign, lead_email, closer_name, scheduled_for, original_currency",
         )
         .eq("org_id", orgId)
         .gte("created_at", fromISO)
@@ -334,7 +350,7 @@ async function fetchPeriod(
       supabase
         .from("setter_activity")
         .select(
-          "cash_collected_cents, total_revenue_cents, calls_on_calendar, live_calls, sets, closes, activity_date",
+          "cash_collected_cents, total_revenue_cents, calls_on_calendar, live_calls, sets, closes, activity_date, original_currency",
         )
         .eq("org_id", orgId)
         .gte("activity_date", from)
@@ -404,8 +420,54 @@ async function fetchPeriod(
     filters.socialPlatform === "all" && filters.acquisitionSource === "all"
       ? payList.reduce((s, p) => s + (p.amount_cents ?? 0), 0)
       : 0;
-  const callsCash = callList.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
-  const setterCash = setterList.reduce((s, a) => s + (a.cash_collected_cents ?? 0), 0);
+  // Remediation (currency-mixing audit, docs/ascendos-currency-mixing-audit.md
+  // §dashboard.tsx): calls/setter_activity cash/contract fields carry a real
+  // original_currency never converted — normalize to USD before summing,
+  // same proven sumNormalizedCents() infrastructure as closer.tsx/
+  // weekly-report.server.ts, not a second system. fxFn is undefined in tests
+  // that call fetchPeriod directly without a bound server fn — treat as "no
+  // rates available" (every non-USD row excluded, never guessed as USD).
+  const fxRates = fxFn
+    ? await fetchFxRates(
+        fxFn,
+        {
+          rows: callList,
+          getCurrency: (c: (typeof callList)[number]) => c.original_currency,
+          getDate: (c: (typeof callList)[number]) =>
+            c.scheduled_for?.slice(0, 10) ?? c.created_at?.slice(0, 10),
+        },
+        {
+          rows: setterList,
+          getCurrency: (a: (typeof setterList)[number]) => a.original_currency,
+          getDate: (a: (typeof setterList)[number]) => a.activity_date,
+        },
+      )
+    : {};
+  const callsCashSum = sumNormalizedCents(
+    callList,
+    (c) => c.cash_collected_cents,
+    (c) => c.original_currency,
+    (c) => c.scheduled_for?.slice(0, 10) ?? c.created_at?.slice(0, 10),
+    fxRates,
+  );
+  const contractValueSum = sumNormalizedCents(
+    callList,
+    (c) => c.contract_value_cents,
+    (c) => c.original_currency,
+    (c) => c.scheduled_for?.slice(0, 10) ?? c.created_at?.slice(0, 10),
+    fxRates,
+  );
+  const setterCashSum = sumNormalizedCents(
+    setterList,
+    (a) => a.cash_collected_cents,
+    (a) => a.original_currency,
+    (a) => a.activity_date,
+    fxRates,
+  );
+  const callsCash = callsCashSum.usdCents;
+  const setterCash = setterCashSum.usdCents;
+  const fxIncomplete =
+    !callsCashSum.isComplete || !contractValueSum.isComplete || !setterCashSum.isComplete;
   // Unified cash = max of (payments) vs (sales-team self-reported). Avoids double counting
   // when both sources record the same dollars; surfaces sales data when payments aren't wired.
   const reportedCash = callsCash + setterCash;
@@ -423,12 +485,13 @@ async function fetchPeriod(
     paymentsCash,
     callsCash,
     setterCash,
+    fxIncomplete,
     newLeads: leadList.length,
     totalCalls: Math.max(callsBooked, setterBooked),
     showed: Math.max(callsShowed, setterShowed),
     offers: callsOffers,
     closed: Math.max(callsClosed, setterClosed),
-    contractValue: callList.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0),
+    contractValue: contractValueSum.usdCents,
     views: contentList.reduce((s, m) => s + (m.views ?? 0), 0),
     contentLeads: contentList.reduce((s, m) => s + (m.leads_generated ?? 0), 0),
     // Priority 2/3 — canonical disqualification count (leads.status /
@@ -506,6 +569,10 @@ function Dashboard() {
   const { range } = useDateRange();
   const navigate = useNavigate();
   const money = useMoney();
+  // Currency-mixing remediation: one bound reference, reused everywhere on
+  // this page that needs to normalize calls/setter_activity cash fields
+  // before summing (docs/ascendos-currency-mixing-audit.md).
+  const fxFn = useServerFn(getHistoricalFxRatesFn);
   const [socialPlatform, setSocialPlatform] = useState<SocialPlatform | "all">("all");
   const [acquisitionSource, setAcquisitionSource] = useState<
     AcquisitionSource | "all" | "__webinar__"
@@ -594,7 +661,9 @@ function Dashboard() {
       const [callsRes, leadsRes, sourcesRes] = await Promise.all([
         supabase
           .from("calls")
-          .select("lead_id, cash_collected_cents, contract_value_cents")
+          .select(
+            "lead_id, cash_collected_cents, contract_value_cents, created_at, original_currency",
+          )
           .eq("org_id", orgId!)
           .eq("closed", true)
           .gte("created_at", fromISO)
@@ -616,10 +685,30 @@ function Dashboard() {
         const category = c.lead_id ? categoryByLeadId.get(c.lead_id) : null;
         return category === "Meta Ads" || category === "Google";
       });
+      const paidFxRates = await fetchFxRates(fxFn, {
+        rows: paidCalls,
+        getCurrency: (c: (typeof paidCalls)[number]) => c.original_currency,
+        getDate: (c: (typeof paidCalls)[number]) => c.created_at?.slice(0, 10),
+      });
+      const paidCashSum = sumNormalizedCents(
+        paidCalls,
+        (c) => c.cash_collected_cents,
+        (c) => c.original_currency,
+        (c) => c.created_at?.slice(0, 10),
+        paidFxRates,
+      );
+      const paidRevenueSum = sumNormalizedCents(
+        paidCalls,
+        (c) => c.contract_value_cents,
+        (c) => c.original_currency,
+        (c) => c.created_at?.slice(0, 10),
+        paidFxRates,
+      );
       return {
-        cashCents: paidCalls.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0),
-        revenueCents: paidCalls.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0),
+        cashCents: paidCashSum.usdCents,
+        revenueCents: paidRevenueSum.usdCents,
         hasData: (leadsRes.data ?? []).some((l) => l.traffic_source_id),
+        fxIncomplete: !paidCashSum.isComplete || !paidRevenueSum.isComplete,
       };
     },
   });
@@ -687,6 +776,7 @@ function Dashboard() {
             range.to,
             { socialPlatform, acquisitionSource, webinarFilter, webinarsById },
             demoMode,
+            fxFn,
           ),
           fetchPeriod(
             orgId!,
@@ -694,6 +784,7 @@ function Dashboard() {
             prevTo,
             { socialPlatform, acquisitionSource, webinarFilter, webinarsById },
             demoMode,
+            fxFn,
           ),
           demo
             ? asRes(
@@ -710,34 +801,42 @@ function Dashboard() {
             ? asRes(
                 demo.calls
                   .filter((c) => c.created_at >= `${monthStart}T00:00:00`)
-                  .map((c) => ({ cash_collected_cents: c.cash_collected_cents })),
+                  .map((c) => ({
+                    cash_collected_cents: c.cash_collected_cents,
+                    created_at: c.created_at,
+                    original_currency: undefined as string | undefined,
+                  })),
               )
             : supabase
                 .from("calls")
-                .select("cash_collected_cents")
+                .select("cash_collected_cents, created_at, original_currency")
                 .eq("org_id", orgId!)
                 .gte("created_at", `${monthStart}T00:00:00`),
           demo
             ? asRes(
                 demo.setterActivity
                   .filter((a) => a.activity_date >= monthStart)
-                  .map((a) => ({ cash_collected_cents: a.cash_collected_cents })),
+                  .map((a) => ({
+                    cash_collected_cents: a.cash_collected_cents,
+                    activity_date: a.activity_date,
+                    original_currency: undefined as string | undefined,
+                  })),
               )
             : supabase
                 .from("setter_activity")
-                .select("cash_collected_cents")
+                .select("cash_collected_cents, activity_date, original_currency")
                 .eq("org_id", orgId!)
                 .gte("activity_date", monthStart),
           demo
             ? asRes(
-                demo.setterActivity.filter(
-                  (a) => a.activity_date >= range.from && a.activity_date <= range.to,
-                ),
+                demo.setterActivity
+                  .filter((a) => a.activity_date >= range.from && a.activity_date <= range.to)
+                  .map((a) => ({ ...a, original_currency: undefined as string | undefined })),
               )
             : supabase
                 .from("setter_activity")
                 .select(
-                  "team_member_name, role, sets, closes, cash_collected_cents, total_revenue_cents",
+                  "team_member_name, role, sets, closes, cash_collected_cents, total_revenue_cents, activity_date, original_currency",
                 )
                 .eq("org_id", orgId!)
                 .gte("activity_date", range.from)
@@ -780,15 +879,36 @@ function Dashboard() {
                 closed: c.closed,
                 cash_collected_cents: c.cash_collected_cents,
                 contract_value_cents: c.contract_value_cents,
+                created_at: c.created_at,
+                original_currency: undefined as string | undefined,
               })),
           )
         : await supabase
             .from("calls")
-            .select("closer_name, closed, cash_collected_cents, contract_value_cents")
+            .select(
+              "closer_name, closed, cash_collected_cents, contract_value_cents, created_at, original_currency",
+            )
             .eq("org_id", orgId!)
             .gte("created_at", fromISO)
             .lte("created_at", toISO);
       const callList = callsForLeaders.data ?? [];
+      const setterActRows = setterAct.data ?? [];
+      const leaderFxRates = fxFn
+        ? await fetchFxRates(
+            fxFn,
+            {
+              rows: callList,
+              getCurrency: (c: (typeof callList)[number]) => c.original_currency,
+              getDate: (c: (typeof callList)[number]) => c.created_at?.slice(0, 10),
+            },
+            {
+              rows: setterActRows,
+              getCurrency: (a: (typeof setterActRows)[number]) => a.original_currency,
+              getDate: (a: (typeof setterActRows)[number]) => a.activity_date,
+            },
+          )
+        : {};
+      let leaderboardFxIncomplete = false;
       const closerMap = new Map<
         string,
         { name: string; calls: number; closes: number; cash: number; revenue: number }
@@ -798,8 +918,21 @@ function Dashboard() {
         const r = closerMap.get(name) ?? { name, calls: 0, closes: 0, cash: 0, revenue: 0 };
         r.calls += 1;
         if (c.closed) r.closes += 1;
-        r.cash += c.cash_collected_cents ?? 0;
-        r.revenue += c.contract_value_cents ?? 0;
+        const cash = usdCentsFor(
+          c.cash_collected_cents,
+          c.original_currency,
+          c.created_at?.slice(0, 10),
+          leaderFxRates,
+        );
+        const revenue = usdCentsFor(
+          c.contract_value_cents,
+          c.original_currency,
+          c.created_at?.slice(0, 10),
+          leaderFxRates,
+        );
+        r.cash += cash.usd;
+        r.revenue += revenue.usd;
+        if (cash.excluded || revenue.excluded) leaderboardFxIncomplete = true;
         closerMap.set(name, r);
       }
       const closers = Array.from(closerMap.values())
@@ -810,7 +943,7 @@ function Dashboard() {
         string,
         { name: string; sets: number; closes: number; cash: number; revenue: number }
       >();
-      for (const a of setterAct.data ?? []) {
+      for (const a of setterActRows) {
         const r = setterMap.get(a.team_member_name) ?? {
           name: a.team_member_name,
           sets: 0,
@@ -820,8 +953,21 @@ function Dashboard() {
         };
         r.sets += a.sets ?? 0;
         r.closes += a.closes ?? 0;
-        r.cash += a.cash_collected_cents ?? 0;
-        r.revenue += a.total_revenue_cents ?? 0;
+        const cash = usdCentsFor(
+          a.cash_collected_cents,
+          a.original_currency,
+          a.activity_date,
+          leaderFxRates,
+        );
+        const revenue = usdCentsFor(
+          a.total_revenue_cents,
+          a.original_currency,
+          a.activity_date,
+          leaderFxRates,
+        );
+        r.cash += cash.usd;
+        r.revenue += revenue.usd;
+        if (cash.excluded || revenue.excluded) leaderboardFxIncomplete = true;
         setterMap.set(a.team_member_name, r);
       }
       const setters = Array.from(setterMap.values())
@@ -879,12 +1025,13 @@ function Dashboard() {
                   contract_value_cents: c.contract_value_cents,
                   cash_collected_cents: c.cash_collected_cents,
                   created_at: c.created_at,
+                  original_currency: undefined as string | undefined,
                 })),
             ),
             asRes(
-              demo.setterActivity.filter(
-                (a) => a.activity_date >= range.from && a.activity_date <= range.to,
-              ),
+              demo.setterActivity
+                .filter((a) => a.activity_date >= range.from && a.activity_date <= range.to)
+                .map((a) => ({ ...a, original_currency: undefined as string | undefined })),
             ),
             asRes(
               demo.contentMetrics
@@ -908,7 +1055,7 @@ function Dashboard() {
             supabase
               .from("calls")
               .select(
-                "showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at",
+                "showed, closed, offer_made, contract_value_cents, cash_collected_cents, created_at, original_currency",
               )
               .eq("org_id", orgId!)
               .gte("created_at", fromISO)
@@ -916,7 +1063,7 @@ function Dashboard() {
             supabase
               .from("setter_activity")
               .select(
-                "cash_collected_cents, calls_on_calendar, sets, live_calls, closes, activity_date",
+                "cash_collected_cents, calls_on_calendar, sets, live_calls, closes, activity_date, original_currency",
               )
               .eq("org_id", orgId!)
               .gte("activity_date", range.from)
@@ -933,29 +1080,63 @@ function Dashboard() {
         const k = iso.slice(5, 10);
         return series.findIndex((s) => s.d === k);
       };
+      const seriesCallRows = seriesCalls.data ?? [];
+      const seriesSetterRows = seriesSetters.data ?? [];
+      const seriesFxRates = fxFn
+        ? await fetchFxRates(
+            fxFn,
+            {
+              rows: seriesCallRows,
+              getCurrency: (c: (typeof seriesCallRows)[number]) => c.original_currency,
+              getDate: (c: (typeof seriesCallRows)[number]) => c.created_at?.slice(0, 10),
+            },
+            {
+              rows: seriesSetterRows,
+              getCurrency: (a: (typeof seriesSetterRows)[number]) => a.original_currency,
+              getDate: (a: (typeof seriesSetterRows)[number]) => a.activity_date,
+            },
+          )
+        : {};
+      let seriesFxIncomplete = false;
       const payByDay = new Map<number, number>();
       const reportedByDay = new Map<number, number>();
       for (const p of seriesPays.data ?? []) {
         const i = idx(p.collected_at);
         if (i >= 0) payByDay.set(i, (payByDay.get(i) ?? 0) + (p.amount_cents ?? 0));
       }
-      for (const cc of seriesCalls.data ?? []) {
+      for (const cc of seriesCallRows) {
         const i = idx(cc.created_at);
         if (i < 0) continue;
-        reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (cc.cash_collected_cents ?? 0));
+        const day = cc.created_at?.slice(0, 10);
+        const cash = usdCentsFor(cc.cash_collected_cents, cc.original_currency, day, seriesFxRates);
+        const contract = usdCentsFor(
+          cc.contract_value_cents,
+          cc.original_currency,
+          day,
+          seriesFxRates,
+        );
+        reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + cash.usd);
         series[i].calls += 1;
         if (cc.showed) series[i].showed += 1;
         if (cc.offer_made || cc.closed) series[i].offers += 1;
         if (cc.closed) series[i].closed += 1;
-        series[i].contractValue += cc.contract_value_cents ?? 0;
+        series[i].contractValue += contract.usd;
+        if (cash.excluded || contract.excluded) seriesFxIncomplete = true;
       }
-      for (const a of seriesSetters.data ?? []) {
+      for (const a of seriesSetterRows) {
         const i = idx(a.activity_date);
         if (i < 0) continue;
-        reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + (a.cash_collected_cents ?? 0));
+        const cash = usdCentsFor(
+          a.cash_collected_cents,
+          a.original_currency,
+          a.activity_date,
+          seriesFxRates,
+        );
+        reportedByDay.set(i, (reportedByDay.get(i) ?? 0) + cash.usd);
         series[i].calls = Math.max(series[i].calls, a.calls_on_calendar ?? a.sets ?? 0);
         series[i].showed = Math.max(series[i].showed, a.live_calls ?? 0);
         series[i].closed = Math.max(series[i].closed, a.closes ?? 0);
+        if (cash.excluded) seriesFxIncomplete = true;
       }
       for (let i = 0; i < series.length; i++)
         series[i].cash = Math.max(payByDay.get(i) ?? 0, reportedByDay.get(i) ?? 0);
@@ -1014,10 +1195,48 @@ function Dashboard() {
         (s, p) => s + (p.amount_cents ?? 0),
         0,
       );
-      const monthReportedCash =
-        (monthCalls.data ?? []).reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0) +
-        (monthSetters.data ?? []).reduce((s, a) => s + (a.cash_collected_cents ?? 0), 0);
+      const monthCallRows = (monthCalls.data ?? []) as Array<{
+        cash_collected_cents: number | null;
+        created_at: string | null;
+        original_currency?: string | null;
+      }>;
+      const monthSetterRows = (monthSetters.data ?? []) as Array<{
+        cash_collected_cents: number | null;
+        activity_date: string | null;
+        original_currency?: string | null;
+      }>;
+      const monthFxRates = fxFn
+        ? await fetchFxRates(
+            fxFn,
+            {
+              rows: monthCallRows,
+              getCurrency: (c: (typeof monthCallRows)[number]) => c.original_currency,
+              getDate: (c: (typeof monthCallRows)[number]) => c.created_at?.slice(0, 10),
+            },
+            {
+              rows: monthSetterRows,
+              getCurrency: (a: (typeof monthSetterRows)[number]) => a.original_currency,
+              getDate: (a: (typeof monthSetterRows)[number]) => a.activity_date,
+            },
+          )
+        : {};
+      const monthCallsCashSum = sumNormalizedCents(
+        monthCallRows,
+        (c) => c.cash_collected_cents,
+        (c) => c.original_currency,
+        (c) => c.created_at?.slice(0, 10),
+        monthFxRates,
+      );
+      const monthSetterCashSum = sumNormalizedCents(
+        monthSetterRows,
+        (a) => a.cash_collected_cents,
+        (a) => a.original_currency,
+        (a) => a.activity_date,
+        monthFxRates,
+      );
+      const monthReportedCash = monthCallsCashSum.usdCents + monthSetterCashSum.usdCents;
       const monthCash = Math.max(monthPaymentsCash, monthReportedCash);
+      const monthPaceFxIncomplete = !monthCallsCashSum.isComplete || !monthSetterCashSum.isComplete;
       const dailyPace = dayOfMonth > 0 ? monthCash / dayOfMonth : 0;
       const projection = dailyPace * daysInMonth;
 
@@ -1025,12 +1244,21 @@ function Dashboard() {
         curr,
         prev,
         series,
+        seriesFxIncomplete,
         closers,
         setters,
+        leaderboardFxIncomplete,
         funnel,
         alerts: alerts.data ?? [],
         insights: insights.data ?? [],
-        pace: { monthCash, projection, dayOfMonth, daysInMonth, dailyPace },
+        pace: {
+          monthCash,
+          projection,
+          dayOfMonth,
+          daysInMonth,
+          dailyPace,
+          fxIncomplete: monthPaceFxIncomplete,
+        },
       };
     },
   });
@@ -1053,10 +1281,14 @@ function Dashboard() {
   const { data: lbData } = useQuery({
     queryKey: ["hub-leaderboard", orgId, lbRange.from, lbRange.to, devBypass, demoMode],
     enabled: !!orgId,
-    queryFn: async (): Promise<{ closers: HubCloserPerson[]; setters: HubSetterPerson[] }> => {
+    queryFn: async (): Promise<{
+      closers: HubCloserPerson[];
+      setters: HubSetterPerson[];
+      fxIncomplete: boolean;
+    }> => {
       if (devBypass) {
         const m = mockDashboardStats(lbRange.from, lbRange.to);
-        return { closers: m.closers, setters: m.setters };
+        return { closers: m.closers, setters: m.setters, fxIncomplete: false };
       }
       const fromISO = `${lbRange.from}T00:00:00`;
       const toISO = `${lbRange.to}T23:59:59`;
@@ -1071,40 +1303,75 @@ function Dashboard() {
                   closed: c.closed,
                   cash_collected_cents: c.cash_collected_cents,
                   contract_value_cents: c.contract_value_cents,
+                  created_at: c.created_at,
+                  original_currency: undefined as string | undefined,
                 })),
             },
             {
-              data: demoLb.setterActivity.filter(
-                (a) => a.activity_date >= lbRange.from && a.activity_date <= lbRange.to,
-              ),
+              data: demoLb.setterActivity
+                .filter((a) => a.activity_date >= lbRange.from && a.activity_date <= lbRange.to)
+                .map((a) => ({ ...a, original_currency: undefined as string | undefined })),
             },
           ]
         : await Promise.all([
             supabase
               .from("calls")
-              .select("closer_name, closed, cash_collected_cents, contract_value_cents")
+              .select(
+                "closer_name, closed, cash_collected_cents, contract_value_cents, created_at, original_currency",
+              )
               .eq("org_id", orgId!)
               .gte("created_at", fromISO)
               .lte("created_at", toISO),
             supabase
               .from("setter_activity")
-              .select("team_member_name, sets, closes, cash_collected_cents, total_revenue_cents")
+              .select(
+                "team_member_name, sets, closes, cash_collected_cents, total_revenue_cents, activity_date, original_currency",
+              )
               .eq("org_id", orgId!)
               .gte("activity_date", lbRange.from)
               .lte("activity_date", lbRange.to),
           ]);
+      const lbCallRows = callsRes.data ?? [];
+      const lbSetterRows = settersRes.data ?? [];
+      const lbFxRates = await fetchFxRates(
+        fxFn,
+        {
+          rows: lbCallRows,
+          getCurrency: (c: (typeof lbCallRows)[number]) => c.original_currency,
+          getDate: (c: (typeof lbCallRows)[number]) => c.created_at?.slice(0, 10),
+        },
+        {
+          rows: lbSetterRows,
+          getCurrency: (a: (typeof lbSetterRows)[number]) => a.original_currency,
+          getDate: (a: (typeof lbSetterRows)[number]) => a.activity_date,
+        },
+      );
+      let lbFxIncomplete = false;
       const closerMap = new Map<string, HubCloserPerson>();
-      for (const c of callsRes.data ?? []) {
+      for (const c of lbCallRows) {
         const name = c.closer_name ?? "Unassigned";
         const r = closerMap.get(name) ?? { name, calls: 0, closes: 0, cash: 0, revenue: 0 };
         r.calls += 1;
         if (c.closed) r.closes += 1;
-        r.cash += c.cash_collected_cents ?? 0;
-        r.revenue += c.contract_value_cents ?? 0;
+        const cash = usdCentsFor(
+          c.cash_collected_cents,
+          c.original_currency,
+          c.created_at?.slice(0, 10),
+          lbFxRates,
+        );
+        const revenue = usdCentsFor(
+          c.contract_value_cents,
+          c.original_currency,
+          c.created_at?.slice(0, 10),
+          lbFxRates,
+        );
+        r.cash += cash.usd;
+        r.revenue += revenue.usd;
+        if (cash.excluded || revenue.excluded) lbFxIncomplete = true;
         closerMap.set(name, r);
       }
       const setterMap = new Map<string, HubSetterPerson>();
-      for (const a of settersRes.data ?? []) {
+      for (const a of lbSetterRows) {
         const r = setterMap.get(a.team_member_name) ?? {
           name: a.team_member_name,
           sets: 0,
@@ -1114,11 +1381,28 @@ function Dashboard() {
         };
         r.sets += a.sets ?? 0;
         r.closes += a.closes ?? 0;
-        r.cash += a.cash_collected_cents ?? 0;
-        r.revenue += a.total_revenue_cents ?? 0;
+        const cash = usdCentsFor(
+          a.cash_collected_cents,
+          a.original_currency,
+          a.activity_date,
+          lbFxRates,
+        );
+        const revenue = usdCentsFor(
+          a.total_revenue_cents,
+          a.original_currency,
+          a.activity_date,
+          lbFxRates,
+        );
+        r.cash += cash.usd;
+        r.revenue += revenue.usd;
+        if (cash.excluded || revenue.excluded) lbFxIncomplete = true;
         setterMap.set(a.team_member_name, r);
       }
-      return { closers: Array.from(closerMap.values()), setters: Array.from(setterMap.values()) };
+      return {
+        closers: Array.from(closerMap.values()),
+        setters: Array.from(setterMap.values()),
+        fxIncomplete: lbFxIncomplete,
+      };
     },
   });
 
@@ -1967,13 +2251,13 @@ function Dashboard() {
               label="Total Cash Collected"
               value={money(c?.cash ?? 0)}
               spectrum="hot"
-              supporting={formatRangeLabel(range)}
+              supporting={formatRangeLabel(range) + (c?.fxIncomplete ? " · FX incomplete" : "")}
             />
             <KpiCard
               label="Total Revenue Generated"
               value={money(c?.contractValue ?? 0)}
               spectrum="hot"
-              supporting={formatRangeLabel(range)}
+              supporting={formatRangeLabel(range) + (c?.fxIncomplete ? " · FX incomplete" : "")}
             />
             <KpiCard
               label="MRR — Low Ticket"
@@ -2358,8 +2642,15 @@ function Dashboard() {
           fmtMoney={money}
         />
 
-        <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
-          Team efficiency
+        <div className="mt-8 mb-4 flex items-center justify-between gap-2">
+          <div className="text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+            Team efficiency
+          </div>
+          {lbData?.fxIncomplete && (
+            <div className="text-3xs text-amber-400/90">
+              Some non-USD rows excluded — FX incomplete
+            </div>
+          )}
         </div>
         {/* Leaderboards — RepLeaderboard + metric-selector, same component and
             pattern the rep dashboards already use. Closers rank by Closes /
@@ -2475,6 +2766,7 @@ type PaceStats = {
   dayOfMonth: number;
   daysInMonth: number;
   dailyPace: number;
+  fxIncomplete?: boolean;
 };
 
 /** Cash Collected mega-hero (Part B1/B4) — the dashboard's one hero moment. Mega
@@ -2783,6 +3075,11 @@ function PaceTallCard({
             </div>
           </div>
         </div>
+        {pace.fxIncomplete && (
+          <div className="text-3xs text-amber-400/90">
+            Some non-USD rows excluded — FX incomplete
+          </div>
+        )}
 
         {/* Real target rollup from the Rep KPI Target Engine (sum of active
             closer monthly Cash Collected targets) — never invented. Anchored

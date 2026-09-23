@@ -13,6 +13,8 @@ import {
   type WeeklyCheck,
 } from "@/lib/content-signals.server";
 import { fetchWorkspaceSettings, type WorkspaceSettings } from "@/lib/workspace-settings.functions";
+import { collectFxPairs, sumNormalizedCents, type HistoricalFxRateMap } from "@/lib/currency";
+import { getHistoricalFxRate } from "@/lib/fx.server";
 
 type Sb = { from: (t: string) => any };
 
@@ -54,6 +56,39 @@ export type WeeklyReport = {
   trends: string[];
 };
 
+/** Every distinct non-USD (currency, date) pair across both sources, fetched once and reused for
+ * every USD-cents field normalized below (cash + revenue/contract on both calls and
+ * setter_activity) — one FX round-trip per window, not one per field. */
+async function fetchFxRatesForWindow(
+  calls: { original_currency?: string | null; scheduled_for?: string | null }[],
+  setters: { original_currency?: string | null; activity_date?: string | null }[],
+): Promise<HistoricalFxRateMap> {
+  const dedupe = new Map<string, { currency: string; date: string }>();
+  for (const p of [
+    ...collectFxPairs(
+      calls,
+      (c) => c.original_currency,
+      (c) => c.scheduled_for?.slice(0, 10),
+    ),
+    ...collectFxPairs(
+      setters,
+      (r) => r.original_currency,
+      (r) => r.activity_date,
+    ),
+  ]) {
+    dedupe.set(`${p.currency}|${p.date}`, p);
+  }
+  const pairs = Array.from(dedupe.values());
+  if (pairs.length === 0) return {};
+  const entries = await Promise.all(
+    pairs.map(async (p) => {
+      const info = await getHistoricalFxRate(p.currency, p.date);
+      return [`${p.currency}|${p.date}`, info] as const;
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
 export async function fetchCoreWindow(sb: Sb, orgId: string, from: string, to: string) {
   const fromISO = `${from}T00:00:00`;
   const toISO = `${to}T23:59:59`;
@@ -72,13 +107,17 @@ export async function fetchCoreWindow(sb: Sb, orgId: string, from: string, to: s
       .lte("created_at", toISO),
     sb
       .from("calls")
-      .select("showed, closed, closer_name, cash_collected_cents, contract_value_cents")
+      .select(
+        "showed, closed, closer_name, cash_collected_cents, contract_value_cents, original_currency, scheduled_for",
+      )
       .eq("org_id", orgId)
       .gte("created_at", fromISO)
       .lte("created_at", toISO),
     sb
       .from("setter_activity")
-      .select("team_member_name, calls_on_calendar, live_calls, sets, closes, cash_collected_cents")
+      .select(
+        "team_member_name, calls_on_calendar, live_calls, sets, closes, cash_collected_cents, total_revenue_cents, original_currency, activity_date",
+      )
       .eq("org_id", orgId)
       .gte("activity_date", from)
       .lte("activity_date", to),
@@ -92,6 +131,8 @@ export async function fetchCoreWindow(sb: Sb, orgId: string, from: string, to: s
       closer_name: string | null;
       cash_collected_cents: number | null;
       contract_value_cents: number | null;
+      original_currency: string | null;
+      scheduled_for: string | null;
     }[]
   >(calls, "Calls");
   const setterList = unwrap<
@@ -102,12 +143,41 @@ export async function fetchCoreWindow(sb: Sb, orgId: string, from: string, to: s
       sets: number | null;
       closes: number | null;
       cash_collected_cents: number | null;
+      total_revenue_cents: number | null;
+      original_currency: string | null;
+      activity_date: string | null;
     }[]
   >(setters, "Setter activity");
 
+  // Remediation (metric-dictionary audit, carried into the Weekly Report final
+  // pass): calls/setter_activity money columns store whatever amount was
+  // typed in, tagged with a real original_currency but never converted (see
+  // 20260912090000_eod_original_currency.sql) — unlike payments, which
+  // normalizes at capture time. Summing raw cents across mixed-currency rows
+  // silently treats e.g. 500 CAD as 500 USD, exactly the bug already fixed on
+  // the Closer/DM Setter/Inbound Dialer dashboards (_authenticated.closer.tsx)
+  // — reusing that same real fix here rather than leaving the org's weekly
+  // digest as the one place it was missed.
+  const fxRates = await fetchFxRatesForWindow(callList, setterList);
+  const callCashSum = sumNormalizedCents(
+    callList,
+    (c) => c.cash_collected_cents,
+    (c) => c.original_currency,
+    (c) => c.scheduled_for?.slice(0, 10),
+    fxRates,
+  );
+  const setCashSum = sumNormalizedCents(
+    setterList,
+    (a) => a.cash_collected_cents,
+    (a) => a.original_currency,
+    (a) => a.activity_date,
+    fxRates,
+  );
+  const fxIncomplete = !callCashSum.isComplete || !setCashSum.isComplete;
+
   const cashPay = payList.reduce((s, p) => s + (p.amount_cents ?? 0), 0);
-  const cashCall = callList.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
-  const cashSet = setterList.reduce((s, a) => s + (a.cash_collected_cents ?? 0), 0);
+  const cashCall = callCashSum.usdCents;
+  const cashSet = setCashSum.usdCents;
   const cash = Math.max(cashPay, cashCall + cashSet);
   const booked = Math.max(
     callList.length,
@@ -122,6 +192,19 @@ export async function fetchCoreWindow(sb: Sb, orgId: string, from: string, to: s
     setterList.reduce((s, a) => s + (a.closes ?? 0), 0),
   );
 
+  // Per-rep breakdown needs the same USD normalization as the headline totals
+  // above — a rep whose rows mix currencies would otherwise show an inflated/
+  // deflated leaderboard number even though the org-wide total is correct.
+  const usdCentsFor = (cents: number | null, currency: string | null, date: string | null) => {
+    const c = cents ?? 0;
+    if (!c) return 0;
+    const cur = (currency || "USD").toUpperCase();
+    if (cur === "USD") return c;
+    const info = date ? fxRates[`${cur}|${date}`] : null;
+    if (info && Number.isFinite(info.rate) && info.rate > 0) return Math.round(c / info.rate);
+    return 0; // excluded, same as sumNormalizedCents' excludedCents — never guessed as USD
+  };
+
   const closerMap = new Map<string, RepRow>();
   for (const c of callList) {
     if (!c.closer_name) continue;
@@ -132,7 +215,11 @@ export async function fetchCoreWindow(sb: Sb, orgId: string, from: string, to: s
       cashCents: 0,
     };
     if (c.closed) row.closes += 1;
-    row.cashCents += c.cash_collected_cents ?? 0;
+    row.cashCents += usdCentsFor(
+      c.cash_collected_cents,
+      c.original_currency,
+      c.scheduled_for?.slice(0, 10) ?? null,
+    );
     closerMap.set(c.closer_name, row);
   }
   const setterMap = new Map<string, RepRow>();
@@ -146,12 +233,13 @@ export async function fetchCoreWindow(sb: Sb, orgId: string, from: string, to: s
     };
     row.sets += a.sets ?? 0;
     row.closes += a.closes ?? 0;
-    row.cashCents += a.cash_collected_cents ?? 0;
+    row.cashCents += usdCentsFor(a.cash_collected_cents, a.original_currency, a.activity_date);
     setterMap.set(a.team_member_name, row);
   }
 
   return {
     cash,
+    fxIncomplete,
     newLeads: leadList.length,
     booked,
     showed,
@@ -274,6 +362,15 @@ export async function buildWeeklyReport(
   if (weeklyCheck.missing.length > 0)
     trends.push(
       `${weeklyCheck.missing.length} content mechanism${weeklyCheck.missing.length === 1 ? "" : "s"} not posted this week`,
+    );
+  // Same disclosure convention as the Closer/DM Setter/Inbound Dialer
+  // dashboards' "· FX incomplete" tag — a row whose currency/date had no
+  // resolvable historical rate is excluded from the cash totals above,
+  // never silently treated as USD or zero. Surface that honestly rather
+  // than let the digest imply full coverage it doesn't have.
+  if (curr.fxIncomplete || prev.fxIncomplete)
+    trends.push(
+      "Some non-USD cash/revenue rows couldn't be converted for this window — totals exclude them rather than guessing (FX incomplete)",
     );
 
   return {

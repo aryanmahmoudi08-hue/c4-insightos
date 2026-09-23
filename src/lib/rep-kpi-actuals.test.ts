@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   actualFromCalls,
   actualFromSetterActivity,
+  callActualHasNonUsdRows,
   sliceCallsToWindow,
   sliceSetterActivityToWindow,
 } from "./rep-kpi-actuals";
@@ -85,6 +86,44 @@ describe("actualFromCalls", () => {
     expect(actualFromCalls(rows, "Jordan", "closes")).toBe(1);
   });
 
+  // Remediation (metric-dictionary audit, SALE-0369): "closes" must use the
+  // same canonical predicate as every other Closes tile on the Closer page
+  // (closed || status === "closed"), not closed alone — otherwise this
+  // Targets-card actual under-counts relative to every other Closes number.
+  it("canonical close predicate: counts a row via status==='closed' even when closed is false", () => {
+    const rowsWithStatusOnlyClose = [
+      {
+        closer_name: "Riley",
+        showed: true,
+        offer_made: true,
+        closed: false,
+        status: "closed",
+      },
+    ];
+    expect(actualFromCalls(rowsWithStatusOnlyClose, "Riley", "closes")).toBe(1);
+  });
+
+  it("canonical close predicate: counts a row via closed===true even when status disagrees", () => {
+    const rowsWithFlagOnlyClose = [
+      {
+        closer_name: "Riley",
+        showed: true,
+        offer_made: true,
+        closed: true,
+        status: "follow_up",
+      },
+    ];
+    expect(actualFromCalls(rowsWithFlagOnlyClose, "Riley", "closes")).toBe(1);
+  });
+
+  it("canonical close predicate applies to close_rate_pct's numerator too", () => {
+    const mixedRows = [
+      { closer_name: "Riley", showed: true, offer_made: true, closed: false, status: "closed" },
+      { closer_name: "Riley", showed: true, offer_made: true, closed: false, status: "follow_up" },
+    ];
+    expect(actualFromCalls(mixedRows, "Riley", "close_rate_pct")).toBeCloseTo(50, 5);
+  });
+
   it("close rate uses closes ÷ showed, matching the dashboard's own defensible denominator", () => {
     expect(actualFromCalls(rows, "Jordan", "close_rate_pct")).toBeCloseTo((1 / 2) * 100, 5);
   });
@@ -105,6 +144,90 @@ describe("actualFromCalls", () => {
 
   it("returns null when the closer has zero calls logged this period", () => {
     expect(actualFromCalls(rows, "Morgan", "closes")).toBeNull();
+  });
+});
+
+// Remediation (currency-mixing audit, docs/ascendos-currency-mixing-audit.md
+// — rep-kpi-actuals.ts item): this module is deliberately pure/synchronous
+// with no FX-rate access, so a non-USD row must be excluded from a money
+// total, never guessed as USD.
+describe("actualFromCalls currency handling", () => {
+  it("USD-only rows sum normally (no original_currency needed, default is USD)", () => {
+    const rows = [
+      { closer_name: "Jordan", cash_collected_cents: 100000 },
+      { closer_name: "Jordan", cash_collected_cents: 50000, original_currency: "USD" },
+    ];
+    expect(actualFromCalls(rows, "Jordan", "cash_collected_cents")).toBe(150000);
+  });
+
+  it("mixed USD + CAD: the CAD row is excluded, not guessed as USD", () => {
+    const rows = [
+      { closer_name: "Jordan", cash_collected_cents: 100000, original_currency: "USD" },
+      { closer_name: "Jordan", cash_collected_cents: 50000, original_currency: "CAD" },
+    ];
+    expect(actualFromCalls(rows, "Jordan", "cash_collected_cents")).toBe(100000);
+    expect(actualFromCalls(rows, "Jordan", "contract_value_cents")).toBe(0);
+  });
+
+  it("mixed USD + EUR: same exclusion rule applies to contract_value_cents too", () => {
+    const rows = [
+      {
+        closer_name: "Jordan",
+        contract_value_cents: 300000,
+        original_currency: "USD",
+      },
+      {
+        closer_name: "Jordan",
+        contract_value_cents: 200000,
+        original_currency: "EUR",
+      },
+    ];
+    expect(actualFromCalls(rows, "Jordan", "contract_value_cents")).toBe(300000);
+  });
+
+  it("multiple reps with mixed currencies: each rep's exclusion is scoped to their own rows only", () => {
+    const rows = [
+      { closer_name: "Jordan", cash_collected_cents: 100000, original_currency: "USD" },
+      { closer_name: "Jordan", cash_collected_cents: 50000, original_currency: "CAD" },
+      { closer_name: "Taylor", cash_collected_cents: 200000, original_currency: "USD" },
+      { closer_name: "Taylor", cash_collected_cents: 999999, original_currency: "GBP" },
+    ];
+    expect(actualFromCalls(rows, "Jordan", "cash_collected_cents")).toBe(100000);
+    expect(actualFromCalls(rows, "Taylor", "cash_collected_cents")).toBe(200000);
+  });
+
+  it("callActualHasNonUsdRows flags the rep so a caller can show an honest disclosure", () => {
+    const rows = [
+      { closer_name: "Jordan", cash_collected_cents: 100000, original_currency: "USD" },
+      { closer_name: "Jordan", cash_collected_cents: 50000, original_currency: "CAD" },
+      { closer_name: "Taylor", cash_collected_cents: 200000, original_currency: "USD" },
+    ];
+    expect(callActualHasNonUsdRows(rows, "Jordan", "cash_collected_cents")).toBe(true);
+    expect(callActualHasNonUsdRows(rows, "Taylor", "cash_collected_cents")).toBe(false);
+    // Non-money metrics never flag, even for a rep with non-USD rows — the
+    // currency tag is irrelevant to a count like "shows".
+    expect(callActualHasNonUsdRows(rows, "Jordan", "shows")).toBe(false);
+  });
+
+  it("never double-converts: a row already excluded from cash_collected_cents doesn't also get subtracted or re-applied to contract_value_cents", () => {
+    const rows = [
+      {
+        closer_name: "Jordan",
+        cash_collected_cents: 100000,
+        contract_value_cents: 250000,
+        original_currency: "CAD",
+      },
+      {
+        closer_name: "Jordan",
+        cash_collected_cents: 50000,
+        contract_value_cents: 50000,
+        original_currency: "USD",
+      },
+    ];
+    // Only the USD row counts for each metric, independently — the CAD
+    // row's exclusion from one metric has no bearing on the other.
+    expect(actualFromCalls(rows, "Jordan", "cash_collected_cents")).toBe(50000);
+    expect(actualFromCalls(rows, "Jordan", "contract_value_cents")).toBe(50000);
   });
 });
 

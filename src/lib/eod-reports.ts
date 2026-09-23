@@ -392,6 +392,19 @@ export const CLOSER_EOD_SCHEMA: EodQuestion[] = [
     currency: true,
     defaultValue: 0,
   },
+  // Remediation (metric-dictionary audit, SALE-0394): calls.payment_plan is
+  // a real column, but this native EOD flow never wrote to it (only
+  // closer.tsx's separate "Log a sales call" dialog now does — see
+  // buildClosureCallPayload below). Explicit closer intent, matching that
+  // same checkbox — never inferred from deposit/installment amounts.
+  {
+    key: "payment_plan",
+    label: "Payment Plan",
+    helper: "Is this a payment plan (not paid in full)?",
+    type: "checkbox",
+    required: false,
+    defaultValue: false,
+  },
   {
     key: "recording_url",
     label: "Call Recording",
@@ -575,6 +588,10 @@ export function buildClosureCallPayload(orgId: string, values: EodValues) {
         ? STR(values.followup_reason_other) || null
         : null,
     followup_notes: isFollowUp ? STR(values.followup_notes) || null : null,
+    // Remediation (metric-dictionary audit, SALE-0394): explicit closer
+    // intent from the Payment Plan question above — never inferred from
+    // deposit_cents/contract_value_cents.
+    payment_plan: values.payment_plan === true,
   };
 }
 

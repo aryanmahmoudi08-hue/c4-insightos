@@ -104,6 +104,9 @@ import type { AttributionModel, CanonicalLifecycleAttributionPath } from "@/lib/
 import { buildAttributionPathsForModel, ATTRIBUTION_MODELS } from "@/lib/content-attribution";
 import { computeChannelRevenue } from "@/lib/traffic-channel-revenue";
 import { SOCIAL_PLATFORMS } from "@/lib/social-platform";
+import { usdCentsForRow } from "@/lib/currency";
+import { getHistoricalFxRatesFn } from "@/lib/fx.functions";
+import { fetchFxRates } from "@/hooks/use-fx-rates";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ChartTooltip } from "@/components/chart-tooltip";
 
@@ -265,6 +268,10 @@ function ContentIntel() {
 
   const { devBypass } = useAuth();
   const { demoMode } = useDemoMode();
+  // Currency-mixing remediation (docs/ascendos-currency-mixing-audit.md):
+  // Traffic section sums calls.cash_collected_cents/contract_value_cents,
+  // which carry a real original_currency never converted before this fix.
+  const fxFn = useServerFn(getHistoricalFxRatesFn);
 
   const demandFn = useServerFn(contentDemandFn);
   const { data: commandDemand } = useQuery({
@@ -477,7 +484,9 @@ function ContentIntel() {
           .lte("created_at", toISO),
         supabase
           .from("calls")
-          .select("lead_id, closed, contract_value_cents, cash_collected_cents")
+          .select(
+            "lead_id, closed, contract_value_cents, cash_collected_cents, created_at, original_currency",
+          )
           .eq("org_id", orgId!)
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
@@ -494,7 +503,7 @@ function ContentIntel() {
         supabase
           .from("calls")
           .select(
-            "id, created_at, contract_value_cents, cash_collected_cents, lead_id, source_content_id",
+            "id, created_at, contract_value_cents, cash_collected_cents, lead_id, source_content_id, original_currency",
           )
           .eq("org_id", orgId!)
           .eq("closed", true)
@@ -503,8 +512,55 @@ function ContentIntel() {
       ]);
       const sourceRows = sources.data ?? [];
       const leadRows = leads.data ?? [];
-      const callRows = calls.data ?? [];
       const clientRows = clients.data ?? [];
+      // Remediation (currency-mixing audit): both calls queries above carry
+      // a real original_currency never converted before this fix — normalize
+      // to USD cents once, here, so every downstream consumer (channel
+      // revenue, attribution paths, callCashById, the raw contract/cash
+      // reduces below) reads an already-correct value. Same proven
+      // sumNormalizedCents infrastructure as closer.tsx.
+      const trafficFxRates = await fetchFxRates(
+        fxFn,
+        {
+          rows: calls.data ?? [],
+          getCurrency: (c: NonNullable<typeof calls.data>[number]) => c.original_currency,
+          getDate: (c: NonNullable<typeof calls.data>[number]) => c.created_at?.slice(0, 10),
+        },
+        {
+          rows: closed.data ?? [],
+          getCurrency: (c: NonNullable<typeof closed.data>[number]) => c.original_currency,
+          getDate: (c: NonNullable<typeof closed.data>[number]) => c.created_at?.slice(0, 10),
+        },
+      );
+      let trafficFxIncomplete = false;
+      const normalizeCall = <
+        T extends {
+          cash_collected_cents: number | null;
+          contract_value_cents: number | null;
+          created_at: string | null;
+          original_currency?: string | null;
+        },
+      >(
+        c: T,
+      ): T => {
+        const day = c.created_at?.slice(0, 10);
+        const cash = usdCentsForRow(
+          c.cash_collected_cents,
+          c.original_currency,
+          day,
+          trafficFxRates,
+        );
+        const contract = usdCentsForRow(
+          c.contract_value_cents,
+          c.original_currency,
+          day,
+          trafficFxRates,
+        );
+        if (cash.excluded || contract.excluded) trafficFxIncomplete = true;
+        return { ...c, cash_collected_cents: cash.usd, contract_value_cents: contract.usd };
+      };
+      const callRows = (calls.data ?? []).map(normalizeCall);
+      const closedRowsNormalized = (closed.data ?? []).map(normalizeCall);
       // Priority 1 correction: contractedCents/collectedCents (verified,
       // closed-call basis) and clientContractedCents (a separate LTV
       // concept) are computed independently — never summed into one
@@ -517,7 +573,7 @@ function ContentIntel() {
           created_at: l.created_at,
           source_content_id: l.source_content_id,
         })),
-        calls: (closed.data ?? []).map((c) => ({
+        calls: closedRowsNormalized.map((c) => ({
           id: c.id,
           lead_id: c.lead_id,
           created_at: c.created_at,
@@ -525,7 +581,7 @@ function ContentIntel() {
           source_content_id: c.source_content_id,
         })),
         touches: touches.data ?? [],
-        sampleSize: closed.data?.length ?? 0,
+        sampleSize: closedRowsNormalized.length,
       };
       const canonicalPathsByModel = Object.fromEntries(
         ATTRIBUTION_MODELS.map((model) => [
@@ -534,7 +590,7 @@ function ContentIntel() {
         ]),
       ) as Record<AttributionModel, CanonicalLifecycleAttributionPath[]>;
       const callCashById: Record<string, number> = {};
-      for (const c of closed.data ?? []) {
+      for (const c of closedRowsNormalized) {
         if (c.id && c.cash_collected_cents != null) callCashById[c.id] = c.cash_collected_cents;
       }
       const totalLeads = leadRows.length;
@@ -549,17 +605,18 @@ function ContentIntel() {
           revenuePerLeadCents: totalLeads ? Math.round(totalContracted / totalLeads) : 0,
           noSource: leadRows.filter((lead) => !lead.traffic_source_id).length,
           channels: channels.slice(0, 5),
+          fxIncomplete: trafficFxIncomplete,
         },
         attribution: {
           touches: touches.data?.length ?? 0,
           leads: leadRows.length,
           attributed: leadRows.filter((lead) => lead.first_touch_content_id).length,
-          closes: closed.data?.length ?? 0,
-          contractValueCents: (closed.data ?? []).reduce(
+          closes: closedRowsNormalized.length,
+          contractValueCents: closedRowsNormalized.reduce(
             (sum, row) => sum + (row.contract_value_cents ?? 0),
             0,
           ),
-          cashCollectedCents: (closed.data ?? []).reduce(
+          cashCollectedCents: closedRowsNormalized.reduce(
             (sum, row) => sum + (row.cash_collected_cents ?? 0),
             0,
           ),
@@ -788,11 +845,25 @@ function ContentIntel() {
   // regardless of range — it's a pipeline of drafts/scheduled/posted content,
   // not a log, and filtering it would hide in-progress pieces outside the window.
   const rangeToEnd = `${range.to}T23:59:59`;
+  // Remediation (metric-dictionary audit, Task 5): the Top KPI row / chart /
+  // format mix / post-level table (all rendered inside ContentCommandCenter
+  // below) were previously fed the raw, unranged `pieces` query (latest 200
+  // by posted_at) instead of this range-filtered list — changing the page's
+  // own date-range picker never changed those sections. This is the same
+  // filter `perf`'s totals below already compute; now shared so
+  // ContentCommandCenter gets it too, filtering happens before aggregation
+  // either way. The Pipeline/Table/Calendar tabs elsewhere on this page
+  // still intentionally use the unranged `pieces` — see the comment below.
+  const rangedPieces = useMemo(
+    () =>
+      (pieces ?? []).filter(
+        (p) => !!p.posted_at && p.posted_at >= range.from && p.posted_at <= rangeToEnd,
+      ),
+    [pieces, range.from, rangeToEnd],
+  );
   const perf = useMemo(() => {
     const all = pieces ?? [];
-    const list = all.filter(
-      (p) => !!p.posted_at && p.posted_at >= range.from && p.posted_at <= rangeToEnd,
-    );
+    const list = rangedPieces;
     const metricsOf = (p: PieceRow) => p.content_metrics?.[0];
     const totals = list.reduce(
       (s, p) => {
@@ -861,7 +932,7 @@ function ContentIntel() {
       postedThisWeek,
       inReview,
     };
-  }, [pieces, devBypass, range.from, rangeToEnd]);
+  }, [pieces, rangedPieces, devBypass]);
 
   // Real month-grid calendar with month/year navigation.
   const [cursor, setCursor] = useState(() => {
@@ -995,7 +1066,7 @@ function ContentIntel() {
       <div className="p-6 space-y-4">
         <DemoModeBanner demoMode={demoMode} />
         <ContentCommandCenter
-          pieces={pieces ?? []}
+          pieces={rangedPieces}
           demand={commandDemand as ContentDemandSummary | undefined}
           weekly={commandWeekly as ContentWeeklySummary | undefined}
           canonicalPaths={businessBridge?.canonicalPaths}

@@ -35,6 +35,7 @@ import {
   DEFAULT_WORKSPACE_SETTINGS,
   type WorkspaceSettings,
 } from "@/lib/workspace-settings.functions";
+import { ConnectionsPanel } from "@/components/connections-panel";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: Settings,
@@ -171,6 +172,13 @@ function Settings() {
               <dd className="mt-0.5 font-medium">{range?.label ?? "Last 30 days"}</dd>
             </div>
           </dl>
+        </Section>
+
+        <Section
+          title="Connections"
+          description="Connect Typeform, Zapier, and Discord for your workspace. Each client workspace connects its own accounts here — no new code needed per client."
+        >
+          <ConnectionsPanel orgId={org?.org_id} isAdmin={isAdmin} />
         </Section>
 
         <ContentEngineSection orgId={org?.org_id} isAdmin={isAdmin} />

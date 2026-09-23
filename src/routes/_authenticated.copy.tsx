@@ -793,91 +793,118 @@ function PaymentPlanEditor({
       if (isNew) setAdding(next);
       else update(p, patch);
     };
+    // Remediation (metric-dictionary audit, Task 9): total_contracted_value_cents
+    // is stored independently of deposit_cents/installment_amount_cents ×
+    // installment_count rather than derived from them, so the two can drift
+    // apart with nothing surfacing it. Never silently overwritten — this is
+    // a catalog/template row an admin configures deliberately, and a plan's
+    // advertised total can legitimately differ from the raw installment sum
+    // (e.g. a bundled discount) — but the mismatch is now visible so it's a
+    // deliberate choice, not an unnoticed typo.
+    const derivedTotalCents =
+      row.deposit_cents != null &&
+      row.installment_amount_cents != null &&
+      row.installment_count != null
+        ? row.deposit_cents + row.installment_amount_cents * row.installment_count
+        : null;
+    const totalDrifts =
+      derivedTotalCents != null &&
+      row.total_contracted_value_cents != null &&
+      derivedTotalCents !== row.total_contracted_value_cents;
     return (
-      <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/70 p-3 sm:grid-cols-7">
-        <Select value={row.offer_id} onValueChange={(v) => commit({ offer_id: v })}>
-          <SelectTrigger className="h-8 text-xs sm:col-span-2">
-            <SelectValue placeholder="Offer" />
-          </SelectTrigger>
-          <SelectContent>
-            {offers.map((o) => (
-              <SelectItem key={o.id} value={o.id}>
-                {o.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          value={row.label}
-          onChange={(e) => commit({ label: e.target.value })}
-          onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
-          placeholder="Plan label"
-          className="h-8 text-xs"
-        />
-        <Select value={row.cadence} onValueChange={(v) => commit({ cadence: v })}>
-          <SelectTrigger className="h-8 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(CADENCE_LABEL).map(([k, label]) => (
-              <SelectItem key={k} value={k}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          value={dollars(row.deposit_cents)}
-          onChange={(e) => commit({ deposit_cents: toCents(e.target.value) })}
-          onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
-          placeholder="Deposit ($)"
-          className="h-8 text-xs"
-        />
-        <Input
-          value={dollars(row.installment_amount_cents)}
-          onChange={(e) => commit({ installment_amount_cents: toCents(e.target.value) })}
-          onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
-          placeholder="Installment ($)"
-          className="h-8 text-xs"
-        />
-        <Input
-          value={row.installment_count == null ? "" : String(row.installment_count)}
-          onChange={(e) =>
-            commit({ installment_count: e.target.value ? Number(e.target.value) || null : null })
-          }
-          onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
-          placeholder="# installments"
-          className="h-8 text-xs"
-        />
-        <Input
-          value={dollars(row.total_contracted_value_cents)}
-          onChange={(e) => commit({ total_contracted_value_cents: toCents(e.target.value) })}
-          onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
-          placeholder="Total contracted value ($)"
-          className="h-8 text-xs sm:col-span-2"
-        />
-        {isNew ? (
-          <Button
-            type="button"
-            size="sm"
-            disabled={!row.label.trim() || !row.offer_id}
-            onClick={() => {
-              onSave(row);
-              setAdding(null);
-            }}
-          >
-            <Plus className="mr-1 h-3 w-3" /> Add plan
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="text-destructive hover:text-destructive"
-            onClick={() => onDelete(p.id)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+      <div className="rounded-lg border border-border/70 p-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-7">
+          <Select value={row.offer_id} onValueChange={(v) => commit({ offer_id: v })}>
+            <SelectTrigger className="h-8 text-xs sm:col-span-2">
+              <SelectValue placeholder="Offer" />
+            </SelectTrigger>
+            <SelectContent>
+              {offers.map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            value={row.label}
+            onChange={(e) => commit({ label: e.target.value })}
+            onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
+            placeholder="Plan label"
+            className="h-8 text-xs"
+          />
+          <Select value={row.cadence} onValueChange={(v) => commit({ cadence: v })}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(CADENCE_LABEL).map(([k, label]) => (
+                <SelectItem key={k} value={k}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            value={dollars(row.deposit_cents)}
+            onChange={(e) => commit({ deposit_cents: toCents(e.target.value) })}
+            onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
+            placeholder="Deposit ($)"
+            className="h-8 text-xs"
+          />
+          <Input
+            value={dollars(row.installment_amount_cents)}
+            onChange={(e) => commit({ installment_amount_cents: toCents(e.target.value) })}
+            onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
+            placeholder="Installment ($)"
+            className="h-8 text-xs"
+          />
+          <Input
+            value={row.installment_count == null ? "" : String(row.installment_count)}
+            onChange={(e) =>
+              commit({ installment_count: e.target.value ? Number(e.target.value) || null : null })
+            }
+            onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
+            placeholder="# installments"
+            className="h-8 text-xs"
+          />
+          <Input
+            value={dollars(row.total_contracted_value_cents)}
+            onChange={(e) => commit({ total_contracted_value_cents: toCents(e.target.value) })}
+            onBlur={() => !isNew && draft[p.id] && onSave(draft[p.id])}
+            placeholder="Total contracted value ($)"
+            className="h-8 text-xs sm:col-span-2"
+          />
+          {isNew ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={!row.label.trim() || !row.offer_id}
+              onClick={() => {
+                onSave(row);
+                setAdding(null);
+              }}
+            >
+              <Plus className="mr-1 h-3 w-3" /> Add plan
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              onClick={() => onDelete(p.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+        {totalDrifts && (
+          <p className="mt-1.5 text-3xs text-amber-500">
+            Total contracted value (${dollars(row.total_contracted_value_cents)}) doesn't match
+            deposit + installments (${dollars(derivedTotalCents)}). If that's intentional (e.g. a
+            bundled discount), no action needed — otherwise update one of them.
+          </p>
         )}
       </div>
     );

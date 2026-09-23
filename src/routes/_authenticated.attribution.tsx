@@ -36,6 +36,10 @@ import type {
   AttributionEvidence,
   CanonicalLifecycleAttributionPath,
 } from "@/lib/acquisition";
+import { usdCentsForRow } from "@/lib/currency";
+import { getHistoricalFxRatesFn } from "@/lib/fx.functions";
+import { fetchFxRates } from "@/hooks/use-fx-rates";
+import { useServerFn } from "@tanstack/react-start";
 
 /** All-optional so every other page can deep-link with only the params it
  * actually has a real value for (e.g. `search={{ vslId }}`) without being
@@ -147,6 +151,11 @@ export function AttributionPageContent({ embedded = false }: { embedded?: boolea
   }, []);
 
   const { demoMode } = useDemoMode();
+  // Currency-mixing remediation (docs/ascendos-currency-mixing-audit.md):
+  // calls.cash_collected_cents/contract_value_cents carry a real
+  // original_currency never converted before summing here — same proven
+  // sumNormalizedCents() infrastructure as closer.tsx/weekly-report.server.ts.
+  const fxFn = useServerFn(getHistoricalFxRatesFn);
 
   const { data, isLoading } = useQuery({
     queryKey: ["attribution-command-center", orgId, range.from, range.to, demoMode],
@@ -174,6 +183,7 @@ export function AttributionPageContent({ embedded = false }: { embedded?: boolea
         setter_id: string | null;
         closer_id: string | null;
         showed: boolean | null;
+        original_currency?: string | null;
       }>;
       let touchRows: Array<{ id: string; lead_id: string; content_id: string; touched_at: string }>;
       let contentRows: Array<{
@@ -211,7 +221,7 @@ export function AttributionPageContent({ embedded = false }: { embedded?: boolea
             supabase
               .from("calls")
               .select(
-                "id, lead_id, created_at, closed, source_content_id, contract_value_cents, cash_collected_cents, setter_id, closer_id, showed",
+                "id, lead_id, created_at, closed, source_content_id, contract_value_cents, cash_collected_cents, setter_id, closer_id, showed, original_currency",
               )
               .eq("org_id", orgId!)
               .gte("created_at", fromISO)
@@ -253,6 +263,32 @@ export function AttributionPageContent({ embedded = false }: { embedded?: boolea
         for (const p of profilesRes.data ?? []) repNameById[p.id] = p.display_name ?? p.id;
       }
 
+      // Remediation (currency-mixing audit): calls.cash_collected_cents/
+      // contract_value_cents carry a real original_currency, never
+      // converted before this point — normalize every call's cash/contract
+      // to USD cents here, once, so every downstream consumer (totals,
+      // per-source breakdown, per-call evidence lookups) reads an already-
+      // correct value without needing to know FX exists. Same proven
+      // sumNormalizedCents infrastructure as closer.tsx.
+      const attrFxRates = await fetchFxRates(fxFn, {
+        rows: callRows,
+        getCurrency: (c: (typeof callRows)[number]) => c.original_currency,
+        getDate: (c: (typeof callRows)[number]) => c.created_at?.slice(0, 10),
+      });
+      let attributionFxIncomplete = false;
+      const normalizeRow = (c: (typeof callRows)[number]) => {
+        const day = c.created_at?.slice(0, 10);
+        const cash = usdCentsForRow(c.cash_collected_cents, c.original_currency, day, attrFxRates);
+        const contract = usdCentsForRow(
+          c.contract_value_cents,
+          c.original_currency,
+          day,
+          attrFxRates,
+        );
+        if (cash.excluded || contract.excluded) attributionFxIncomplete = true;
+        return { ...c, cash_collected_cents: cash.usd, contract_value_cents: contract.usd };
+      };
+      callRows = callRows.map(normalizeRow);
       const closedRows = callRows.filter((c) => c.closed);
 
       const platformByContentId: Record<string, string | null> = {};
@@ -352,6 +388,7 @@ export function AttributionPageContent({ embedded = false }: { embedded?: boolea
         platformByContentId,
         titleByContentId,
         repNameById,
+        attributionFxIncomplete,
       };
     },
   });
@@ -488,7 +525,7 @@ export function AttributionPageContent({ embedded = false }: { embedded?: boolea
     },
     {
       key: "cash",
-      label: "Cash Collected",
+      label: data?.attributionFxIncomplete ? "Cash Collected · FX incomplete" : "Cash Collected",
       value: money(totalCashCents),
       spectrum: "hot",
       emphasis: "strong",

@@ -42,7 +42,12 @@ import { Route as AuthenticatedContentCalendarRouteImport } from './routes/_auth
 import { Route as AuthenticatedContentRouteImport } from './routes/_authenticated.content'
 import { Route as AuthenticatedCloserRouteImport } from './routes/_authenticated.closer'
 import { Route as AuthenticatedAttributionRouteImport } from './routes/_authenticated.attribution'
+import { Route as ApiPublicWiseRouteImport } from './routes/api/public/wise'
+import { Route as ApiPublicWhopRouteImport } from './routes/api/public/whop'
 import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typeform'
+import { Route as ApiPublicStripeRouteImport } from './routes/api/public/stripe'
+import { Route as ApiPublicPaypalRouteImport } from './routes/api/public/paypal'
+import { Route as ApiPublicFanbasisRouteImport } from './routes/api/public/fanbasis'
 import { Route as ApiPublicTwilioEventRouteImport } from './routes/api/public/twilio.$event'
 import { Route as ApiPublicIngestTokenRouteImport } from './routes/api/public/ingest.$token'
 
@@ -218,9 +223,34 @@ const AuthenticatedAttributionRoute =
     path: '/attribution',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const ApiPublicWiseRoute = ApiPublicWiseRouteImport.update({
+  id: '/api/public/wise',
+  path: '/api/public/wise',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicWhopRoute = ApiPublicWhopRouteImport.update({
+  id: '/api/public/whop',
+  path: '/api/public/whop',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicTypeformRoute = ApiPublicTypeformRouteImport.update({
   id: '/api/public/typeform',
   path: '/api/public/typeform',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicStripeRoute = ApiPublicStripeRouteImport.update({
+  id: '/api/public/stripe',
+  path: '/api/public/stripe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicPaypalRoute = ApiPublicPaypalRouteImport.update({
+  id: '/api/public/paypal',
+  path: '/api/public/paypal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicFanbasisRoute = ApiPublicFanbasisRouteImport.update({
+  id: '/api/public/fanbasis',
+  path: '/api/public/fanbasis',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicTwilioEventRoute = ApiPublicTwilioEventRouteImport.update({
@@ -267,7 +297,12 @@ export interface FileRoutesByFullPath {
   '/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
+  '/api/public/fanbasis': typeof ApiPublicFanbasisRoute
+  '/api/public/paypal': typeof ApiPublicPaypalRoute
+  '/api/public/stripe': typeof ApiPublicStripeRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
+  '/api/public/whop': typeof ApiPublicWhopRoute
+  '/api/public/wise': typeof ApiPublicWiseRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
@@ -304,7 +339,12 @@ export interface FileRoutesByTo {
   '/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
+  '/api/public/fanbasis': typeof ApiPublicFanbasisRoute
+  '/api/public/paypal': typeof ApiPublicPaypalRoute
+  '/api/public/stripe': typeof ApiPublicStripeRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
+  '/api/public/whop': typeof ApiPublicWhopRoute
+  '/api/public/wise': typeof ApiPublicWiseRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
@@ -343,7 +383,12 @@ export interface FileRoutesById {
   '/_authenticated/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/_authenticated/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
+  '/api/public/fanbasis': typeof ApiPublicFanbasisRoute
+  '/api/public/paypal': typeof ApiPublicPaypalRoute
+  '/api/public/stripe': typeof ApiPublicStripeRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
+  '/api/public/whop': typeof ApiPublicWhopRoute
+  '/api/public/wise': typeof ApiPublicWiseRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
@@ -382,7 +427,12 @@ export interface FileRouteTypes {
     | '/webinar-analytics'
     | '/weekly-report'
     | '/pcv/$token'
+    | '/api/public/fanbasis'
+    | '/api/public/paypal'
+    | '/api/public/stripe'
     | '/api/public/typeform'
+    | '/api/public/whop'
+    | '/api/public/wise'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
   fileRoutesByTo: FileRoutesByTo
@@ -419,7 +469,12 @@ export interface FileRouteTypes {
     | '/webinar-analytics'
     | '/weekly-report'
     | '/pcv/$token'
+    | '/api/public/fanbasis'
+    | '/api/public/paypal'
+    | '/api/public/stripe'
     | '/api/public/typeform'
+    | '/api/public/whop'
+    | '/api/public/wise'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
   id:
@@ -457,7 +512,12 @@ export interface FileRouteTypes {
     | '/_authenticated/webinar-analytics'
     | '/_authenticated/weekly-report'
     | '/pcv/$token'
+    | '/api/public/fanbasis'
+    | '/api/public/paypal'
+    | '/api/public/stripe'
     | '/api/public/typeform'
+    | '/api/public/whop'
+    | '/api/public/wise'
     | '/api/public/ingest/$token'
     | '/api/public/twilio/$event'
   fileRoutesById: FileRoutesById
@@ -470,7 +530,12 @@ export interface RootRouteChildren {
   RequestAccessRoute: typeof RequestAccessRoute
   WelcomeRoute: typeof WelcomeRoute
   PcvTokenRoute: typeof PcvTokenRoute
+  ApiPublicFanbasisRoute: typeof ApiPublicFanbasisRoute
+  ApiPublicPaypalRoute: typeof ApiPublicPaypalRoute
+  ApiPublicStripeRoute: typeof ApiPublicStripeRoute
   ApiPublicTypeformRoute: typeof ApiPublicTypeformRoute
+  ApiPublicWhopRoute: typeof ApiPublicWhopRoute
+  ApiPublicWiseRoute: typeof ApiPublicWiseRoute
   ApiPublicIngestTokenRoute: typeof ApiPublicIngestTokenRoute
   ApiPublicTwilioEventRoute: typeof ApiPublicTwilioEventRoute
 }
@@ -708,11 +773,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAttributionRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/api/public/wise': {
+      id: '/api/public/wise'
+      path: '/api/public/wise'
+      fullPath: '/api/public/wise'
+      preLoaderRoute: typeof ApiPublicWiseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/whop': {
+      id: '/api/public/whop'
+      path: '/api/public/whop'
+      fullPath: '/api/public/whop'
+      preLoaderRoute: typeof ApiPublicWhopRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/typeform': {
       id: '/api/public/typeform'
       path: '/api/public/typeform'
       fullPath: '/api/public/typeform'
       preLoaderRoute: typeof ApiPublicTypeformRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/stripe': {
+      id: '/api/public/stripe'
+      path: '/api/public/stripe'
+      fullPath: '/api/public/stripe'
+      preLoaderRoute: typeof ApiPublicStripeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/paypal': {
+      id: '/api/public/paypal'
+      path: '/api/public/paypal'
+      fullPath: '/api/public/paypal'
+      preLoaderRoute: typeof ApiPublicPaypalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fanbasis': {
+      id: '/api/public/fanbasis'
+      path: '/api/public/fanbasis'
+      fullPath: '/api/public/fanbasis'
+      preLoaderRoute: typeof ApiPublicFanbasisRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/twilio/$event': {
@@ -802,7 +902,12 @@ const rootRouteChildren: RootRouteChildren = {
   RequestAccessRoute: RequestAccessRoute,
   WelcomeRoute: WelcomeRoute,
   PcvTokenRoute: PcvTokenRoute,
+  ApiPublicFanbasisRoute: ApiPublicFanbasisRoute,
+  ApiPublicPaypalRoute: ApiPublicPaypalRoute,
+  ApiPublicStripeRoute: ApiPublicStripeRoute,
   ApiPublicTypeformRoute: ApiPublicTypeformRoute,
+  ApiPublicWhopRoute: ApiPublicWhopRoute,
+  ApiPublicWiseRoute: ApiPublicWiseRoute,
   ApiPublicIngestTokenRoute: ApiPublicIngestTokenRoute,
   ApiPublicTwilioEventRoute: ApiPublicTwilioEventRoute,
 }

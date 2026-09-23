@@ -187,12 +187,30 @@ function EodFlowForRole({
         return;
       }
       if (devBypass) return;
+      // Remediation (metric-dictionary audit, Task 4 — canonical Closer
+      // identity): calls.closer_id is a real uuid column read by Team,
+      // Attribution, Team Calendars, Mentee Renewal, and dispatch routing,
+      // but no write path anywhere ever set it — permanently null for every
+      // real call. Same team_members.user_id bridge as closer.tsx's "Log a
+      // sales call" dialog, so both real Closer entry points populate it
+      // going forward without touching historical name-only rows.
+      let closerId: string | null = null;
+      if (payload.closer_name) {
+        const { data: teamMember } = await supabase
+          .from("team_members" as never)
+          .select("user_id")
+          .eq("org_id", orgId ?? "")
+          .eq("role", "closer")
+          .eq("name", payload.closer_name)
+          .maybeSingle();
+        closerId = (teamMember as { user_id: string | null } | null)?.user_id ?? null;
+      }
       // eod_lead_status isn't in the generated Supabase types yet (new
       // column, see the migration comment).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: callRow, error } = await (supabase as any)
         .from("calls")
-        .insert(payload)
+        .insert({ ...payload, closer_id: closerId })
         .select("id")
         .single();
       if (error) throw error;

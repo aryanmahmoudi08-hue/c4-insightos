@@ -67,6 +67,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import { ChartTooltip } from "@/components/chart-tooltip";
+import { usdCentsForRow } from "@/lib/currency";
+import { useFxRates } from "@/hooks/use-fx-rates";
 
 const DONUT_COLORS = [
   "var(--spectrum-hot)",
@@ -225,7 +227,7 @@ export function TrafficPageContent({ embedded = false }: { embedded?: boolean } 
       const { data, error } = await supabase
         .from("calls")
         .select(
-          "id, lead_id, closed, showed, scheduled_for, contract_value_cents, cash_collected_cents",
+          "id, lead_id, closed, showed, scheduled_for, contract_value_cents, cash_collected_cents, original_currency",
         )
         .eq("org_id", orgId!)
         .gte("created_at", fromISO)
@@ -293,6 +295,36 @@ export function TrafficPageContent({ embedded = false }: { embedded?: boolean } 
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to remove"),
   });
 
+  // Remediation (currency-mixing audit,
+  // docs/ascendos-currency-mixing-audit.md): calls.contract_value_cents/
+  // cash_collected_cents carry a real original_currency never converted
+  // before this fix — traffic-hierarchy.ts's addCallToMetrics() sums them
+  // raw (a `+=` accumulation the original audit's `.reduce()`-only grep
+  // missed). Normalize each call to USD cents here, before it reaches that
+  // pure aggregation function, same proven sumNormalizedCents infrastructure
+  // as closer.tsx (usdCentsForRow is its per-row counterpart).
+  const trafficFxRates = useFxRates({
+    rows: calls ?? [],
+    getCurrency: (c: NonNullable<typeof calls>[number]) => c.original_currency,
+    getDate: (c: NonNullable<typeof calls>[number]) => c.scheduled_for?.slice(0, 10),
+  });
+  const { normalizedCalls, callsFxIncomplete } = useMemo(() => {
+    let incomplete = false;
+    const rows = (calls ?? []).map((c) => {
+      const day = c.scheduled_for?.slice(0, 10);
+      const cash = usdCentsForRow(c.cash_collected_cents, c.original_currency, day, trafficFxRates);
+      const contract = usdCentsForRow(
+        c.contract_value_cents,
+        c.original_currency,
+        day,
+        trafficFxRates,
+      );
+      if (cash.excluded || contract.excluded) incomplete = true;
+      return { ...c, cash_collected_cents: cash.usd, contract_value_cents: contract.usd };
+    });
+    return { normalizedCalls: rows, callsFxIncomplete: incomplete };
+  }, [calls, trafficFxRates]);
+
   // Real computation always runs (every query above fires for real, even
   // under devBypass) — only the *display* falls back to a deterministic
   // fixture when the real, RLS-empty-under-devBypass result has nothing to
@@ -301,7 +333,7 @@ export function TrafficPageContent({ embedded = false }: { embedded?: boolean } 
     () =>
       buildTrafficHierarchy(
         (leads ?? []).map((l) => ({ ...l, status: l.status as string })),
-        calls ?? [],
+        normalizedCalls,
         contentPieces ?? [],
         (sources ?? []).map((s) => ({
           id: s.id,
@@ -311,7 +343,7 @@ export function TrafficPageContent({ embedded = false }: { embedded?: boolean } 
           utm_campaign: s.utm_campaign,
         })),
       ),
-    [leads, calls, contentPieces, sources],
+    [leads, normalizedCalls, contentPieces, sources],
   );
   const hierarchy: TrafficHierarchy =
     devBypass && realHierarchy.totals.leads === 0 ? mockTrafficHierarchy() : realHierarchy;
@@ -593,7 +625,7 @@ export function TrafficPageContent({ embedded = false }: { embedded?: boolean } 
             }
           />
           <StatCard
-            label="Cash collected"
+            label={callsFxIncomplete ? "Cash collected · FX incomplete" : "Cash collected"}
             value={fmtMoney(hierarchy.totals.collectedCents)}
             spectrum="hot"
             emphasis="strong"

@@ -10,6 +10,36 @@ import {
   type VideoActionStatus,
   type VslCategory,
 } from "@/lib/media-intelligence";
+import { collectFxPairs, usdCentsForRow, type HistoricalFxRateMap } from "@/lib/currency";
+import { getHistoricalFxRate } from "@/lib/fx.server";
+
+/** Server-side FX-rate fetch for a batch of calls rows (this file's
+ * `.handler()`s run on the server, so the direct `getHistoricalFxRate`
+ * implementation is used — same pattern as `weekly-report.server.ts` —
+ * rather than the client-side `useFxRates`/`fetchFxRates` hook. Remediation
+ * (currency-mixing audit): calls.cash_collected_cents carries a real
+ * original_currency never converted before this fix. */
+async function fetchVslFxRates(
+  rows: { original_currency?: string | null; scheduled_for?: string | null }[],
+): Promise<HistoricalFxRateMap> {
+  const dedupe = new Map<string, { currency: string; date: string }>();
+  for (const p of collectFxPairs(
+    rows,
+    (r) => r.original_currency,
+    (r) => r.scheduled_for?.slice(0, 10),
+  )) {
+    dedupe.set(`${p.currency}|${p.date}`, p);
+  }
+  const pairs = Array.from(dedupe.values());
+  if (pairs.length === 0) return {};
+  const entries = await Promise.all(
+    pairs.map(async (p) => {
+      const info = await getHistoricalFxRate(p.currency, p.date);
+      return [`${p.currency}|${p.date}`, info] as const;
+    }),
+  );
+  return Object.fromEntries(entries);
+}
 
 type VslMetricSnapshotRow = Database["public"]["Tables"]["vsl_metric_snapshots"]["Row"];
 type VslMetricSnapshotInsert = Database["public"]["Tables"]["vsl_metric_snapshots"]["Insert"];
@@ -448,7 +478,7 @@ export const getVslFunnelData = createServerFn({ method: "POST" })
     let callsQuery = supabase
       .from("calls")
       .select(
-        "id, lead_id, lead_email, closer_name, scheduled_for, showed, closed, cash_collected_cents",
+        "id, lead_id, lead_email, closer_name, scheduled_for, showed, closed, cash_collected_cents, original_currency",
       )
       .eq("org_id", org_id)
       .eq("source_vsl_id", data.vsl_id);
@@ -479,7 +509,18 @@ export const getVslFunnelData = createServerFn({ method: "POST" })
     const closedCalls = callRows.filter((c) => c.closed);
     const showCount = showedCalls.length;
     const closeCount = closedCalls.length;
-    const cashCents = closedCalls.reduce((sum, c) => sum + (c.cash_collected_cents ?? 0), 0);
+    const vslFxRates = await fetchVslFxRates(closedCalls);
+    let cashFxIncomplete = false;
+    const cashCents = closedCalls.reduce((sum, c) => {
+      const r = usdCentsForRow(
+        c.cash_collected_cents,
+        c.original_currency,
+        c.scheduled_for?.slice(0, 10),
+        vslFxRates,
+      );
+      if (r.excluded) cashFxIncomplete = true;
+      return sum + r.usd;
+    }, 0);
     return {
       pageLoads: latestSnap?.page_loads ?? null,
       totalPlays: latestSnap?.total_plays ?? null,
@@ -493,6 +534,7 @@ export const getVslFunnelData = createServerFn({ method: "POST" })
       showCount,
       closeCount,
       cashCents,
+      cashFxIncomplete,
       wistiaConfigured: Boolean(vsl?.wistia_video_id),
       metricIngestionSource: latestSnap
         ? latestSnap.source === "csv"
@@ -515,6 +557,8 @@ type TaggedCallRow = {
   showed: boolean | null;
   closed: boolean | null;
   cash_collected_cents: number | null;
+  scheduled_for?: string | null;
+  original_currency?: string | null;
 };
 
 export const listVslActionQueue = createServerFn({ method: "GET" })
@@ -542,7 +586,9 @@ export const listVslActionQueue = createServerFn({ method: "GET" })
         .in("source_vsl_id", vslIds),
       supabase
         .from("calls")
-        .select("id, source_vsl_id, showed, closed, cash_collected_cents")
+        .select(
+          "id, source_vsl_id, showed, closed, cash_collected_cents, scheduled_for, original_currency",
+        )
         .eq("org_id", org_id)
         .in("source_vsl_id", vslIds),
       supabase.from("vsl_recommendations").select("*").eq("org_id", org_id).in("vsl_id", vslIds),
@@ -572,6 +618,10 @@ export const listVslActionQueue = createServerFn({ method: "GET" })
     const recByKey = new Map<string, VslRecommendationRow>();
     for (const rec of recs ?? []) recByKey.set(`${rec.vsl_id}:${rec.action}`, rec);
 
+    // Remediation (currency-mixing audit): fetch once for every tagged call
+    // across all VSLs, not per-VSL inside the loop below.
+    const actionQueueFxRates = await fetchVslFxRates(calls ?? []);
+
     const out: Array<{
       vsl_id: string;
       vsl_name: string;
@@ -597,7 +647,17 @@ export const listVslActionQueue = createServerFn({ method: "GET" })
         taggedLeads: leadCountByVsl.get(vsl.id) ?? 0,
         taggedBookings: callRows.length,
         taggedCloses: closedCalls.length,
-        taggedCashCents: closedCalls.reduce((sum, c) => sum + (c.cash_collected_cents ?? 0), 0),
+        taggedCashCents: closedCalls.reduce(
+          (sum, c) =>
+            sum +
+            usdCentsForRow(
+              c.cash_collected_cents,
+              c.original_currency,
+              c.scheduled_for?.slice(0, 10),
+              actionQueueFxRates,
+            ).usd,
+          0,
+        ),
       });
       for (const item of deriveVideoActionQueue(snapshot)) {
         const rec = recByKey.get(`${vsl.id}:${item.action}`);

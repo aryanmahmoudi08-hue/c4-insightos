@@ -8,6 +8,8 @@ import { buildDemoCoreDataset } from "@/lib/demo-fixtures";
 import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
 import { useServerFn } from "@tanstack/react-start";
+import { getHistoricalFxRatesFn } from "@/lib/fx.functions";
+import { collectFxPairs, sumNormalizedCents } from "@/lib/currency";
 import { autoIngestCallSignalFn } from "@/lib/content-signals.functions";
 import { captureCallLifecycleEventsFn } from "@/lib/dispatch.functions";
 import { evaluateAttributionEvidence } from "@/lib/acquisition";
@@ -340,6 +342,7 @@ function demoCloserCalls(from: string, to: string) {
         contract_value_cents: c.contract_value_cents,
         cash_collected_cents: c.cash_collected_cents,
         deposit_cents: c.deposit_cents,
+        original_currency: "USD",
         payment_plan: c.payment_plan,
         call_summary: null as string | null,
         recording_url: null as string | null,
@@ -457,6 +460,7 @@ function Closer() {
         closed: boolean;
         contract_value_cents: number | null;
         cash_collected_cents: number | null;
+        original_currency?: string | null;
         deposit_cents: number | null;
         payment_plan: boolean | null;
         call_summary: string | null;
@@ -691,7 +695,7 @@ function Closer() {
       const { data, error } = await supabase
         .from("calls")
         .select(
-          "id, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, payment_plan, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, disposition, duration_seconds, talk_seconds, recovered_from_call_id, setter_id, source_platform, source_format, source_content_id, source_campaign, eod_lead_status, requested_followup_at, followup_amount_pitched_cents, followup_reason, followup_reason_other, followup_notes, leads(id, full_name, handle, email)",
+          "id, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, original_currency, payment_plan, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, disposition, duration_seconds, talk_seconds, recovered_from_call_id, setter_id, source_platform, source_format, source_content_id, source_campaign, eod_lead_status, requested_followup_at, followup_amount_pitched_cents, followup_reason, followup_reason_other, followup_notes, leads(id, full_name, handle, email)",
         )
         .eq("org_id", orgId!)
         .gte("scheduled_for", `${range.from}T00:00:00`)
@@ -723,7 +727,7 @@ function Closer() {
       const { data, error } = await supabase
         .from("calls")
         .select(
-          "closer_name, scheduled_for, showed, offer_made, closed, cash_collected_cents, contract_value_cents, status",
+          "closer_name, scheduled_for, showed, offer_made, closed, cash_collected_cents, contract_value_cents, status, original_currency",
         )
         .eq("org_id", orgId!)
         .gte("scheduled_for", `${targetWindowStart}T00:00:00`)
@@ -872,12 +876,13 @@ function Closer() {
             downsells: 0,
             cash_collected_cents: a.cash_collected_cents,
             total_revenue_cents: a.total_revenue_cents,
+            original_currency: "USD",
           }));
       }
       const { data } = await supabase
         .from("setter_activity")
         .select(
-          "activity_date, calls_on_calendar, live_calls, closes, downsells, cash_collected_cents, total_revenue_cents",
+          "activity_date, calls_on_calendar, live_calls, closes, downsells, cash_collected_cents, total_revenue_cents, original_currency",
         )
         .eq("org_id", orgId!)
         .gte("activity_date", range.from)
@@ -904,13 +909,14 @@ function Closer() {
           cash_collected_cents: number | null;
           contract_value_cents: number | null;
           deposit_cents: number | null;
+          original_currency?: string | null;
           scheduled_for: string | null;
         }[];
       if (demoMode) return demoCloserCalls(prevRange.from, prevRange.to);
       const { data, error } = await supabase
         .from("calls")
         .select(
-          "closer_name, showed, offer_made, closed, status, cash_collected_cents, contract_value_cents, deposit_cents, scheduled_for",
+          "closer_name, showed, offer_made, closed, status, cash_collected_cents, contract_value_cents, deposit_cents, original_currency, scheduled_for",
         )
         .eq("org_id", orgId!)
         .gte("scheduled_for", `${prevRange.from}T00:00:00`)
@@ -937,12 +943,13 @@ function Closer() {
             downsells: 0,
             cash_collected_cents: a.cash_collected_cents,
             total_revenue_cents: a.total_revenue_cents,
+            original_currency: "USD",
           }));
       }
       const { data } = await supabase
         .from("setter_activity")
         .select(
-          "activity_date, calls_on_calendar, live_calls, closes, downsells, cash_collected_cents, total_revenue_cents",
+          "activity_date, calls_on_calendar, live_calls, closes, downsells, cash_collected_cents, total_revenue_cents, original_currency",
         )
         .eq("org_id", orgId!)
         .gte("activity_date", prevRange.from)
@@ -1076,16 +1083,99 @@ function Closer() {
   const callsShowed = list.filter((c) => c.showed).length;
   const callsOffers = list.filter((c) => c.offer_made).length;
   const callsClosed = list.filter((c) => c.closed || c.status === "closed").length;
-  const callsCash = list.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
-  const callsRev = list.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0);
   // Day-log totals (org-wide, no per-rep filter — these aren't attributed per-closer)
   const setterRows = setterAgg ?? [];
   const setBooked = setterRows.reduce((s, r) => s + (r.calls_on_calendar ?? 0), 0);
   const setShowed = setterRows.reduce((s, r) => s + (r.live_calls ?? 0), 0);
   const setClosed = setterRows.reduce((s, r) => s + (r.closes ?? 0), 0);
   const setDowns = setterRows.reduce((s, r) => s + (r.downsells ?? 0), 0);
-  const setCash = setterRows.reduce((s, r) => s + (r.cash_collected_cents ?? 0), 0);
-  const setRev = setterRows.reduce((s, r) => s + (r.total_revenue_cents ?? 0), 0);
+  // Remediation (metric-dictionary audit): calls.cash_collected_cents/
+  // contract_value_cents and setter_activity.cash_collected_cents/
+  // total_revenue_cents store whatever amount was typed in, tagged with a
+  // real original_currency but never converted — summing raw cents across
+  // mixed-currency rows previously treated non-USD amounts as USD. Normalize
+  // each source to USD cents before the existing Math.max() dedup (left
+  // otherwise untouched — that's a separate, already-reviewed "which source
+  // is bigger" choice, not part of this fix).
+  const getFxFn = useServerFn(getHistoricalFxRatesFn);
+  const currFxPairs = useMemo(() => {
+    const dedupe = new Map<string, { currency: string; date: string }>();
+    for (const p of [
+      ...collectFxPairs(
+        list,
+        (c) => c.original_currency,
+        (c) => c.scheduled_for?.slice(0, 10),
+      ),
+      ...collectFxPairs(
+        setterRows,
+        (r) => r.original_currency,
+        (r) => r.activity_date,
+      ),
+    ]) {
+      dedupe.set(`${p.currency}|${p.date}`, p);
+    }
+    return Array.from(dedupe.values());
+  }, [list, setterRows]);
+  const { data: currFxResult } = useQuery({
+    queryKey: ["closer-fx", currFxPairs.map((p) => `${p.currency}|${p.date}`).join(",")],
+    enabled: currFxPairs.length > 0,
+    staleTime: 1000 * 60 * 60,
+    queryFn: () => getFxFn({ data: { pairs: currFxPairs } }),
+  });
+  const currFxRates = currFxResult?.rates ?? {};
+  const callsCashSum = useMemo(
+    () =>
+      sumNormalizedCents(
+        list,
+        (c) => c.cash_collected_cents,
+        (c) => c.original_currency,
+        (c) => c.scheduled_for?.slice(0, 10),
+        currFxRates,
+      ),
+    [list, currFxRates],
+  );
+  const callsRevSum = useMemo(
+    () =>
+      sumNormalizedCents(
+        list,
+        (c) => c.contract_value_cents,
+        (c) => c.original_currency,
+        (c) => c.scheduled_for?.slice(0, 10),
+        currFxRates,
+      ),
+    [list, currFxRates],
+  );
+  const setCashSum = useMemo(
+    () =>
+      sumNormalizedCents(
+        setterRows,
+        (r) => r.cash_collected_cents,
+        (r) => r.original_currency,
+        (r) => r.activity_date,
+        currFxRates,
+      ),
+    [setterRows, currFxRates],
+  );
+  const setRevSum = useMemo(
+    () =>
+      sumNormalizedCents(
+        setterRows,
+        (r) => r.total_revenue_cents,
+        (r) => r.original_currency,
+        (r) => r.activity_date,
+        currFxRates,
+      ),
+    [setterRows, currFxRates],
+  );
+  const callsCash = callsCashSum.usdCents;
+  const callsRev = callsRevSum.usdCents;
+  const setCash = setCashSum.usdCents;
+  const setRev = setRevSum.usdCents;
+  const moneyFxIncomplete =
+    !callsCashSum.isComplete ||
+    !callsRevSum.isComplete ||
+    !setCashSum.isComplete ||
+    !setRevSum.isComplete;
   // Use max() of each source to avoid double-counting same dollars while still
   // surfacing whichever source actually has data. Per-rep filter falls back to call rows.
   const useDayLogs = member === ALL_MEMBERS;
@@ -1181,6 +1271,32 @@ function Closer() {
       return data ?? [];
     },
   });
+  // Remediation (metric-dictionary audit, SALE-0395–0400): none of the five
+  // processor webhooks (stripe/paypal/fanbasis/wise/whop) carry any
+  // call-identifying field in their payloads — verified by inspecting all
+  // five handlers — so `payments.call_id` is never set today. That makes
+  // `callPayments` above permanently empty, which previously made
+  // "Future Scheduled Cash" silently compute the FULL contract value as
+  // still-owed (as if $0 had ever been collected) instead of admitting the
+  // linkage is missing. This org-wide check (independent of the current
+  // date range/call list) tells us whether call-level linkage is
+  // functioning AT ALL for this org, so the stats below can distinguish
+  // "no payments happened" from "payments happened but aren't linked to a
+  // call yet" — never silently treating the latter as $0 collected.
+  const { data: orgHasLinkedPayments = false } = useQuery({
+    queryKey: ["closer-org-has-linked-payments", orgId],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("payments")
+        .select("id")
+        .eq("org_id", orgId!)
+        .not("call_id", "is", null)
+        .limit(1);
+      if (error) throw error;
+      return (data ?? []).length > 0;
+    },
+  });
   const paymentQualityStats = useMemo(() => {
     const total = callPayments.length;
     const failedPayments = callPayments.filter((p) => p.status === "failed");
@@ -1191,6 +1307,14 @@ function Closer() {
       if (p.status !== "paid" || !p.call_id) continue;
       collectedByCall.set(p.call_id, (collectedByCall.get(p.call_id) ?? 0) + p.amount_cents);
     }
+    // True only when we have real evidence that call-level payment linkage
+    // works for this org (either a linked payment fell inside this range,
+    // or the org-wide check above found one elsewhere). Everything below
+    // that depends on "how much has actually been collected against this
+    // call" must stay null/Unavailable when this is false — a payment
+    // existing with no call_id is evidence of a missing link, not evidence
+    // that $0 was collected.
+    const hasReliableCallLinkage = collectedByCall.size > 0 || orgHasLinkedPayments;
     const paymentPlanCalls = list.filter(
       (c) => c.payment_plan && (c.contract_value_cents ?? 0) > 0,
     );
@@ -1198,10 +1322,12 @@ function Closer() {
     const fullyPaid = depositedCalls.filter(
       (c) => (collectedByCall.get(c.id) ?? 0) >= (c.contract_value_cents ?? 0),
     );
-    const futureScheduledCents = paymentPlanCalls.reduce((sum, c) => {
-      const remaining = (c.contract_value_cents ?? 0) - (collectedByCall.get(c.id) ?? 0);
-      return sum + Math.max(0, remaining);
-    }, 0);
+    const futureScheduledCents = hasReliableCallLinkage
+      ? paymentPlanCalls.reduce((sum, c) => {
+          const remaining = (c.contract_value_cents ?? 0) - (collectedByCall.get(c.id) ?? 0);
+          return sum + Math.max(0, remaining);
+        }, 0)
+      : null;
     // Recovered failed payments: schema has no explicit retry/recovery link
     // between payment rows, so this is inferred — real evidence (a later
     // "paid" payment on the same call as a real "failed" one), not a direct
@@ -1217,9 +1343,11 @@ function Closer() {
       );
       if (recoveredLater) recoveredCalls.add(failedPayment.call_id);
     }
-    const futureScheduledCallIds = paymentPlanCalls
-      .filter((c) => (c.contract_value_cents ?? 0) - (collectedByCall.get(c.id) ?? 0) > 0)
-      .map((c) => c.id);
+    const futureScheduledCallIds = hasReliableCallLinkage
+      ? paymentPlanCalls
+          .filter((c) => (c.contract_value_cents ?? 0) - (collectedByCall.get(c.id) ?? 0) > 0)
+          .map((c) => c.id)
+      : [];
     return {
       total,
       failedCount: failed,
@@ -1227,14 +1355,20 @@ function Closer() {
       failedRatePct: total ? (failed / total) * 100 : null,
       recoveredFailedCount: recoveredCalls.size,
       recoveredCallIds: Array.from(recoveredCalls),
-      depositToFullPaymentPct: depositedCalls.length
-        ? (fullyPaid.length / depositedCalls.length) * 100
-        : null,
+      // Unavailable (not 0%) when we have deposited calls but no reliable
+      // evidence of how much has actually been collected against them —
+      // "0 of N reached full payment" would otherwise misreport a linkage
+      // gap as a real payment-quality signal.
+      depositToFullPaymentPct:
+        depositedCalls.length && hasReliableCallLinkage
+          ? (fullyPaid.length / depositedCalls.length) * 100
+          : null,
       depositedCallIds: depositedCalls.map((c) => c.id),
+      hasReliableCallLinkage,
       futureScheduledCents,
       futureScheduledCallIds,
     };
-  }, [callPayments, list]);
+  }, [callPayments, list, orgHasLinkedPayments]);
 
   const { data: coachingReviewCount = 0 } = useQuery({
     queryKey: ["coaching-review-count", orgId, range.from, range.to],
@@ -1422,15 +1556,67 @@ function Closer() {
   const prevDqCount = prevList.filter(
     (c) => normalizeCloserDisposition(c.status, c.closed, c.offer_made) === "not_qualified",
   ).length;
-  const prevCallsCash = prevList.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
-  const prevCallsRev = prevList.reduce((s, c) => s + (c.contract_value_cents ?? 0), 0);
   const prevDepositCount = prevList.filter((c) => (c.deposit_cents ?? 0) > 0).length;
   const prevSetterRows = prevSetterAgg ?? [];
   const prevSetBooked = prevSetterRows.reduce((s, r) => s + (r.calls_on_calendar ?? 0), 0);
   const prevSetShowed = prevSetterRows.reduce((s, r) => s + (r.live_calls ?? 0), 0);
   const prevSetClosed = prevSetterRows.reduce((s, r) => s + (r.closes ?? 0), 0);
-  const prevSetCash = prevSetterRows.reduce((s, r) => s + (r.cash_collected_cents ?? 0), 0);
-  const prevSetRev = prevSetterRows.reduce((s, r) => s + (r.total_revenue_cents ?? 0), 0);
+  // Remediation (metric-dictionary audit): same currency-normalization as
+  // the current-period cash/revenue totals above, applied to the prior
+  // period so the delta comparison isn't itself mixing raw cents.
+  const prevFxPairs = useMemo(() => {
+    const dedupe = new Map<string, { currency: string; date: string }>();
+    for (const p of [
+      ...collectFxPairs(
+        prevList,
+        (c) => c.original_currency,
+        (c) => c.scheduled_for?.slice(0, 10),
+      ),
+      ...collectFxPairs(
+        prevSetterRows,
+        (r) => r.original_currency,
+        (r) => r.activity_date,
+      ),
+    ]) {
+      dedupe.set(`${p.currency}|${p.date}`, p);
+    }
+    return Array.from(dedupe.values());
+  }, [prevList, prevSetterRows]);
+  const { data: prevFxResult } = useQuery({
+    queryKey: ["closer-fx-prev", prevFxPairs.map((p) => `${p.currency}|${p.date}`).join(",")],
+    enabled: prevFxPairs.length > 0,
+    staleTime: 1000 * 60 * 60,
+    queryFn: () => getFxFn({ data: { pairs: prevFxPairs } }),
+  });
+  const prevFxRates = prevFxResult?.rates ?? {};
+  const prevCallsCash = sumNormalizedCents(
+    prevList,
+    (c) => c.cash_collected_cents,
+    (c) => c.original_currency,
+    (c) => c.scheduled_for?.slice(0, 10),
+    prevFxRates,
+  ).usdCents;
+  const prevCallsRev = sumNormalizedCents(
+    prevList,
+    (c) => c.contract_value_cents,
+    (c) => c.original_currency,
+    (c) => c.scheduled_for?.slice(0, 10),
+    prevFxRates,
+  ).usdCents;
+  const prevSetCash = sumNormalizedCents(
+    prevSetterRows,
+    (r) => r.cash_collected_cents,
+    (r) => r.original_currency,
+    (r) => r.activity_date,
+    prevFxRates,
+  ).usdCents;
+  const prevSetRev = sumNormalizedCents(
+    prevSetterRows,
+    (r) => r.total_revenue_cents,
+    (r) => r.original_currency,
+    (r) => r.activity_date,
+    prevFxRates,
+  ).usdCents;
   const prevOnCalendar = useDayLogs ? Math.max(prevCallsBooked, prevSetBooked) : prevCallsBooked;
   const prevShowed = useDayLogs ? Math.max(prevCallsShowed, prevSetShowed) : prevCallsShowed;
   const prevOffers = prevCallsOffers;
@@ -1874,10 +2060,33 @@ function Closer() {
         | "rescheduled";
       const closed = status === "closed";
       const mutationAt = new Date().toISOString();
+      const closerName = String(f.get("closer_name") || "") || null;
+      // Remediation (metric-dictionary audit, Task 4 — canonical Closer
+      // identity): calls.closer_id is a real uuid column, read by Team,
+      // Attribution, Team Calendars, Mentee Renewal lifecycle evidence, and
+      // dispatch routing — but no write path anywhere ever set it (confirmed
+      // by repo-wide search), so it has been permanently null for every real
+      // call. team_members.user_id is the real, deterministic link between
+      // the picked closer_name and their auth identity (same bridge used for
+      // the Speed-to-Lead Targets fix) — resolved here so closer_id starts
+      // being populated for every NEW call going forward, without touching
+      // historical name-only rows (never backfilled/guessed).
+      let closerId: string | null = null;
+      if (closerName) {
+        const { data: teamMember } = await supabase
+          .from("team_members" as never)
+          .select("user_id")
+          .eq("org_id", orgId!)
+          .eq("role", "closer")
+          .eq("name", closerName)
+          .maybeSingle();
+        closerId = (teamMember as { user_id: string | null } | null)?.user_id ?? null;
+      }
       const payload = {
         org_id: orgId!,
         lead_id: (f.get("lead_id") as string) || null,
-        closer_name: String(f.get("closer_name") || "") || null,
+        closer_name: closerName,
+        closer_id: closerId,
         lead_email: String(f.get("lead_email") || "") || null,
         status,
         scheduled_for: f.get("date_of_call")
@@ -1904,6 +2113,9 @@ function Closer() {
         talk_seconds:
           Number(f.get("talk_min") || 0) > 0 ? Math.round(Number(f.get("talk_min")) * 60) : null,
         cancelled: f.get("cancelled") === "on",
+        // Remediation (metric-dictionary audit, SALE-0394): explicit closer
+        // intent, not inferred from deposit_cents/contract_value_cents.
+        payment_plan: f.get("payment_plan") === "on",
       };
       const { data: callRow, error } = await supabase
         .from("calls")
@@ -2217,6 +2429,12 @@ function Closer() {
                   <label className="flex items-center gap-2">
                     <input type="checkbox" name="recovered_no_show" /> Recovers a prior no-show for
                     this lead
+                  </label>
+                  {/* Remediation (metric-dictionary audit, SALE-0394): calls.payment_plan
+                      is a real column but nothing in this form ever wrote to it —
+                      explicit checkbox, not inferred from deposit/installment amounts. */}
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" name="payment_plan" /> Payment plan (not paid in full)
                   </label>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
@@ -3096,29 +3314,37 @@ function Closer() {
             {
               key: "cash",
               label: "Cash Collected",
-              value: fmtMoney(cashCents),
+              value: moneyFxIncomplete
+                ? `${fmtMoney(cashCents)} · FX incomplete`
+                : fmtMoney(cashCents),
               spectrum: "hot",
               featured: true,
               emphasis: "strong",
               wide: true,
               deltaPct: pctDelta(cashCents, prevCashCents),
               priorValue: fmtMoney(prevCashCents),
-              empty: cashCents === 0,
-              emptyHint: "Log a closed call with cash collected to see this populate.",
+              empty: cashCents === 0 && !moneyFxIncomplete,
+              emptyHint: moneyFxIncomplete
+                ? "Some non-USD rows couldn't be converted (no historical FX rate available) and are excluded from this total."
+                : "Log a closed call with cash collected to see this populate.",
               onClick: () => setSelected({ kind: "money", metric: "cash" }),
             },
             {
               key: "revenue",
               label: "Revenue Generated",
-              value: fmtMoney(revCents),
+              value: moneyFxIncomplete
+                ? `${fmtMoney(revCents)} · FX incomplete`
+                : fmtMoney(revCents),
               spectrum: "hot",
               featured: true,
               emphasis: "subtle",
               wide: true,
               deltaPct: pctDelta(revCents, prevRevCents),
               priorValue: fmtMoney(prevRevCents),
-              empty: revCents === 0,
-              emptyHint: "Total contract value shows up once a deal closes.",
+              empty: revCents === 0 && !moneyFxIncomplete,
+              emptyHint: moneyFxIncomplete
+                ? "Some non-USD rows couldn't be converted (no historical FX rate available) and are excluded from this total."
+                : "Total contract value shows up once a deal closes.",
               onClick: () => setSelected({ kind: "money", metric: "revenue" }),
             },
             {
@@ -3497,16 +3723,25 @@ function Closer() {
                         : `${paymentQualityStats.depositToFullPaymentPct.toFixed(1)}%`,
                     spectrum: "hot",
                     empty: paymentQualityStats.depositToFullPaymentPct == null,
-                    emptyHint: "Requires a deposit and payment records for these calls.",
+                    emptyHint: paymentQualityStats.hasReliableCallLinkage
+                      ? "Requires a deposit and payment records for these calls."
+                      : "Not connected — no payment has ever been linked to a call yet (processor webhooks record payments, but not which call produced them).",
                     onClick: () => setSelected({ kind: "payment", metric: "depositToFullPayment" }),
                   },
                   {
                     key: "futureScheduledCash",
                     label: "Future Scheduled Cash",
-                    value: fmtMoney(paymentQualityStats.futureScheduledCents),
+                    value:
+                      paymentQualityStats.futureScheduledCents == null
+                        ? "Unavailable"
+                        : fmtMoney(paymentQualityStats.futureScheduledCents),
                     spectrum: "mid",
-                    empty: paymentQualityStats.futureScheduledCents === 0,
-                    emptyHint: "No outstanding payment-plan balance in this range.",
+                    empty:
+                      paymentQualityStats.futureScheduledCents == null ||
+                      paymentQualityStats.futureScheduledCents === 0,
+                    emptyHint: paymentQualityStats.hasReliableCallLinkage
+                      ? "No outstanding payment-plan balance in this range."
+                      : "Not connected — no payment has ever been linked to a call yet, so remaining balance can't be calculated. This is NOT the same as $0 collected.",
                     onClick: () => setSelected({ kind: "payment", metric: "futureScheduledCash" }),
                   },
                   {

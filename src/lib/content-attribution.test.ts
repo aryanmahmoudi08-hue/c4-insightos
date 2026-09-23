@@ -191,3 +191,50 @@ describe("buildAttributionPathsForModel", () => {
     expect(paths).toEqual([]);
   });
 });
+
+// Remediation (metric-dictionary audit, Task 6): bookingId/paymentId were
+// never populated by any of the 5 model branches even though bookingId is a
+// real, deterministic relationship (this schema has no separate "bookings"
+// table — a `calls` row IS the booking record). paymentId must stay null —
+// no processor webhook ever sets payments.call_id, so there is no
+// deterministic call->payment link to populate honestly.
+describe("buildAttributionPathsForModel — bookingId/paymentId", () => {
+  it("populates bookingId as the real call id for every direct-attribution model", () => {
+    for (const model of ["first_touch", "last_touch", "lead_source", "booking_source"] as const) {
+      const paths = buildAttributionPathsForModel(model, { leads, calls, touches, sampleSize: 10 });
+      expect(paths.length).toBeGreaterThan(0);
+      for (const path of paths) {
+        expect(path.bookingId).toBe(path.callId);
+        expect(path.bookingId).toBe("call-1");
+      }
+    }
+  });
+
+  it("populates bookingId for every assisted_touch path too (one per assisting touch, same call)", () => {
+    const paths = buildAttributionPathsForModel("assisted_touch", {
+      leads,
+      calls,
+      touches,
+      sampleSize: 10,
+    });
+    expect(paths.length).toBeGreaterThan(0);
+    for (const path of paths) {
+      expect(path.bookingId).toBe("call-1");
+    }
+  });
+
+  it("never fabricates a paymentId — stays null since no deterministic call->payment link exists", () => {
+    for (const model of [
+      "first_touch",
+      "last_touch",
+      "lead_source",
+      "booking_source",
+      "assisted_touch",
+    ] as const) {
+      const paths = buildAttributionPathsForModel(model, { leads, calls, touches, sampleSize: 10 });
+      for (const path of paths) {
+        expect(path.paymentId).toBeNull();
+      }
+    }
+  });
+});

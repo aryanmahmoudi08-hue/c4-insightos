@@ -38,6 +38,7 @@ import {
   TrendingUp,
   Wand2,
   Loader2,
+  ListChecks,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -635,8 +636,8 @@ function Onboarding() {
       <div className="p-6 space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Total -> Submitted reads as a simple 2-stage completion funnel. Pending's
-              amber and Insight signals' neutral white are already correct as-is
-              (a waiting-state cue and a plain derived count, not funnel miscolors). */}
+              amber and the answered-questions tile's neutral white are already correct
+              as-is (a waiting-state cue and a plain derived count, not funnel miscolors). */}
           <StatCard
             label="Total intakes"
             value={total}
@@ -646,10 +647,19 @@ function Onboarding() {
           />
           <StatCard label="Submitted" value={submitted} spectrum="hot" emphasis="subtle" />
           <StatCard label="Pending" value={total - submitted} accent="warning" />
+          {/* Remediation (metric-dictionary audit, Task 8): this was labeled
+              "Insight signals" with a Sparkles icon, implying an AI-derived
+              insight count — it's actually submitted × QUESTIONS.length, a
+              plain answered-question tally. Real AI insights exist
+              (analyzeIntake/analyzeIntakesAggregate below), but only once a
+              user explicitly runs them — there's no persisted count to show
+              here without either auto-triggering AI on every page load or
+              inventing a number. Relabeled to describe what's actually
+              counted rather than implying it's AI output. */}
           <StatCard
-            label="Insight signals"
+            label="Answered questions"
             value={submitted * QUESTIONS.length}
-            icon={<Sparkles className="h-4 w-4" />}
+            icon={<ListChecks className="h-4 w-4" />}
             accent="primary"
           />
         </div>

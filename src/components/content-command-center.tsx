@@ -174,6 +174,10 @@ export type ContentTrafficSummary = {
   revenuePerLeadCents: number;
   noSource: number;
   channels: ContentTrafficChannel[];
+  /** True if any calls row's original_currency had no resolvable historical
+   * FX rate — excluded from the cents totals above rather than guessed as
+   * USD. See docs/ascendos-currency-mixing-audit.md. */
+  fxIncomplete?: boolean;
 };
 
 export type ContentAttributionSummary = {

@@ -75,6 +75,31 @@ describe("acquisition spend foundation", () => {
     expect(noDenominators.roas).toBeNull();
   });
 
+  // Remediation (metric-dictionary audit, Task 7 — Webinar ROAS): the
+  // Executive KPI tile and the Acquisition Efficiency tile
+  // (_authenticated.webinar-analytics.tsx) used to read ROAS from two
+  // independently-sourced spend figures and could silently disagree — fixed
+  // by having both render `roasLabel(acquisition.roas)` from the exact same
+  // `useMemo`d result. There is only one place ROAS is computed
+  // (calculateAcquisitionMetrics, above) and only one call site produces the
+  // `acquisition` object both tiles read — this locks in that the single
+  // canonical computation is deterministic (same inputs always produce the
+  // same ROAS), which is the property the "one calculation, two displays"
+  // fix actually depends on: it's structurally impossible for the two tiles
+  // to disagree unless a second, separate ROAS calculation is reintroduced.
+  it("ROAS is deterministic for identical inputs — the guarantee both Webinar Analytics ROAS displays rely on for agreeing with each other", () => {
+    const input = {
+      spend: [spend],
+      paidLeads: 20,
+      attributableCustomers: 4,
+      attributableRevenueCents: 50000,
+    };
+    const first = calculateAcquisitionMetrics(input);
+    const second = calculateAcquisitionMetrics(input);
+    expect(first.roas).toBe(second.roas);
+    expect(first.roas).toBe(5);
+  });
+
   it("deduplicates one person and revenue outcome across repeated lifecycle records", () => {
     const base = {
       personKey: "lead-1",

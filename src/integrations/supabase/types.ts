@@ -843,6 +843,7 @@ export type Database = {
           lead_id: string | null;
           notes: string | null;
           offer_name: string | null;
+          offer_payment_plan_id: string | null;
           org_id: string;
           payment_plan: boolean | null;
           phone: string | null;
@@ -870,6 +871,7 @@ export type Database = {
           lead_id?: string | null;
           notes?: string | null;
           offer_name?: string | null;
+          offer_payment_plan_id?: string | null;
           org_id: string;
           payment_plan?: boolean | null;
           phone?: string | null;
@@ -897,6 +899,7 @@ export type Database = {
           lead_id?: string | null;
           notes?: string | null;
           offer_name?: string | null;
+          offer_payment_plan_id?: string | null;
           org_id?: string;
           payment_plan?: boolean | null;
           phone?: string | null;
@@ -922,6 +925,13 @@ export type Database = {
             columns: ["lead_id"];
             isOneToOne: false;
             referencedRelation: "leads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "clients_offer_payment_plan_id_fkey";
+            columns: ["offer_payment_plan_id"];
+            isOneToOne: false;
+            referencedRelation: "offer_payment_plans";
             referencedColumns: ["id"];
           },
           {
@@ -5509,6 +5519,7 @@ export type Database = {
           created_at: string;
           currency: string;
           external_id: string | null;
+          failure_reason: string | null;
           fx_rate: number;
           fx_rate_date: string | null;
           fx_source: string;
@@ -5516,6 +5527,8 @@ export type Database = {
           org_id: string;
           original_amount_cents: number;
           original_currency: string;
+          payment_type: string | null;
+          processor: string | null;
           raw: Json | null;
           source_connector: string | null;
           status: Database["public"]["Enums"]["payment_status"];
@@ -5528,6 +5541,7 @@ export type Database = {
           created_at?: string;
           currency?: string;
           external_id?: string | null;
+          failure_reason?: string | null;
           fx_rate: number;
           fx_rate_date?: string | null;
           fx_source: string;
@@ -5535,6 +5549,8 @@ export type Database = {
           org_id: string;
           original_amount_cents: number;
           original_currency: string;
+          payment_type?: string | null;
+          processor?: string | null;
           raw?: Json | null;
           source_connector?: string | null;
           status?: Database["public"]["Enums"]["payment_status"];
@@ -5547,6 +5563,7 @@ export type Database = {
           created_at?: string;
           currency?: string;
           external_id?: string | null;
+          failure_reason?: string | null;
           fx_rate?: number;
           fx_rate_date?: string | null;
           fx_source?: string;
@@ -5554,6 +5571,8 @@ export type Database = {
           org_id?: string;
           original_amount_cents?: number;
           original_currency?: string;
+          payment_type?: string | null;
+          processor?: string | null;
           raw?: Json | null;
           source_connector?: string | null;
           status?: Database["public"]["Enums"]["payment_status"];

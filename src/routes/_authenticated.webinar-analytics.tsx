@@ -518,16 +518,25 @@ function WebinarAnalyticsPage() {
                     emptyHint: "Requires connected acquisition spend.",
                   },
                   {
+                    // Remediation (metric-dictionary audit, Task 7): this
+                    // previously computed from summary.revenue.roas, which
+                    // uses webinar_metrics.lead_capture_investment_cents as
+                    // spend — a different source than the "Ad Spend" tile
+                    // right beside it (acquisition_spend, via `acquisition`
+                    // below) and than Acquisition Efficiency's own "ROAS
+                    // (Acquisition)" tile. Same revenue basis either way
+                    // (totalRevenueCents), so this now reuses `acquisition.
+                    // roas` — the one canonical calculation, already
+                    // computed once and shared by both UI locations, same
+                    // acquisition_spend-scoped date range.
                     key: "roas",
                     label: "ROAS",
-                    value: roasLabel(summary.revenue.roas),
+                    value: roasLabel(acquisition.roas),
                     spectrum: "hot",
                     emphasis:
-                      scopeType === "organic" || summary.revenue.roas == null
-                        ? undefined
-                        : "subtle",
+                      scopeType === "organic" || acquisition.roas == null ? undefined : "subtle",
                     icon: <CircleDollarSign className="h-4 w-4" />,
-                    empty: scopeType === "organic" || summary.revenue.roas == null,
+                    empty: scopeType === "organic" || acquisition.roas == null,
                     emptyHint:
                       roasEmptyHint ??
                       (acquisition.hasSpend

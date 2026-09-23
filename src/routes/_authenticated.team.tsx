@@ -44,6 +44,10 @@ import { cn } from "@/lib/utils";
 import { fetchRepKpiTargets } from "@/lib/rep-kpi-targets";
 import { currentTargetsAsOf, type TargetRecord } from "@/lib/kpi-targets";
 import type { CallActualRow, SetterActivityActualRow } from "@/lib/rep-kpi-actuals";
+import { useServerFn } from "@tanstack/react-start";
+import { usdCentsForRow } from "@/lib/currency";
+import { getHistoricalFxRatesFn } from "@/lib/fx.functions";
+import { useFxRates, fetchFxRates } from "@/hooks/use-fx-rates";
 
 export const Route = createFileRoute("/_authenticated/team")({ component: Team });
 
@@ -125,6 +129,11 @@ function Team() {
   const fromISO = `${range.from}T00:00:00`;
   const toISO = `${range.to}T23:59:59`;
   const qc = useQueryClient();
+  // Currency-mixing remediation (docs/ascendos-currency-mixing-audit.md):
+  // Team Roster Closes/Cash and Team Snapshot leaderboards sum
+  // calls/setter_activity cash fields that carry a real original_currency
+  // never converted before this fix.
+  const fxFn = useServerFn(getHistoricalFxRatesFn);
   const [pendingRoles, setPendingRoles] = useState<Record<string, string>>({});
   const [permTarget, setPermTarget] = useState<{
     userId: string;
@@ -325,7 +334,7 @@ function Team() {
       const { data, error } = await supabase
         .from("calls")
         .select(
-          "closer_name, scheduled_for, showed, offer_made, closed, cash_collected_cents, contract_value_cents, status",
+          "closer_name, scheduled_for, showed, offer_made, closed, cash_collected_cents, contract_value_cents, status, original_currency",
         )
         .eq("org_id", orgId!)
         .gte("scheduled_for", `${targetWindowStart}T00:00:00`)
@@ -342,7 +351,9 @@ function Team() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("calls")
-        .select("setter_id, closer_id, showed, closed, cash_collected_cents")
+        .select(
+          "setter_id, closer_id, closer_name, showed, closed, cash_collected_cents, scheduled_for, original_currency",
+        )
         .eq("org_id", orgId!)
         .gte("created_at", fromISO)
         .lte("created_at", toISO);
@@ -350,16 +361,43 @@ function Team() {
       return data ?? [];
     },
   });
+  const rosterFxRates = useFxRates({
+    rows: setterStats ?? [],
+    getCurrency: (c: NonNullable<typeof setterStats>[number]) => c.original_currency,
+    getDate: (c: NonNullable<typeof setterStats>[number]) => c.scheduled_for?.slice(0, 10),
+  });
 
   const byUser: ByUserRow[] = (members ?? []).map((m) => {
     const setterCalls = (setterStats ?? []).filter((c) => c.setter_id === m.user_id);
-    const closerCalls = (setterStats ?? []).filter((c) => c.closer_id === m.user_id);
+    // Remediation (metric-dictionary audit, Task 4 — canonical Closer
+    // identity): calls.closer_id is now written going forward (Log a sales
+    // call / native EOD, both fixed to resolve it via team_members.user_id),
+    // but historical calls only ever carry closer_name — match on either so
+    // pre-fix records stay reportable rather than silently dropping to 0.
+    const closerCalls = (setterStats ?? []).filter(
+      (c) =>
+        c.closer_id === m.user_id || (!c.closer_id && c.closer_name === m.profiles?.display_name),
+    );
+    // Remediation (currency-mixing audit): normalize each call's cash to USD
+    // before summing — same proven usdCentsForRow/sumNormalizedCents
+    // infrastructure as closer.tsx, never guessed as USD.
+    const cash = closerCalls.reduce(
+      (s, c) =>
+        s +
+        usdCentsForRow(
+          c.cash_collected_cents,
+          c.original_currency,
+          c.scheduled_for?.slice(0, 10),
+          rosterFxRates,
+        ).usd,
+      0,
+    );
     return {
       ...m,
       booked: setterCalls.length,
       shown: setterCalls.filter((c) => c.showed).length,
       closes: closerCalls.filter((c) => c.closed).length,
-      cash: closerCalls.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0),
+      cash,
     };
   });
 
@@ -401,14 +439,16 @@ function Team() {
         const [callsRes, actRes] = await Promise.all([
           supabase
             .from("calls")
-            .select("closer_name, showed, closed, cash_collected_cents")
+            .select(
+              "closer_name, showed, closed, cash_collected_cents, created_at, original_currency",
+            )
             .eq("org_id", orgId!)
             .gte("created_at", fromI)
             .lte("created_at", toI),
           supabase
             .from("setter_activity")
             .select(
-              "team_member_name, sets, closes, cash_collected_cents, calls_on_calendar, live_calls",
+              "team_member_name, sets, closes, cash_collected_cents, calls_on_calendar, live_calls, activity_date, original_currency",
             )
             .eq("org_id", orgId!)
             .gte("activity_date", from)
@@ -416,17 +456,62 @@ function Team() {
         ]);
         const callList = callsRes.data ?? [];
         const actList = actRes.data ?? [];
+        // Remediation (currency-mixing audit): both cash sources carry a
+        // real original_currency never converted before this fix — normalize
+        // to USD before summing/bucketing, same proven infrastructure as
+        // closer.tsx/weekly-report.server.ts.
+        const windowFxRates = await fetchFxRates(
+          fxFn,
+          {
+            rows: callList,
+            getCurrency: (c: (typeof callList)[number]) => c.original_currency,
+            getDate: (c: (typeof callList)[number]) => c.created_at?.slice(0, 10),
+          },
+          {
+            rows: actList,
+            getCurrency: (a: (typeof actList)[number]) => a.original_currency,
+            getDate: (a: (typeof actList)[number]) => a.activity_date,
+          },
+        );
+        let windowFxIncomplete = false;
+        // Remediation (metric-dictionary audit): Booked/Showed/Cash previously
+        // took Math.max() of two independently-sourced, non-reconciled
+        // datasets — self-reported setter_activity (the rep's own EOD log)
+        // vs. closer-logged `calls` rows — which could silently blend
+        // sources per metric and overstate either figure. These are
+        // genuinely different concepts (a rep's own booking activity vs. a
+        // closer's logged call outcomes), so per the app's OWN existing
+        // canonical source for this exact question — the DM Setter/Inbound
+        // Dialer dashboards (activity-module.tsx) already treat
+        // setter_activity.calls_on_calendar/live_calls/cash_collected_cents
+        // as the sole source of truth for a rep's Booked/Showed/Cash — Team
+        // Snapshot now reuses that same canonical source instead of
+        // inventing a new blended figure. `calls` stays the sole source for
+        // "Closed" (a closer-side outcome, never blended) and for the
+        // per-closer breakdown below, which is a different, non-overlapping
+        // question ("who closed what") than "how much did reps book/show."
         const setBooked = actList.reduce((s, a) => s + (a.calls_on_calendar ?? 0), 0);
         const setShowed = actList.reduce((s, a) => s + (a.live_calls ?? 0), 0);
-        const setCash = actList.reduce((s, a) => s + (a.cash_collected_cents ?? 0), 0);
-        const callCash = callList.reduce((s, c) => s + (c.cash_collected_cents ?? 0), 0);
+        let setCash = 0;
+        for (const a of actList) {
+          const r = usdCentsForRow(
+            a.cash_collected_cents,
+            a.original_currency,
+            a.activity_date,
+            windowFxRates,
+          );
+          setCash += r.usd;
+          if (r.excluded) windowFxIncomplete = true;
+        }
         return {
-          booked: Math.max(callList.length, setBooked),
-          showed: Math.max(callList.filter((c) => c.showed).length, setShowed),
+          booked: setBooked,
+          showed: setShowed,
           closed: callList.filter((c) => c.closed).length,
-          cash: Math.max(callCash, setCash),
+          cash: setCash,
           callList,
           actList,
+          fxRates: windowFxRates,
+          fxIncomplete: windowFxIncomplete,
         };
       };
       const [curr, prev] = await Promise.all([
@@ -440,7 +525,12 @@ function Team() {
         const r = closerMap.get(name) ?? { name, calls: 0, closes: 0, cash: 0 };
         r.calls += 1;
         if (c.closed) r.closes += 1;
-        r.cash += c.cash_collected_cents ?? 0;
+        r.cash += usdCentsForRow(
+          c.cash_collected_cents,
+          c.original_currency,
+          c.created_at?.slice(0, 10),
+          curr.fxRates,
+        ).usd;
         closerMap.set(name, r);
       }
       const setterMap = new Map<string, HubSetterPerson>();
@@ -453,7 +543,12 @@ function Team() {
         };
         r.sets += a.sets ?? 0;
         r.closes += a.closes ?? 0;
-        r.cash += a.cash_collected_cents ?? 0;
+        r.cash += usdCentsForRow(
+          a.cash_collected_cents,
+          a.original_currency,
+          a.activity_date,
+          curr.fxRates,
+        ).usd;
         setterMap.set(a.team_member_name, r);
       }
 
@@ -462,6 +557,7 @@ function Team() {
         prev: { booked: prev.booked, showed: prev.showed, closed: prev.closed, cash: prev.cash },
         closers: Array.from(closerMap.values()),
         setters: Array.from(setterMap.values()),
+        fxIncomplete: curr.fxIncomplete || prev.fxIncomplete,
       };
     },
   });
@@ -533,7 +629,9 @@ function Team() {
     },
     {
       key: "cash",
-      label: "Cash Collected (30D)",
+      label: team30d?.fxIncomplete
+        ? "Cash Collected (30D) · FX incomplete"
+        : "Cash Collected (30D)",
       value: fmtMoney(t?.cash ?? 0),
       spectrum: "hot",
       featured: true,
@@ -721,8 +819,16 @@ function Team() {
                         {m.shown ? `${((m.closes / m.shown) * 100).toFixed(0)}%` : "—"}
                       </td>
                       <td className="p-3">
-                        <span className="rounded bg-[color:var(--color-success)]/15 px-1.5 py-0.5 text-3xs text-[color:var(--color-success)]">
-                          Active
+                        {/* Remediation (metric-dictionary audit, SALE-0179): this
+                            previously hardcoded "Active" for every row. There is no
+                            active/inactive column on `memberships` and no deactivate
+                            mutation anywhere in this app — a row only ever appears
+                            here because the membership genuinely exists, so a
+                            variable status can't be shown honestly; this neutral
+                            label no longer implies a monitored lifecycle state the
+                            data model doesn't actually track. */}
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-3xs text-muted-foreground">
+                          Member
                         </span>
                       </td>
                     </tr>

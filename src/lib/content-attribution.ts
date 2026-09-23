@@ -69,6 +69,14 @@ export function buildAttributionPathsForModel(
           personKey: call.lead_id,
           outcomeKey: call.id,
           contentId: lead.source_content_id,
+          // Remediation (metric-dictionary audit, Task 6): this schema has
+          // no separate "bookings" table — a `calls` row IS the booking
+          // record (scheduled_for + closed), so call.id is a real,
+          // deterministic bookingId, not an inference. paymentId stays
+          // unset (defaults null) — payments.call_id is never written by
+          // any processor webhook today (Phase 1 finding), so there is no
+          // deterministic call->payment link to populate honestly.
+          bookingId: call.id,
           callId: call.id,
           setterId: call.setterId ?? null,
           closerId: call.closerId ?? null,
@@ -97,6 +105,7 @@ export function buildAttributionPathsForModel(
           personKey: call.lead_id,
           outcomeKey: call.id,
           contentId: call.source_content_id,
+          bookingId: call.id,
           callId: call.id,
           setterId: call.setterId ?? null,
           closerId: call.closerId ?? null,
@@ -125,6 +134,7 @@ export function buildAttributionPathsForModel(
           personKey: call.lead_id,
           outcomeKey: call.id,
           contentId: touch.content_id,
+          bookingId: call.id,
           callId: call.id,
           setterId: call.setterId ?? null,
           closerId: call.closerId ?? null,
@@ -156,6 +166,7 @@ export function buildAttributionPathsForModel(
             personKey: call.lead_id,
             outcomeKey: call.id,
             contentId: touch.content_id,
+            bookingId: call.id,
             callId: call.id,
             setterId: call.setterId ?? null,
             closerId: call.closerId ?? null,
