@@ -14,11 +14,12 @@ rather than pretending this has stayed a read-only document throughout.
 ## Repository State
 
 - **Branch:** `upgrade/localhost-8081-command-center`
-- **HEAD:** `47e7d21` — "feat: role SOPs + Help center, real access-control matrix, Main Hub
-  layout pass" (2026-09-20 18:49 -0400)
-- **Working tree:** ~35 modified files + ~30 untracked files (docs, test files, new webhook
-  routes, new migrations, `n8n/`, `.claude/`). Full list captured under **Uncommitted Work**
-  below, classified by which initiative each belongs to.
+- **HEAD:** `158902c` — "fix: timezone-dependent date handling in schedules, trend buckets, and
+  tests" (2026-09-24). Pushed; local and `origin` are in sync. `main` untouched.
+- **Working tree:** clean. Only `.claude/` and `supabase/.temp/` remain untracked, both local
+  tooling state that is deliberately not committed.
+- **Test suite:** 384/384 passing, verified in every timezone from UTC−11 to UTC+14. The
+  long-standing 383/384 state is resolved — see "Timezone date handling" below.
 - **Known unrelated/concurrent work:** this branch also carries a second, larger implementation
   pass — described in `docs/implementation-status.md` and `docs/claude-code-handoff.md` — that is
   **not part of this AscendOS session's own history**. Its handoff doc references a different
@@ -58,6 +59,7 @@ Verified against current code (file:line or command evidence), not against what 
 | Lifecycle event model, notification-service boundary, EOD RBAC (as of commit `44909e45`) | Per `docs/implementation-status.md`; files exist on disk (`lifecycle-events.ts`, `notification-service.ts`) | **B** — real code, genuinely the other initiative's, not independently re-verified here (out of scope to re-audit another initiative's work). Note: `speed-to-lead.ts` and `operational-workflow-panel.tsx` also originate from `44909e45`, but the edits this session found on them were *this* initiative's — see the Correction under Repository State |
 | **Content Signals architecture decision** | Resolved — see "Final Content Signals Architecture" below | **A** |
 | **Metrics workbook** (`docs/ascendos-metrics-workbook.xlsx`, commit `28b5df3`) | Formatted .xlsx built from the 834-metric CSV: one tab per AscendOS page, grouped by section, yellow input cells as automation placeholders, 31 funnel rates wired as live formulas reading those inputs. Rates only wired where both operands exist as metrics on the same tab — the CSV's formula column describes DB columns, not metric names, so parsing it would have produced formulas silently pointing at wrong rows | **A** |
+| **Timezone date handling** (commit `158902c`) | Three real date bugs, all one root cause: parsing a plain `YYYY-MM-DD` as *local* midnight then emitting it back through `toISOString()`, which shifts the calendar date a day earlier for anyone ahead of UTC. `generatePaymentSchedule` produced every installment due date a day early (feeds schedule items, the overdue calculation, and the recovery queue); `dailySeries`/`priorPeriod` shifted chart bucket keys and prior-period windows the same way on every dashboard. All three now parse and advance in UTC — a due date or bucket key is a calendar date, not an instant — which also removes DST sensitivity from the fixed-86400000ms day arithmetic. See "Timezone date handling" below for the two deliberately local-zone functions that were **not** changed | **A** |
 | **Light-mode sweep** (commit `cc23dfd`) | Walked Settings, Main Hub, Payments, Team Calendar, Closer, Content Command Center, Webinar Analytics and Team in light mode. **Light mode is in good shape** — `styles.css` carries a real hand-built `.light` palette (not an inversion), light variants for the glass tokens, and only 6 raw alpha utilities app-wide. The one real bug found was theme-agnostic: "Not tracked" rendering at hero-number scale, fixed via an explicit `unavailable` prop on MetricCard | **A** |
 
 ---
@@ -251,9 +253,10 @@ Sources consulted: [WebinarJam custom webhook setup](https://support.webinarjam.
 **Update, 2026-09-24: everything in this section is now committed.** `3d0807a`
 ("fix: currency-mixing remediation, payment FX normalization, connector registry UI", 60 files),
 `bc0cecc` (`live-ticker.tsx`, missed in the first commit), `8e738fb` (WebinarJam readiness),
-`28b5df3` (metrics workbook), `cc23dfd` (unavailable-state KPI rendering) and `73d0a30` (the
-seven misattributed remediation files). Nothing from this initiative remains in the working
-tree — only `.claude/` and `supabase/.temp/`, both local tooling state.
+`28b5df3` (metrics workbook), `cc23dfd` (unavailable-state KPI rendering), `73d0a30` (the
+seven misattributed remediation files) and `158902c` (timezone date handling). Nothing from this
+initiative remains in the working tree — only `.claude/` and `supabase/.temp/`, both local
+tooling state. All of it is pushed; local and `origin` are in sync.
 
 **AscendOS session's own work — committed (`3d0807a`, `bc0cecc`):**
 `currency.ts`/`currency.test.ts`, `fx.functions.ts`/`fx.server.ts`/`fx.server.test.ts`,
@@ -325,19 +328,54 @@ What remains, and what each is waiting on:
 | Meta Ads spend feed | A decision from you on whether ad-spend tracking is wanted at all — it needs OAuth infrastructure built first (real, scoped work) |
 | Sales CRM | Deferred by you |
 
-**Resolved (2026-09-24):** the seven files previously flagged here as a loose end were this
-initiative's own remediation, not another's — now committed as `73d0a30`. See the Correction
-under Repository State.
-
-**One genuine loose end remains:** the suite's single failing test,
-`speed-to-lead.test.ts` — "filters event segments by rep, source, campaign, weekday, and time"
-(383/384 pass). It is **inherited from commit `44909e45`** and has failed for this entire
-project; nothing in this initiative touched it (both `speed-to-lead` diffs in `73d0a30` are
-purely additive, 0 lines removed, and the failing test's own code is untouched). It belongs to
-the other initiative's `filterSpeedEvents` work and has never been investigated.
+**Both loose ends previously listed here are now closed (2026-09-24):** the seven misattributed
+files are committed as `73d0a30` (see the Correction under Repository State), and the suite's
+long-standing failing test is fixed as part of `158902c` (see below). No loose ends remain.
 
 ---
 
-No commit/push in this update — the WebinarJam readiness code changes (route, migration, registry
-entry, panel card) were made to the application per your request; this document's own edits are
-the only change made to produce this particular status update.
+## Timezone date handling
+
+The suite's single failing test — `speed-to-lead.test.ts`, "filters event segments by rep,
+source, campaign, weekday, and time" — had failed since commit `44909e45` and was assumed to be
+the other initiative's problem. Investigating it turned up three genuine production bugs and two
+bad tests. Worth recording in full, because the distinction between the two groups is the part
+that's easy to get backwards.
+
+**Fixed as bugs — parse-local, emit-UTC (three sites).** All shared one root cause: parsing a
+plain `YYYY-MM-DD` as local midnight, then emitting it back through `toISOString()`. In Tokyo,
+`new Date("2026-10-01T00:00:00")` is `2026-09-30T15:00Z`, so the date comes back out a day early.
+
+- `generatePaymentSchedule` (`mentee-payments.ts`) — **every installment due date a day early**
+  for anyone ahead of UTC. Feeds schedule items, the overdue calculation, and the recovery queue.
+- `dailySeries` and `priorPeriod` (`trend.ts`) — chart bucket keys and prior-period comparison
+  windows shifted the same way, on every dashboard.
+
+All three now parse and advance in UTC (`T00:00:00Z`, `setUTCMonth`), since a due date or a
+bucket key is a calendar date rather than an instant. This also removes DST sensitivity from
+their fixed-86400000ms day arithmetic.
+
+**Deliberately NOT changed — genuinely local-zone (two sites).** Both are correct as written, and
+both now carry a comment saying so, because the obvious "fix" to each is wrong:
+
+- `filterSpeedEvents` (`speed-to-lead.ts`) uses `getDay()`/`getHours()` because it backs weekday
+  and time-of-day dropdowns — a user picking "Tuesday, 5–8pm" means their own working hours.
+  Converting it to UTC would silently reinterpret every such filter.
+- `daysUntilDate` (`client-risk.ts`) uses local midnight on *both* sides of its subtraction, which
+  is the right semantic for "renewal due in 9d" shown to a person.
+
+Their two tests were the defect: both pinned local-zone functions with `"…Z"` literals, which
+only land on the intended local date in some zones. That is why the original failure passed at
+`44909e45` — that commit's own timestamp is `+0000`, i.e. it was authored in a UTC environment.
+Fixtures are now built from local components.
+
+**Verification:** the full suite is run across nine zones spanning UTC−11 to UTC+14
+(`Pacific/Midway` → `Pacific/Kiritimati`); 384/384 in all of them. Previously it was green only
+near UTC. A single-timezone test run cannot catch this class of bug — worth remembering before
+trusting a green suite on date logic.
+
+---
+
+Everything described above is committed and pushed to
+`origin/upgrade/localhost-8081-command-center` (`47e7d21..158902c`, 9 commits, 76 files).
+`main` is untouched.
