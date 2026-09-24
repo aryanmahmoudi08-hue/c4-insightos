@@ -87,7 +87,10 @@ describe("transparent health", () => {
         failedCents: 5000,
         daysSinceActivity: 9,
       },
-      new Date("2026-09-01T12:00:00Z"),
+      // Local, matching FIXED_NOW's convention at the top of this file —
+      // daysUntilDate() counts calendar days in the viewer's zone, so a "Z"
+      // instant here lands on a different local date past UTC+12.
+      new Date("2026-09-01T12:00:00"),
     );
     expect(result.status).toBe("at_risk");
     expect(result.score).toBeLessThan(60);

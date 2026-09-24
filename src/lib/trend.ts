@@ -18,8 +18,12 @@ export function dailySeries<T>(
   getDate: (row: T) => string | null | undefined,
   metrics: Record<string, (row: T) => number>,
 ): SeriesPoint[] {
-  const start = new Date(`${from}T00:00:00`);
-  const end = new Date(`${to}T00:00:00`);
+  // UTC, not local: these are calendar dates that get emitted straight back
+  // out as YYYY-MM-DD bucket keys below. Parsing as local midnight shifted
+  // every bucket label a day earlier for viewers ahead of UTC (and made the
+  // day-arithmetic below DST-sensitive).
+  const start = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
   const totalDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
   const keys = Object.keys(metrics);
   const days: SeriesPoint[] = [];
@@ -104,8 +108,10 @@ export function mergeBySourceTotal(
 
 /** [from, to] shifted back by its own length — the prior equivalent period for a delta comparison. */
 export function priorPeriod(from: string, to: string): { from: string; to: string } {
-  const start = new Date(`${from}T00:00:00`);
-  const end = new Date(`${to}T00:00:00`);
+  // UTC for the same reason as dailySeries above — both bounds are returned
+  // as YYYY-MM-DD strings.
+  const start = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
   const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
   const prevTo = new Date(start.getTime() - 86400000);
   const prevFrom = new Date(start.getTime() - days * 86400000);

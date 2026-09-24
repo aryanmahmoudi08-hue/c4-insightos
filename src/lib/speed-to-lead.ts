@@ -274,6 +274,10 @@ export function filterSpeedEvents(events: SpeedToLeadEvent[], filters: SpeedSegm
     if (filters.weekday != null || filters.hourStart != null || filters.hourEnd != null) {
       const timestamp = event.leadAssignedAt ?? event.leadCreatedAt;
       if (!timestamp) return false;
+      // Deliberately local-zone (getDay/getHours, not the UTC variants): these
+      // two filters are driven by "weekday" / "time of day" dropdowns, where
+      // the user means their own working hours, not UTC. Tests covering them
+      // must build fixtures from local components rather than Z literals.
       const date = new Date(timestamp);
       if (filters.weekday != null && date.getDay() !== filters.weekday) return false;
       const hour = date.getHours();

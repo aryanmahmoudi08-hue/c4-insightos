@@ -143,22 +143,30 @@ describe("speed to lead", () => {
   });
 
   it("filters event segments by rep, source, campaign, weekday, and time", () => {
+    // weekday/hourStart are matched with Date#getDay()/getHours(), i.e. in the
+    // viewer's local zone — correct for the UI dropdowns that drive them, but
+    // it means a hardcoded "...T18:00:00Z" literal only lands on hour 18 when
+    // the test runner happens to be on UTC. Build the timestamps from local
+    // components instead so the assertions hold in any timezone.
+    const mondayMorning = new Date(2026, 7, 24, 9, 0, 0); // Mon 2026-08-24 09:00 local
+    const tuesdayEvening = new Date(2026, 7, 25, 18, 0, 0); // Tue 2026-08-25 18:00 local
     const events = [
       {
         repId: "rep-a",
         sourcePlatform: "Instagram",
         leadSource: "inbound",
         campaign: "launch",
-        leadCreatedAt: "2026-08-24T09:00:00Z",
+        leadCreatedAt: mondayMorning.toISOString(),
       },
       {
         repId: "rep-b",
         sourcePlatform: "YouTube",
         leadSource: "organic",
         campaign: "evergreen",
-        leadCreatedAt: "2026-08-25T18:00:00Z",
+        leadCreatedAt: tuesdayEvening.toISOString(),
       },
     ];
+    expect(tuesdayEvening.getDay()).toBe(2);
     expect(
       filterSpeedEvents(events, {
         repId: "rep-a",

@@ -41,10 +41,14 @@ export function generatePaymentSchedule(client: ScheduleClientInput): GeneratedS
   const amount = client.installment_amount_cents ?? 0;
   if (count <= 0 || amount <= 0 || !client.expected_next_payment_date) return [];
   const items: GeneratedScheduleItem[] = [];
-  const start = new Date(`${client.expected_next_payment_date}T00:00:00`);
+  // A due date is a calendar date, not an instant — parse and advance it in
+  // UTC so it never round-trips through the viewer's zone. Parsing as local
+  // midnight and emitting via toISOString() shifted every due date a day
+  // earlier for anyone ahead of UTC.
+  const start = new Date(`${client.expected_next_payment_date}T00:00:00Z`);
   for (let i = 0; i < count; i++) {
     const due = new Date(start);
-    due.setMonth(due.getMonth() + i);
+    due.setUTCMonth(due.getUTCMonth() + i);
     items.push({ due_date: due.toISOString().slice(0, 10), amount_cents: amount });
   }
   return items;
