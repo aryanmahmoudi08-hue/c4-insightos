@@ -59,6 +59,7 @@ Verified against current code (file:line or command evidence), not against what 
 | Lifecycle event model, notification-service boundary, EOD RBAC (as of commit `44909e45`) | Per `docs/implementation-status.md`; files exist on disk (`lifecycle-events.ts`, `notification-service.ts`) | **B** — real code, genuinely the other initiative's, not independently re-verified here (out of scope to re-audit another initiative's work). Note: `speed-to-lead.ts` and `operational-workflow-panel.tsx` also originate from `44909e45`, but the edits this session found on them were *this* initiative's — see the Correction under Repository State |
 | **Content Signals architecture decision** | Resolved — see "Final Content Signals Architecture" below | **A** |
 | **Metrics workbook** (`docs/ascendos-metrics-workbook.xlsx`, commit `28b5df3`) | Formatted .xlsx built from the 834-metric CSV: one tab per AscendOS page, grouped by section, yellow input cells as automation placeholders, 31 funnel rates wired as live formulas reading those inputs. Rates only wired where both operands exist as metrics on the same tab — the CSV's formula column describes DB columns, not metric names, so parsing it would have produced formulas silently pointing at wrong rows | **A** |
+| **Meta ad spend pull** (commit `1aeac24`) | Campaign-day spend into `acquisition_spend` — the source Ad Spend/ROAS/CPC/CPL/CPA and MAIN-0019 always read but never had. Closes `87681e3`'s loose end: `needsRefresh()` had no caller, so a 60-day token would have died silently; `getMetaAccessToken` is now the sole read path and refreshes lazily, which is honest given this repo has no scheduler. **Currency comes from the ad-account listing, not the insights row** — defaulting to USD would mis-denominate every non-USD account, the exact failure the currency remediation fixed; an unresolvable currency skips the row rather than assuming. Idempotent on `campaign_id:date_start` because Meta restates recent days. `time_increment=1` (without it the range collapses to one aggregate row); `paid_visits` left null since clicks ≠ landing-page visits. 16 tests, records asserted against the app's own validator. **Untested against a live Meta app** | **A** (code); needs a Meta app to verify |
 | **Connector OAuth capability + Meta Ads** (commit `87681e3`) | The registry only ever supported pasted webhook secrets — the reason every ad platform was blocked. Adds the authorization-code flow generically, with Meta as first consumer. **Security-relevant:** tokens are *not* in `connector_connections.config`, because that table has an "org members read" policy and the panel already ships `config` to the browser — acceptable for a pasted webhook secret, not for a live ads token. `connector_oauth_tokens`/`_states` are service-role only (RLS on, no policy, grants revoked). CSRF state is 256-bit, single-use (burned before exchange), 10-minute TTL, with `redirect_uri` pinned on the state row rather than recomputed. Endpoints/params from Meta's docs, pinned to Graph v25.0, `ads_read` only. 18 unit tests via injectable fetch. **Untested end to end** until real `META_APP_ID`/`META_APP_SECRET` exist — see below | **D** — needs a Meta app |
 | **Webinar metrics entry** (commit `5b77d87`) | Manual + CSV entry for `public.webinar_metrics`. The page already read this table in two places; nothing could write to it, which is why its Executive KPI and Closing & Return groups had no data and 54 metrics sat blocked. This is the contract's own §5 degraded path — filling the day-level rollup lights those groups up with **no event-level integration at all**, the way VSL Analytics has always worked. Parsing/coercion is pure and unit-tested (11 tests); absent columns and blank cells stay null because 0 is a real measurement here and null is "not supplied". Header matching prefers exact over substring so `sales` can't be captured by the `upsell_sales` lookup; unrecognized headers are reported, not silently imported as nulls. CSV import shows a live preview of rows/columns matched before committing. `parseCSVLine`/`csvNumber` extracted to `csv.ts` and shared with `vsl.functions.ts` — one quoted-cell parser, not two | **A** |
 | **Close CRM mirror** (commit `6aa094a`) | One-way Close → AscendOS lead mirror. Receiver at `/api/public/close` verifying Close's HMAC exactly as their reference implementation does (`signature_key` hex-decoded to bytes, signed string is `close-sig-timestamp` + raw body, hex digest, constant-time compare). Idempotent upsert on `(org_id, source_connector, external_id)` behind a new partial unique index, since Close retries a failed delivery for up to 72h. Connector registry row, requirements entry and Connections card included. Field names taken from Close's API docs, not guessed. **Two deliberate non-mappings:** status is not mirrored (see Product Decisions Required), and a lead `deleted` event does not delete — AscendOS leads are referenced by calls, payments and attribution rows that Close never owned. Both captured in `raw_payloads` | **A** (code); connecting it needs a Close API key |
@@ -339,11 +340,17 @@ None of the above were changed to produce this document.
 
 ## Current Recommended Next Task
 
-**Start entering webinar metrics.** It's the only thing here that needs nothing external — no API
-key, no client, no approval. Create a webinar, then use "Add metrics" to enter or paste a day's
-numbers, and the Executive KPI and Closing & Return groups start reporting immediately.
+**Start entering webinar metrics**, then get accounts for the integrations that are now waiting on
+them.
 
-Everything else is waiting on access or a decision from you.
+Webinar metrics is the only remaining item that needs nothing external — no API key, no client, no
+approval. Create a webinar, use "Add metrics", and the Executive KPI and Closing & Return groups
+report immediately.
+
+Beyond that, the build queue is empty: **five integrations are now built and idle**, each waiting
+only on credentials (Close API key, Meta app, WebinarJam client). Further integration work has hit
+diminishing returns until accounts exist — the useful next move is obtaining them, not building a
+sixth.
 
 Every item that could be built without a decision from you has been. A back-to-front review of
 the full ChatGPT planning thread (Sep 4 → present) turned up two things never built — the metrics
@@ -360,7 +367,7 @@ What remains, and what each is waiting on:
 | WebinarJam field mapping | A client account, to send one real webhook so the payload shape can be read instead of guessed. Receiver and the webinar record it attaches to are both built |
 | Historical payment FX backfill | Authorized production Supabase access **and** your approval to rewrite historical financial records |
 | Meta Ads — connect it | A Meta app: `META_APP_ID`/`META_APP_SECRET` as server env vars, plus `{origin}/api/public/oauth/meta` registered as a redirect URI. OAuth itself is built |
-| Meta Ads — spend pull | Nothing from you — buildable once the connection works, since it needs a live token to develop against. `acquisition_spend` is already the destination |
+| Meta Ads — verify end to end | Built (`1aeac24`), untested against a real app. Once connected: Settings → Connections → Meta Ads → **Sync last 30 days** |
 | Metrics workbook automation | You, to upload `docs/ascendos-metrics-workbook.xlsx` to Google Sheets and point Typeform/Zapier at its input cells |
 | Webinar Analytics event-level metrics | Nothing — the aggregate groups work today via manual/CSV entry. Only the per-attendee groups (Audience Retention, During/After-Pitch) still need a real event feed, since they need per-event granularity a daily rollup can't carry |
 
