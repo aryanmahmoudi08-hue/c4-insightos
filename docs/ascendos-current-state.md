@@ -48,6 +48,8 @@ Verified against current code (file:line or command evidence), not against what 
 | Payments page: full audit + redesign (recovery-queue consolidation, stat-row split, Payment Notifications, Expected vs. Actual chart, merged LTV tables, promoted Renewal Pipeline & Workflow) | **Already implemented and committed** — see "Historical / Superseded Work" below. Verified via `grep`: `recovery-queue-panel.tsx` exists, tracked since commit `ba303ff` (2026-09-19), wired into `_authenticated.payments.tsx:37,1187`; `mentee-operations-panel.tsx`'s own comment documents the exact consolidation ("Payment recovery used to live here too; it moved to `RecoveryQueuePanel`... one recovery workflow on the page, not two"); `payments.tsx` contains `Payment Notifications` (req. #1) and `Expected vs. actual collections` (req. #4/§D) sections with comments citing the plan's own requirement numbers; `mentee-renewal-panel.tsx`'s tab strip is down to 4 tabs (All mentees / At-risk / LTV by offer / Retention analytics) with "Collected LTV by offer moved into the 'LTV by offer' tab" — matching the plan's §C merge exactly | **A** (superseded plan file, not a pending task) |
 | Lifecycle event model, notification-service boundary, EOD RBAC (as of commit `44909e45`) | Per `docs/implementation-status.md`; files exist on disk (`lifecycle-events.ts`, `notification-service.ts`) | **B** — real code, part of the other initiative, not independently re-verified by this reconciliation (out of scope to re-audit another initiative's work); current copies have further *uncommitted* edits not covered by that doc's own verification snapshot |
 | **Content Signals architecture decision** | Resolved — see "Final Content Signals Architecture" below | **A** |
+| **Metrics workbook** (`docs/ascendos-metrics-workbook.xlsx`, commit `28b5df3`) | Formatted .xlsx built from the 834-metric CSV: one tab per AscendOS page, grouped by section, yellow input cells as automation placeholders, 31 funnel rates wired as live formulas reading those inputs. Rates only wired where both operands exist as metrics on the same tab — the CSV's formula column describes DB columns, not metric names, so parsing it would have produced formulas silently pointing at wrong rows | **A** |
+| **Light-mode sweep** (commit `cc23dfd`) | Walked Settings, Main Hub, Payments, Team Calendar, Closer, Content Command Center, Webinar Analytics and Team in light mode. **Light mode is in good shape** — `styles.css` carries a real hand-built `.light` palette (not an inversion), light variants for the glass tokens, and only 6 raw alpha utilities app-wide. The one real bug found was theme-agnostic: "Not tracked" rendering at hero-number scale, fixed via an explicit `unavailable` prop on MetricCard | **A** |
 
 ---
 
@@ -287,24 +289,29 @@ None of the above were changed to produce this document.
 
 ## Current Recommended Next Task
 
-**Send one real WebinarJam test delivery, then confirm you want a "create webinar" admin form
-built.**
+**Nothing in AscendOS's own scope is both unblocked and undecided. The next move is yours.**
 
-The prior "commit the accumulated work" task is done. What's left in AscendOS's own scope is no
-longer a decision or a commit — it's two concrete, small prerequisites for finishing the WebinarJam
-integration, both already documented under "WebinarJam ingest readiness" above:
+As of 2026-09-24 every actionable item in this initiative is finished and committed. A
+back-to-front review of the full ChatGPT planning thread (Sep 4 → present) turned up only two
+things that had never been built — the metrics workbook and the light-mode sweep — and both are
+now done. Everything else in that thread was verified present in code.
 
-1. **You**: connect WebinarJam in Settings → Connections, point its custom webhook at the
-   generated URL, and trigger one real registration or attendance event. That's the only way to
-   see WebinarJam's actual payload field names — they're not in their public docs.
-2. **Me, once you confirm**: inspect the row that lands in `raw_payloads`, wire the real
-   `record_webinar_event()` field mapping, and build the small missing "create/edit webinar" form
-   (`public.webinars` has no insert path anywhere in the app today — a hard prerequisite for any
-   event to attach to).
+What remains, and what each is waiting on:
 
-Everything else remains as previously stated: Main Hub, currency/FX remediation, and the Payments
-page are shipped; the historical FX backfill stays blocked on data access + approval; Meta Ads
-needs the separate OAuth infrastructure track; Content Signals and Sales CRM are resolved/deferred.
+| Item | Waiting on |
+|---|---|
+| WebinarJam field mapping + "create webinar" form | A client to connect. Receiver is built and committed; parked until there's a real account to point at it |
+| Historical payment FX backfill | Authorized production Supabase access **and** your approval to rewrite historical financial records |
+| Meta Ads spend feed | A decision from you on whether ad-spend tracking is wanted at all — it needs OAuth infrastructure built first (real, scoped work) |
+| Sales CRM | Deferred by you |
+
+**One loose end worth a decision:** seven files belonging to the other "InsightOS
+completion-enforcement" initiative have sat uncommitted in the working tree for this entire
+session (`activity-module.tsx`, `calls-on-calendar.tsx`, `hub-operating-metrics.tsx`,
+`mentee-operations-panel.tsx`, `operational-workflow-panel.tsx`, `speed-to-lead.ts`/`.test.ts`),
+and they carry the one failing test in the suite (`speed-to-lead.test.ts` — "filters event
+segments by rep, source, campaign, weekday, and time"). Left untouched throughout, deliberately.
+Someone should decide whether that work gets finished, committed, or reverted.
 
 ---
 
