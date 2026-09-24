@@ -59,6 +59,7 @@ Verified against current code (file:line or command evidence), not against what 
 | Lifecycle event model, notification-service boundary, EOD RBAC (as of commit `44909e45`) | Per `docs/implementation-status.md`; files exist on disk (`lifecycle-events.ts`, `notification-service.ts`) | **B** — real code, genuinely the other initiative's, not independently re-verified here (out of scope to re-audit another initiative's work). Note: `speed-to-lead.ts` and `operational-workflow-panel.tsx` also originate from `44909e45`, but the edits this session found on them were *this* initiative's — see the Correction under Repository State |
 | **Content Signals architecture decision** | Resolved — see "Final Content Signals Architecture" below | **A** |
 | **Metrics workbook** (`docs/ascendos-metrics-workbook.xlsx`, commit `28b5df3`) | Formatted .xlsx built from the 834-metric CSV: one tab per AscendOS page, grouped by section, yellow input cells as automation placeholders, 31 funnel rates wired as live formulas reading those inputs. Rates only wired where both operands exist as metrics on the same tab — the CSV's formula column describes DB columns, not metric names, so parsing it would have produced formulas silently pointing at wrong rows | **A** |
+| **Create/edit webinars** (commit `fe3f162`) | `WebinarFormDialog` — the first and only write path into `public.webinars`. Reachable from a "New" button beside the webinar selector and from the empty state's own action slot (already supported, previously unused — the page told users to "Create a webinar" with no way to do it). Gated on `useResourcePermissions().can_edit`, disabled under dev bypass with an explanation rather than failing on submit. Unblocks `record_webinar_event()`, whose `p_webinar_id` is a hard FK. Verified in both themes | **A** |
 | **Timezone date handling** (commit `158902c`) | Three real date bugs, all one root cause: parsing a plain `YYYY-MM-DD` as *local* midnight then emitting it back through `toISOString()`, which shifts the calendar date a day earlier for anyone ahead of UTC. `generatePaymentSchedule` produced every installment due date a day early (feeds schedule items, the overdue calculation, and the recovery queue); `dailySeries`/`priorPeriod` shifted chart bucket keys and prior-period windows the same way on every dashboard. All three now parse and advance in UTC — a due date or bucket key is a calendar date, not an instant — which also removes DST sensitivity from the fixed-86400000ms day arithmetic. See "Timezone date handling" below for the two deliberately local-zone functions that were **not** changed | **A** |
 | **Light-mode sweep** (commit `cc23dfd`) | Walked Settings, Main Hub, Payments, Team Calendar, Closer, Content Command Center, Webinar Analytics and Team in light mode. **Light mode is in good shape** — `styles.css` carries a real hand-built `.light` palette (not an inversion), light variants for the glass tokens, and only 6 raw alpha utilities app-wide. The one real bug found was theme-agnostic: "Not tracked" rendering at hero-number scale, fixed via an explicit `unavailable` prop on MetricCard | **A** |
 
@@ -142,8 +143,37 @@ is recoverable from git history per the code's own comment — nothing was destr
 
 ## Product Decisions Required
 
-None currently open. The only item previously listed here — Content Signals embedded vs.
-standalone — is resolved; see "Final Content Signals Architecture" above.
+### Close CRM — which system owns a lead? (opened 2026-09-24)
+
+The business has decided **Close (close.com) is the CRM "for now"**, and it needs to connect to
+AscendOS. This **supersedes `docs/ascendos-external-integration-contract.md` §15**, which
+concluded "AscendOS *is* the CRM of record for this business; there is no external CRM to sync
+against." That was true when written and is now wrong — treat this entry as authoritative.
+
+The integration *mechanics* are unremarkable and already match patterns this repo has built
+twice: Close pushes [webhooks](https://developer.close.com/topics/webhooks/) on lead and
+opportunity events (created/updated/deleted, stage changes, won/lost) to an HTTPS endpoint, with
+exponential-backoff retries for up to 72 hours — the same shape as the five payment processors and
+WebinarJam, so a `src/routes/api/public/close.ts` receiver plus a connector-registry row would be
+straightforward. Close also has a REST API for the other direction.
+
+**What genuinely can't be decided without you**, and why this is filed here rather than as a
+build task:
+
+1. **Source of truth for a lead.** AscendOS already owns `leads`, and the whole Speed-to-Lead,
+   attribution, and rep-activity layer is built on it. If Close now owns leads, the two will
+   disagree the moment anyone edits either side. This needs an explicit answer — Close is
+   authoritative and AscendOS mirrors, AscendOS is authoritative and pushes to Close, or each
+   owns distinct fields — before any code is written. Dual-write with no decided owner is the
+   one outcome that reliably corrupts both systems.
+2. **Direction.** Read-only mirror from Close, write-back from AscendOS, or bidirectional.
+3. **Object mapping.** Close's Lead/Contact/Opportunity model doesn't map 1:1 onto AscendOS's
+   `leads`/`clients`/`calls`. In particular nothing here corresponds cleanly to an Opportunity.
+4. **Existing data.** What happens to the leads already in AscendOS — backfilled into Close,
+   left behind, or reconciled.
+
+Until 1 is answered the rest is guesswork, so no Close code has been written. Deliberately not
+started rather than built on an assumed answer.
 
 ---
 
@@ -161,6 +191,7 @@ written) cross-checked against current code — not re-audited from scratch here
 | **Discord** (notification delivery) | `notification-service.ts` boundary exists (other initiative); no real connector | **F** — belongs to the other initiative's scope, not AscendOS's |
 | **Telephony / messaging** (Inbound Dialer, DM Setter) | Per `implementation-status.md`: activity module + Speed-to-Lead queue exist; full provider-backed ingestion is connector-dependent | **F** — other initiative's scope |
 | **Typeform, Stripe, PayPal, Fanbasis, Wise, Whop, Calendly** | Already live, webhook-secret auth, no verified gap | Not applicable — done |
+| **Close CRM** | Newly required — the business has chosen Close as its CRM. **Supersedes the contract's §15 "no external CRM" finding.** Mechanics are well-trodden (Close pushes lead/opportunity webhooks, same receiver shape as the payment processors), but it is blocked on a source-of-truth decision, not on engineering — see Product Decisions Required | **E then F** — decision first, then build |
 | **Connector-registry OAuth capability** | Cross-cutting prerequisite: registry only supports webhook-secret/plain-URL auth today; Meta/TikTok/YouTube/LinkedIn all need OAuth | **F** — real scoped infrastructure work, blocks P1 regardless of which ad platform is picked |
 
 ### WebinarJam ingest readiness (built 2026-09-24)
@@ -312,21 +343,25 @@ None of the above were changed to produce this document.
 
 ## Current Recommended Next Task
 
-**Nothing in AscendOS's own scope is both unblocked and undecided. The next move is yours.**
+**Answer the Close CRM source-of-truth question.** It is the only open item where a decision
+unblocks real work, and the answer determines the shape of everything built after it — see
+Product Decisions Required above.
 
-As of 2026-09-24 every actionable item in this initiative is finished and committed. A
-back-to-front review of the full ChatGPT planning thread (Sep 4 → present) turned up only two
-things that had never been built — the metrics workbook and the light-mode sweep — and both are
-now done. Everything else in that thread was verified present in code.
+Every item that could be built without a decision from you has been. A back-to-front review of
+the full ChatGPT planning thread (Sep 4 → present) turned up two things never built — the metrics
+workbook and the light-mode sweep — both now done; the "create webinar" form, previously
+mis-filed as blocked behind WebinarJam, turned out to need nothing from WebinarJam at all and is
+now built (`fe3f162`).
 
 What remains, and what each is waiting on:
 
 | Item | Waiting on |
 |---|---|
-| WebinarJam field mapping + "create webinar" form | A client to connect. Receiver is built and committed; parked until there's a real account to point at it |
+| **Close CRM integration** | **A decision from you: which system owns a lead.** Mechanics are straightforward once that's settled |
+| WebinarJam field mapping | A client account, to send one real webhook so the payload shape can be read instead of guessed. Receiver and the webinar record it attaches to are both built |
 | Historical payment FX backfill | Authorized production Supabase access **and** your approval to rewrite historical financial records |
-| Meta Ads spend feed | A decision from you on whether ad-spend tracking is wanted at all — it needs OAuth infrastructure built first (real, scoped work) |
-| Sales CRM | Deferred by you |
+| Meta Ads spend feed | Your decision on whether ad-spend tracking is wanted at all — it needs OAuth infrastructure built first (real, scoped work) |
+| Metrics workbook automation | You, to upload `docs/ascendos-metrics-workbook.xlsx` to Google Sheets and point Typeform/Zapier at its input cells |
 
 **Both loose ends previously listed here are now closed (2026-09-24):** the seven misattributed
 files are committed as `73d0a30` (see the Correction under Repository State), and the suite's
