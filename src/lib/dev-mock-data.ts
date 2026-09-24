@@ -2429,3 +2429,209 @@ export function mockLeadResponseEvents() {
     }),
   );
 }
+
+/* ------------------------------------------------------------------ *
+ * Mentee Results (/fulfillment) and Event Bus (/events) fixtures.
+ *
+ * These two were the last authenticated pages with no Dev Bypass data —
+ * both queried Supabase directly, so a demo walkthrough hit "0 active
+ * mentees" and "0 events in range" while the other 24 pages showed a
+ * populated product. Everything below is shaped to the exact select lists
+ * those two routes issue.
+ * ------------------------------------------------------------------ */
+
+/** Per-mentee check-ins for Mentee Results. Richer than mockDailyWinsRows(),
+ * which has no win_description/blocker — this page renders both. */
+export function mockFulfillmentCheckpoints(clientId: string) {
+  const now = Date.now();
+  const seeds = [
+    {
+      win: "Closed the Henderson renewal a week early.",
+      types: ["financial"],
+      amount: 250_000,
+      energy: 9,
+      blocker: null,
+    },
+    {
+      win: "Ran the full outreach block without checking the phone once.",
+      types: ["habit"],
+      amount: 0,
+      energy: 8,
+      blocker: null,
+    },
+    {
+      win: "Rewrote the offer section of the pitch after listening back to three calls.",
+      types: ["mindset"],
+      amount: 0,
+      energy: 7,
+      blocker: "Still talking past the objection instead of sitting in it.",
+    },
+    {
+      win: "Two deposits collected off the Tuesday webinar list.",
+      types: ["financial", "habit"],
+      amount: 90_000,
+      energy: 8,
+      blocker: null,
+    },
+    {
+      win: "First week hitting the dial target every single day.",
+      types: ["habit"],
+      amount: 0,
+      energy: 6,
+      blocker: "Energy dipped hard on day four.",
+    },
+  ];
+  // Deterministic per client so switching between mentees shows different
+  // histories rather than the same five rows.
+  const offset = clientId.charCodeAt(clientId.length - 1) % 3;
+  return seeds.map((s, i) => ({
+    win_date: new Date(now - (i + offset) * 86400e3).toISOString().slice(0, 10),
+    win_description: s.win,
+    win_types: s.types,
+    financial_amount_cents: s.amount,
+    energy_score: s.energy,
+    blocker: s.blocker,
+  }));
+}
+
+/** One onboarding intake response. Keys are the exact ones /fulfillment's
+ * SignalCards read (current_pain, desired_identity, tried_before, fear,
+ * pivotal_moment, beliefs_shifted) — any other key renders as "No intake
+ * answer", which is what a guessed key set produced. */
+export function mockFulfillmentIntake() {
+  return {
+    submitted_at: new Date(Date.now() - 38 * 86400e3).toISOString(),
+    responses: {
+      current_pain:
+        "Revenue swings between $12K and $30K a month and I can never tell which one next month is going to be.",
+      desired_identity:
+        "The operator who knows his numbers cold — not the guy guessing from a gut feel and a Stripe dashboard.",
+      tried_before:
+        "Two agencies and a cold email tool. Both sold me leads; neither fixed the fact that half my booked calls never show.",
+      fear: "Hiring a second closer and finding out the bottleneck was me all along.",
+      pivotal_moment:
+        "Lost a $15K deal because nobody followed up for nine days. Nothing was broken — it just wasn't anyone's job.",
+      beliefs_shifted:
+        "Stopped believing this was a traffic problem once I saw show rate was the number actually moving.",
+    },
+  };
+}
+
+/** Live event stream rows for /events. */
+export function mockEventBusEvents() {
+  const now = Date.now();
+  const seeds: Array<[string, string, Record<string, unknown>]> = [
+    ["payment.collected", "payment", { amount_cents: 250_000, currency: "USD", source: "stripe" }],
+    ["call.closed_won", "call", { closer: "Alex Rivera", contract_value_cents: 500_000 }],
+    ["lead.created", "lead", { source: "meta_ads", campaign: "Evergreen — Broad" }],
+    ["call.booked", "call", { setter: "Sam Cole", scheduled_for: "tomorrow 15:00" }],
+    ["onboarding.submitted", "onboarding_response", { client: "Jordan Ellis" }],
+    ["payment.failed", "payment", { amount_cents: 125_000, reason: "insufficient_funds" }],
+    ["digest.weekly", "digest", { week_of: "2026-09-21" }],
+    ["alert.fired", "alert", { rule: "Show rate below baseline", severity: "warning" }],
+  ];
+  return seeds.map((s, i) => ({
+    id: `mock-event-${i + 1}`,
+    event_type: s[0],
+    subject_type: s[1],
+    payload: s[2],
+    occurred_at: new Date(now - i * 37 * 60_000).toISOString(),
+    actor_user_id: null,
+  }));
+}
+
+/** Webhook subscriptions (config, not a log — no date scoping). */
+export function mockWebhookSubscriptions() {
+  return [
+    {
+      id: "mock-sub-1",
+      org_id: DEV_BYPASS_ORG_ID,
+      name: "Discord event alerts",
+      target_url: "https://discord.com/api/webhooks/…",
+      channel: "discord",
+      event_types: ["lead.created", "call.booked", "call.closed_won", "payment.collected"],
+      active: true,
+      created_at: new Date(Date.now() - 52 * 86400e3).toISOString(),
+    },
+    {
+      id: "mock-sub-2",
+      org_id: DEV_BYPASS_ORG_ID,
+      name: "Zapier fan-out",
+      target_url: "https://hooks.zapier.com/hooks/catch/…",
+      channel: "zapier",
+      event_types: ["payment.collected", "digest.weekly"],
+      active: true,
+      created_at: new Date(Date.now() - 20 * 86400e3).toISOString(),
+    },
+  ];
+}
+
+/** Delivery attempts. Includes one real failure — a demo that only ever
+ * shows green teaches the wrong thing about what this page is for. */
+export function mockWebhookDeliveries() {
+  const now = Date.now();
+  return Array.from({ length: 12 }, (_, i) => {
+    const failed = i === 3;
+    return {
+      id: `mock-delivery-${i + 1}`,
+      status: failed ? "failed" : "delivered",
+      response_code: failed ? 500 : 200,
+      attempt: failed ? 3 : 1,
+      created_at: new Date(now - i * 41 * 60_000).toISOString(),
+      subscription_id: i % 2 === 0 ? "mock-sub-1" : "mock-sub-2",
+    };
+  });
+}
+
+/** Per-connector sync state. */
+export function mockConnectorSyncStatus() {
+  const now = Date.now();
+  return [
+    {
+      id: "mock-sync-1",
+      org_id: DEV_BYPASS_ORG_ID,
+      connection_id: "mock-conn-stripe",
+      resource: "default",
+      state: "connected",
+      last_sync_at: new Date(now - 6 * 60_000).toISOString(),
+      next_sync_at: new Date(now + 54 * 60_000).toISOString(),
+      cursor: null,
+      last_error: null,
+      records_synced: 418,
+      updated_at: new Date(now - 6 * 60_000).toISOString(),
+    },
+    {
+      id: "mock-sync-2",
+      org_id: DEV_BYPASS_ORG_ID,
+      connection_id: "mock-conn-typeform",
+      resource: "default",
+      state: "connected",
+      last_sync_at: new Date(now - 2 * 3600_000).toISOString(),
+      next_sync_at: new Date(now + 60 * 60_000).toISOString(),
+      cursor: null,
+      last_error: null,
+      records_synced: 96,
+      updated_at: new Date(now - 2 * 3600_000).toISOString(),
+    },
+  ];
+}
+
+/** Raw inbound payloads, including one that failed to process. */
+export function mockRawPayloads() {
+  const now = Date.now();
+  const seeds: Array<[string, string, string | null]> = [
+    ["charge.succeeded", "stripe", null],
+    ["form_response", "typeform", null],
+    ["charge.succeeded", "stripe", null],
+    ["payment.succeeded", "whop", "No matching client for payer email"],
+    ["form_response", "typeform", null],
+  ];
+  return seeds.map((s, i) => ({
+    id: `mock-raw-${i + 1}`,
+    resource: s[0],
+    connector_id: s[1],
+    received_at: new Date(now - i * 53 * 60_000).toISOString(),
+    processed_at: s[2] ? null : new Date(now - i * 53 * 60_000 + 900).toISOString(),
+    process_error: s[2],
+  }));
+}

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { TopBar } from "@/components/app-sidebar";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,11 @@ import {
 } from "lucide-react";
 import { DailyWinsPanel } from "@/components/daily-wins-panel";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
+import {
+  mockClients,
+  mockFulfillmentCheckpoints,
+  mockFulfillmentIntake,
+} from "@/lib/dev-mock-data";
 
 export const Route = createFileRoute("/_authenticated/fulfillment")({ component: Fulfillment });
 
@@ -42,6 +47,7 @@ type CheckpointRow = {
 function Fulfillment() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
+  const { devBypass } = useAuth();
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
@@ -59,11 +65,25 @@ function Fulfillment() {
       return (data ?? []) as ClientLite[];
     },
   });
+  // Dev Bypass has no session for RLS to scope, so the queries above come back
+  // empty and this page used to read "0 active mentees" in a demo. Fall back to
+  // the same mockClients() roster the Clients page uses, so the same mentees
+  // appear on both — only when the real result is genuinely empty, never
+  // overriding real data.
+  const demoClients = useMemo(
+    () =>
+      devBypass && (clients?.length ?? 0) === 0
+        ? (mockClients().filter((c) => c.status === "active") as unknown as ClientLite[])
+        : null,
+    [devBypass, clients],
+  );
+  const rosterClients = demoClients ?? clients;
 
   const { data: intake } = useQuery({
-    queryKey: ["fulfillment-intake", orgId, selected],
-    enabled: !!orgId && !!selected,
+    queryKey: ["fulfillment-intake", orgId, selected, devBypass],
+    enabled: (devBypass || !!orgId) && !!selected,
     queryFn: async () => {
+      if (devBypass) return mockFulfillmentIntake();
       const { data } = await supabase
         .from("onboarding_responses")
         .select("responses, submitted_at")
@@ -83,9 +103,10 @@ function Fulfillment() {
     isLoading: checkpointsLoading,
     isError: checkpointsError,
   } = useQuery({
-    queryKey: ["fulfillment-checkpoints", orgId, selected],
-    enabled: !!orgId && !!selected,
+    queryKey: ["fulfillment-checkpoints", orgId, selected, devBypass],
+    enabled: (devBypass || !!orgId) && !!selected,
     queryFn: async () => {
+      if (devBypass) return mockFulfillmentCheckpoints(selected!) as CheckpointRow[];
       const { data, error } = await supabase
         .from("daily_wins")
         .select(
@@ -100,8 +121,8 @@ function Fulfillment() {
   });
 
   const activeClient = useMemo(
-    () => clients?.find((c) => c.id === selected) ?? null,
-    [clients, selected],
+    () => rosterClients?.find((c) => c.id === selected) ?? null,
+    [rosterClients, selected],
   );
   const answers = (intake?.responses ?? {}) as Record<string, string>;
 
@@ -126,10 +147,10 @@ function Fulfillment() {
                   Fulfillment Roster
                 </div>
                 <div className="font-sans text-4xl font-bold tabular-nums">
-                  {clients?.length ?? 0}
+                  {rosterClients?.length ?? 0}
                 </div>
                 <div className="text-2xs text-muted-foreground">
-                  active mentee{(clients?.length ?? 0) === 1 ? "" : "s"}
+                  active mentee{(rosterClients?.length ?? 0) === 1 ? "" : "s"}
                 </div>
               </div>
             </div>
@@ -139,7 +160,7 @@ function Fulfillment() {
       <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="bg-muted/40 px-3 py-2 text-2xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-            <Briefcase className="h-3.5 w-3.5" /> Active mentees · {clients?.length ?? 0}
+            <Briefcase className="h-3.5 w-3.5" /> Active mentees · {rosterClients?.length ?? 0}
           </div>
           <div className="p-2 border-b border-border">
             <div className="relative">
@@ -153,7 +174,7 @@ function Fulfillment() {
             </div>
           </div>
           <div className="divide-y divide-border max-h-[70vh] overflow-y-auto">
-            {(clients ?? [])
+            {(rosterClients ?? [])
               .filter((c) => {
                 const q = query.trim().toLowerCase();
                 if (!q) return true;
@@ -174,7 +195,7 @@ function Fulfillment() {
                   </div>
                 </button>
               ))}
-            {(!clients || clients.length === 0) && (
+            {(!rosterClients || rosterClients.length === 0) && (
               <div className="p-6 text-center text-xs text-muted-foreground">
                 No active mentees.
               </div>

@@ -2,7 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import {
+  mockConnectorSyncStatus,
+  mockEventBusEvents,
+  mockRawPayloads,
+  mockWebhookDeliveries,
+  mockWebhookSubscriptions,
+} from "@/lib/dev-mock-data";
+import { useCurrentOrg, useAuth } from "@/hooks/use-auth";
 import { useDateRange } from "@/hooks/use-date-range";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
@@ -58,6 +65,7 @@ export const Route = createFileRoute("/_authenticated/events")({ component: Even
 
 function EventsBus() {
   const { data: org } = useCurrentOrg();
+  const { devBypass } = useAuth();
   const orgId = org?.org_id;
   const { range } = useDateRange();
   const fromISO = `${range.from}T00:00:00`;
@@ -66,10 +74,11 @@ function EventsBus() {
   const [open, setOpen] = useState(false);
 
   const { data: events } = useQuery({
-    queryKey: ["events", orgId, range.from, range.to],
-    enabled: !!orgId,
-    refetchInterval: 5000,
+    queryKey: ["events", orgId, range.from, range.to, devBypass],
+    enabled: devBypass || !!orgId,
+    refetchInterval: devBypass ? false : 5000,
     queryFn: async () => {
+      if (devBypass) return mockEventBusEvents();
       const { data, error } = await supabase
         .from("events")
         .select("id, event_type, subject_type, payload, occurred_at, actor_user_id")
@@ -87,9 +96,10 @@ function EventsBus() {
   // would hide an active subscription created outside the window, same
   // reasoning as the clients/hiring/leads roster pages.
   const { data: subs } = useQuery({
-    queryKey: ["webhook-subs", orgId],
-    enabled: !!orgId,
+    queryKey: ["webhook-subs", orgId, devBypass],
+    enabled: devBypass || !!orgId,
     queryFn: async () => {
+      if (devBypass) return mockWebhookSubscriptions();
       const { data, error } = await supabase
         .from("webhook_subscriptions")
         .select("*")
@@ -100,10 +110,11 @@ function EventsBus() {
   });
 
   const { data: deliveries } = useQuery({
-    queryKey: ["webhook-deliveries", orgId, range.from, range.to],
-    enabled: !!orgId,
-    refetchInterval: 10000,
+    queryKey: ["webhook-deliveries", orgId, range.from, range.to, devBypass],
+    enabled: devBypass || !!orgId,
+    refetchInterval: devBypass ? false : 10000,
     queryFn: async () => {
+      if (devBypass) return mockWebhookDeliveries();
       const { data, error } = await supabase
         .from("webhook_deliveries")
         .select("id, status, response_code, attempt, created_at, subscription_id")
@@ -121,9 +132,10 @@ function EventsBus() {
   // hide a connector whose last sync predates the window, same reasoning as
   // the clients/hiring/leads roster pages.
   const { data: syncs } = useQuery({
-    queryKey: ["sync-status", orgId],
-    enabled: !!orgId,
+    queryKey: ["sync-status", orgId, devBypass],
+    enabled: devBypass || !!orgId,
     queryFn: async () => {
+      if (devBypass) return mockConnectorSyncStatus();
       const { data, error } = await supabase
         .from("connector_sync_status")
         .select("*")
@@ -135,10 +147,11 @@ function EventsBus() {
   });
 
   const { data: raw } = useQuery({
-    queryKey: ["raw-payloads", orgId, range.from, range.to],
-    enabled: !!orgId,
-    refetchInterval: 10000,
+    queryKey: ["raw-payloads", orgId, range.from, range.to, devBypass],
+    enabled: devBypass || !!orgId,
+    refetchInterval: devBypass ? false : 10000,
     queryFn: async () => {
+      if (devBypass) return mockRawPayloads();
       const { data, error } = await supabase
         .from("raw_payloads")
         .select("id, resource, connector_id, received_at, processed_at, process_error")
