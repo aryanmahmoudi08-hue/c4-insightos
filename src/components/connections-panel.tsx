@@ -16,6 +16,7 @@ import {
 } from "@/lib/connectors.functions";
 import { getOrCreateIngestToken, rotateIngestToken } from "@/lib/ingest.functions";
 import { startMetaOAuth } from "@/lib/meta-oauth.functions";
+import { syncMetaSpendNow } from "@/lib/meta-ads.functions";
 import { useAuth } from "@/hooks/use-auth";
 
 type ConnectorRow = {
@@ -588,6 +589,7 @@ function ConnectorCard({
 function MetaConnectorCard({ row, isAdmin }: { row: ConnectorRow | undefined; isAdmin: boolean }) {
   const { devBypass } = useAuth();
   const startFn = useServerFn(startMetaOAuth);
+  const syncFn = useServerFn(syncMetaSpendNow);
   const [open, setOpen] = useState(!(row?.state === "connected"));
   const connected = row?.state === "connected";
 
@@ -595,6 +597,26 @@ function MetaConnectorCard({ row, isAdmin }: { row: ConnectorRow | undefined; is
     mutationFn: () => startFn(),
     onSuccess: (res: { authorizeUrl: string }) => {
       window.location.href = res.authorizeUrl;
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const sync = useMutation({
+    mutationFn: () => {
+      const until = new Date();
+      const since = new Date(until.getTime() - 29 * 864e5);
+      const iso = (d: Date) => d.toISOString().slice(0, 10);
+      return syncFn({ data: { since: iso(since), until: iso(until) } });
+    },
+    onSuccess: (res: { accounts: number; written: number; skipped: Array<{ reason: string }> }) => {
+      const base = `${res.written} campaign-day row${res.written === 1 ? "" : "s"} from ${res.accounts} ad account${res.accounts === 1 ? "" : "s"}`;
+      // Skipped rows are reported, not swallowed — a half-complete pull
+      // shouldn't look like a clean one.
+      if (res.skipped.length) {
+        toast.warning(`${base} · ${res.skipped.length} row(s) skipped: ${res.skipped[0].reason}`);
+      } else {
+        toast.success(base);
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -646,17 +668,35 @@ function MetaConnectorCard({ row, isAdmin }: { row: ConnectorRow | undefined; is
             and never creates or edits ads.
           </p>
           {isAdmin ? (
-            <Button
-              type="button"
-              size="sm"
-              variant={connected ? "outline" : "default"}
-              className="gap-1.5"
-              disabled={start.isPending || devBypass}
-              onClick={() => start.mutate()}
-            >
-              {start.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {connected ? "Reconnect" : "Connect with Meta"}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={connected ? "outline" : "default"}
+                className="gap-1.5"
+                disabled={start.isPending || devBypass}
+                onClick={() => start.mutate()}
+              >
+                {start.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {connected ? "Reconnect" : "Connect with Meta"}
+              </Button>
+              {connected && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={sync.isPending || devBypass}
+                  onClick={() => sync.mutate()}
+                >
+                  {sync.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Sync last 30 days
+                </Button>
+              )}
+            </div>
           ) : (
             <p className="text-2xs text-muted-foreground">
               Only workspace owners and admins can connect integrations.
