@@ -11,6 +11,14 @@ update public.connector_registry
       description = 'Booked calls, cancellations and reschedules via webhook'
   where id = 'calendly';
 
+-- `calls` has never carried connector provenance — unlike `leads`, which has
+-- had external_id/source_connector since the initial schema. Every call row
+-- until now originated in-app (the Closer's log dialog or an EOD report), so
+-- there was nothing external to point back at. A synced booking needs both.
+alter table public.calls
+  add column if not exists external_id text,
+  add column if not exists source_connector text;
+
 -- Idempotency for booking sync. Calendly retries deliveries, and a reschedule
 -- fires invitee.canceled + invitee.created as two separate events, so the same
 -- invitee URI can legitimately arrive more than once. Keyed on the invitee URI
