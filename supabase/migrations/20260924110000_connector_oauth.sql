@@ -62,6 +62,10 @@ revoke all on public.connector_oauth_tokens from anon, authenticated;
 grant all on public.connector_oauth_states to service_role;
 grant all on public.connector_oauth_tokens to service_role;
 
+-- Postgres has no CREATE TRIGGER IF NOT EXISTS, and every other statement in
+-- this migration is idempotent — drop-then-create keeps a retry safe, which
+-- matters because these migrations have never been run anywhere yet.
+drop trigger if exists tg_connector_oauth_tokens_updated on public.connector_oauth_tokens;
 create trigger tg_connector_oauth_tokens_updated
   before update on public.connector_oauth_tokens
   for each row execute function public.tg_set_updated_at();
