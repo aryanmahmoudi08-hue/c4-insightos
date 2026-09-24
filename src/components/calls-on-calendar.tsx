@@ -707,7 +707,12 @@ export function CallsOnCalendar() {
     videoNotWatched: periodEntries.filter(
       (e) => e.lead && !e.lead.precall_video_watched && e.overallStatus !== "cancelled",
     ).length,
-    openSlots: periodEntries.filter((e) => e.overallStatus === "cancelled").length,
+    // Remediation (metric-dictionary audit): this was labeled "Open Slots"
+    // but has only ever counted cancelled bookings — there is no real free
+    // calendar-capacity calculation anywhere in this file (no working-hours/
+    // availability data exists to compute one), so relabeling it to what it
+    // actually measures rather than fabricating an open-capacity figure.
+    cancelledThisPeriod: periodEntries.filter((e) => e.overallStatus === "cancelled").length,
   };
   // Dynamic timeframe wording (item 12) — "Today's" only when Day is
   // selected; Week/Month/Year get their own noun rather than staying
@@ -748,7 +753,7 @@ export function CallsOnCalendar() {
     { key: "total", label: `Calls ${periodAdjective[view]}`, value: summary.total },
     { key: "ready", label: "Pre-Call Ready", value: summary.ready },
     { key: "video", label: "Video Not Watched", value: summary.videoNotWatched },
-    { key: "open", label: "Open Slots", value: summary.openSlots },
+    { key: "cancelled", label: "Cancelled", value: summary.cancelledThisPeriod },
   ];
 
   if (isLoading) {

@@ -11,9 +11,11 @@ import {
   mockClients,
   mockDailyWinsRows,
   mockHubMetrics,
+  mockPayments,
   mockRepEfficiencyRows,
   mockVslSnapshots,
 } from "@/lib/dev-mock-data";
+import { evaluateTransparentHealth, daysUntilDate } from "@/lib/client-risk";
 import { KpiBand, type KpiBandItem } from "@/components/kpi-band";
 import { type RateChartSpec } from "@/components/rate-small-multiples";
 import { Activity, TrendingDown, TrendingUp } from "lucide-react";
@@ -71,6 +73,11 @@ type ActRow = {
   leads_contacted: number | null;
   qualified_convos: number | null;
   links_sent: number | null;
+  /** Added for the Top Inbound Setter fix (definition-decision approved
+   * 2026-09-24) — not consumed by aggregate()/dailySeries(), only by the
+   * topSetter computation below. */
+  team_member_name?: string | null;
+  role?: string | null;
 };
 type VslRow = {
   captured_at: string;
@@ -240,7 +247,21 @@ function InboundVelocityCard({
   const linkRate = qualified > 0 ? (links / qualified) * 100 : 0;
   const volumePace = series.length > 0 ? inboundLeads / series.length : 0;
   const velocityRows = [
-    { label: "Avg first response time", value: "< 4 mins", pct: 82, color: "var(--spectrum-cold)" },
+    // Remediation (metric-dictionary audit, MAIN-0042): this previously
+    // hardcoded a fabricated "< 4 mins" / 82% that never varied with real
+    // data. No query anywhere computes an org-wide first-response-time
+    // figure — the closest real calculation (median lead->first-dial-attempt
+    // over lead_response_events, speed-to-lead.ts) is Inbound-Dialer-scoped
+    // inside activity-module.tsx, not a page-agnostic export this component
+    // can safely reuse without its own query/date-range wiring. Rather than
+    // build a new implementation here, this renders an honest "Not tracked"
+    // state — same convention as MRR/Ad Spend elsewhere on this page.
+    {
+      label: "Avg first response time",
+      value: "Not tracked",
+      pct: 0,
+      color: "var(--muted-foreground)",
+    },
     {
       label: "Convo-to-link sent rate",
       value: `${linkRate.toFixed(1)}%`,
@@ -513,12 +534,56 @@ export function HubOperatingMetrics() {
         const winRows = mockDailyWinsRows();
         const mockClientRows = mockClients();
         const activeClients = mockClientRows.filter((c) => c.status === "active").length;
-        const healthVals = mockClientRows
-          .map((c) => Number(c.health_score ?? 0))
-          .filter((n) => n > 0);
-        const avgHealth = healthVals.length
-          ? healthVals.reduce((s, n) => s + n, 0) / healthVals.length
+        // Same real evaluateTransparentHealth() as the production branch
+        // below, run over fixture inputs — not a fabricated score.
+        const mockPaymentRows = mockPayments();
+        const mockFailedCentsByClient = new Map<string, number>();
+        const mockLastActivityByClient = new Map<string, string>();
+        for (const p of mockPaymentRows) {
+          if (!p.client_id) continue;
+          if (p.status === "failed") {
+            mockFailedCentsByClient.set(
+              p.client_id,
+              (mockFailedCentsByClient.get(p.client_id) ?? 0) + p.amount_cents,
+            );
+          }
+          const cur = mockLastActivityByClient.get(p.client_id);
+          if (!cur || p.collected_at > cur)
+            mockLastActivityByClient.set(p.client_id, p.collected_at);
+        }
+        const healthByClient = new Map<string, ReturnType<typeof evaluateTransparentHealth>>();
+        for (const c of mockClientRows) {
+          const lastActivity = mockLastActivityByClient.get(c.id);
+          const daysSinceActivity = lastActivity
+            ? Math.max(0, -1 * (daysUntilDate(lastActivity.slice(0, 10)) ?? 0))
+            : null;
+          healthByClient.set(
+            c.id,
+            evaluateTransparentHealth({
+              renewalDate: c.renewal_date,
+              renewalConversationStarted: c.renewal_conv_started,
+              overdueCents:
+                Math.max(0, (c.contract_value_cents ?? 0) - (c.invested_to_date_cents ?? 0)) > 0 &&
+                daysUntilDate(c.expected_next_payment_date) != null &&
+                (daysUntilDate(c.expected_next_payment_date) ?? 0) < 0
+                  ? (c.expected_next_payment_cents ?? 0)
+                  : 0,
+              failedCents: mockFailedCentsByClient.get(c.id) ?? 0,
+              daysSinceActivity,
+            }),
+          );
+        }
+        const mockRealHealthScores = [...healthByClient.values()]
+          .map((h) => h.score)
+          .filter((s): s is number => s != null);
+        const avgHealth = mockRealHealthScores.length
+          ? mockRealHealthScores.reduce((s, n) => s + n, 0) / mockRealHealthScores.length
           : 0;
+        // mockRepEfficiencyRows() is an org-wide 7-day series with no
+        // per-rep/team_member_name breakdown, so there's no real per-rep
+        // data to rank here — left undefined (the render already handles
+        // this honestly) rather than fabricating a "top setter" for preview.
+        const topSetter = undefined;
         // Every mock application row counts toward completion/quality's
         // denominator too, but those two scalars come straight from
         // mockHubMetrics()'s canned percentages below (real completion/quality
@@ -538,6 +603,8 @@ export function HubOperatingMetrics() {
           prevTotals,
           activeClients,
           avgHealth,
+          healthByClient,
+          topSetter,
           clientRows: mockClientRows,
           actSeries: dailySeries(actRows, range.from, range.to, (r) => r.activity_date, {
             dials: (r) => r.dials ?? 0,
@@ -576,6 +643,7 @@ export function HubOperatingMetrics() {
         calls,
         wins,
         clientsRes,
+        paymentsForHealth,
         actPrev,
         vslPrev,
         leadsPrev,
@@ -585,7 +653,7 @@ export function HubOperatingMetrics() {
         supabase
           .from("setter_activity")
           .select(
-            "activity_date, dials, connections, links_sent, leads_contacted, qualified_convos",
+            "activity_date, dials, connections, links_sent, leads_contacted, qualified_convos, team_member_name, role",
           )
           .eq("org_id", orgId!)
           .gte("activity_date", range.from)
@@ -614,7 +682,26 @@ export function HubOperatingMetrics() {
           .eq("org_id", orgId!)
           .gte("win_date", range.from)
           .lte("win_date", range.to),
-        supabase.from("clients").select("id, full_name, status, health_score").eq("org_id", orgId!),
+        // Remediation (metric-dictionary audit, Client Health definition
+        // decision approved 2026-09-24): health_score itself stays selected
+        // only for legacy display fallback — it's never written by any code
+        // path (src/lib/client-risk.ts). The real fields below feed the
+        // same evaluateTransparentHealth() the Payments page already uses.
+        supabase
+          .from("clients")
+          .select(
+            "id, full_name, status, health_score, renewal_date, renewal_conv_started, contract_value_cents, invested_to_date_cents, expected_next_payment_cents, expected_next_payment_date",
+          )
+          .eq("org_id", orgId!),
+        // All-time, not range-scoped — health is a point-in-time snapshot
+        // (same choice mentee-renewal-panel.tsx already makes for the same
+        // failedCents/daysSinceActivity dimensions).
+        supabase
+          .from("payments")
+          .select("client_id, amount_cents, status, collected_at")
+          .eq("org_id", orgId!)
+          .order("collected_at", { ascending: false })
+          .limit(2000),
         supabase
           .from("setter_activity")
           .select(
@@ -665,10 +752,78 @@ export function HubOperatingMetrics() {
 
       const clientRows = clientsRes.data ?? [];
       const activeClients = clientRows.filter((c) => c.status === "active").length;
-      const healthVals = clientRows.map((c) => Number(c.health_score ?? 0)).filter((n) => n > 0);
-      const avgHealth = healthVals.length
-        ? healthVals.reduce((s, n) => s + n, 0) / healthVals.length
+
+      // Remediation (metric-dictionary audit, Client Health definition
+      // decision approved 2026-09-24): reuses evaluateTransparentHealth() —
+      // the same real, multi-dimensional scorer already live on the
+      // Payments page (mentee-renewal-panel.tsx) — instead of the dead
+      // clients.health_score column. Same derivation of failedCents/
+      // daysSinceActivity from real `payments` rows as that page.
+      const paymentRows = (paymentsForHealth.data ?? []) as {
+        client_id: string | null;
+        amount_cents: number;
+        status: string;
+        collected_at: string;
+      }[];
+      const failedCentsByClient = new Map<string, number>();
+      const lastActivityByClient = new Map<string, string>();
+      for (const p of paymentRows) {
+        if (!p.client_id) continue;
+        if (p.status === "failed") {
+          failedCentsByClient.set(
+            p.client_id,
+            (failedCentsByClient.get(p.client_id) ?? 0) + p.amount_cents,
+          );
+        }
+        const cur = lastActivityByClient.get(p.client_id);
+        if (!cur || p.collected_at > cur) lastActivityByClient.set(p.client_id, p.collected_at);
+      }
+      const healthByClient = new Map<string, ReturnType<typeof evaluateTransparentHealth>>();
+      for (const c of clientRows) {
+        const lastActivity = lastActivityByClient.get(c.id);
+        const daysSinceActivity = lastActivity
+          ? Math.max(0, -1 * (daysUntilDate(lastActivity.slice(0, 10)) ?? 0))
+          : null;
+        healthByClient.set(
+          c.id,
+          evaluateTransparentHealth({
+            renewalDate: c.renewal_date,
+            renewalConversationStarted: c.renewal_conv_started,
+            overdueCents:
+              Math.max(0, (c.contract_value_cents ?? 0) - (c.invested_to_date_cents ?? 0)) > 0 &&
+              daysUntilDate(c.expected_next_payment_date) != null &&
+              (daysUntilDate(c.expected_next_payment_date) ?? 0) < 0
+                ? (c.expected_next_payment_cents ?? 0)
+                : 0,
+            failedCents: failedCentsByClient.get(c.id) ?? 0,
+            daysSinceActivity,
+          }),
+        );
+      }
+      const realHealthScores = [...healthByClient.values()]
+        .map((h) => h.score)
+        .filter((s): s is number => s != null);
+      const avgHealth = realHealthScores.length
+        ? realHealthScores.reduce((s, n) => s + n, 0) / realHealthScores.length
         : 0;
+
+      // Remediation (metric-dictionary audit, Top Inbound Setter definition
+      // decision approved 2026-09-24): most links_sent, DM Setter role only
+      // — matches the render block's own pre-existing prop shape
+      // ({name, links}) and copy ("— N links sent"), which this wires up
+      // for the first time rather than reinterpreting.
+      const linksByDmSetter = new Map<string, number>();
+      for (const r of actRows) {
+        if (r.role !== "dm_setter" || !r.team_member_name) continue;
+        linksByDmSetter.set(
+          r.team_member_name,
+          (linksByDmSetter.get(r.team_member_name) ?? 0) + (r.links_sent ?? 0),
+        );
+      }
+      let topSetter: { name: string; links: number } | undefined;
+      for (const [name, links] of linksByDmSetter) {
+        if (links > 0 && (!topSetter || links > topSetter.links)) topSetter = { name, links };
+      }
 
       return {
         totals: aggregate(actRows, vslRows, leadRows, callRows, winRows, appRows),
@@ -682,6 +837,8 @@ export function HubOperatingMetrics() {
         ),
         activeClients,
         avgHealth,
+        healthByClient,
+        topSetter,
         clientRows,
         actSeries: dailySeries(actRows, range.from, range.to, (r) => r.activity_date, {
           dials: (r) => r.dials ?? 0,
@@ -931,12 +1088,16 @@ export function HubOperatingMetrics() {
       onClick: () => setClientRosterView("active"),
     },
     {
+      // Remediation (metric-dictionary audit, definition decision approved
+      // 2026-09-24): now the real evaluateTransparentHealth() average
+      // (renewal/overdue/failed-payment/activity signals), same function
+      // already live on Payments — not the dead clients.health_score column.
       key: "avgHealth",
       label: "Client Health",
       value: data.avgHealth ? `${data.avgHealth.toFixed(0)}` : "—",
       spectrum: data.avgHealth > 0 && data.avgHealth < 60 ? "cold" : "mid",
       empty: !data.avgHealth,
-      emptyHint: "No client health scores logged yet.",
+      emptyHint: "No clients with enough data to compute a health signal yet.",
       onClick: () => setClientRosterView("health"),
     },
     {
@@ -993,7 +1154,7 @@ export function HubOperatingMetrics() {
         </div>
         <OperatingRatesPipeline charts={rateCharts} />
       </div>
-      <InboundVelocityCard totals={t} series={inboundSeries} />
+      <InboundVelocityCard totals={t} series={inboundSeries} topSetter={data.topSetter} />
       <KpiBand title="Client Momentum" items={clientItems} />
       <MetricDetailPanel
         open={clientRosterView != null}
@@ -1009,18 +1170,39 @@ export function HubOperatingMetrics() {
             { key: "name", label: "Name", render: (c) => c.full_name ?? "—" },
             { key: "status", label: "Status", render: (c) => c.status ?? "—" },
             {
+              // Remediation (metric-dictionary audit, definition decision
+              // approved 2026-09-24): real evaluateTransparentHealth()
+              // status + score, never the dead health_score column.
               key: "health",
               label: "Health",
               align: "right",
-              render: (c) => (c.health_score ? String(c.health_score) : "—"),
+              render: (c) => {
+                const h = data.healthByClient?.get(c.id);
+                if (!h || h.score == null) return "Unavailable";
+                return `${h.status.replaceAll("_", " ")} (${h.score})`;
+              },
+            },
+            {
+              key: "healthReasons",
+              label: "Why",
+              render: (c) => {
+                const h = data.healthByClient?.get(c.id);
+                if (!h) return "—";
+                return h.reasons.join(" · ");
+              },
             },
           ] satisfies DetailColumn<NonNullable<typeof data.clientRows>[number]>[]
         }
         rows={
           clientRosterView === "health"
-            ? [...(data.clientRows ?? [])].sort(
-                (a, b) => (a.health_score ?? Infinity) - (b.health_score ?? Infinity),
-              )
+            ? [...(data.clientRows ?? [])].sort((a, b) => {
+                const sa = data.healthByClient?.get(a.id)?.score;
+                const sb = data.healthByClient?.get(b.id)?.score;
+                if (sa == null && sb == null) return 0;
+                if (sa == null) return 1;
+                if (sb == null) return -1;
+                return sa - sb;
+              })
             : (data.clientRows ?? [])
         }
         rowKey={(c) => c.id}

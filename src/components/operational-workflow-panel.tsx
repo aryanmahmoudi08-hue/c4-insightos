@@ -11,6 +11,13 @@ import { Badge } from "@/components/ui/badge";
 
 export type OperationalWorkflowPanelProps = {
   role: "dm_setter" | "inbound_dialer";
+  /** Real count feeding the first stage — inbound_dms_sent for DM Setter,
+   * leads_contacted for Inbound Dialer (same source the role's own "Inbound
+   * DMs Sent"/"Leads Contacted" tile uses elsewhere on the page). Remediation
+   * (metric-dictionary audit, SALE-0302/SALE-0350): this stage previously
+   * always rendered the static string "Verified activity" regardless of the
+   * parent's real, already-computed value. */
+  inboundCount: number;
   qualified: number;
   sets: number;
   booked: number;
@@ -51,6 +58,7 @@ function Stage({
 
 export function OperationalWorkflowPanel({
   role,
+  inboundCount,
   qualified,
   sets,
   booked,
@@ -93,7 +101,7 @@ export function OperationalWorkflowPanel({
       <div className="mt-4 flex flex-col gap-2 lg:flex-row lg:items-center">
         <Stage
           label={isDialer ? "Inbound leads" : "Inbound DMs"}
-          value="Verified activity"
+          value={inboundCount}
           tone="accent"
         />
         <ArrowRight className="hidden h-4 w-4 shrink-0 text-muted-foreground lg:block" />

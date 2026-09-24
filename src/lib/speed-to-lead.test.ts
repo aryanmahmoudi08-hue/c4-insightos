@@ -7,6 +7,7 @@ import {
   compareSpeedBuckets,
   filterSpeedEvents,
   speedDistribution,
+  speedToLeadSlaForWindow,
 } from "./speed-to-lead";
 
 describe("speed to lead", () => {
@@ -175,5 +176,40 @@ describe("speed to lead", () => {
     ]);
     expect(result.underFive.qualificationRate).toBe(1);
     expect(result.thirtyPlus.qualificationRate).toBe(0);
+  });
+});
+
+// Remediation (metric-dictionary audit, SALE-0320): the Targets card's
+// Speed-to-Lead SLA Compliance now bridges to this function instead of
+// leaving the actual permanently unresolvable — same 5-minute threshold and
+// event definition as the page's own Speed-to-Lead section.
+describe("speedToLeadSlaForWindow", () => {
+  it("computes the 5-minute SLA % using only events inside the given window", () => {
+    const events = [
+      // Inside window, within 5 minutes.
+      { leadCreatedAt: "2026-06-05T10:00:00Z", firstAttemptAt: "2026-06-05T10:03:00Z" },
+      // Inside window, outside 5 minutes.
+      { leadCreatedAt: "2026-06-10T10:00:00Z", firstAttemptAt: "2026-06-10T10:20:00Z" },
+      // Outside window entirely — must not affect the result.
+      { leadCreatedAt: "2026-07-01T10:00:00Z", firstAttemptAt: "2026-07-01T10:01:00Z" },
+    ];
+    expect(speedToLeadSlaForWindow(events, "2026-06-01", "2026-06-30")).toBeCloseTo(50, 5);
+  });
+
+  it("returns null (never a fabricated 0%) when nothing in the window was contacted yet", () => {
+    const events = [{ leadCreatedAt: "2026-06-05T10:00:00Z", firstAttemptAt: null }];
+    expect(speedToLeadSlaForWindow(events, "2026-06-01", "2026-06-30")).toBeNull();
+  });
+
+  it("returns null when the rep's event list is empty for this window", () => {
+    expect(speedToLeadSlaForWindow([], "2026-06-01", "2026-06-30")).toBeNull();
+  });
+
+  it("100% compliance when every contacted lead in the window was reached within 5 minutes", () => {
+    const events = [
+      { leadCreatedAt: "2026-06-05T10:00:00Z", firstAttemptAt: "2026-06-05T10:01:00Z" },
+      { leadCreatedAt: "2026-06-06T10:00:00Z", firstAttemptAt: "2026-06-06T10:04:00Z" },
+    ];
+    expect(speedToLeadSlaForWindow(events, "2026-06-01", "2026-06-30")).toBe(100);
   });
 });

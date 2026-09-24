@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCurrentOrg, useAuth } from "@/hooks/use-auth";
 import { useResourcePermissions } from "@/hooks/use-resource-permission";
 import { useServerFn } from "@tanstack/react-start";
+import { getHistoricalFxRatesFn } from "@/lib/fx.functions";
+import { collectFxPairs, sumNormalizedCents } from "@/lib/currency";
 import { TopBar } from "@/components/app-sidebar";
 import type { DateRange } from "@/components/date-range-picker";
 import { useDateRange } from "@/hooks/use-date-range";
@@ -91,6 +93,7 @@ import {
   compareSpeedBuckets,
   filterSpeedEvents,
   speedDistribution,
+  speedToLeadSlaForWindow,
   type SpeedToLeadQueueItem,
 } from "@/lib/speed-to-lead";
 import { dailySeries, seriesValues, seriesRatePoints, priorPeriod, pctDelta } from "@/lib/trend";
@@ -141,6 +144,7 @@ import {
   currentTargetsAsOf,
   periodWindow,
   type KpiRole,
+  type TargetPeriod,
 } from "@/lib/kpi-targets";
 import {
   actualFromSetterActivity,
@@ -350,6 +354,7 @@ function demoSetterActivityRows(role: ActivityRole, from: string, to: string) {
       pre_call_video_watches: null,
       created_at: `${a.activity_date}T12:00:00.000Z`,
       updated_at: `${a.activity_date}T12:00:00.000Z`,
+      original_currency: "USD",
       ...a,
     }));
 }
@@ -476,6 +481,68 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       return (data ?? []) as unknown as SetterActivityActualRow[];
     },
   });
+  // Remediation (metric-dictionary audit, SALE-0320): speed_to_lead_sla_pct
+  // is event-based (lead_response_events), not a setter_activity column sum
+  // — actualFromSetterActivity can never compute it. This bridges the
+  // Targets card to the SAME canonical calculation the page's own
+  // Speed-to-Lead section uses (speedDistribution() from speed-to-lead.ts,
+  // same 5-minute threshold — see speedSummary below), scoped to each
+  // target's own calendar period window (not the page's date-range picker —
+  // periodWindow(), the same function every other target uses) and to the
+  // selected rep specifically.
+  //
+  // Identity bridge: the Targets card's `member` is a display name
+  // (setter_activity.team_member_name); lead_response_events.rep_id is a
+  // uuid. team_members.user_id is the real, deterministic link between them
+  // (populated at role-assignment time — 20260916150100_inbound_dialer_role_
+  // wiring.sql) — resolved here rather than matching by name, which is not
+  // a relationship this repo treats as reliable identity (see Task 4).
+  const { data: teamMemberRows = [] } = useQuery({
+    queryKey: ["target-team-members", orgId, role],
+    enabled: !!orgId && !devBypass && role === "inbound_dialer",
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("team_members" as never)
+        .select("name, user_id")
+        .eq("org_id", orgId!)
+        .eq("role", role);
+      if (error) throw error;
+      return (data ?? []) as { name: string; user_id: string | null }[];
+    },
+  });
+  const { data: targetSpeedEvents = [] } = useQuery({
+    queryKey: ["target-speed-events", orgId, targetWindowStart, targetAnchor],
+    enabled: !!orgId && !devBypass && role === "inbound_dialer",
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("lead_response_events")
+        .select("lead_created_at,lead_assigned_at,first_attempt_at,rep_id")
+        .eq("org_id", orgId!)
+        .gte("lead_created_at", `${targetWindowStart}T00:00:00`)
+        .lte("lead_created_at", `${targetAnchor}T23:59:59`)
+        .limit(2000);
+      if (error) throw error;
+      return (data ?? []) as {
+        lead_created_at: string | null;
+        lead_assigned_at: string | null;
+        first_attempt_at: string | null;
+        rep_id: string | null;
+      }[];
+    },
+  });
+  const speedToLeadSlaActual = (teamMemberName: string, period: TargetPeriod): number | null => {
+    const userId = teamMemberRows.find((m) => m.name === teamMemberName)?.user_id;
+    if (!userId) return null; // no deterministic identity link for this rep yet
+    const window = periodWindow(period, targetAnchor);
+    const repEvents = targetSpeedEvents
+      .filter((e) => e.rep_id === userId)
+      .map((e) => ({
+        leadCreatedAt: e.lead_created_at,
+        leadAssignedAt: e.lead_assigned_at,
+        firstAttemptAt: e.first_attempt_at,
+      }));
+    return speedToLeadSlaForWindow(repEvents, window.start, window.end);
+  };
   const currentTargetsForRole = useMemo(
     () => currentTargetsAsOf(repKpiTargetsRaw ?? [], targetAnchor),
     [repKpiTargetsRaw, targetAnchor],
@@ -483,6 +550,19 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   // One card per catalogue KPI for the currently-selected rep — "No target
   // configured" is shown explicitly rather than omitting the metric, so it's
   // visible which KPIs still lack a target (Priority 12).
+  // Remediation (metric-dictionary audit, SALE-0320): speed_to_lead_sla_pct
+  // is the one KPI_DEFINITIONS entry that can't be answered from
+  // setter_activity — route it to speedToLeadSlaActual() instead of the
+  // generic column-sum path. Every other metric key is unaffected.
+  const actualForTargetMetric = (
+    rows: SetterActivityActualRow[],
+    teamMemberName: string,
+    metricKey: string,
+    period: TargetPeriod,
+  ): number | null =>
+    metricKey === "speed_to_lead_sla_pct"
+      ? speedToLeadSlaActual(teamMemberName, period)
+      : actualFromSetterActivity(rows, teamMemberName, metricKey);
   const memberTargetCards = useMemo(() => {
     if (member === ALL_MEMBERS) return [];
     const forMember = currentTargetsForRole.filter((t) => t.teamMemberName === member);
@@ -498,7 +578,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               period: "monthly",
               anchorISODate: targetAnchor,
               targetValue: null,
-              actualValue: actualFromSetterActivity(targetActivityRows, member, def.key),
+              actualValue: actualForTargetMetric(targetActivityRows, member, def.key, "monthly"),
             }),
           },
         ];
@@ -514,12 +594,20 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             period: t.period,
             anchorISODate: targetAnchor,
             targetValue: t.targetValue,
-            actualValue: actualFromSetterActivity(sliced, member, def.key),
+            actualValue: actualForTargetMetric(sliced, member, def.key, t.period),
           }),
         };
       });
     });
-  }, [member, currentTargetsForRole, targetActivityRows, role, targetAnchor]);
+  }, [
+    member,
+    currentTargetsForRole,
+    targetActivityRows,
+    role,
+    targetAnchor,
+    teamMemberRows,
+    targetSpeedEvents,
+  ]);
 
   // Active leads available to dial, split by ticket tier (spec section 4).
   // "Active" = not yet closed/disqualified/ghosted/no-show — still workable.
@@ -847,15 +935,11 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             no_show_recovered: false,
             recovered_from_call_id: null as string | null,
             scheduled_for: c.scheduled_for,
-            duration_seconds: c.duration_seconds,
-            talk_seconds: c.talk_seconds,
           }));
       }
       const { data, error } = await supabase
         .from("calls")
-        .select(
-          "id, status, cancelled, no_show_recovered, recovered_from_call_id, scheduled_for, duration_seconds, talk_seconds",
-        )
+        .select("id, status, cancelled, no_show_recovered, recovered_from_call_id, scheduled_for")
         .eq("org_id", orgId!)
         .gte("scheduled_for", `${range.from}T00:00:00`)
         .lte("scheduled_for", `${range.to}T23:59:59`);
@@ -873,28 +957,33 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     const recovered = noShows.filter(
       (c) => c.no_show_recovered || rangeCalls.some((c2) => c2.recovered_from_call_id === c.id),
     ).length;
-    const durations = rangeCalls
-      .map((c) => c.duration_seconds)
-      .filter((v): v is number => v != null);
-    const talks = rangeCalls.map((c) => c.talk_seconds).filter((v): v is number => v != null);
     return {
       total,
       cancellationRate: total ? (cancelled / total) * 100 : null,
       rescheduleRate: total ? (rescheduled / total) * 100 : null,
       noShowRate: total ? (noShows.length / total) * 100 : null,
       noShowRecoveryRate: noShows.length ? (recovered / noShows.length) * 100 : null,
-      avgDurationSeconds: durations.length
-        ? durations.reduce((s, v) => s + v, 0) / durations.length
-        : null,
-      avgTalkSeconds: talks.length ? talks.reduce((s, v) => s + v, 0) / talks.length : null,
     };
   }, [rangeCalls]);
-  const fmtDuration = (seconds: number | null) => {
-    if (seconds == null) return "Not connected";
-    const m = Math.floor(seconds / 60);
-    const s = Math.round(seconds % 60);
-    return `${m}m ${s}s`;
-  };
+  // Remediation (metric-dictionary audit, SALE-0331/0332): calls.duration_seconds/
+  // talk_seconds are populated only by the Closer's manual "Log a sales call"
+  // dialog — this org-wide query has no per-role filter (calls has no
+  // "booking dialer" column), so a raw average here would misattribute
+  // Closer-logged durations to Inbound Dialer. Investigated crm_call_sessions
+  // (the real Twilio-backed call-session table, 20260822140000_crm_
+  // communications_foundation.sql) as a possible real per-dialer source: it
+  // has a real duration_seconds column, but NO talk_seconds column at all,
+  // and NO rep/dialer identity column — only account_id (the org's Twilio
+  // account, not a person) and contact_id/legacy_lead_id (who was called,
+  // not who called them). legacy_call_id, the only field that could bridge
+  // to calls.setter_id, is never written by the Twilio webhook
+  // (src/routes/api/public/twilio.$event.ts). There is no reliable way to
+  // attribute a crm_call_sessions row to a specific dialer today — rather
+  // than misattribute Closer data or guess from an unlinked table, both
+  // metrics are honestly unavailable until a real per-dialer call-duration
+  // source exists.
+  const dialerCallDurationUnavailableReason =
+    "Not available — calls.duration_seconds/talk_seconds are only ever logged by the Closer's manual call dialog (no per-dialer source exists), and crm_call_sessions (the real Twilio-backed table) has no rep/dialer identity column to attribute a session to a specific dialer.";
 
   // Callback attribution workflow (spec section 4) — real operational_work_items
   // rows, not simulated. Requested/Due Today/Completed Today are computed from
@@ -1013,7 +1102,14 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     // — dev-mock-data.ts fixtures (mockLeadResponseEvents) are documented
     // dev-bypass-only, so demo mode shows the honest "unavailable" fallback
     // below instead of reusing them.
-    enabled: isDialer && !!orgId && !demoMode,
+    // Remediation (metric-dictionary audit, SALE-0308–0313): this query was
+    // previously gated `isDialer &&` — a role-gate bug, not a data gap. The
+    // exact same lead_response_events query correctly powers Inbound
+    // Dialer's "Inbound Lead Sources" section AND DM Setter's "DM Source
+    // Mix" section below (same groupBySourcePlatform(speedEvents, ...) call,
+    // switched only by label) — DM Setter's six Source Mix metrics were
+    // always empty for no reason beyond this gate never letting the query run.
+    enabled: !!orgId && !demoMode,
     queryFn: async () => {
       // devBypass never has a real Supabase session, so the RLS-scoped query
       // below comes back empty — same reasoning as every other devBypass
@@ -1199,8 +1295,6 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const showed = sum("live_calls");
   const closes = sum("closes");
   const downsells = sum("downsells");
-  const cashCents = sum("cash_collected_cents");
-  const revCents = sum("total_revenue_cents");
 
   // Prior equivalent period — real deltas and trend sparklines on every tile (Part 2),
   // not the hardcoded decorative arrays this app shipped elsewhere with the visual redesign.
@@ -1250,13 +1344,99 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   const prevShowed = prevSum("live_calls");
   const prevCloses = prevSum("closes");
   const prevDownsells = prevSum("downsells");
-  const prevCashCents = prevSum("cash_collected_cents");
-  const prevRevCents = prevSum("total_revenue_cents");
   // Same optional-column gate as inboundDms/outboundDms/replies above,
   // applied to the prior period for the Reply Performance deltas below.
   const prevOptionalMetric = (k: string) => (observed(k) ? prevSum(k) : null);
   const prevReplies = prevOptionalMetric("replies");
   const prevOutboundDms = prevOptionalMetric("outbound_dms_sent");
+
+  // Remediation (metric-dictionary audit): cash_collected_cents/
+  // total_revenue_cents store whatever amount was typed in, tagged with a
+  // real original_currency but never converted (20260912090000_eod_original_
+  // currency.sql) — summing raw cents across rows logged in different
+  // currencies previously treated e.g. 500 CAD as 500 USD. Normalize to USD
+  // cents (reusing the same historical-FX infrastructure the payments table
+  // already uses) BEFORE summing for both the current and prior period, and
+  // surface an honest "incomplete" signal rather than guessing when a rate
+  // isn't resolvable for some rows.
+  const getFxFn = useServerFn(getHistoricalFxRatesFn);
+  const fxPairs = useMemo(() => {
+    const currRows = rows ?? [];
+    const prRows = prevRows ?? [];
+    const dedupe = new Map<string, { currency: string; date: string }>();
+    for (const p of [
+      ...collectFxPairs(
+        currRows,
+        (r) => r.original_currency,
+        (r) => r.activity_date,
+      ),
+      ...collectFxPairs(
+        prRows,
+        (r) => r.original_currency,
+        (r) => r.activity_date,
+      ),
+    ]) {
+      dedupe.set(`${p.currency}|${p.date}`, p);
+    }
+    return Array.from(dedupe.values());
+  }, [rows, prevRows]);
+  const { data: fxRatesResult } = useQuery({
+    queryKey: ["activity-historical-fx", fxPairs.map((p) => `${p.currency}|${p.date}`).join(",")],
+    enabled: fxPairs.length > 0,
+    staleTime: 1000 * 60 * 60,
+    queryFn: () => getFxFn({ data: { pairs: fxPairs } }),
+  });
+  const fxRates = fxRatesResult?.rates ?? {};
+  const cashSum = useMemo(
+    () =>
+      sumNormalizedCents(
+        rows ?? [],
+        (r) => r.cash_collected_cents,
+        (r) => r.original_currency,
+        (r) => r.activity_date,
+        fxRates,
+      ),
+    [rows, fxRates],
+  );
+  const revSum = useMemo(
+    () =>
+      sumNormalizedCents(
+        rows ?? [],
+        (r) => r.total_revenue_cents,
+        (r) => r.original_currency,
+        (r) => r.activity_date,
+        fxRates,
+      ),
+    [rows, fxRates],
+  );
+  const prevCashSum = useMemo(
+    () =>
+      sumNormalizedCents(
+        prevRows ?? [],
+        (r) => r.cash_collected_cents,
+        (r) => r.original_currency,
+        (r) => r.activity_date,
+        fxRates,
+      ),
+    [prevRows, fxRates],
+  );
+  const prevRevSum = useMemo(
+    () =>
+      sumNormalizedCents(
+        prevRows ?? [],
+        (r) => r.total_revenue_cents,
+        (r) => r.original_currency,
+        (r) => r.activity_date,
+        fxRates,
+      ),
+    [prevRows, fxRates],
+  );
+  const cashCents = cashSum.usdCents;
+  const revCents = revSum.usdCents;
+  const prevCashCents = prevCashSum.usdCents;
+  const prevRevCents = prevRevSum.usdCents;
+  const cashIncomplete = !cashSum.isComplete;
+  const revIncomplete = !revSum.isComplete;
 
   const daySeries = useMemo(
     () =>
@@ -1855,29 +2035,37 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       {
         key: "cash",
         label: "Cash Collected",
-        value: money(cashCents),
+        // Matches the established "· FX unavailable" convention from
+        // useMoney() — a real, currency-normalized total with some rows
+        // excluded for lack of a resolvable historical rate, not a fake
+        // number and not silently mixed-currency either.
+        value: cashIncomplete ? `${money(cashCents)} · FX incomplete` : money(cashCents),
         spectrum: "hot",
         featured: true,
         emphasis: "strong",
         wide: true,
         deltaPct: pctDelta(cashCents, prevCashCents),
         priorValue: money(prevCashCents),
-        empty: cashCents === 0,
-        emptyHint: "Log a close with cash collected to see this populate.",
+        empty: cashCents === 0 && !cashIncomplete,
+        emptyHint: cashIncomplete
+          ? "Some non-USD rows couldn't be converted (no historical FX rate available) and are excluded from this total."
+          : "Log a close with cash collected to see this populate.",
         onClick: () => setSelected({ kind: "money", metric: "cash" }),
       },
       {
         key: "revenue",
         label: "Revenue Generated",
-        value: money(revCents),
+        value: revIncomplete ? `${money(revCents)} · FX incomplete` : money(revCents),
         spectrum: "hot",
         featured: true,
         emphasis: "subtle",
         wide: true,
         deltaPct: pctDelta(revCents, prevRevCents),
         priorValue: money(prevRevCents),
-        empty: revCents === 0,
-        emptyHint: "Total contract value shows up once a deal closes.",
+        empty: revCents === 0 && !revIncomplete,
+        emptyHint: revIncomplete
+          ? "Some non-USD rows couldn't be converted (no historical FX rate available) and are excluded from this total."
+          : "Total contract value shows up once a deal closes.",
         onClick: () => setSelected({ kind: "money", metric: "revenue" }),
       },
       ...(isDialer
@@ -2075,18 +2263,18 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             {
               key: "averageCallLength",
               label: "Average Call Length",
-              value: fmtDuration(appointmentQuality.avgDurationSeconds),
+              value: "Unavailable",
               spectrum: "cold" as const,
-              empty: appointmentQuality.avgDurationSeconds == null,
-              emptyHint: "Requires duration_seconds logged on calls.",
+              empty: true,
+              emptyHint: dialerCallDurationUnavailableReason,
             },
             {
               key: "averageTalkTime",
               label: "Average Talk Time",
-              value: fmtDuration(appointmentQuality.avgTalkSeconds),
+              value: "Unavailable",
               spectrum: "cold" as const,
-              empty: appointmentQuality.avgTalkSeconds == null,
-              emptyHint: "Requires talk_seconds logged on calls.",
+              empty: true,
+              emptyHint: dialerCallDurationUnavailableReason,
             },
           ]
         : []),
@@ -3369,6 +3557,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         )}
         <OperationalWorkflowPanel
           role={role}
+          inboundCount={isDialer ? contacted : (inboundDms ?? 0)}
           qualified={qualified}
           sets={sets}
           booked={onCalendar}

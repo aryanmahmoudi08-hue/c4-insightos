@@ -194,6 +194,33 @@ export function median(values: number[]) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+/**
+ * The 5-minute Speed-to-Lead SLA compliance % for one rep, scoped to a
+ * specific calendar window — the canonical calculation, reused (not
+ * reimplemented) by the KPI Target engine's Speed-to-Lead SLA Compliance
+ * card (metric-dictionary audit, SALE-0320) so it can never diverge from the
+ * page's own Speed-to-Lead section, which computes the same thing via
+ * speedDistribution() over its own (page-date-range-scoped) event set.
+ * `events` should already be filtered to this one rep by the caller
+ * (rep identity resolution — e.g. team_members.user_id — lives outside this
+ * pure function, same separation as the rest of this module). Returns null
+ * (never a fabricated 0%) when the rep has zero contacted leads in the
+ * window — "not measurable this period," not "0% compliant."
+ */
+export function speedToLeadSlaForWindow(
+  events: SpeedToLeadEvent[],
+  windowStartISODate: string,
+  windowEndISODate: string,
+): number | null {
+  const inWindow = events.filter((e) => {
+    const day = (e.leadCreatedAt ?? "").slice(0, 10);
+    return day >= windowStartISODate && day <= windowEndISODate;
+  });
+  const dist = speedDistribution(inWindow);
+  if (!dist.contacted) return null;
+  return (dist.within[5] / dist.contacted) * 100;
+}
+
 export function speedDistribution(events: SpeedToLeadEvent[]) {
   const results = events.map(calculateSpeedToLead);
   const minutes = results

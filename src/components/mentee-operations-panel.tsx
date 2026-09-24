@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Clock3 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { daysBetween, type RecoveryQueueClient } from "@/lib/mentee-payments";
@@ -50,6 +49,34 @@ export function MenteeOperationsPanel({
   const [ownerDraftId, setOwnerDraftId] = useState<string | null>(null);
   const [ownerDraft, setOwnerDraft] = useState("");
 
+  // Remediation (metric-dictionary audit, FULF-0681): real org members, to
+  // resolve/pick owner_id (a real uuid) instead of the prior free-text
+  // "Owner: <name>" prefix hack — same profiles-join pattern already used
+  // for Closer/Setter identity elsewhere (mentee-renewal-panel.tsx).
+  const { data: orgMembers = [] } = useQuery({
+    queryKey: ["renewal-owner-candidates", orgId],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const { data: memberships, error: membershipError } = await supabase
+        .from("memberships")
+        .select("user_id")
+        .eq("org_id", orgId!);
+      if (membershipError) throw membershipError;
+      const userIds = Array.from(new Set((memberships ?? []).map((m) => m.user_id)));
+      if (userIds.length === 0) return [];
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, display_name")
+        .in("id", userIds);
+      if (profilesError) throw profilesError;
+      return (profiles ?? []) as { id: string; display_name: string | null }[];
+    },
+  });
+  const memberNameById = useMemo(
+    () => new Map(orgMembers.map((m) => [m.id, m.display_name ?? m.id.slice(0, 8)])),
+    [orgMembers],
+  );
+
   const { data: renewalItems = [] } = useQuery({
     queryKey: ["renewal-work-items", orgId],
     enabled: !!orgId,
@@ -76,23 +103,23 @@ export function MenteeOperationsPanel({
   );
 
   const setRenewalOwner = useMutation({
-    mutationFn: async ({ clientId, owner }: { clientId: string; owner: string }) => {
+    mutationFn: async ({ clientId, ownerId }: { clientId: string; ownerId: string | null }) => {
       const existing = renewalByClient.get(clientId);
-      // renewal_work_items.owner_id is a uuid (a real team-member id), but this
-      // panel takes a free-text name for now — no team-member picker wired to
-      // this table yet — so the owner is kept as a readable label inside
-      // next_action rather than faking a uuid.
+      // Remediation (metric-dictionary audit, FULF-0681): writes the real
+      // owner_id uuid column now that a real team-member picker exists,
+      // instead of overloading next_action with an "Owner: <name>" prefix —
+      // next_action stays exclusively the real next-step text going forward.
       if (existing) {
         const { error } = await supabase
           .from("renewal_work_items")
-          .update({ next_action: owner ? `Owner: ${owner}` : existing.next_action })
+          .update({ owner_id: ownerId })
           .eq("id", existing.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("renewal_work_items").insert({
           org_id: orgId!,
           client_id: clientId,
-          next_action: owner ? `Owner: ${owner}` : null,
+          owner_id: ownerId,
         });
         if (error) throw error;
       }
@@ -124,9 +151,19 @@ export function MenteeOperationsPanel({
       <div className="relative space-y-2">
         {renewals.slice(0, 8).map(({ client, days }) => {
           const renewal = renewalByClient.get(client.id);
-          const ownerLabel = renewal?.next_action?.startsWith("Owner:")
-            ? renewal.next_action.slice(6).trim()
-            : null;
+          // Remediation (metric-dictionary audit, FULF-0681): prefer the real
+          // owner_id -> profiles.display_name resolution; fall back to
+          // parsing a legacy "Owner: <name>" prefix ONLY for historical rows
+          // written before this fix (owner_id null, next_action still
+          // carries the old prefix) — read-only compatibility, never
+          // rewritten back into next_action.
+          const ownerLabel = renewal?.owner_id
+            ? (memberNameById.get(renewal.owner_id) ?? "Unknown member")
+            : renewal?.next_action?.startsWith("Owner:")
+              ? renewal.next_action.slice(6).trim()
+              : null;
+          const legacyOwnerPrefix =
+            !renewal?.owner_id && renewal?.next_action?.startsWith("Owner:");
           const ctx = paymentContextByClient?.get(client.id);
           const ctxParts = ctx
             ? [
@@ -164,7 +201,7 @@ export function MenteeOperationsPanel({
               {ctxParts.length > 0 && (
                 <div className="mt-1 text-2xs text-muted-foreground">{ctxParts.join(" · ")}</div>
               )}
-              <div className="mt-2 grid gap-2 text-xs sm:grid-cols-4">
+              <div className="mt-2 grid gap-2 text-xs sm:grid-cols-5">
                 <span className="text-muted-foreground">
                   Stage
                   <strong className="block capitalize text-foreground">
@@ -173,18 +210,35 @@ export function MenteeOperationsPanel({
                 </span>
                 <span className="text-muted-foreground">
                   Owner
+                  {legacyOwnerPrefix && (
+                    <span
+                      className="ml-1 text-3xs text-amber-400"
+                      title="Set before the real owner field existed — re-select to link it to a real member."
+                    >
+                      (legacy)
+                    </span>
+                  )}
                   {ownerDraftId === client.id ? (
                     <div className="mt-0.5 flex items-center gap-1">
-                      <Input
+                      <select
+                        className="h-6 rounded border border-border bg-background text-2xs"
                         value={ownerDraft}
                         onChange={(e) => setOwnerDraft(e.target.value)}
-                        className="h-6 text-2xs"
-                        placeholder="Name"
-                      />
+                      >
+                        <option value="">Unassigned</option>
+                        {orgMembers.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.display_name ?? m.id.slice(0, 8)}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         className="text-2xs text-accent"
                         onClick={() =>
-                          setRenewalOwner.mutate({ clientId: client.id, owner: ownerDraft })
+                          setRenewalOwner.mutate({
+                            clientId: client.id,
+                            ownerId: ownerDraft || null,
+                          })
                         }
                       >
                         Save
@@ -195,7 +249,7 @@ export function MenteeOperationsPanel({
                       className="block text-cyan-300 hover:underline"
                       onClick={() => {
                         setOwnerDraftId(client.id);
-                        setOwnerDraft(ownerLabel ?? "");
+                        setOwnerDraft(renewal?.owner_id ?? "");
                       }}
                     >
                       {ownerLabel ?? "Unassigned — click to set"}
@@ -205,11 +259,28 @@ export function MenteeOperationsPanel({
                 <span className="text-muted-foreground">
                   Renewal Action / Next Step
                   <strong className="block text-cyan-300">
-                    {renewal?.reason ?? (ownerLabel ? "Needs next step" : "Needs owner + action")}
+                    {legacyOwnerPrefix
+                      ? "Needs next step"
+                      : (renewal?.reason ??
+                        (ownerLabel ? "Needs next step" : "Needs owner + action"))}
                   </strong>
                 </span>
                 <span className="text-muted-foreground">
+                  {/* Remediation (metric-dictionary audit, FULF-0682): was
+                      showing clients.renewal_date under "Action date" —
+                      renewal_work_items.next_action_at is the semantically
+                      correct field for a workflow action date; renewal_date
+                      is kept as its own, separately-labeled field below so
+                      the two concepts are never conflated. */}
                   Action date
+                  <strong className="block text-foreground">
+                    {renewal?.next_action_at
+                      ? new Date(renewal.next_action_at).toLocaleDateString()
+                      : "Not set"}
+                  </strong>
+                </span>
+                <span className="text-muted-foreground">
+                  Renewal Date
                   <strong className="block text-foreground">
                     {client.renewal_date ?? "Unavailable"}
                   </strong>
