@@ -18,6 +18,7 @@ import {
   CircleDollarSign,
   Clock3,
   ClipboardCheck,
+  Plus,
   Radio,
   RefreshCw,
   UsersRound,
@@ -27,6 +28,8 @@ import {
 import { TopBar } from "@/components/app-sidebar";
 import { KpiBand } from "@/components/kpi-band";
 import { EmptyState } from "@/components/empty-state";
+import { Button } from "@/components/ui/button";
+import { WebinarFormDialog } from "@/components/webinar-form-dialog";
 import {
   Select,
   SelectContent,
@@ -37,6 +40,7 @@ import {
 import { WebinarFilter } from "@/components/webinar-filter";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { useDateRange } from "@/hooks/use-date-range";
+import { useResourcePermissions } from "@/hooks/use-resource-permission";
 import { useWebinars } from "@/hooks/use-webinars";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -114,6 +118,11 @@ function WebinarAnalyticsPage() {
   const orgId = (org as { org_id?: string } | undefined)?.org_id;
   const { webinars, paidWebinars, organicWebinars, unclassifiedWebinars, webinarsById } =
     useWebinars();
+  // The app's canonical permission gate (member override > role row >
+  // defaultPerm), same one the sidebar and RouteAccessGate use — not a
+  // second hand-rolled role check that could drift from Access Control.
+  const { getPerm } = useResourcePermissions();
+  const canEditWebinars = getPerm("webinar_analytics").can_edit;
   const [selectedFilter, setSelectedFilterRaw] = useState<WebinarFilterValue>(
     devBypass ? { kind: "webinar", webinarId: "mock-webinar-a" } : ALL_WEBINARS_FILTER,
   );
@@ -383,16 +392,29 @@ function WebinarAnalyticsPage() {
               </div>
             </div>
           </div>
-          <WebinarFilter
-            value={selectedFilter}
-            onChange={setSelectedFilter}
-            webinars={webinars}
-            paidWebinars={paidWebinars}
-            organicWebinars={organicWebinars}
-            unclassifiedWebinars={unclassifiedWebinars}
-            webinarsById={webinarsById}
-            triggerClassName="w-full sm:w-[280px]"
-          />
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <WebinarFilter
+              value={selectedFilter}
+              onChange={setSelectedFilter}
+              webinars={webinars}
+              paidWebinars={paidWebinars}
+              organicWebinars={organicWebinars}
+              unclassifiedWebinars={unclassifiedWebinars}
+              webinarsById={webinarsById}
+              triggerClassName="w-full sm:w-[280px]"
+            />
+            {canEditWebinars && (
+              <WebinarFormDialog
+                orgId={org?.org_id}
+                trigger={
+                  <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
+                    <Plus className="h-3.5 w-3.5" />
+                    New
+                  </Button>
+                }
+              />
+            )}
+          </div>
         </div>
 
         {webinars.length === 0 ? (
@@ -400,6 +422,19 @@ function WebinarAnalyticsPage() {
             icon={<CalendarDays className="h-5 w-5" />}
             title="No webinars yet"
             description="Create a webinar to analyze acquisition, attendance, retention, sales setting, closing, and return."
+            action={
+              canEditWebinars ? (
+                <WebinarFormDialog
+                  orgId={org?.org_id}
+                  trigger={
+                    <Button size="sm" className="gap-1.5">
+                      <Plus className="h-3.5 w-3.5" />
+                      New webinar
+                    </Button>
+                  }
+                />
+              ) : undefined
+            }
           />
         ) : (
           <>
