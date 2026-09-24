@@ -267,6 +267,14 @@ const CONNECTOR_FIELDS: Record<string, FieldSpec[]> = {
     { key: "clientId", label: "REST API Client ID", placeholder: "From your PayPal app" },
     { key: "clientSecret", label: "REST API Secret", placeholder: "From your PayPal app" },
   ],
+  close: [
+    {
+      key: "signatureKey",
+      label: "Webhook signature_key",
+      placeholder: "058bfb6a3d8cfdc4da7c3be5901b16ae…",
+      hint: "Close returns this in the response when you create the webhook subscription in step 2 — it's a hex string, paste it exactly.",
+    },
+  ],
   webinarjam: [
     {
       key: "webhookSecret",
@@ -362,6 +370,17 @@ const CONNECTOR_COPY: Record<string, { name: string; blurb: string; steps: strin
       "Paste all three below and click Connect.",
     ],
   },
+  close: {
+    name: "Close CRM",
+    blurb:
+      "One-way mirror: leads created or updated in Close appear here automatically. Close stays the system of record — AscendOS never writes back to it, and never changes a lead's status here from Close data.",
+    steps: [
+      "Copy the webhook URL below — it's ready immediately.",
+      "Create a webhook subscription against the Close API (POST /api/v1/webhook/) pointed at that URL, subscribing to the lead object's created and updated events. This needs your own Close API key.",
+      "The response includes a signature_key — copy it.",
+      "Paste that key below and click Connect.",
+    ],
+  },
   webinarjam: {
     name: "WebinarJam",
     blurb:
@@ -375,7 +394,14 @@ const CONNECTOR_COPY: Record<string, { name: string; blurb: string; steps: strin
   },
 };
 
-const PRE_CONNECT_URL_CONNECTORS = new Set(["stripe", "whop", "fanbasis", "wise", "paypal"]);
+const PRE_CONNECT_URL_CONNECTORS = new Set([
+  "stripe",
+  "whop",
+  "fanbasis",
+  "wise",
+  "paypal",
+  "close",
+]);
 /** Connectors whose secret is self-chosen up front (like Typeform) — their
  * webhook URL is only known AFTER connecting, generated from the new
  * connection's id, and shown back via `row.config.webhookUrl`. */
@@ -626,6 +652,12 @@ export function ConnectionsPanel({ orgId, isAdmin }: { orgId?: string; isAdmin: 
           <ConnectorCard
             connectorId="webinarjam"
             row={byId.get("webinarjam")}
+            isAdmin={isAdmin}
+            orgId={orgId}
+          />
+          <ConnectorCard
+            connectorId="close"
+            row={byId.get("close")}
             isAdmin={isAdmin}
             orgId={orgId}
           />

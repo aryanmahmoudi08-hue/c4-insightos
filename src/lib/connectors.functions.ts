@@ -78,6 +78,17 @@ const connectorRequirements = {
     clientSecret: z.string().trim().min(8, "Paste your PayPal REST API Secret").max(200),
     env: z.enum(["live", "sandbox"]).default("live"),
   }),
+  close: z.object({
+    signatureKey: z
+      .string()
+      .trim()
+      .regex(
+        /^[0-9a-fA-F]+$/,
+        "Close's signature_key is a hex string — paste it exactly as the subscription response returned it",
+      )
+      .min(32, "That looks too short to be Close's signature_key")
+      .max(256),
+  }),
   webinarjam: z.object({
     webhookSecret: z
       .string()
@@ -176,6 +187,7 @@ const URL_BASED_CONNECTORS = new Set([
   "wise",
   "paypal",
   "webinarjam",
+  "close",
 ]);
 
 async function upsertDefaultSync(

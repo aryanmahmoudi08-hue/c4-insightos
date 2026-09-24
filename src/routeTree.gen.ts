@@ -49,6 +49,7 @@ import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typef
 import { Route as ApiPublicStripeRouteImport } from './routes/api/public/stripe'
 import { Route as ApiPublicPaypalRouteImport } from './routes/api/public/paypal'
 import { Route as ApiPublicFanbasisRouteImport } from './routes/api/public/fanbasis'
+import { Route as ApiPublicCloseRouteImport } from './routes/api/public/close'
 import { Route as ApiPublicTwilioEventRouteImport } from './routes/api/public/twilio.$event'
 import { Route as ApiPublicIngestTokenRouteImport } from './routes/api/public/ingest.$token'
 
@@ -259,6 +260,11 @@ const ApiPublicFanbasisRoute = ApiPublicFanbasisRouteImport.update({
   path: '/api/public/fanbasis',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicCloseRoute = ApiPublicCloseRouteImport.update({
+  id: '/api/public/close',
+  path: '/api/public/close',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicTwilioEventRoute = ApiPublicTwilioEventRouteImport.update({
   id: '/api/public/twilio/$event',
   path: '/api/public/twilio/$event',
@@ -303,6 +309,7 @@ export interface FileRoutesByFullPath {
   '/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
+  '/api/public/close': typeof ApiPublicCloseRoute
   '/api/public/fanbasis': typeof ApiPublicFanbasisRoute
   '/api/public/paypal': typeof ApiPublicPaypalRoute
   '/api/public/stripe': typeof ApiPublicStripeRoute
@@ -346,6 +353,7 @@ export interface FileRoutesByTo {
   '/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
+  '/api/public/close': typeof ApiPublicCloseRoute
   '/api/public/fanbasis': typeof ApiPublicFanbasisRoute
   '/api/public/paypal': typeof ApiPublicPaypalRoute
   '/api/public/stripe': typeof ApiPublicStripeRoute
@@ -391,6 +399,7 @@ export interface FileRoutesById {
   '/_authenticated/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/_authenticated/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
+  '/api/public/close': typeof ApiPublicCloseRoute
   '/api/public/fanbasis': typeof ApiPublicFanbasisRoute
   '/api/public/paypal': typeof ApiPublicPaypalRoute
   '/api/public/stripe': typeof ApiPublicStripeRoute
@@ -436,6 +445,7 @@ export interface FileRouteTypes {
     | '/webinar-analytics'
     | '/weekly-report'
     | '/pcv/$token'
+    | '/api/public/close'
     | '/api/public/fanbasis'
     | '/api/public/paypal'
     | '/api/public/stripe'
@@ -479,6 +489,7 @@ export interface FileRouteTypes {
     | '/webinar-analytics'
     | '/weekly-report'
     | '/pcv/$token'
+    | '/api/public/close'
     | '/api/public/fanbasis'
     | '/api/public/paypal'
     | '/api/public/stripe'
@@ -523,6 +534,7 @@ export interface FileRouteTypes {
     | '/_authenticated/webinar-analytics'
     | '/_authenticated/weekly-report'
     | '/pcv/$token'
+    | '/api/public/close'
     | '/api/public/fanbasis'
     | '/api/public/paypal'
     | '/api/public/stripe'
@@ -542,6 +554,7 @@ export interface RootRouteChildren {
   RequestAccessRoute: typeof RequestAccessRoute
   WelcomeRoute: typeof WelcomeRoute
   PcvTokenRoute: typeof PcvTokenRoute
+  ApiPublicCloseRoute: typeof ApiPublicCloseRoute
   ApiPublicFanbasisRoute: typeof ApiPublicFanbasisRoute
   ApiPublicPaypalRoute: typeof ApiPublicPaypalRoute
   ApiPublicStripeRoute: typeof ApiPublicStripeRoute
@@ -835,6 +848,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFanbasisRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/close': {
+      id: '/api/public/close'
+      path: '/api/public/close'
+      fullPath: '/api/public/close'
+      preLoaderRoute: typeof ApiPublicCloseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/twilio/$event': {
       id: '/api/public/twilio/$event'
       path: '/api/public/twilio/$event'
@@ -922,6 +942,7 @@ const rootRouteChildren: RootRouteChildren = {
   RequestAccessRoute: RequestAccessRoute,
   WelcomeRoute: WelcomeRoute,
   PcvTokenRoute: PcvTokenRoute,
+  ApiPublicCloseRoute: ApiPublicCloseRoute,
   ApiPublicFanbasisRoute: ApiPublicFanbasisRoute,
   ApiPublicPaypalRoute: ApiPublicPaypalRoute,
   ApiPublicStripeRoute: ApiPublicStripeRoute,
