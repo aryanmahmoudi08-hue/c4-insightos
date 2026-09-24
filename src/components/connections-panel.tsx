@@ -15,6 +15,7 @@ import {
   getOrCreateConnectorEndpoint,
 } from "@/lib/connectors.functions";
 import { getOrCreateIngestToken, rotateIngestToken } from "@/lib/ingest.functions";
+import { startMetaOAuth } from "@/lib/meta-oauth.functions";
 import { useAuth } from "@/hooks/use-auth";
 
 type ConnectorRow = {
@@ -580,6 +581,98 @@ function ConnectorCard({
   );
 }
 
+/** Meta is the only OAuth connector: there's no secret to paste, so instead of
+ * a ConnectorCard's field list it gets a button that starts the authorization
+ * flow. The access token never comes back to the browser — it's written
+ * server-side into connector_oauth_tokens, which org members can't read. */
+function MetaConnectorCard({ row, isAdmin }: { row: ConnectorRow | undefined; isAdmin: boolean }) {
+  const { devBypass } = useAuth();
+  const startFn = useServerFn(startMetaOAuth);
+  const [open, setOpen] = useState(!(row?.state === "connected"));
+  const connected = row?.state === "connected";
+
+  const start = useMutation({
+    mutationFn: () => startFn(),
+    onSuccess: (res: { authorizeUrl: string }) => {
+      window.location.href = res.authorizeUrl;
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="rounded-lg border border-border">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-3 p-3 text-left"
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            Meta Ads
+            <StateBadge state={row?.state} />
+          </div>
+          <p className="mt-0.5 text-2xs text-muted-foreground">
+            Campaign-level ad spend. Unlocks Ad Spend, ROAS, CPC, CPL and CPA on Webinar Analytics
+            and Main Hub, which have no spend source today.
+          </p>
+        </div>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open && (
+        <div className="space-y-3 border-t border-border p-3">
+          <ol className="list-inside list-decimal space-y-1 text-2xs text-muted-foreground">
+            <li>
+              A Meta app must exist for this deployment, with{" "}
+              <code className="rounded bg-muted px-1">META_APP_ID</code> and{" "}
+              <code className="rounded bg-muted px-1">META_APP_SECRET</code> set as server
+              environment variables.
+            </li>
+            <li>
+              In that app&apos;s Facebook Login settings, add this exact redirect URI:{" "}
+              <code className="rounded bg-muted px-1">
+                {typeof window !== "undefined" ? window.location.origin : ""}
+                /api/public/oauth/meta
+              </code>
+            </li>
+            <li>Click Connect below and approve read-only ads access.</li>
+          </ol>
+          <p className="text-3xs text-muted-foreground">
+            Requests <code className="rounded bg-muted px-1">ads_read</code> only — this pulls spend
+            and never creates or edits ads.
+          </p>
+          {isAdmin ? (
+            <Button
+              type="button"
+              size="sm"
+              variant={connected ? "outline" : "default"}
+              className="gap-1.5"
+              disabled={start.isPending || devBypass}
+              onClick={() => start.mutate()}
+            >
+              {start.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {connected ? "Reconnect" : "Connect with Meta"}
+            </Button>
+          ) : (
+            <p className="text-2xs text-muted-foreground">
+              Only workspace owners and admins can connect integrations.
+            </p>
+          )}
+          {devBypass && (
+            <p className="text-2xs text-muted-foreground">
+              Dev preview — starting the flow needs a real signed-in session.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Real, org-scoped integration connections — every card here writes to the
  * same connector_connections/webhook_subscriptions tables the rest of the app
  * already reads from (dispatch.server.ts, the Typeform webhook handler). This
@@ -661,6 +754,7 @@ export function ConnectionsPanel({ orgId, isAdmin }: { orgId?: string; isAdmin: 
             isAdmin={isAdmin}
             orgId={orgId}
           />
+          <MetaConnectorCard row={byId.get("meta")} isAdmin={isAdmin} />
           <IngestEndpointCard orgId={orgId} isAdmin={isAdmin} />
         </div>
       )}

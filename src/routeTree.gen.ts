@@ -51,6 +51,7 @@ import { Route as ApiPublicPaypalRouteImport } from './routes/api/public/paypal'
 import { Route as ApiPublicFanbasisRouteImport } from './routes/api/public/fanbasis'
 import { Route as ApiPublicCloseRouteImport } from './routes/api/public/close'
 import { Route as ApiPublicTwilioEventRouteImport } from './routes/api/public/twilio.$event'
+import { Route as ApiPublicOauthMetaRouteImport } from './routes/api/public/oauth.meta'
 import { Route as ApiPublicIngestTokenRouteImport } from './routes/api/public/ingest.$token'
 
 const WelcomeRoute = WelcomeRouteImport.update({
@@ -270,6 +271,11 @@ const ApiPublicTwilioEventRoute = ApiPublicTwilioEventRouteImport.update({
   path: '/api/public/twilio/$event',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicOauthMetaRoute = ApiPublicOauthMetaRouteImport.update({
+  id: '/api/public/oauth/meta',
+  path: '/api/public/oauth/meta',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicIngestTokenRoute = ApiPublicIngestTokenRouteImport.update({
   id: '/api/public/ingest/$token',
   path: '/api/public/ingest/$token',
@@ -318,6 +324,7 @@ export interface FileRoutesByFullPath {
   '/api/public/whop': typeof ApiPublicWhopRoute
   '/api/public/wise': typeof ApiPublicWiseRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
+  '/api/public/oauth/meta': typeof ApiPublicOauthMetaRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
 export interface FileRoutesByTo {
@@ -362,6 +369,7 @@ export interface FileRoutesByTo {
   '/api/public/whop': typeof ApiPublicWhopRoute
   '/api/public/wise': typeof ApiPublicWiseRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
+  '/api/public/oauth/meta': typeof ApiPublicOauthMetaRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
 export interface FileRoutesById {
@@ -408,6 +416,7 @@ export interface FileRoutesById {
   '/api/public/whop': typeof ApiPublicWhopRoute
   '/api/public/wise': typeof ApiPublicWiseRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
+  '/api/public/oauth/meta': typeof ApiPublicOauthMetaRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
 }
 export interface FileRouteTypes {
@@ -454,6 +463,7 @@ export interface FileRouteTypes {
     | '/api/public/whop'
     | '/api/public/wise'
     | '/api/public/ingest/$token'
+    | '/api/public/oauth/meta'
     | '/api/public/twilio/$event'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -498,6 +508,7 @@ export interface FileRouteTypes {
     | '/api/public/whop'
     | '/api/public/wise'
     | '/api/public/ingest/$token'
+    | '/api/public/oauth/meta'
     | '/api/public/twilio/$event'
   id:
     | '__root__'
@@ -543,6 +554,7 @@ export interface FileRouteTypes {
     | '/api/public/whop'
     | '/api/public/wise'
     | '/api/public/ingest/$token'
+    | '/api/public/oauth/meta'
     | '/api/public/twilio/$event'
   fileRoutesById: FileRoutesById
 }
@@ -563,6 +575,7 @@ export interface RootRouteChildren {
   ApiPublicWhopRoute: typeof ApiPublicWhopRoute
   ApiPublicWiseRoute: typeof ApiPublicWiseRoute
   ApiPublicIngestTokenRoute: typeof ApiPublicIngestTokenRoute
+  ApiPublicOauthMetaRoute: typeof ApiPublicOauthMetaRoute
   ApiPublicTwilioEventRoute: typeof ApiPublicTwilioEventRoute
 }
 
@@ -862,6 +875,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicTwilioEventRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/oauth/meta': {
+      id: '/api/public/oauth/meta'
+      path: '/api/public/oauth/meta'
+      fullPath: '/api/public/oauth/meta'
+      preLoaderRoute: typeof ApiPublicOauthMetaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/ingest/$token': {
       id: '/api/public/ingest/$token'
       path: '/api/public/ingest/$token'
@@ -951,6 +971,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicWhopRoute: ApiPublicWhopRoute,
   ApiPublicWiseRoute: ApiPublicWiseRoute,
   ApiPublicIngestTokenRoute: ApiPublicIngestTokenRoute,
+  ApiPublicOauthMetaRoute: ApiPublicOauthMetaRoute,
   ApiPublicTwilioEventRoute: ApiPublicTwilioEventRoute,
 }
 export const routeTree = rootRouteImport

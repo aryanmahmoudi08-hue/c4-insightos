@@ -138,5 +138,6 @@ middleware — both need to stay registered for auth and error handling to work 
 ### Env vars
 
 Server: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
-`SUPABASE_PROJECT_ID`, `LOVABLE_API_KEY`. Client bundle needs the `VITE_`-prefixed duplicates
+`SUPABASE_PROJECT_ID`, `LOVABLE_API_KEY`, and `META_APP_ID`/`META_APP_SECRET` for the Meta Ads
+OAuth connector (server-only — the app secret must never reach the client bundle). Client bundle needs the `VITE_`-prefixed duplicates
 (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID`).
