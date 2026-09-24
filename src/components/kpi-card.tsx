@@ -14,6 +14,8 @@ export type KpiCardProps = {
   trend?: ReactNode;
   chart?: ReactNode;
   footer?: ReactNode;
+  /** `value` is an unavailable-state phrase, not a figure — see MetricCard. */
+  unavailable?: boolean;
   onClick?: () => void;
   className?: string;
 };
@@ -33,6 +35,7 @@ export function KpiCard({
   trend,
   chart,
   footer,
+  unavailable,
   onClick,
   className,
 }: KpiCardProps) {
@@ -57,6 +60,7 @@ export function KpiCard({
       icon={icon}
       trend={trend}
       chart={chart}
+      unavailable={unavailable}
       onClick={onClick}
       className={className}
     />

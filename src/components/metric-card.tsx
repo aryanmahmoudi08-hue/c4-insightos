@@ -63,6 +63,7 @@ export function MetricCard({
   chart,
   numericValue,
   format,
+  unavailable = false,
   onClick,
   className,
 }: {
@@ -82,6 +83,10 @@ export function MetricCard({
   chart?: ReactNode;
   numericValue?: number;
   format?: (n: number) => string;
+  /** `value` is an unavailable-state phrase ("Not tracked"), not a figure —
+   * renders it at status scale so an absence of data doesn't out-shout the
+   * real numbers beside it, and keeps the card the same height as its row. */
+  unavailable?: boolean;
   onClick?: () => void;
   className?: string;
 }) {
@@ -148,8 +153,13 @@ export function MetricCard({
               // browser to wrap on) — text-2xl as the mobile floor keeps
               // every value on-screen there while md/lg keep their original,
               // larger sizes unchanged.
-              "mt-1.5 min-w-0 font-sans text-2xl font-bold tabular-nums tracking-tight sm:text-3xl md:text-[2.35rem]",
-              tone === "default" ? "text-foreground" : TONE_TEXT[tone],
+              "mt-1.5 min-w-0 font-sans font-bold",
+              // An unavailable state is prose, not a figure: drop the numeric
+              // treatment (tabular-nums/tight tracking) and the hero scale.
+              unavailable
+                ? "text-sm leading-snug text-muted-foreground"
+                : "text-2xl tabular-nums tracking-tight sm:text-3xl md:text-[2.35rem]",
+              unavailable ? undefined : tone === "default" ? "text-foreground" : TONE_TEXT[tone],
             )}
           >
             {display}

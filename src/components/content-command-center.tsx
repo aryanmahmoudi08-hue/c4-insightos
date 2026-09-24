@@ -1331,10 +1331,14 @@ function CommandKpi({
       </div>
       <div
         className={cn(
-          "mt-3 font-sans text-2xl font-semibold tabular-nums",
-          valueColor === undefined && "text-foreground",
+          "mt-3 font-sans font-semibold",
+          // `muted` means the value is an unavailable-state phrase, not a
+          // figure — render it as prose at status scale so it doesn't
+          // out-shout the real numbers beside it.
+          muted ? "text-sm leading-snug text-muted-foreground" : "text-2xl tabular-nums",
+          !muted && valueColor === undefined && "text-foreground",
         )}
-        style={valueColor ? { color: valueColor } : undefined}
+        style={!muted && valueColor ? { color: valueColor } : undefined}
       >
         {value}
       </div>

@@ -2262,6 +2262,7 @@ function Dashboard() {
             <KpiCard
               label="MRR — Low Ticket"
               value="Not tracked"
+              unavailable
               supporting="Requires a client-level recurring-revenue field this schema doesn't have yet."
               className="opacity-70"
             />
