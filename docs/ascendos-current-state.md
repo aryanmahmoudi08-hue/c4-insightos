@@ -25,11 +25,20 @@ rather than pretending this has stayed a read-only document throughout.
   worktree (`/home/ubuntu/insightos-localhost`) and a different remote Supabase project ref
   (`zyptvdzlayoheqtxcljx`) than the one this session has been checking against
   (`nnfihxlikgfyxalfcddz`), strongly indicating a separate Claude Code session/environment
-  working the same branch. Its own last commit affecting those files is `44909e45`
-  (2026-09-03), and several of its files carry further **local, uncommitted** edits on top of
-  that (`speed-to-lead.ts`, `hub-operating-metrics.tsx`, `activity-module.tsx`,
-  `calls-on-calendar.tsx`, `mentee-operations-panel.tsx`, `operational-workflow-panel.tsx`).
-  Those files were not modified to produce this document, per instruction.
+  working the same branch. Its last commit is `44909e45` (2026-09-03), and it is the origin of
+  several files (`lifecycle-events.ts`, `notification-service.ts`, `operating-workflows.ts`,
+  `speed-to-lead.ts`, `operational-workflow-panel.tsx`, and others).
+
+  **Correction (2026-09-24):** an earlier revision of this document listed seven of those files
+  as carrying *that* initiative's uncommitted edits. That was wrong, and it had a real
+  consequence. The **files** originate from `44909e45`, but the uncommitted **diffs** sitting on
+  them were this initiative's own metric-dictionary remediation — every one carried a
+  `Remediation (metric-dictionary audit, …)` comment citing a specific metric ID. On that bad
+  call they were deliberately excluded from commit `3d0807a`, which left ~596 lines of
+  remediation — including the Main Hub Top Inbound Setter and Client Health implementations —
+  out of `HEAD` while this document claimed they were complete. They were verified against the
+  working tree, not `HEAD`. Now committed as `73d0a30`. Lesson worth keeping: **attribute by what
+  a diff says, not by which commit created the file.**
 
 ---
 
@@ -46,7 +55,7 @@ Verified against current code (file:line or command evidence), not against what 
 | Weekly Report currency bug (Prompt 13) | Fixed and documented in `docs/ascendos-weekly-report-final-upgrade.md` | **A** |
 | Wistia n8n workflow | `n8n/wistia-vsl-stats-sync.workflow.json` + `n8n/README.md`; partial-unique-index migration `20260923000000_vsl_metric_snapshots_daily_uniqueness.sql` | **A** |
 | Payments page: full audit + redesign (recovery-queue consolidation, stat-row split, Payment Notifications, Expected vs. Actual chart, merged LTV tables, promoted Renewal Pipeline & Workflow) | **Already implemented and committed** — see "Historical / Superseded Work" below. Verified via `grep`: `recovery-queue-panel.tsx` exists, tracked since commit `ba303ff` (2026-09-19), wired into `_authenticated.payments.tsx:37,1187`; `mentee-operations-panel.tsx`'s own comment documents the exact consolidation ("Payment recovery used to live here too; it moved to `RecoveryQueuePanel`... one recovery workflow on the page, not two"); `payments.tsx` contains `Payment Notifications` (req. #1) and `Expected vs. actual collections` (req. #4/§D) sections with comments citing the plan's own requirement numbers; `mentee-renewal-panel.tsx`'s tab strip is down to 4 tabs (All mentees / At-risk / LTV by offer / Retention analytics) with "Collected LTV by offer moved into the 'LTV by offer' tab" — matching the plan's §C merge exactly | **A** (superseded plan file, not a pending task) |
-| Lifecycle event model, notification-service boundary, EOD RBAC (as of commit `44909e45`) | Per `docs/implementation-status.md`; files exist on disk (`lifecycle-events.ts`, `notification-service.ts`) | **B** — real code, part of the other initiative, not independently re-verified by this reconciliation (out of scope to re-audit another initiative's work); current copies have further *uncommitted* edits not covered by that doc's own verification snapshot |
+| Lifecycle event model, notification-service boundary, EOD RBAC (as of commit `44909e45`) | Per `docs/implementation-status.md`; files exist on disk (`lifecycle-events.ts`, `notification-service.ts`) | **B** — real code, genuinely the other initiative's, not independently re-verified here (out of scope to re-audit another initiative's work). Note: `speed-to-lead.ts` and `operational-workflow-panel.tsx` also originate from `44909e45`, but the edits this session found on them were *this* initiative's — see the Correction under Repository State |
 | **Content Signals architecture decision** | Resolved — see "Final Content Signals Architecture" below | **A** |
 | **Metrics workbook** (`docs/ascendos-metrics-workbook.xlsx`, commit `28b5df3`) | Formatted .xlsx built from the 834-metric CSV: one tab per AscendOS page, grouped by section, yellow input cells as automation placeholders, 31 funnel rates wired as live formulas reading those inputs. Rates only wired where both operands exist as metrics on the same tab — the CSV's formula column describes DB columns, not metric names, so parsing it would have produced formulas silently pointing at wrong rows | **A** |
 | **Light-mode sweep** (commit `cc23dfd`) | Walked Settings, Main Hub, Payments, Team Calendar, Closer, Content Command Center, Webinar Analytics and Team in light mode. **Light mode is in good shape** — `styles.css` carries a real hand-built `.light` palette (not an inversion), light variants for the glass tokens, and only 6 raw alpha utilities app-wide. The one real bug found was theme-agnostic: "Not tracked" rendering at hero-number scale, fixed via an explicit `unavailable` prop on MetricCard | **A** |
@@ -239,12 +248,12 @@ Sources consulted: [WebinarJam custom webhook setup](https://support.webinarjam.
 
 ## Uncommitted Work
 
-**Update, 2026-09-24: the AscendOS-owned changes below were committed** —
-`3d0807a` ("fix: currency-mixing remediation, payment FX normalization, connector registry UI",
-60 files) and `bc0cecc` (a small follow-up for `live-ticker.tsx`, missed in the first commit).
-The WebinarJam readiness work (registry migration, route, connector entry, panel card) landed
-after that commit and is **still uncommitted** as of this update — everything else in this list
-is now on `HEAD`, not in the working tree.
+**Update, 2026-09-24: everything in this section is now committed.** `3d0807a`
+("fix: currency-mixing remediation, payment FX normalization, connector registry UI", 60 files),
+`bc0cecc` (`live-ticker.tsx`, missed in the first commit), `8e738fb` (WebinarJam readiness),
+`28b5df3` (metrics workbook), `cc23dfd` (unavailable-state KPI rendering) and `73d0a30` (the
+seven misattributed remediation files). Nothing from this initiative remains in the working
+tree — only `.claude/` and `supabase/.temp/`, both local tooling state.
 
 **AscendOS session's own work — committed (`3d0807a`, `bc0cecc`):**
 `currency.ts`/`currency.test.ts`, `fx.functions.ts`/`fx.server.ts`/`fx.server.test.ts`,
@@ -259,19 +268,30 @@ is now on `HEAD`, not in the working tree.
 `20260923000000_vsl_metric_snapshots_daily_uniqueness.sql`, `n8n/`, all `docs/ascendos-*.md`/`.csv`
 files.
 
-**AscendOS session's own work — still uncommitted (WebinarJam readiness, 2026-09-24):**
+**WebinarJam readiness — committed `8e738fb`:**
 `supabase/migrations/20260924000000_webinarjam_connector_registry_row.sql`,
 `src/routes/api/public/webinarjam.ts` (new), further edits to `connectors.functions.ts` and
-`connections-panel.tsx`, this document's own edits. `.claude/` and `supabase/.temp/` remain
-untracked (local tooling state, not source — not committed on purpose).
+`connections-panel.tsx`.
 
-**Other initiative's work (InsightOS completion-enforcement), still uncommitted on top of
-`44909e45`:**
-`activity-module.tsx`, `calls-on-calendar.tsx`, `hub-operating-metrics.tsx`,
-`mentee-operations-panel.tsx`, `operational-workflow-panel.tsx`, `speed-to-lead.ts`/`.test.ts`.
-**Not inspected in depth or modified** — per instruction, these are treated as belonging to a
-different initiative unless proven otherwise, and this reconciliation only needed to know *that*
-they exist and *whose* they likely are, not their diff content.
+**The seven previously-misattributed files — committed `73d0a30`** (see the Correction under
+Repository State). All were this initiative's metric-dictionary remediation, not another's:
+- `hub-operating-metrics.tsx` — Main Hub **Top Inbound Setter** (ranks by links sent, DM Setter
+  role only) and **Client Health** (the real `evaluateTransparentHealth()` scorer already live on
+  Payments, replacing the dead `clients.health_score` column nothing writes); MAIN-0042's
+  hardcoded "< 4 mins / 82%" replaced with an honest "Not tracked".
+- `activity-module.tsx` + `speed-to-lead.ts`/`.test.ts` — Speed-to-Lead SLA on the Targets card
+  routed to the canonical `speedToLeadSlaForWindow()` (SALE-0320); call duration/talk time left
+  honestly unavailable rather than misattributed to dialers (SALE-0331/0332); DM Source Mix query
+  fix (SALE-0308–0313).
+- `mentee-operations-panel.tsx` — real `owner_id` uuid + team-member picker replacing the
+  `"Owner: <name>"` `next_action` prefix hack, with a parse fallback for historical rows
+  (FULF-0681/0682).
+- `calls-on-calendar.tsx` — "Open Slots" relabeled to what it actually counts (cancelled
+  bookings); no availability data exists to compute real free capacity.
+- `operational-workflow-panel.tsx` — funnel stage definition fix (SALE-0302/0350).
+
+`.claude/` and `supabase/.temp/` remain untracked (local tooling state, not source — deliberately
+not committed).
 
 **Ambiguous / generated, no action needed:**
 - `content-command-center.tsx` (+4 lines only — small enough that either initiative could own it;
@@ -305,13 +325,16 @@ What remains, and what each is waiting on:
 | Meta Ads spend feed | A decision from you on whether ad-spend tracking is wanted at all — it needs OAuth infrastructure built first (real, scoped work) |
 | Sales CRM | Deferred by you |
 
-**One loose end worth a decision:** seven files belonging to the other "InsightOS
-completion-enforcement" initiative have sat uncommitted in the working tree for this entire
-session (`activity-module.tsx`, `calls-on-calendar.tsx`, `hub-operating-metrics.tsx`,
-`mentee-operations-panel.tsx`, `operational-workflow-panel.tsx`, `speed-to-lead.ts`/`.test.ts`),
-and they carry the one failing test in the suite (`speed-to-lead.test.ts` — "filters event
-segments by rep, source, campaign, weekday, and time"). Left untouched throughout, deliberately.
-Someone should decide whether that work gets finished, committed, or reverted.
+**Resolved (2026-09-24):** the seven files previously flagged here as a loose end were this
+initiative's own remediation, not another's — now committed as `73d0a30`. See the Correction
+under Repository State.
+
+**One genuine loose end remains:** the suite's single failing test,
+`speed-to-lead.test.ts` — "filters event segments by rep, source, campaign, weekday, and time"
+(383/384 pass). It is **inherited from commit `44909e45`** and has failed for this entire
+project; nothing in this initiative touched it (both `speed-to-lead` diffs in `73d0a30` are
+purely additive, 0 lines removed, and the failing test's own code is untouched). It belongs to
+the other initiative's `filterSpeedEvents` work and has never been investigated.
 
 ---
 
