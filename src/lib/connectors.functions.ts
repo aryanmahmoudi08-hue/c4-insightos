@@ -78,6 +78,21 @@ const connectorRequirements = {
     clientSecret: z.string().trim().min(8, "Paste your PayPal REST API Secret").max(200),
     env: z.enum(["live", "sandbox"]).default("live"),
   }),
+  calendly: z.object({
+    signingKey: z
+      .string()
+      .trim()
+      .min(8, "Paste the signing key returned when you created the webhook subscription")
+      .max(200),
+    apiToken: z
+      .string()
+      .trim()
+      .min(
+        20,
+        "Paste a Calendly personal access token — the webhook only carries a link to each booking's time, so reading it needs API access",
+      )
+      .max(500),
+  }),
   close: z.object({
     signatureKey: z
       .string()
@@ -188,6 +203,7 @@ const URL_BASED_CONNECTORS = new Set([
   "paypal",
   "webinarjam",
   "close",
+  "calendly",
 ]);
 
 async function upsertDefaultSync(

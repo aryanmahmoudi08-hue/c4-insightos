@@ -269,6 +269,20 @@ const CONNECTOR_FIELDS: Record<string, FieldSpec[]> = {
     { key: "clientId", label: "REST API Client ID", placeholder: "From your PayPal app" },
     { key: "clientSecret", label: "REST API Secret", placeholder: "From your PayPal app" },
   ],
+  calendly: [
+    {
+      key: "signingKey",
+      label: "Webhook signing key",
+      placeholder: "The signing key the subscription returned",
+      hint: "Returned when you create the webhook subscription in step 2. With a personal access token you can also choose this value yourself.",
+    },
+    {
+      key: "apiToken",
+      label: "Personal access token",
+      placeholder: "eyJraWQiOi…",
+      hint: "Calendly → Integrations → API & webhooks → Personal access tokens. Needed because the webhook only carries a link to each booking's time, not the time itself.",
+    },
+  ],
   close: [
     {
       key: "signatureKey",
@@ -372,6 +386,17 @@ const CONNECTOR_COPY: Record<string, { name: string; blurb: string; steps: strin
       "Paste all three below and click Connect.",
     ],
   },
+  calendly: {
+    name: "Calendly",
+    blurb:
+      "Booked calls, cancellations and reschedules land on the Team Calendar automatically, with the UTMs the invitee arrived on — closing the gap between an ad click and a booked call.",
+    steps: [
+      "Copy the webhook URL below — it's ready immediately.",
+      "Create a webhook subscription against the Calendly API (POST /webhook_subscriptions) pointed at that URL, for the events invitee.created and invitee.canceled. This needs your own personal access token.",
+      "The response includes a signing key — copy it.",
+      "Paste that signing key and your personal access token below, then click Connect.",
+    ],
+  },
   close: {
     name: "Close CRM",
     blurb:
@@ -403,6 +428,7 @@ const PRE_CONNECT_URL_CONNECTORS = new Set([
   "wise",
   "paypal",
   "close",
+  "calendly",
 ]);
 /** Connectors whose secret is self-chosen up front (like Typeform) — their
  * webhook URL is only known AFTER connecting, generated from the new
@@ -785,6 +811,12 @@ export function ConnectionsPanel({ orgId, isAdmin }: { orgId?: string; isAdmin: 
           <ConnectorCard
             connectorId="webinarjam"
             row={byId.get("webinarjam")}
+            isAdmin={isAdmin}
+            orgId={orgId}
+          />
+          <ConnectorCard
+            connectorId="calendly"
+            row={byId.get("calendly")}
             isAdmin={isAdmin}
             orgId={orgId}
           />

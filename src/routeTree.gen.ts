@@ -50,6 +50,7 @@ import { Route as ApiPublicStripeRouteImport } from './routes/api/public/stripe'
 import { Route as ApiPublicPaypalRouteImport } from './routes/api/public/paypal'
 import { Route as ApiPublicFanbasisRouteImport } from './routes/api/public/fanbasis'
 import { Route as ApiPublicCloseRouteImport } from './routes/api/public/close'
+import { Route as ApiPublicCalendlyRouteImport } from './routes/api/public/calendly'
 import { Route as ApiPublicTwilioEventRouteImport } from './routes/api/public/twilio.$event'
 import { Route as ApiPublicOauthMetaRouteImport } from './routes/api/public/oauth.meta'
 import { Route as ApiPublicIngestTokenRouteImport } from './routes/api/public/ingest.$token'
@@ -266,6 +267,11 @@ const ApiPublicCloseRoute = ApiPublicCloseRouteImport.update({
   path: '/api/public/close',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicCalendlyRoute = ApiPublicCalendlyRouteImport.update({
+  id: '/api/public/calendly',
+  path: '/api/public/calendly',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicTwilioEventRoute = ApiPublicTwilioEventRouteImport.update({
   id: '/api/public/twilio/$event',
   path: '/api/public/twilio/$event',
@@ -315,6 +321,7 @@ export interface FileRoutesByFullPath {
   '/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
+  '/api/public/calendly': typeof ApiPublicCalendlyRoute
   '/api/public/close': typeof ApiPublicCloseRoute
   '/api/public/fanbasis': typeof ApiPublicFanbasisRoute
   '/api/public/paypal': typeof ApiPublicPaypalRoute
@@ -360,6 +367,7 @@ export interface FileRoutesByTo {
   '/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
+  '/api/public/calendly': typeof ApiPublicCalendlyRoute
   '/api/public/close': typeof ApiPublicCloseRoute
   '/api/public/fanbasis': typeof ApiPublicFanbasisRoute
   '/api/public/paypal': typeof ApiPublicPaypalRoute
@@ -407,6 +415,7 @@ export interface FileRoutesById {
   '/_authenticated/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/_authenticated/weekly-report': typeof AuthenticatedWeeklyReportRoute
   '/pcv/$token': typeof PcvTokenRoute
+  '/api/public/calendly': typeof ApiPublicCalendlyRoute
   '/api/public/close': typeof ApiPublicCloseRoute
   '/api/public/fanbasis': typeof ApiPublicFanbasisRoute
   '/api/public/paypal': typeof ApiPublicPaypalRoute
@@ -454,6 +463,7 @@ export interface FileRouteTypes {
     | '/webinar-analytics'
     | '/weekly-report'
     | '/pcv/$token'
+    | '/api/public/calendly'
     | '/api/public/close'
     | '/api/public/fanbasis'
     | '/api/public/paypal'
@@ -499,6 +509,7 @@ export interface FileRouteTypes {
     | '/webinar-analytics'
     | '/weekly-report'
     | '/pcv/$token'
+    | '/api/public/calendly'
     | '/api/public/close'
     | '/api/public/fanbasis'
     | '/api/public/paypal'
@@ -545,6 +556,7 @@ export interface FileRouteTypes {
     | '/_authenticated/webinar-analytics'
     | '/_authenticated/weekly-report'
     | '/pcv/$token'
+    | '/api/public/calendly'
     | '/api/public/close'
     | '/api/public/fanbasis'
     | '/api/public/paypal'
@@ -566,6 +578,7 @@ export interface RootRouteChildren {
   RequestAccessRoute: typeof RequestAccessRoute
   WelcomeRoute: typeof WelcomeRoute
   PcvTokenRoute: typeof PcvTokenRoute
+  ApiPublicCalendlyRoute: typeof ApiPublicCalendlyRoute
   ApiPublicCloseRoute: typeof ApiPublicCloseRoute
   ApiPublicFanbasisRoute: typeof ApiPublicFanbasisRoute
   ApiPublicPaypalRoute: typeof ApiPublicPaypalRoute
@@ -868,6 +881,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCloseRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/calendly': {
+      id: '/api/public/calendly'
+      path: '/api/public/calendly'
+      fullPath: '/api/public/calendly'
+      preLoaderRoute: typeof ApiPublicCalendlyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/twilio/$event': {
       id: '/api/public/twilio/$event'
       path: '/api/public/twilio/$event'
@@ -962,6 +982,7 @@ const rootRouteChildren: RootRouteChildren = {
   RequestAccessRoute: RequestAccessRoute,
   WelcomeRoute: WelcomeRoute,
   PcvTokenRoute: PcvTokenRoute,
+  ApiPublicCalendlyRoute: ApiPublicCalendlyRoute,
   ApiPublicCloseRoute: ApiPublicCloseRoute,
   ApiPublicFanbasisRoute: ApiPublicFanbasisRoute,
   ApiPublicPaypalRoute: ApiPublicPaypalRoute,
