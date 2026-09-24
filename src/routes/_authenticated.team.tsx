@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { ASSIGNABLE_ROLES, isAppRole, type AppRole } from "@/lib/permissions";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { useRole } from "@/hooks/use-role";
 import { TopBar } from "@/components/app-sidebar";
@@ -134,7 +135,7 @@ function Team() {
   // calls/setter_activity cash fields that carry a real original_currency
   // never converted before this fix.
   const fxFn = useServerFn(getHistoricalFxRatesFn);
-  const [pendingRoles, setPendingRoles] = useState<Record<string, string>>({});
+  const [pendingRoles, setPendingRoles] = useState<Record<string, AppRole>>({});
   const [permTarget, setPermTarget] = useState<{
     userId: string;
     name: string;
@@ -170,13 +171,13 @@ function Team() {
     }: {
       id: string;
       approve: boolean;
-      role: string;
+      role: AppRole;
       email: string;
     }) => {
       if (approve) {
         const { error } = await supabase.rpc("approve_membership_request", {
           _request_id: id,
-          _role: role as "setter",
+          _role: role,
         });
         if (error) throw error;
       } else {
@@ -924,23 +925,16 @@ function Team() {
                               <td className="p-3">
                                 <Select
                                   value={role}
-                                  onValueChange={(v) =>
-                                    setPendingRoles((pr) => ({ ...pr, [r.id]: v }))
-                                  }
+                                  onValueChange={(v) => {
+                                    if (isAppRole(v))
+                                      setPendingRoles((pr) => ({ ...pr, [r.id]: v }));
+                                  }}
                                 >
                                   <SelectTrigger className="h-8 w-36">
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {[
-                                      "viewer",
-                                      "setter",
-                                      "inbound_dialer",
-                                      "closer",
-                                      "sales_manager",
-                                      "growth_ops",
-                                      "admin",
-                                    ].map((x) => (
+                                    {ASSIGNABLE_ROLES.map((x) => (
                                       <SelectItem key={x} value={x}>
                                         {x}
                                       </SelectItem>

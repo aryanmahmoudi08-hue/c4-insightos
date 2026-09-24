@@ -6,7 +6,10 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export const EOD_ROLES = ["dm_setter", "inbound_dialer", "closer"] as const;
 export type EodRole = (typeof EOD_ROLES)[number];
-export type CanonicalAppRole = Database["public"]["Enums"]["app_role"] | "inbound_dialer";
+// `| "inbound_dialer"` used to be unioned on here because the generated enum
+// lacked it; 20260924210000_app_role_enum_alignment.sql added it to app_role,
+// so the generated type now covers it on its own.
+export type CanonicalAppRole = Database["public"]["Enums"]["app_role"];
 
 const EodAccessInput = z.object({
   orgId: z.string().uuid(),

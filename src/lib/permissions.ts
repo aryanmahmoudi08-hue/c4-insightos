@@ -4,6 +4,8 @@
  * "View" lets a rep see and what "Edit" lets them change, so access can be
  * granted deliberately instead of guessed at.
  */
+import { Constants } from "@/integrations/supabase/types";
+import type { Database } from "@/integrations/supabase/types";
 
 export type ResourceDef = {
   key: string;
@@ -254,6 +256,34 @@ export const ROLES = [
   "viewer",
 ] as const;
 export type ManagedRole = (typeof ROLES)[number];
+
+/** The database's own role enum, the ground truth for what can be stored. */
+export type AppRole = Database["public"]["Enums"]["app_role"];
+
+/**
+ * The roles an admin can actually grant, for the request-access form and the
+ * approval dropdown on Team.
+ *
+ * The `readonly AppRole[]` annotation is load-bearing, not decoration: it makes
+ * "is every ManagedRole a real app_role value?" a compile error instead of a
+ * runtime one. Without it the two sets silently diverged — `sales_manager`,
+ * `growth_ops` and `inbound_dialer` were offered on the public request-access
+ * form while missing from the enum, so choosing any of them failed inside
+ * submit_membership_request(). Fixed in
+ * 20260924210000_app_role_enum_alignment.sql; this annotation is what stops it
+ * recurring. `owner` and `va` are deliberately absent — `owner` is the
+ * bootstrap role for a workspace's first member and is not grantable through
+ * the UI.
+ */
+export const ASSIGNABLE_ROLES: readonly AppRole[] = ROLES;
+
+/**
+ * Narrows the plain string a Radix Select hands back to the enum. Reads the
+ * allowed set from the generated `Constants` rather than a second hand-written
+ * list, so it tracks `app_role` automatically.
+ */
+export const isAppRole = (v: string): v is AppRole =>
+  (Constants.public.Enums.app_role as readonly string[]).includes(v);
 
 export const ROLE_LABELS: Record<ManagedRole, string> = {
   admin: "Admin",

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { isAppRole, type AppRole } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +16,7 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/request-access")({ component: RequestAccess });
 
-const ROLES = [
+const ROLES: { value: AppRole; label: string }[] = [
   { value: "setter", label: "DM Setter" },
   { value: "inbound_dialer", label: "Inbound Dialer" },
   { value: "closer", label: "Closer" },
@@ -27,7 +28,12 @@ const ROLES = [
 function RequestAccess() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    full_name: string;
+    email: string;
+    admin_email: string;
+    requested_role: AppRole;
+  }>({
     full_name: "",
     email: "",
     admin_email: "",
@@ -42,7 +48,7 @@ function RequestAccess() {
         _admin_email: form.admin_email,
         _email: form.email,
         _full_name: form.full_name,
-        _requested_role: form.requested_role as "setter",
+        _requested_role: form.requested_role,
       });
       if (error) throw error;
       setSent(true);
@@ -111,7 +117,9 @@ function RequestAccess() {
           <Label>Role you're joining as</Label>
           <Select
             value={form.requested_role}
-            onValueChange={(v) => setForm({ ...form, requested_role: v })}
+            onValueChange={(v) => {
+              if (isAppRole(v)) setForm({ ...form, requested_role: v });
+            }}
           >
             <SelectTrigger>
               <SelectValue />
