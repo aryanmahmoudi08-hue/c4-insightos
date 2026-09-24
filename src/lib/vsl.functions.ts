@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { parseCSVLine, csvNumber as num } from "@/lib/csv";
 import type { Database, Json } from "@/integrations/supabase/types";
 import {
   VIDEO_ACTION_STATUSES,
@@ -213,34 +214,6 @@ export const addSnapshot = createServerFn({ method: "POST" })
   });
 
 // ------ CSV parse for the Wistia sheet paste ------
-function parseCSVLine(line: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (inQ) {
-      if (c === '"' && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else if (c === '"') inQ = false;
-      else cur += c;
-    } else {
-      if (c === '"') inQ = true;
-      else if (c === ",") {
-        out.push(cur);
-        cur = "";
-      } else cur += c;
-    }
-  }
-  out.push(cur);
-  return out.map((s) => s.trim());
-}
-const num = (v: string) => {
-  if (!v) return 0;
-  const n = parseFloat(v.replace(/[%,]/g, "").trim());
-  return Number.isFinite(n) ? n : 0;
-};
 
 export const importCsvRows = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

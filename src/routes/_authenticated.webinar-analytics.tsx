@@ -22,6 +22,7 @@ import {
   Radio,
   RefreshCw,
   UsersRound,
+  Upload,
   UserRound,
   Video,
 } from "lucide-react";
@@ -30,6 +31,7 @@ import { KpiBand } from "@/components/kpi-band";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { WebinarFormDialog } from "@/components/webinar-form-dialog";
+import { WebinarMetricsDialog } from "@/components/webinar-metrics-dialog";
 import {
   Select,
   SelectContent,
@@ -404,15 +406,32 @@ function WebinarAnalyticsPage() {
               triggerClassName="w-full sm:w-[280px]"
             />
             {canEditWebinars && (
-              <WebinarFormDialog
-                orgId={org?.org_id}
-                trigger={
-                  <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
-                    <Plus className="h-3.5 w-3.5" />
-                    New
-                  </Button>
-                }
-              />
+              <>
+                <WebinarFormDialog
+                  orgId={org?.org_id}
+                  trigger={
+                    <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
+                      <Plus className="h-3.5 w-3.5" />
+                      New
+                    </Button>
+                  }
+                />
+                {webinars.length > 0 && (
+                  <WebinarMetricsDialog
+                    orgId={org?.org_id}
+                    webinars={webinars}
+                    defaultWebinarId={
+                      selectedFilter.kind === "webinar" ? selectedFilter.webinarId : undefined
+                    }
+                    trigger={
+                      <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
+                        <Upload className="h-3.5 w-3.5" />
+                        Add metrics
+                      </Button>
+                    }
+                  />
+                )}
+              </>
             )}
           </div>
         </div>
