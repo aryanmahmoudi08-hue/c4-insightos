@@ -46,6 +46,51 @@ export function recommendStageFromScore(score: number): HiringStage {
   return "rejected";
 }
 
+/** Heuristic applicant scorer. Lived inside the Hiring route until the public
+ * ingest endpoint became a second entry point (a Google/Typeform application
+ * form posting straight into the pipeline) — one scoring rule for both, so a
+ * form-submitted candidate and a hand-entered one are graded identically.
+ *
+ * Like recommendStageFromScore above, this only ever produces a
+ * RECOMMENDATION: a new applicant's real `stage` is always the neutral
+ * "applied" until a human moves them. */
+export function scoreApplicant(a: {
+  years_experience?: number | null;
+  niche?: string | null;
+  role_applied?: string | null;
+  notes?: string | null;
+}): { score: number; reasoning: string } {
+  let score = 5;
+  const r: string[] = [];
+  const yrs = Number(a.years_experience ?? 0);
+  if (yrs >= 5) {
+    score += 2.5;
+    r.push(`${yrs}y experience (strong)`);
+  } else if (yrs >= 2) {
+    score += 1.5;
+    r.push(`${yrs}y experience (solid)`);
+  } else if (yrs >= 1) {
+    score += 0.5;
+    r.push(`${yrs}y experience (entry)`);
+  } else r.push("limited experience");
+  const niche = (a.niche || "").toLowerCase();
+  if (/coach|info|course|consult|agency|saas/.test(niche)) {
+    score += 1.5;
+    r.push("niche fit");
+  }
+  const notes = (a.notes || "").toLowerCase();
+  if (/closed|quota|commission|hit|exceed/.test(notes)) {
+    score += 1;
+    r.push("perf signals in notes");
+  }
+  if (/remote|full.?time|available/.test(notes)) {
+    score += 0.5;
+    r.push("availability");
+  }
+  score = Math.max(0, Math.min(10, score));
+  return { score: Math.round(score * 10) / 10, reasoning: r.join(" · ") };
+}
+
 /** Grade a video application: AI reads the Loom transcript and routes the applicant to a pipeline stage. */
 export const gradeLoomFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

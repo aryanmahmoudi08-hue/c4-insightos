@@ -22,6 +22,7 @@ const eventSchema = z.object({
     "content_post",
     "onboarding_response",
     "vsl_metric_snapshot",
+    "hiring_application",
   ]),
   data: z.record(z.string(), z.unknown()).default({}),
 });
@@ -143,6 +144,26 @@ const onboardingSchema = z.object({
   submitted_at: z.string().datetime().optional(),
 });
 
+// Sales-role applications arriving from a Google Form / Typeform. Only
+// full_name is required: a form that captures nothing else still produces a
+// real applicant a human can triage, which beats rejecting the submission and
+// losing the candidate entirely. Everything the form did capture is preserved
+// verbatim in `responses`, so a question this schema doesn't model isn't lost.
+const hiringApplicationSchema = z.object({
+  full_name: z.string().min(1).max(255),
+  email: z.string().email().max(255).optional(),
+  phone: z.string().max(60).optional(),
+  role_applied: z.string().max(60).optional(),
+  region: z.string().max(80).optional(),
+  source: z.string().max(120).optional(),
+  niche: z.string().max(160).optional(),
+  years_experience: z.number().min(0).max(80).optional(),
+  notes: z.string().max(4000).optional(),
+  portfolio_url: z.string().url().max(500).optional(),
+  audio_url: z.string().url().max(500).optional(),
+  responses: z.record(z.string(), z.unknown()).optional(),
+});
+
 // Wistia has no push/webhook API for stats — this is always fed by a poller
 // (n8n calling Wistia's Stats API, then pushing the transformed result here)
 // rather than Wistia calling AscendOS directly. wistia_video_id resolves to
@@ -240,6 +261,34 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
               submitted_at: v.submitted_at,
               responses: v.responses as never,
             });
+            if (error) throw error;
+          } else if (event_type === "hiring_application") {
+            const v = hiringApplicationSchema.parse(data);
+            const { scoreApplicant, recommendStageFromScore } =
+              await import("@/lib/hiring.functions");
+            const { score, reasoning } = scoreApplicant(v);
+            const { error } = await supabaseAdmin.from("hiring_applicants").insert({
+              org_id: orgId,
+              full_name: v.full_name,
+              email: v.email ?? null,
+              phone: v.phone ?? null,
+              role_applied: v.role_applied ?? "setter",
+              region: v.region ?? null,
+              source: v.source ?? "form",
+              niche: v.niche ?? null,
+              years_experience: v.years_experience ?? null,
+              notes: v.notes ?? null,
+              portfolio_url: v.portfolio_url ?? null,
+              audio_url: v.audio_url ?? null,
+              responses: (v.responses ?? {}) as never,
+              ai_score: score,
+              ai_reasoning: reasoning,
+              // Recommendation only. Every applicant lands in "applied" and
+              // moves only when a human drags them — the same rule the Hiring
+              // page's own create path and the Loom grader both follow.
+              ai_recommended_stage: recommendStageFromScore(score),
+              stage: "applied",
+            } as never);
             if (error) throw error;
           } else if (event_type === "vsl_metric_snapshot") {
             const v = vslMetricSnapshotSchema.parse(data);

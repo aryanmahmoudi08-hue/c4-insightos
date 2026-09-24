@@ -51,7 +51,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { gradeLoomFn, recommendStageFromScore, HIRING_REGIONS } from "@/lib/hiring.functions";
+import {
+  gradeLoomFn,
+  recommendStageFromScore,
+  HIRING_REGIONS,
+  scoreApplicant,
+} from "@/lib/hiring.functions";
 import { KanbanBoard } from "@/components/kanban-board";
 import { CHIP_TONE_CLASSES, type ChipTone } from "@/components/ui/badge";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
@@ -211,44 +216,6 @@ type Applicant = {
   audio_url?: string | null;
   resume_url?: string | null;
 };
-
-// Heuristic AI-style scorer. Replace with Lovable AI call later if desired.
-function scoreApplicant(a: {
-  years_experience?: number | null;
-  niche?: string | null;
-  role_applied?: string | null;
-  notes?: string | null;
-}): { score: number; reasoning: string } {
-  let score = 5;
-  const r: string[] = [];
-  const yrs = Number(a.years_experience ?? 0);
-  if (yrs >= 5) {
-    score += 2.5;
-    r.push(`${yrs}y experience (strong)`);
-  } else if (yrs >= 2) {
-    score += 1.5;
-    r.push(`${yrs}y experience (solid)`);
-  } else if (yrs >= 1) {
-    score += 0.5;
-    r.push(`${yrs}y experience (entry)`);
-  } else r.push("limited experience");
-  const niche = (a.niche || "").toLowerCase();
-  if (/coach|info|course|consult|agency|saas/.test(niche)) {
-    score += 1.5;
-    r.push("niche fit");
-  }
-  const notes = (a.notes || "").toLowerCase();
-  if (/closed|quota|commission|hit|exceed/.test(notes)) {
-    score += 1;
-    r.push("perf signals in notes");
-  }
-  if (/remote|full.?time|available/.test(notes)) {
-    score += 0.5;
-    r.push("availability");
-  }
-  score = Math.max(0, Math.min(10, score));
-  return { score: Math.round(score * 10) / 10, reasoning: r.join(" · ") };
-}
 
 type Flag = { label: string; positive: boolean };
 
