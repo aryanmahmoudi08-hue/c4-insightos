@@ -5,7 +5,7 @@ additional_redirect_urls = ["https://ascendos.aryanmahmoudi.workers.dev/**"]
 site_url = "https://ascendos.aryanmahmoudi.workers.dev"
 
 [auth.email]
-enable_confirmations = false
+enable_confirmations = true
 max_frequency = "1m0s"
 otp_length = 8
 

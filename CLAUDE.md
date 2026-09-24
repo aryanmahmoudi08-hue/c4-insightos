@@ -87,13 +87,21 @@ files or calling `supabaseAdmin` from a route component.
   current session's access token to every `createServerFn` RPC call. Without this being
   registered, server fns never see the caller's identity.
 - Every business table is scoped by `org_id` (a workspace). `useCurrentOrg()` /
-  `ensureCurrentWorkspace` (`src/lib/workspace.functions.ts`) lazily provisions a
-  workspace+membership for a new user and returns `{ org_id, role }`. `useRole()`
-  (`src/hooks/use-role.tsx`) derives `isAdmin` / `canManage` / `canEdit` from that role.
+  `ensureCurrentWorkspace` (`src/lib/workspace.functions.ts`) **resolves** the caller's existing
+  membership and returns `{ org_id, role }`, or `null` when there is none — it deliberately does
+  *not* provision one. Auto-provisioning was removed in
+  `20260910090000_close_self_service_workspace_provisioning.sql` as a self-service access hole;
+  `_authenticated.tsx` renders "Access Required" for the `null` case. The only sanctioned way to
+  gain a membership is request-access -> admin approval (`submit_membership_request` /
+  `approve_membership_request`). The *first* member of a brand-new database is a bootstrap
+  exception: approval requires an existing admin, so that row has to be inserted by hand.
+  `useRole()` (`src/hooks/use-role.tsx`) derives `isAdmin` / `canManage` / `canEdit` from the role.
 - `src/lib/permissions.ts` is the access-control catalogue: it enumerates every sidebar
-  "resource" with what View/Edit means for it, the six `ROLES`
-  (admin/sales_manager/growth_ops/setter/closer/viewer), and `defaultPerm(role, resource)` — the
-  fallback view/edit matrix used when no explicit per-user override row exists. When adding a new
+  "resource" with what View/Edit means for it, the seven `ROLES`
+  (admin/sales_manager/growth_ops/setter/inbound_dialer/closer/viewer), and
+  `defaultPerm(role, resource)` — the fallback view/edit matrix used when no explicit per-user
+  override row exists. Note these are *not* the same set as the database's `app_role` enum, which
+  also carries `owner` and `va`. When adding a new
   module/page, add a matching entry here so it's governable by the permissions system.
 
 ### Data layer
