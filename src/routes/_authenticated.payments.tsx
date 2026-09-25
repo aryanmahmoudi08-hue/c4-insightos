@@ -57,6 +57,7 @@ import {
   resolvePlanStructure,
   formatPlanStructure,
   dealClassification,
+  ticketTierFromDeal,
   groupByProcessor,
   groupByPaymentType,
   groupByTicketTier,
@@ -485,7 +486,11 @@ function PaymentsPage() {
       const offer = client?.offer_payment_plan_id
         ? (offerByPlanId.get(client.offer_payment_plan_id) ?? null)
         : null;
-      const tierKey = client
+      // Tier is derived from the deal, not from `leads.ticket_tier`. That
+      // column is the intake form's guess made before anyone paid; the
+      // classification below reads what the client actually signed. The lead
+      // tier stays as the fallback for a client with no classifiable deal yet.
+      const leadTierKey = client
         ? ((client.lead_id ? leadTierById.get(client.lead_id) : null) ??
           (client.offer_name ? (devTierByOffer[client.offer_name] ?? null) : null))
         : null;
@@ -501,6 +506,9 @@ function PaymentsPage() {
       const classification = planInput
         ? dealClassification(planInput, plan, offer?.pricing_type ?? null)
         : null;
+      const tierKey = classification
+        ? ticketTierFromDeal(classification, client?.contract_value_cents ?? null)
+        : leadTierKey;
       return {
         payment: p,
         client,

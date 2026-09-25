@@ -27,8 +27,14 @@ hand-maintained code.
 - `npm run lint` — ESLint (flat config, includes Prettier as a lint rule — `eslint.config.js`).
 - `npm run format` — Prettier write across the repo.
 
-There is no test suite/framework configured in this repo (no test script, no vitest/jest
-dependency) — don't assume tests exist or try to invoke one.
+- `npm run test` — Vitest (unit). `npm run test:integration` runs the integration suite via
+  `vitest.integration.config.ts`, which expects a throwaway database.
+
+There are 43 test files / ~459 unit tests. Business logic in `src/lib/*.ts` is generally
+covered, and new pure functions there are expected to ship with tests. Note the suite uses
+dependency injection rather than module mocking — there is no `vi.mock()` anywhere in the repo,
+and `.server.ts` functions take an injected Supabase client precisely so they can be tested
+against a real throwaway database rather than a mock.
 
 Both `bun.lock` and `package-lock.json` are committed; `bunfig.toml` sets a 24h supply-chain
 install guard (`minimumReleaseAge`). If you add a dependency published in the last 24h, you need

@@ -1,3 +1,4 @@
+import { dealClassification, ticketTierFromDeal } from "@/lib/payments-ledger";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -586,6 +587,21 @@ function Dashboard() {
   const HUB_SETTER_METRICS = buildHubSetterMetrics(money);
   const FUNNEL_RECORD_COLUMNS = buildFunnelRecordColumns(money);
 
+  // Shape of the active-clients + plan join below.
+  type ActiveTierRow = {
+    id: string;
+    payment_plan: boolean | null;
+    installments_remaining: number | null;
+    installment_amount_cents: number | null;
+    contract_value_cents: number | null;
+    offer_payment_plan_id: string | null;
+    leads: { ticket_tier: string | null } | null;
+    offer_payment_plans: {
+      cadence: string | null;
+      offers: { pricing_type: string | null } | null;
+    } | null;
+  };
+
   // Active-by-tier portfolio counts (executive KPI row below). Deliberately
   // keyed only on orgId, not the page's date range — an "Active" count is a
   // current-state snapshot, not a historical figure that should shrink just
@@ -595,27 +611,69 @@ function Dashboard() {
     enabled: !!orgId,
     queryFn: async () => {
       if (devBypass) return { low: 0, high: 0, unclassified: 0, total: 0 };
-      let rows: Array<{ leads: { ticket_tier: string | null } | null }>;
+      let rows: ActiveTierRow[];
       if (demoMode) {
         const demo = buildDemoCoreDataset();
         const leadTierById = new Map(demo.leads.map((l) => [l.id, l.ticket_tier]));
         rows = demo.clients
           .filter((c) => c.status === "active")
           .map((c) => ({
+            id: c.id,
+            payment_plan: null,
+            installments_remaining: null,
+            installment_amount_cents: null,
+            contract_value_cents: null,
+            offer_payment_plan_id: null,
             leads: c.lead_id ? { ticket_tier: leadTierById.get(c.lead_id) ?? null } : null,
-          }));
+            offer_payment_plans: null,
+          })) as ActiveTierRow[];
       } else {
+        // Tier comes from the deal the client actually signed, not from
+        // `leads.ticket_tier` — that column is the intake form's guess, made
+        // before any money moved, and it disagrees with the money whenever a
+        // lead upgrades or downgrades. The offer plan is joined because MRR-ness
+        // is only knowable from the catalogue (see dealClassification).
         const { data, error } = await supabase
           .from("clients")
-          .select("id, leads(ticket_tier)")
+          .select(
+            "id, payment_plan, installments_remaining, installment_amount_cents, contract_value_cents, offer_payment_plan_id, leads(ticket_tier), offer_payment_plans(cadence, offers(pricing_type))",
+          )
           .eq("org_id", orgId!)
           .eq("status", "active");
         if (error) throw error;
-        rows = (data ?? []) as Array<{ leads: { ticket_tier: string | null } | null }>;
+        rows = (data ?? []) as ActiveTierRow[];
       }
-      const low = rows.filter((r) => r.leads?.ticket_tier === "low").length;
-      const high = rows.filter((r) => r.leads?.ticket_tier === "high").length;
-      return { low, high, unclassified: rows.length - low - high, total: rows.length };
+      let low = 0;
+      let high = 0;
+      let unclassified = 0;
+      for (const r of rows) {
+        const planInput = {
+          payment_plan: r.payment_plan ?? false,
+          installments_remaining: r.installments_remaining ?? null,
+          installment_amount_cents: r.installment_amount_cents ?? null,
+          contract_value_cents: r.contract_value_cents ?? null,
+        };
+        const planRow = r.offer_payment_plans
+          ? ({ cadence: r.offer_payment_plans.cadence } as Parameters<typeof dealClassification>[1])
+          : null;
+        const pricingType = r.offer_payment_plans?.offers?.pricing_type ?? null;
+        // A client with no contract value and no plan has nothing to classify
+        // on — count it honestly rather than defaulting it into "low".
+        if (!planInput.payment_plan && (planInput.contract_value_cents ?? 0) === 0) {
+          const fallback = r.leads?.ticket_tier;
+          if (fallback === "low") low += 1;
+          else if (fallback === "high") high += 1;
+          else unclassified += 1;
+          continue;
+        }
+        const tier = ticketTierFromDeal(
+          dealClassification(planInput, planRow, pricingType),
+          planInput.contract_value_cents,
+        );
+        if (tier === "low") low += 1;
+        else high += 1;
+      }
+      return { low, high, unclassified, total: rows.length };
     },
   });
 

@@ -5,6 +5,7 @@ import {
   resolvePlanStructure,
   formatPlanStructure,
   dealClassification,
+  ticketTierFromDeal,
   computeClientCashPosition,
   groupByProcessor,
   groupByPaymentType,
@@ -251,5 +252,30 @@ describe("grouping helpers", () => {
       { classification: "payment_plan", amount_cents: 200 },
     ]);
     expect(rows.find((r) => r.key === "payment_plan")?.totalCents).toBe(500);
+  });
+});
+
+describe("ticketTierFromDeal", () => {
+  it("treats a paid-in-full deal under $1,000 as low ticket", () => {
+    expect(ticketTierFromDeal("pif", 49_900)).toBe("low");
+  });
+
+  it("treats a paid-in-full deal at exactly $1,000 as high ticket", () => {
+    expect(ticketTierFromDeal("pif", 100_000)).toBe("high");
+  });
+
+  it("treats low-ticket MRR as low ticket regardless of contract value", () => {
+    expect(ticketTierFromDeal("low_ticket_mrr", 5_000_000)).toBe("low");
+  });
+
+  // The case the naive "is this payment under $1,000" rule gets wrong: a
+  // $500 installment on a $5,000 plan is not a low-ticket client.
+  it("treats a payment plan as high ticket even when installments are small", () => {
+    expect(ticketTierFromDeal("payment_plan", 500_000)).toBe("high");
+    expect(ticketTierFromDeal("payment_plan", 50_000)).toBe("high");
+  });
+
+  it("treats a null contract value on a PIF deal as low ticket", () => {
+    expect(ticketTierFromDeal("pif", null)).toBe("low");
   });
 });

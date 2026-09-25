@@ -156,6 +156,37 @@ export function dealClassification(
   return "payment_plan";
 }
 
+/* ---------------------------- Ticket tier ---------------------------- */
+
+/** $1,000. A single payment below this is low ticket; at or above it is high. */
+export const LOW_TICKET_CEILING_CENTS = 100_000;
+
+export type TicketTier = "low" | "high";
+
+/**
+ * Tier from the deal itself, not from what the lead looked like on application.
+ *
+ * `leads.ticket_tier` is a guess made by the intake form before anyone has
+ * paid; this reads the money that actually changed hands. The three branches
+ * are the operator's own rule, and the middle one is the whole reason this
+ * function exists rather than a bare `amount < 1000` comparison:
+ *
+ *   - low-ticket MRR is low ticket by definition, whatever any single charge is
+ *   - a payment plan is a HIGH-ticket deal split into installments. Comparing
+ *     a $500 monthly installment on a $5,000 plan against the ceiling would
+ *     reclassify that client as low ticket every single month.
+ *   - paid-in-full is the only case where one payment is the whole contract,
+ *     so it is the only case where comparing against the ceiling is valid.
+ */
+export function ticketTierFromDeal(
+  classification: DealClassification,
+  contractValueCents: number | null,
+): TicketTier {
+  if (classification === "low_ticket_mrr") return "low";
+  if (classification === "payment_plan") return "high";
+  return (contractValueCents ?? 0) < LOW_TICKET_CEILING_CENTS ? "low" : "high";
+}
+
 /* ---------------------------- Cash position ---------------------------- */
 
 export type CashPositionPayment = {
