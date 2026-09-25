@@ -16,6 +16,7 @@ import { Route as DailyWinRouteImport } from './routes/daily-win'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PcvTokenRouteImport } from './routes/pcv.$token'
+import { Route as LTokenRouteImport } from './routes/l.$token'
 import { Route as AuthenticatedWeeklyReportRouteImport } from './routes/_authenticated.weekly-report'
 import { Route as AuthenticatedWebinarAnalyticsRouteImport } from './routes/_authenticated.webinar-analytics'
 import { Route as AuthenticatedVslRouteImport } from './routes/_authenticated.vsl'
@@ -87,6 +88,11 @@ const IndexRoute = IndexRouteImport.update({
 const PcvTokenRoute = PcvTokenRouteImport.update({
   id: '/pcv/$token',
   path: '/pcv/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LTokenRoute = LTokenRouteImport.update({
+  id: '/l/$token',
+  path: '/l/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedWeeklyReportRoute =
@@ -320,6 +326,7 @@ export interface FileRoutesByFullPath {
   '/vsl': typeof AuthenticatedVslRoute
   '/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/weekly-report': typeof AuthenticatedWeeklyReportRoute
+  '/l/$token': typeof LTokenRoute
   '/pcv/$token': typeof PcvTokenRoute
   '/api/public/calendly': typeof ApiPublicCalendlyRoute
   '/api/public/close': typeof ApiPublicCloseRoute
@@ -366,6 +373,7 @@ export interface FileRoutesByTo {
   '/vsl': typeof AuthenticatedVslRoute
   '/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/weekly-report': typeof AuthenticatedWeeklyReportRoute
+  '/l/$token': typeof LTokenRoute
   '/pcv/$token': typeof PcvTokenRoute
   '/api/public/calendly': typeof ApiPublicCalendlyRoute
   '/api/public/close': typeof ApiPublicCloseRoute
@@ -414,6 +422,7 @@ export interface FileRoutesById {
   '/_authenticated/vsl': typeof AuthenticatedVslRoute
   '/_authenticated/webinar-analytics': typeof AuthenticatedWebinarAnalyticsRoute
   '/_authenticated/weekly-report': typeof AuthenticatedWeeklyReportRoute
+  '/l/$token': typeof LTokenRoute
   '/pcv/$token': typeof PcvTokenRoute
   '/api/public/calendly': typeof ApiPublicCalendlyRoute
   '/api/public/close': typeof ApiPublicCloseRoute
@@ -462,6 +471,7 @@ export interface FileRouteTypes {
     | '/vsl'
     | '/webinar-analytics'
     | '/weekly-report'
+    | '/l/$token'
     | '/pcv/$token'
     | '/api/public/calendly'
     | '/api/public/close'
@@ -508,6 +518,7 @@ export interface FileRouteTypes {
     | '/vsl'
     | '/webinar-analytics'
     | '/weekly-report'
+    | '/l/$token'
     | '/pcv/$token'
     | '/api/public/calendly'
     | '/api/public/close'
@@ -555,6 +566,7 @@ export interface FileRouteTypes {
     | '/_authenticated/vsl'
     | '/_authenticated/webinar-analytics'
     | '/_authenticated/weekly-report'
+    | '/l/$token'
     | '/pcv/$token'
     | '/api/public/calendly'
     | '/api/public/close'
@@ -577,6 +589,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   RequestAccessRoute: typeof RequestAccessRoute
   WelcomeRoute: typeof WelcomeRoute
+  LTokenRoute: typeof LTokenRoute
   PcvTokenRoute: typeof PcvTokenRoute
   ApiPublicCalendlyRoute: typeof ApiPublicCalendlyRoute
   ApiPublicCloseRoute: typeof ApiPublicCloseRoute
@@ -641,6 +654,13 @@ declare module '@tanstack/react-router' {
       path: '/pcv/$token'
       fullPath: '/pcv/$token'
       preLoaderRoute: typeof PcvTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/l/$token': {
+      id: '/l/$token'
+      path: '/l/$token'
+      fullPath: '/l/$token'
+      preLoaderRoute: typeof LTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/weekly-report': {
@@ -981,6 +1001,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   RequestAccessRoute: RequestAccessRoute,
   WelcomeRoute: WelcomeRoute,
+  LTokenRoute: LTokenRoute,
   PcvTokenRoute: PcvTokenRoute,
   ApiPublicCalendlyRoute: ApiPublicCalendlyRoute,
   ApiPublicCloseRoute: ApiPublicCloseRoute,
