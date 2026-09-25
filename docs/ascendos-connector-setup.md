@@ -66,19 +66,56 @@ Two ordering traps worth knowing:
 
 ## Not ready — and exactly why
 
-### Meta Ads — blocked on you
-Needs a Meta app, plus `META_APP_ID` and `META_APP_SECRET` set as Worker
-secrets. Currently only three secrets exist on the Worker (`SUPABASE_URL`,
-`SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), so the "Connect with
-Meta" button cannot complete OAuth. The redirect URI to register in the Meta app
-is exactly:
+### Meta Ads — blocked on creating the app
 
-```
-https://ascendos.aryanmahmoudi.workers.dev/api/public/oauth/meta
-```
+The app side is finished and verified: the callback route is live (a bare GET
+302s to `/settings?meta=error&reason=Missing+code+or+state`), the CSRF nonce is
+burned before any token exchange, and the sync enumerates **every** ad account
+via `/me/adaccounts` — so there is no ad-account picker to configure. Once OAuth
+completes, "Sync now" works immediately.
 
-Until this is set: Ad Spend, ROAS, CPC, CPL and CPA have no source and honestly
-report "Not tracked".
+Two things are missing, and the first must be done by a person with the
+Facebook account: the Meta app does not exist, and `META_APP_ID` /
+`META_APP_SECRET` are not among the Worker's secrets.
+
+**Exact values this integration expects** — these are read from the code, not
+guessed:
+
+| Setting | Value |
+| --- | --- |
+| Redirect URI | `https://ascendos.aryanmahmoudi.workers.dev/api/public/oauth/meta` |
+| Permission | `ads_read` — nothing else |
+| Graph API version | `v25.0` (pinned in `src/lib/oauth.ts:77`) |
+
+The redirect URI must match **byte for byte**. The callback reuses the stored
+`redirect_uri` from the authorize call rather than recomputing it
+(`oauth.meta.ts`), precisely so a proxy or host-header change cannot silently
+break the exchange — but it also means a trailing slash or `http://` in the
+Meta app config will fail the exchange with an unhelpful error.
+
+**Steps**
+
+1. <https://developers.facebook.com/apps> → Create App → type **Business**.
+2. Add the **Facebook Login** product.
+3. Facebook Login → Settings → **Valid OAuth Redirect URIs** → paste the URI
+   above exactly. Save.
+4. Settings → Basic → copy the **App ID** and **App Secret**.
+5. Hand those to whoever sets Worker secrets — they go in as `META_APP_ID` and
+   `META_APP_SECRET` via `wrangler secret put`, which prompts, so neither value
+   needs to be pasted into a chat or a shell history.
+6. Settings → Connections → **Connect with Meta**, approve read-only ads access.
+7. Hit **Sync now** on the Meta card.
+
+**App Review — the part that bites later, not now.** `ads_read` works without
+App Review while the app is in *Development* mode, for any user who holds a role
+on the app (admin / developer / tester). That covers your own ad accounts
+completely. The moment you want to pull a **client's** ad account, Meta requires
+App Review for `ads_read` plus Business Verification. Worth starting early: it
+is not instant, and it is the one part of this that cannot be rushed at the
+point a client signs.
+
+Until the secrets are set, Ad Spend, ROAS, CPC, CPL and CPA have no source and
+honestly report "Not tracked" rather than zero.
 
 ### AI insight panels — blocked on a key
 `LOVABLE_API_KEY` is not set on the Worker. Every AI panel degrades to "AI is
