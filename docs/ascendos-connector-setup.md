@@ -129,12 +129,21 @@ real registration, then check Ops → Event Bus to see what actually came in.
   either configure SMTP or confirm them by hand in Supabase → Authentication →
   Users.
 
-## Known data-integrity note
+## Registry cleanup (applied 2026-09-25)
 
-`connector_registry` has 18 rows, but the UI renders 13 cards. Two of those rows
-are duplicate Meta entries — `meta` and `meta_ads`. The app uses `meta`
-(`meta-ads.server.ts:38`, `connections-panel.tsx:829`); `meta_ads` is an orphan
-that nothing reads. Five more (`gohighlevel`, `instagram`, `slack`, `tiktok`,
-`youtube`) are flagged available but have no endpoint behind them. None of this
-breaks anything today — the UI drives off its own list — but a future change
-that iterates the registry instead would surface connectors that cannot work.
+`connector_registry` previously held 18 rows against 12 rendered cards.
+Reconciled by `20260925190000_connector_registry_cleanup.sql`:
+
+- **`meta_ads` deleted** — a straight duplicate of `meta`, which is what the app
+  actually reads (`meta-ads.server.ts:38`, `connections-panel.tsx:829`). Nothing
+  referenced `meta_ads`. The delete is guarded on having no connections, since
+  `connector_connections.connector_id` is a FK with no `ON DELETE` clause.
+- **`gohighlevel`, `instagram`, `slack`, `tiktok`, `youtube` set unavailable** —
+  not duplicates, just unimplemented: no endpoint, no card. Kept rather than
+  deleted, because that is how a connector ships here — Calendly sat at
+  `is_available = false` for the same reason until `20260924120000` implemented
+  it and flipped the flag.
+
+The registry now reads 12 available / 5 unavailable, matching the UI exactly.
+Verified afterwards: all 12 cards still render, Meta's "Connect with Meta"
+button is intact, no console errors.
