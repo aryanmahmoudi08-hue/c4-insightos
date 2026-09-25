@@ -2788,7 +2788,7 @@ function MoneyHeroTooltip({
   if (!active || !payload?.length) return null;
   const point = payload[0]?.payload;
   if (!point) return null;
-  const rate = point.revenue > 0 ? (point.cash / point.revenue) * 100 : 0;
+  const rate = point.revenue > 0 ? (point.cash / point.revenue) * 100 : null;
   const date = new Date(`${point.d}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -2808,7 +2808,8 @@ function MoneyHeroTooltip({
             <span className="text-foreground">{money(point.revenue)}</span>
           </div>
           <div className="mt-1 border-t border-border/60 pt-1 text-muted-foreground">
-            Cash collected rate: <span className="text-foreground">{rate.toFixed(1)}%</span>
+            Cash collected rate:{" "}
+            <span className="text-foreground">{rate === null ? "—" : `${rate.toFixed(1)}%`}</span>
           </div>
         </div>
       </div>
@@ -2839,11 +2840,12 @@ function CashHero({
   const up = delta > 0.5;
   const down = delta < -0.5;
   const DeltaIcon = up ? TrendingUp : down ? TrendingDown : Minus;
-  const cashRate = revenue && revenue > 0 ? ((curr ?? 0) / revenue) * 100 : 0;
+  // Null when no revenue was generated — a cash-collected rate is cash over
+  // revenue, and "0.0%" against zero revenue asserts that none of the money
+  // owed came in, when in fact none was owed.
+  const cashRate = revenue && revenue > 0 ? ((curr ?? 0) / revenue) * 100 : null;
   const cashRateDeltaPts =
-    revenue && revenue > 0 && prevCashRatePct !== undefined
-      ? cashRate - prevCashRatePct
-      : undefined;
+    cashRate !== null && prevCashRatePct !== undefined ? cashRate - prevCashRatePct : undefined;
 
   // The page's one hero moment (B1) — the single strongest gradient
   // treatment on Main Hub, so the top KpiCard row above deliberately stays
@@ -2969,7 +2971,9 @@ function CashHero({
         </span>
         <span>
           Cash collected rate:{" "}
-          <span className="font-sans tabular-nums text-foreground">{cashRate.toFixed(1)}%</span>
+          <span className="font-sans tabular-nums text-foreground">
+            {cashRate === null ? "—" : `${cashRate.toFixed(1)}%`}
+          </span>
           {cashRateDeltaPts !== undefined && (
             <span
               className={cn(

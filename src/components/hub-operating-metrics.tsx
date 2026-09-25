@@ -45,7 +45,21 @@ const CLIENT_ROSTER_DERIVATION: Derivation = {
 const fmt = (n: number) => new Intl.NumberFormat("en-US").format(Math.round(n));
 const money = (c: number) =>
   "$" + new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(c / 100));
-const ratePct = (n: number, d: number) => (d > 0 ? (n / d) * 100 : 0);
+/**
+ * A rate, or `null` when there is no sample to compute it over.
+ *
+ * This previously returned 0 for a zero denominator, which rendered as
+ * "0.0%" — indistinguishable from a real measurement. On an empty workspace
+ * every operating rate read "0.0% · 0% vs prior", stating that nobody picked
+ * up, nobody showed and nobody closed, when in fact nothing had been dialed,
+ * booked or run. Null propagates to an em-dash plus the reason, which is the
+ * convention every other instrument on these pages already follows.
+ */
+const ratePct = (n: number, d: number): number | null => (d > 0 ? (n / d) * 100 : null);
+
+/** A delta needs both periods to be real rates; otherwise there is nothing to compare. */
+const rateDelta = (cur: number | null, prev: number | null) =>
+  cur === null || prev === null ? undefined : pctDelta(cur, prev);
 
 /** Question fields we expect on a Typeform application — drives completion + quality scoring.
  * Ported verbatim from the deleted `hub-metrics.tsx` (Part 6 removed the module without
@@ -243,8 +257,11 @@ function InboundVelocityCard({
   const inboundLeads = totals.apps;
   const qualified = totals.qualified;
   const links = totals.linksSent;
-  const qualifiedRate = inboundLeads > 0 ? (qualified / inboundLeads) * 100 : 0;
-  const linkRate = qualified > 0 ? (links / qualified) * 100 : 0;
+  // Null, not 0, when there is no denominator — see `ratePct` above. "0% start
+  // rate" over zero inbound leads reads as "nobody qualified" rather than
+  // "nobody arrived".
+  const qualifiedRate = inboundLeads > 0 ? (qualified / inboundLeads) * 100 : null;
+  const linkRate = qualified > 0 ? (links / qualified) * 100 : null;
   const volumePace = series.length > 0 ? inboundLeads / series.length : 0;
   const velocityRows = [
     // Remediation (metric-dictionary audit, MAIN-0042): this previously
@@ -264,9 +281,9 @@ function InboundVelocityCard({
     },
     {
       label: "Convo-to-link sent rate",
-      value: `${linkRate.toFixed(1)}%`,
-      pct: linkRate,
-      color: "var(--spectrum-mid)",
+      value: linkRate === null ? "—" : `${linkRate.toFixed(1)}%`,
+      pct: linkRate ?? 0,
+      color: linkRate === null ? "var(--muted-foreground)" : "var(--spectrum-mid)",
     },
     {
       label: "Daily inbound volume pace",
@@ -297,7 +314,11 @@ function InboundVelocityCard({
           <div className="mt-3 flex items-stretch gap-1.5">
             {[
               ["New inbound leads", inboundLeads, ""],
-              ["Qualified convos", qualified, `${qualifiedRate.toFixed(0)}% start rate`],
+              [
+                "Qualified convos",
+                qualified,
+                qualifiedRate === null ? "" : `${qualifiedRate.toFixed(0)}% start rate`,
+              ],
               ["Links sent", links, ""],
             ].map(([label, value, note], index) => (
               <div key={String(label)} className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -419,6 +440,7 @@ function InboundVelocityCard({
 }
 
 function RateProgress({ chart }: { chart: RateChartSpec }) {
+  const unavailable = chart.currentPct === null;
   const delta = chart.deltaPct ?? 0;
   const DeltaIcon = delta > 0.5 ? TrendingUp : delta < -0.5 ? TrendingDown : Activity;
   const tone =
@@ -435,25 +457,27 @@ function RateProgress({ chart }: { chart: RateChartSpec }) {
           className="shrink-0 font-sans text-lg font-bold tabular-nums"
           style={{ color: SAFE_SPECTRUM_VAR[chart.spectrum] }}
         >
-          {chart.currentPct.toFixed(1)}%
+          {unavailable ? "—" : `${chart.currentPct!.toFixed(1)}%`}
         </span>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted/60">
         <div
           className="h-full rounded-full"
           style={{
-            width: `${Math.min(100, Math.max(0, chart.currentPct))}%`,
+            width: unavailable ? "0%" : `${Math.min(100, Math.max(0, chart.currentPct!))}%`,
             background: SAFE_SPECTRUM_VAR[chart.spectrum],
             color: SAFE_SPECTRUM_VAR[chart.spectrum],
           }}
         />
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2 text-3xs text-muted-foreground">
-        <span>{chart.hint}</span>
-        <span className={cn("flex items-center gap-0.5 whitespace-nowrap", tone)}>
-          <DeltaIcon className="h-3 w-3" />
-          {Math.abs(delta).toFixed(0)}% vs prior
-        </span>
+        <span>{unavailable ? (chart.unavailableHint ?? chart.hint) : chart.hint}</span>
+        {!unavailable && (
+          <span className={cn("flex items-center gap-0.5 whitespace-nowrap", tone)}>
+            <DeltaIcon className="h-3 w-3" />
+            {Math.abs(delta).toFixed(0)}% vs prior
+          </span>
+        )}
       </div>
     </div>
   );
@@ -896,54 +920,60 @@ export function HubOperatingMetrics() {
         label: "Play Rate",
         points: seriesRatePoints(data.vslSeries, "plays", "visits"),
         currentPct: cur.play,
-        deltaPct: pctDelta(cur.play, prev.play),
+        deltaPct: rateDelta(cur.play, prev.play),
         spectrum: "cold",
         hint: "Plays / page visits",
+        unavailableHint: "No VSL page visits logged in this range.",
       },
       {
         key: "appbooked",
         label: "App → Booked",
         points: seriesRatePoints(data.appsBookedSeries, "booked", "apps"),
         currentPct: cur.appBooked,
-        deltaPct: pctDelta(cur.appBooked, prev.appBooked),
+        deltaPct: rateDelta(cur.appBooked, prev.appBooked),
         spectrum: "mid",
         hint: "Booked / applications",
+        unavailableHint: "No applications submitted in this range.",
       },
       {
         key: "pickuprate",
         label: "Pick-up Rate",
         points: seriesRatePoints(data.actSeries, "connections", "dials"),
         currentPct: cur.pickup,
-        deltaPct: pctDelta(cur.pickup, prev.pickup),
+        deltaPct: rateDelta(cur.pickup, prev.pickup),
         spectrum: "mid",
         hint: "Connections / dials",
+        unavailableHint: "No dials logged in this range.",
       },
       {
         key: "qualrate",
         label: "Qualified Convo Rate",
         points: seriesRatePoints(data.actSeries, "qualified", "contacted"),
         currentPct: cur.qualified,
-        deltaPct: pctDelta(cur.qualified, prev.qualified),
+        deltaPct: rateDelta(cur.qualified, prev.qualified),
         spectrum: "mid",
         hint: "Qualified / contacted",
+        unavailableHint: "No leads contacted in this range.",
       },
       {
         key: "showrate",
         label: "Show Rate",
         points: seriesRatePoints(data.appsBookedSeries, "showed", "booked"),
         currentPct: cur.show,
-        deltaPct: pctDelta(cur.show, prev.show),
+        deltaPct: rateDelta(cur.show, prev.show),
         spectrum: "mid",
         hint: "Showed / booked",
+        unavailableHint: "No calls booked in this range.",
       },
       {
         key: "closerate",
         label: "Close Rate (on show)",
         points: seriesRatePoints(data.appsBookedSeries, "closed", "showed"),
         currentPct: cur.close,
-        deltaPct: pctDelta(cur.close, prev.close),
+        deltaPct: rateDelta(cur.close, prev.close),
         spectrum: "hot",
         hint: "Closed / showed",
+        unavailableHint: "No calls showed in this range.",
       },
     ];
   }, [data, t, p]);
@@ -957,17 +987,22 @@ export function HubOperatingMetrics() {
   ): KpiBandItem => {
     const chart = rateCharts.find((item) => item.key === key);
     const points = chart?.points ?? [];
-    const currentPct = chart?.currentPct ?? 0;
+    const currentPct = chart?.currentPct ?? null;
+    // A rate with no denominator is unavailable, not 0% — route it through the
+    // band's existing empty state and say which input was missing.
+    const unavailable = currentPct === null;
     return {
       key,
       label,
-      value: `${currentPct.toFixed(1)}%`,
+      value: unavailable ? "—" : `${currentPct.toFixed(1)}%`,
       spectrum,
       spark: points.map((point) => point.pct),
       sparkLabels: points.map((point) => point.d),
-      deltaPct: chart?.deltaPct,
-      empty: points.length === 0,
-      emptyHint: "No rate history logged in this range.",
+      deltaPct: unavailable ? undefined : chart?.deltaPct,
+      empty: unavailable || points.length === 0,
+      emptyHint: unavailable
+        ? (chart?.unavailableHint ?? "Not enough data to compute this rate.")
+        : "No rate history logged in this range.",
     };
   };
 

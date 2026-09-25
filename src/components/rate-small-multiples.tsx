@@ -8,8 +8,17 @@ export interface RateChartSpec {
   label: string;
   /** Real per-day ratio points (src/lib/trend.ts `seriesRatePoints`) — dated, never a bare sparkline. */
   points: { d: string; pct: number }[];
-  currentPct: number;
+  /**
+   * The rate itself, or `null` when its denominator is zero. A rate over no
+   * sample is undefined, not 0% — rendering it as "0.0%" claims a measurement
+   * ("nobody picked up") where none was taken ("nothing was dialed"). Callers
+   * pass null and the tile shows an em-dash plus `unavailableHint`, matching
+   * how every other card on these pages reports absent data.
+   */
+  currentPct: number | null;
   hint?: string;
+  /** Why the rate is unavailable, in the denominator's own terms. */
+  unavailableHint?: string;
   deltaPct?: number;
   spectrum: SpectrumPosition;
   onClick?: () => void;
@@ -24,12 +33,15 @@ export function RateSmallMultiples({ charts }: { charts: RateChartSpec[] }) {
   return (
     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       {charts.map((c) => {
-        const hasDelta = c.deltaPct !== undefined && Number.isFinite(c.deltaPct);
+        const unavailable = c.currentPct === null;
+        // No rate means no comparison either — a delta against an undefined
+        // base would reintroduce exactly the false precision this avoids.
+        const hasDelta = !unavailable && c.deltaPct !== undefined && Number.isFinite(c.deltaPct);
         const up = hasDelta && c.deltaPct! > 0.5;
         const down = hasDelta && c.deltaPct! < -0.5;
         const DeltaIcon = up ? TrendingUp : down ? TrendingDown : Minus;
         const color = SPECTRUM_VAR[c.spectrum];
-        const noData = c.points.length === 0;
+        const noData = unavailable || c.points.length === 0;
         const trend = hasDelta ? (
           <span
             className={
@@ -78,8 +90,8 @@ export function RateSmallMultiples({ charts }: { charts: RateChartSpec[] }) {
           <KpiCard
             key={c.key}
             label={c.label}
-            value={`${c.currentPct.toFixed(1)}%`}
-            supporting={c.hint}
+            value={unavailable ? "—" : `${c.currentPct!.toFixed(1)}%`}
+            supporting={unavailable ? (c.unavailableHint ?? c.hint) : c.hint}
             trend={trend}
             chart={chart}
             spectrum={c.spectrum}
