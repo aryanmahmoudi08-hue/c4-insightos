@@ -125,6 +125,21 @@ export function pctDelta(curr: number, prev: number): number | undefined {
 }
 
 /**
+ * pctDelta for rates that may be unavailable.
+ *
+ * A rate whose denominator was empty is null, not 0 (see the `ratePct` helpers
+ * in hub-operating-metrics / closer). Comparing against a null period would
+ * reintroduce the false precision those nulls exist to remove — a "% vs prior"
+ * against a period that was never measured. Undefined means "no comparison to
+ * make", which every KpiBandItem / RateChartSpec consumer already renders as
+ * no delta at all.
+ */
+export function rateDelta(curr: number | null, prev: number | null): number | undefined {
+  if (curr === null || prev === null) return undefined;
+  return pctDelta(curr, prev);
+}
+
+/**
  * A concise, dynamic period label for date-range-sensitive metrics (e.g.
  * "Deals Expected to Close"). Preset labels (Today/Yesterday/Last 7d/MTD/
  * All time) are already meaningful as-is; only "Custom" — the one label

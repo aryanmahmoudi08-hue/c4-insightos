@@ -140,7 +140,7 @@ function WeeklyReportPage() {
                 value={`${report.calls.booked} → ${report.calls.closes}`}
                 spectrum="mid"
                 emphasis="subtle"
-                hint={`${report.calls.showRate.toFixed(0)}% showed · ${report.calls.closeRate.toFixed(0)}% closed on show`}
+                hint={`${report.calls.showRate === null ? "—" : `${report.calls.showRate.toFixed(0)}%`} showed · ${report.calls.closeRate === null ? "—" : `${report.calls.closeRate.toFixed(0)}%`} closed on show`}
               />
               <StatCard
                 label="Content mix"

@@ -37,7 +37,7 @@ export function MoneyInstrument({
   payoutPct?: number;
   payoutCents?: number;
   /** Cash Collected as % of Revenue Generated — the sheet metric "Cash Collected Rate," shown explicitly here rather than left implicit in the two chart layers. */
-  cashRatePct?: number;
+  cashRatePct?: number | null;
   onCashClick?: () => void;
   fmtMoney: (cents: number) => string;
 }) {
@@ -142,7 +142,7 @@ export function MoneyInstrument({
           <span>
             Cash collected rate:{" "}
             <span className="font-sans tabular-nums text-foreground">
-              {cashRatePct.toFixed(1)}%
+              {cashRatePct === null ? "—" : `${cashRatePct.toFixed(1)}%`}
             </span>
           </span>
         )}

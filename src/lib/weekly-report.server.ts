@@ -39,7 +39,14 @@ export type WeeklyReport = {
   weekStart: string;
   weekEnd: string;
   cash: { curr: number; prev: number; deltaPct?: number };
-  calls: { booked: number; showed: number; closes: number; showRate: number; closeRate: number };
+  calls: {
+    booked: number;
+    showed: number;
+    closes: number;
+    /** Null when the week had no denominator for the rate. */
+    showRate: number | null;
+    closeRate: number | null;
+  };
   newLeads: number;
   repPerformance: { closers: RepRow[]; setters: RepRow[] };
   /** Deterministic arithmetic, same functions the rep dashboards' click-to-
@@ -340,8 +347,12 @@ export async function buildWeeklyReport(
   };
 
   const cashDeltaPct = pctDelta(curr.cash, prev.cash);
-  const showRate = curr.booked > 0 ? (curr.showed / curr.booked) * 100 : 0;
-  const closeRate = curr.showed > 0 ? (curr.closes / curr.showed) * 100 : 0;
+  // Null, not 0, with no denominator — the report is read by people, and
+  // "0% showed" for a week with no booked calls reads as a collapse rather
+  // than an empty week. The show-rate alert below is already gated on
+  // `curr.booked > 5`, so it is unaffected.
+  const showRate = curr.booked > 0 ? (curr.showed / curr.booked) * 100 : null;
+  const closeRate = curr.showed > 0 ? (curr.closes / curr.showed) * 100 : null;
 
   const trends: string[] = [];
   if (cashDeltaPct !== undefined && cashDeltaPct < -10)
@@ -349,7 +360,9 @@ export async function buildWeeklyReport(
   if (cashDeltaPct !== undefined && cashDeltaPct > 10)
     trends.push(`Cash up ${cashDeltaPct.toFixed(0)}% WoW`);
   const showRateThreshold = settings.alerts.showRateAlertPct;
-  if (curr.booked > 5 && showRate < showRateThreshold)
+  // `curr.booked > 5` already implies a non-null showRate; stated explicitly
+  // so the guard survives any future change to how the rate is derived.
+  if (showRate !== null && curr.booked > 5 && showRate < showRateThreshold)
     trends.push(
       `Show rate slipped to ${showRate.toFixed(0)}% (below your ${showRateThreshold}% threshold)`,
     );

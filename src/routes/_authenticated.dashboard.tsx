@@ -138,7 +138,10 @@ import {
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: Dashboard });
 
 const fmt = (n: number) => new Intl.NumberFormat("en-US").format(Math.round(n));
-const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%");
+// Em-dash, not "0.0%", with no denominator. Every current call site already
+// guards the denominator itself, so this is defensive — but a fallback that
+// silently invents a measurement is the wrong thing to leave lying around.
+const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "—");
 
 interface HubCloserPerson {
   name: string;
@@ -2835,10 +2838,14 @@ function CashHero({
   const animated = useCountUp(curr ?? 0, 700);
   const money = useMoney();
   const hasDelta = curr !== undefined && prev !== undefined;
-  const delta =
-    hasDelta && prev! > 0 ? ((curr! - prev!) / prev!) * 100 : hasDelta && curr! > 0 ? 100 : 0;
-  const up = delta > 0.5;
-  const down = delta < -0.5;
+  // A percentage change needs a positive baseline. With prev === 0 there is
+  // none: 0 -> 0 is not "0% change" (nothing was measured to be unchanged),
+  // and 0 -> N is not "+100%" (that reads as a doubling rather than a start
+  // from nothing). Both cases are null and render as an em-dash, consistent
+  // with how the rates on this page now report a missing denominator.
+  const delta = hasDelta && prev! > 0 ? ((curr! - prev!) / prev!) * 100 : null;
+  const up = delta !== null && delta > 0.5;
+  const down = delta !== null && delta < -0.5;
   const DeltaIcon = up ? TrendingUp : down ? TrendingDown : Minus;
   // Null when no revenue was generated — a cash-collected rate is cash over
   // revenue, and "0.0%" against zero revenue asserts that none of the money
@@ -2878,7 +2885,8 @@ function CashHero({
               !up && !down && "text-muted-foreground",
             )}
           >
-            <DeltaIcon className="h-2.5 w-2.5" /> {Math.abs(delta).toFixed(0)}%
+            <DeltaIcon className="h-2.5 w-2.5" />{" "}
+            {delta === null ? "—" : `${Math.abs(delta).toFixed(0)}%`}
           </span>
         )}
       </div>

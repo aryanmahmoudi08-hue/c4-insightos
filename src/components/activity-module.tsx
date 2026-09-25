@@ -96,7 +96,14 @@ import {
   speedToLeadSlaForWindow,
   type SpeedToLeadQueueItem,
 } from "@/lib/speed-to-lead";
-import { dailySeries, seriesValues, seriesRatePoints, priorPeriod, pctDelta } from "@/lib/trend";
+import {
+  dailySeries,
+  seriesValues,
+  seriesRatePoints,
+  priorPeriod,
+  pctDelta,
+  rateDelta,
+} from "@/lib/trend";
 import {
   computeDisqualified,
   disqualifiedCountBySetter,
@@ -161,7 +168,9 @@ interface Props {
 }
 
 const NUM = (v: FormDataEntryValue | null) => Number(v ?? 0) || 0;
-const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%");
+// Em-dash, not "0.0%", with no denominator — "0.0% pick-up rate" on the page
+// header claims nobody answered rather than that nobody was dialed.
+const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "—");
 
 /** Available-to-Dial state — real first-dial-attempt/ring, not assignment, is what removes a lead from the queue (spec: Active Leads Available to Dial). */
 type DialStatus = "Available" | "Dialed" | "Connected" | "Booked" | "Follow-up";
@@ -184,13 +193,14 @@ interface ActivityLbPerson {
   sets: number;
   qualified: number;
   closes: number;
-  showRate: number;
-  closeRate: number;
+  /** Null when the rate has no denominator — see the computation below. */
+  showRate: number | null;
+  closeRate: number | null;
   linksSent: number;
   contacted: number;
   connections: number;
   dials: number;
-  pickupRate: number;
+  pickupRate: number | null;
 }
 
 // Part C3 — exact per-role metric option lists for the setter/dialer leaderboard selector.
@@ -235,17 +245,17 @@ const buildSetterMetrics = (
     key: "showRate",
     label: "Show Rate",
     spectrum: "mid",
-    primary: (p) => `${p.showRate.toFixed(0)}%`,
+    primary: (p) => (p.showRate === null ? "—" : `${p.showRate.toFixed(0)}%`),
     secondary: (p) => `${p.sets} sets`,
-    rankBy: (p) => p.showRate,
+    rankBy: (p) => p.showRate ?? 0,
   },
   {
     key: "closeRate",
     label: "Close Rate",
     spectrum: "hot",
-    primary: (p) => `${p.closeRate.toFixed(0)}%`,
+    primary: (p) => (p.closeRate === null ? "—" : `${p.closeRate.toFixed(0)}%`),
     secondary: (p) => `${p.closes} closes`,
-    rankBy: (p) => p.closeRate,
+    rankBy: (p) => p.closeRate ?? 0,
   },
   {
     key: "linksSent",
@@ -312,9 +322,9 @@ const buildDialerMetrics = (
     key: "pickupRate",
     label: "Pick-up Rate",
     spectrum: "cold",
-    primary: (p) => `${p.pickupRate.toFixed(0)}%`,
+    primary: (p) => (p.pickupRate === null ? "—" : `${p.pickupRate.toFixed(0)}%`),
     secondary: (p) => `${p.connections} connects`,
-    rankBy: (p) => p.pickupRate,
+    rankBy: (p) => p.pickupRate ?? 0,
   },
   {
     key: "closes",
@@ -1596,17 +1606,28 @@ export function ActivityModule({ role, title, subtitle }: Props) {
     const people = Array.from(byName.entries()).map(([name, x]) => ({
       name,
       Sets: x.sets,
-      ShowRate: x.oncal ? (x.live / x.oncal) * 100 : 0,
-      CloseRate: x.live ? (x.closes / x.live) * 100 : 0,
-      QualRate: x.reach ? (x.qual / x.reach) * 100 : 0,
+      // Null, not 0, when the rate has no denominator. On a radar a 0 plots at
+      // the centre, which reads as "worst performer on this axis" — a rep who
+      // had no calls on the calendar hasn't performed worst at showing, they
+      // have no show rate at all. Recharts leaves the vertex out instead.
+      ShowRate: x.oncal ? (x.live / x.oncal) * 100 : null,
+      CloseRate: x.live ? (x.closes / x.live) * 100 : null,
+      QualRate: x.reach ? (x.qual / x.reach) * 100 : null,
     }));
     const maxSets = Math.max(1, ...people.map((p) => p.Sets));
     // Build per-axis dataset for recharts radar
     const axes = ["Sets", "ShowRate", "CloseRate", "QualRate"] as const;
     return axes.map((axis) => {
-      const row: Record<string, number | string> = { axis };
+      const row: Record<string, number | string | null> = { axis };
       for (const p of people) {
-        row[p.name] = axis === "Sets" ? Math.round((p.Sets / maxSets) * 100) : Math.round(p[axis]);
+        if (axis === "Sets") {
+          row[p.name] = Math.round((p.Sets / maxSets) * 100);
+          continue;
+        }
+        const value = p[axis];
+        // Guard explicitly: Math.round(null) is 0, which would silently
+        // reintroduce the centre-plot this change exists to remove.
+        row[p.name] = value === null ? null : Math.round(value);
       }
       return row;
     });
@@ -1735,13 +1756,16 @@ export function ActivityModule({ role, title, subtitle }: Props) {
       sets: x.sets,
       qualified: x.qualified,
       closes: x.closes,
-      showRate: x.oncal ? (x.live / x.oncal) * 100 : 0,
-      closeRate: x.live ? (x.closes / x.live) * 100 : 0,
+      // A rep with no calls on the calendar has no show rate; one with no
+      // dials has no pick-up rate. Rendering 0% claims they showed nobody and
+      // reached nobody, rather than that there was nothing to measure.
+      showRate: x.oncal ? (x.live / x.oncal) * 100 : null,
+      closeRate: x.live ? (x.closes / x.live) * 100 : null,
       linksSent: x.linksSent,
       contacted: x.contacted,
       connections: x.connections,
       dials: x.dials,
-      pickupRate: x.dials ? (x.connections / x.dials) * 100 : 0,
+      pickupRate: x.dials ? (x.connections / x.dials) * 100 : null,
     }));
   }, [lbRows]);
 
@@ -2280,18 +2304,18 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         : []),
     ];
 
-    const pickupPct = dials ? (conns / dials) * 100 : 0;
-    const prevPickupPct = prevDials ? (prevConns / prevDials) * 100 : 0;
+    const pickupPct = dials ? (conns / dials) * 100 : null;
+    const prevPickupPct = prevDials ? (prevConns / prevDials) * 100 : null;
     const qualDen = isDialer ? conns : contacted;
     const prevQualDen = isDialer ? prevConns : prevContacted;
-    const qualPct = qualDen ? (qualified / qualDen) * 100 : 0;
-    const prevQualPct = prevQualDen ? (prevQualified / prevQualDen) * 100 : 0;
-    const setPct = qualified ? (sets / qualified) * 100 : 0;
-    const prevSetPct = prevQualified ? (prevSets / prevQualified) * 100 : 0;
-    const showPct = onCalendar ? (showed / onCalendar) * 100 : 0;
-    const prevShowPct = prevOnCalendar ? (prevShowed / prevOnCalendar) * 100 : 0;
-    const closeRatePct = showed ? (closes / showed) * 100 : 0;
-    const prevCloseRatePct = prevShowed ? (prevCloses / prevShowed) * 100 : 0;
+    const qualPct = qualDen ? (qualified / qualDen) * 100 : null;
+    const prevQualPct = prevQualDen ? (prevQualified / prevQualDen) * 100 : null;
+    const setPct = qualified ? (sets / qualified) * 100 : null;
+    const prevSetPct = prevQualified ? (prevSets / prevQualified) * 100 : null;
+    const showPct = onCalendar ? (showed / onCalendar) * 100 : null;
+    const prevShowPct = prevOnCalendar ? (prevShowed / prevOnCalendar) * 100 : null;
+    const closeRatePct = showed ? (closes / showed) * 100 : null;
+    const prevCloseRatePct = prevShowed ? (prevCloses / prevShowed) * 100 : null;
 
     const rateCharts: RateChartSpec[] = [
       ...(isDialer
@@ -2301,7 +2325,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
               label: "Pickup Rate",
               points: seriesRatePoints(daySeries, "connections", "dials"),
               currentPct: pickupPct,
-              deltaPct: pctDelta(pickupPct, prevPickupPct),
+              deltaPct: rateDelta(pickupPct, prevPickupPct),
               spectrum: "cold" as const,
               onClick: () => setSelected({ kind: "reach", index: 1 }),
             },
@@ -2316,7 +2340,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
           isDialer ? "connections" : "leads_contacted",
         ),
         currentPct: qualPct,
-        deltaPct: pctDelta(qualPct, prevQualPct),
+        deltaPct: rateDelta(qualPct, prevQualPct),
         spectrum: "mid",
         onClick: () => setSelected({ kind: "reach", index: isDialer ? 2 : 1 }),
       },
@@ -2325,7 +2349,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         label: "Set Rate",
         points: seriesRatePoints(daySeries, "sets", "qualified_convos"),
         currentPct: setPct,
-        deltaPct: pctDelta(setPct, prevSetPct),
+        deltaPct: rateDelta(setPct, prevSetPct),
         spectrum: "mid",
         onClick: () => setSelected({ kind: "reach", index: isDialer ? 3 : 2 }),
       },
@@ -2334,7 +2358,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         label: "Show Rate",
         points: seriesRatePoints(daySeries, "live_calls", "calls_on_calendar"),
         currentPct: showPct,
-        deltaPct: pctDelta(showPct, prevShowPct),
+        deltaPct: rateDelta(showPct, prevShowPct),
         spectrum: "mid",
         onClick: () => setSelected({ kind: "close", index: 1 }),
       },
@@ -2343,7 +2367,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         label: "Close Rate",
         points: seriesRatePoints(daySeries, "closes", "live_calls"),
         currentPct: closeRatePct,
-        deltaPct: pctDelta(closeRatePct, prevCloseRatePct),
+        deltaPct: rateDelta(closeRatePct, prevCloseRatePct),
         spectrum: "hot",
         onClick: () => setSelected({ kind: "close", index: 2 }),
       },
@@ -2485,7 +2509,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             series={moneySeries}
             payoutPct={5}
             payoutCents={cashCents * 0.05}
-            cashRatePct={revCents ? (cashCents / revCents) * 100 : 0}
+            cashRatePct={revCents ? (cashCents / revCents) * 100 : null}
             onCashClick={() => setSelected({ kind: "money", metric: "cash" })}
             fmtMoney={money}
           />

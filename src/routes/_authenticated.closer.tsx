@@ -93,6 +93,7 @@ import {
   priorPeriod,
   pctDelta,
   formatRangeLabel,
+  rateDelta,
 } from "@/lib/trend";
 import { clusterObjectionsFn } from "@/lib/objection-clustering.functions";
 import { applyObjectionClusters } from "@/lib/objection-clustering";
@@ -146,7 +147,9 @@ import { ChartTooltip } from "@/components/chart-tooltip";
 
 export const Route = createFileRoute("/_authenticated/closer")({ component: Closer });
 
-const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "0.0%");
+// Em-dash, not "0.0%", with no denominator — the same convention dev-mock-data's
+// own `pct` already uses. All three call sites render this string directly.
+const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : "—");
 const fmtN0 = (n: number) => Math.round(n).toLocaleString();
 // Same 5-color palette as the Setter Scorecard's radar
 // (src/components/activity-module.tsx) — kept as its own local copy here
@@ -166,8 +169,9 @@ interface CloserLbPerson {
   name: string;
   cash: number;
   closes: number;
-  closeRate: number;
-  showRate: number;
+  /** Null when the rate has no denominator — a closer with no shows has no close rate. */
+  closeRate: number | null;
+  showRate: number | null;
   offers: number;
   avgCashCall: number;
   deposits: number;
@@ -185,7 +189,7 @@ function buildCloserMetrics(
       label: "Cash Collected",
       spectrum: "hot",
       primary: (p) => fmtMoney(p.cash),
-      secondary: (p) => `${p.closeRate.toFixed(0)}% close`,
+      secondary: (p) => (p.closeRate === null ? "— close" : `${p.closeRate.toFixed(0)}% close`),
       rankBy: (p) => p.cash,
     },
     {
@@ -200,24 +204,24 @@ function buildCloserMetrics(
       key: "closeRate",
       label: "Close Rate",
       spectrum: "hot",
-      primary: (p) => `${p.closeRate.toFixed(0)}%`,
+      primary: (p) => (p.closeRate === null ? "—" : `${p.closeRate.toFixed(0)}%`),
       secondary: (p) => `${p.closes} closes`,
-      rankBy: (p) => p.closeRate,
+      rankBy: (p) => p.closeRate ?? 0,
     },
     {
       key: "showRate",
       label: "Show Rate",
       spectrum: "mid",
-      primary: (p) => `${p.showRate.toFixed(0)}%`,
+      primary: (p) => (p.showRate === null ? "—" : `${p.showRate.toFixed(0)}%`),
       secondary: (p) => `${p.offers} offers`,
-      rankBy: (p) => p.showRate,
+      rankBy: (p) => p.showRate ?? 0,
     },
     {
       key: "offers",
       label: "Offers Made",
       spectrum: "mid",
       primary: (p) => `${p.offers} offers`,
-      secondary: (p) => `${p.closeRate.toFixed(0)}% close`,
+      secondary: (p) => (p.closeRate === null ? "— close" : `${p.closeRate.toFixed(0)}% close`),
       rankBy: (p) => p.offers,
     },
     {
@@ -233,7 +237,7 @@ function buildCloserMetrics(
       label: "Deposits",
       spectrum: "mid",
       primary: (p) => `${p.deposits} deposits`,
-      secondary: (p) => `${p.closeRate.toFixed(0)}% close`,
+      secondary: (p) => (p.closeRate === null ? "— close" : `${p.closeRate.toFixed(0)}% close`),
       rankBy: (p) => p.deposits,
     },
   ];
@@ -849,8 +853,8 @@ function Closer() {
       name,
       cash: x.cash,
       closes: x.closes,
-      closeRate: x.showed ? (x.closes / x.showed) * 100 : 0,
-      showRate: x.booked ? (x.showed / x.booked) * 100 : 0,
+      closeRate: x.showed ? (x.closes / x.showed) * 100 : null,
+      showRate: x.booked ? (x.showed / x.booked) * 100 : null,
       offers: x.offers,
       avgCashCall: x.booked ? x.cash / x.booked : 0,
       deposits: x.deposits,
@@ -1774,9 +1778,9 @@ function Closer() {
           booked: _booked,
           showed: _showed,
           closes: _closes,
-          showRate: _booked ? (_showed / _booked) * 100 : 0,
-          closeRate: _showed ? (_closes / _showed) * 100 : 0,
-          offerToClose: _offers ? (_closes / _offers) * 100 : 0,
+          showRate: _booked ? (_showed / _booked) * 100 : null,
+          closeRate: _showed ? (_closes / _showed) * 100 : null,
+          offerToClose: _offers ? (_closes / _offers) * 100 : null,
           cash: _cash,
           avgDeal: _closes ? _cash / _closes : 0,
         };
@@ -2214,7 +2218,7 @@ function Closer() {
             { label: `${scorecard.length} active closers`, tone: "default" },
             {
               label: `${pct(closes, showed)} close rate`,
-              tone: closes / Math.max(1, showed) >= 0.3 ? "success" : "warning",
+              tone: showed === 0 ? "default" : closes / showed >= 0.3 ? "success" : "warning",
             },
           ]}
         />
@@ -3455,18 +3459,18 @@ function Closer() {
             },
           ];
 
-          const showPct = onCalendar ? (showed / onCalendar) * 100 : 0;
-          const prevShowPct = prevOnCalendar ? (prevShowed / prevOnCalendar) * 100 : 0;
-          const offerPct = showed ? (offers / showed) * 100 : 0;
-          const prevOfferPct = prevShowed ? (prevOffers / prevShowed) * 100 : 0;
-          const offerToClosePct = offers ? (closes / offers) * 100 : 0;
-          const prevOfferToClosePct = prevOffers ? (prevClosed / prevOffers) * 100 : 0;
+          const showPct = onCalendar ? (showed / onCalendar) * 100 : null;
+          const prevShowPct = prevOnCalendar ? (prevShowed / prevOnCalendar) * 100 : null;
+          const offerPct = showed ? (offers / showed) * 100 : null;
+          const prevOfferPct = prevShowed ? (prevOffers / prevShowed) * 100 : null;
+          const offerToClosePct = offers ? (closes / offers) * 100 : null;
+          const prevOfferToClosePct = prevOffers ? (prevClosed / prevOffers) * 100 : null;
           // Closes ÷ Showed — the sheet's "Average Close Rate." Distinct from
           // Offer → Close Rate: this skips the Offers stage entirely, so it
           // isn't an adjacent-stage conv% the funnel bars produce on their own.
-          const closeRatePct = showed ? (closes / showed) * 100 : 0;
-          const prevCloseRatePct = prevShowed ? (prevClosed / prevShowed) * 100 : 0;
-          const cashRatePct = revCents ? (cashCents / revCents) * 100 : 0;
+          const closeRatePct = showed ? (closes / showed) * 100 : null;
+          const prevCloseRatePct = prevShowed ? (prevClosed / prevShowed) * 100 : null;
+          const cashRatePct = revCents ? (cashCents / revCents) * 100 : null;
 
           const closerChartFields: Record<
             string,
@@ -3521,7 +3525,7 @@ function Closer() {
               label: "Show Rate",
               points: seriesRatePoints(heroSeries, "showed", "booked"),
               currentPct: showPct,
-              deltaPct: pctDelta(showPct, prevShowPct),
+              deltaPct: rateDelta(showPct, prevShowPct),
               spectrum: "mid",
               onClick: () => setSelected({ kind: "close", index: 1, metric: "showRate" }),
             },
@@ -3530,7 +3534,7 @@ function Closer() {
               label: "Offer Rate",
               points: seriesRatePoints(heroSeries, "offers", "showed"),
               currentPct: offerPct,
-              deltaPct: pctDelta(offerPct, prevOfferPct),
+              deltaPct: rateDelta(offerPct, prevOfferPct),
               spectrum: "mid",
               onClick: () => setSelected({ kind: "close", index: 2, metric: "offerRate" }),
             },
@@ -3539,7 +3543,7 @@ function Closer() {
               label: "Close Rate",
               points: seriesRatePoints(heroSeries, "closed", "showed"),
               currentPct: closeRatePct,
-              deltaPct: pctDelta(closeRatePct, prevCloseRatePct),
+              deltaPct: rateDelta(closeRatePct, prevCloseRatePct),
               spectrum: "hot",
               onClick: () => setSelected({ kind: "close", index: 3, metric: "closeRate" }),
             },
@@ -3548,7 +3552,7 @@ function Closer() {
               label: "Offer → Close Rate",
               points: seriesRatePoints(heroSeries, "closed", "offers"),
               currentPct: offerToClosePct,
-              deltaPct: pctDelta(offerToClosePct, prevOfferToClosePct),
+              deltaPct: rateDelta(offerToClosePct, prevOfferToClosePct),
               spectrum: "hot",
               onClick: () => setSelected({ kind: "close", index: 3, metric: "offerToCloseRate" }),
             },
@@ -4184,13 +4188,13 @@ function Closer() {
                         <td className="p-3 text-right font-sans tabular-nums">{s.showed}</td>
                         <td className="p-3 text-right font-sans tabular-nums">{s.closes}</td>
                         <td className="p-3 text-right font-sans tabular-nums">
-                          {s.showRate.toFixed(1)}%
+                          {s.showRate === null ? "—" : `${s.showRate.toFixed(1)}%`}
                         </td>
                         <td className="p-3 text-right font-sans tabular-nums">
-                          {s.closeRate.toFixed(1)}%
+                          {s.closeRate === null ? "—" : `${s.closeRate.toFixed(1)}%`}
                         </td>
                         <td className="p-3 text-right font-sans tabular-nums">
-                          {s.offerToClose.toFixed(1)}%
+                          {s.offerToClose === null ? "—" : `${s.offerToClose.toFixed(1)}%`}
                         </td>
                         <td className="p-3 text-right font-sans tabular-nums">
                           {s.avgDeal ? fmtMoney(s.avgDeal) : "—"}

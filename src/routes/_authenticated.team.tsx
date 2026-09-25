@@ -40,7 +40,7 @@ import { RepLeaderboard, type RepMetricOption } from "@/components/rep-leaderboa
 import { KpiTargetAdmin } from "@/components/kpi-target-admin";
 import { KpiTargetTeamTable } from "@/components/kpi-target-team-table";
 import type { DateRange } from "@/components/date-range-picker";
-import { priorPeriod, pctDelta } from "@/lib/trend";
+import { priorPeriod, pctDelta, rateDelta } from "@/lib/trend";
 import { cn } from "@/lib/utils";
 import { fetchRepKpiTargets } from "@/lib/rep-kpi-targets";
 import { currentTargetsAsOf, type TargetRecord } from "@/lib/kpi-targets";
@@ -598,8 +598,10 @@ function Team() {
 
   const t = team30d?.curr;
   const p = team30d?.prev;
-  const showRate = t && t.booked ? (t.showed / t.booked) * 100 : 0;
-  const prevShowRate = p && p.booked ? (p.showed / p.booked) * 100 : 0;
+  // Null with no booked calls — "0% show rate" would say nobody turned up to
+  // calls that were never on the calendar.
+  const showRate = t && t.booked ? (t.showed / t.booked) * 100 : null;
+  const prevShowRate = p && p.booked ? (p.showed / p.booked) * 100 : null;
 
   const kpiItems: KpiBandItem[] = [
     {
@@ -623,10 +625,12 @@ function Team() {
     {
       key: "showRate",
       label: "Show Rate",
-      value: `${showRate.toFixed(0)}%`,
-      spectrum: showRate >= 60 ? "hot" : "mid",
-      deltaPct: t && p ? pctDelta(showRate, prevShowRate) : undefined,
-      priorValue: p ? `${prevShowRate.toFixed(0)}%` : undefined,
+      value: showRate === null ? "—" : `${showRate.toFixed(0)}%`,
+      spectrum: showRate !== null && showRate >= 60 ? "hot" : "mid",
+      deltaPct: rateDelta(showRate, prevShowRate),
+      priorValue: prevShowRate === null ? undefined : `${prevShowRate.toFixed(0)}%`,
+      empty: showRate === null,
+      emptyHint: "No calls booked in the last 30 days.",
     },
     {
       key: "cash",
@@ -1133,7 +1137,7 @@ function TeamIntelligenceSummary({
   members: Member[];
   t?: { booked: number; showed: number; closed: number; cash: number };
   p?: { booked: number; showed: number; closed: number; cash: number };
-  showRate: number;
+  showRate: number | null;
   setterCount: number;
   dialerCount: number;
   closerCount: number;
@@ -1151,9 +1155,11 @@ function TeamIntelligenceSummary({
       );
     }
   }
-  sentences.push(
-    `Show rate is ${showRate.toFixed(0)}% (${t.showed} of ${t.booked} booked calls) over the last 30 days.`,
-  );
+  if (showRate !== null && t) {
+    sentences.push(
+      `Show rate is ${showRate.toFixed(0)}% (${t.showed} of ${t.booked} booked calls) over the last 30 days.`,
+    );
+  }
   return (
     <div className="rounded-lg border border-accent/30 bg-gradient-to-br from-accent/5 to-transparent p-4">
       <div className="flex items-center gap-2 mb-2">
