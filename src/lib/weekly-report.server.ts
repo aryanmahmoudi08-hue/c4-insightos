@@ -291,7 +291,13 @@ export async function buildWeeklyReport(
       .select("id, renewal_date, renewal_conv_started, renewal_stage, status")
       .eq("org_id", orgId)
       .eq("status", "active"),
-    sb.from("applicants").select("id, stage, applied_at").eq("org_id", orgId),
+    // `hiring_applicants`, not `applicants` — the latter has never existed in
+    // any migration. This threw "Could not find the table 'public.applicants'"
+    // and, because the query sits inside the same Promise.all as everything
+    // else, took the entire weekly report down with it rather than degrading
+    // the hiring section alone. The Hiring page has always used the real name
+    // (_authenticated.hiring.tsx:289).
+    sb.from("hiring_applicants").select("id, stage, applied_at").eq("org_id", orgId),
     computeDemand(sb, orgId, { from: weekStart, to: weekEnd }, settings.content_engine),
     computeWeeklyContentCheck(sb, orgId, settings.content_engine),
   ]);
