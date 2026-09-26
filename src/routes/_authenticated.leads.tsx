@@ -1,3 +1,4 @@
+import { isDiamondLead } from "@/lib/lead-quality";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -787,8 +788,10 @@ function Leads() {
       total: view.length,
       booked: view.filter((l) => l.status === "call_booked").length,
       closed: view.filter((l) => l.status === "closed").length,
-      diamond: view.filter((l) => l.priority === "diamond" || l.pipeline_stage === "diamond")
-        .length,
+      // Was `priority === "diamond"`, which the leads.priority CHECK constraint
+      // ('low','normal','high','urgent') made structurally impossible — this
+      // count was always zero. isDiamondLead derives it from real signals.
+      diamond: view.filter((l) => isDiamondLead(l)).length,
       available: view.filter((l) => availabilityByLeadId.get(l.id)?.bucket !== "unavailable")
         .length,
     };
@@ -1229,7 +1232,7 @@ function Leads() {
               {paged.map((l) => {
                 const t = tone(l.status);
                 const app = l.application_data ?? {};
-                const isDiamond = l.priority === "diamond" || l.pipeline_stage === "diamond";
+                const isDiamond = isDiamondLead(l);
                 return (
                   <tr
                     key={l.id}

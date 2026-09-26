@@ -23,6 +23,7 @@ const eventSchema = z.object({
     "onboarding_response",
     "vsl_metric_snapshot",
     "hiring_application",
+    "daily_win",
   ]),
   data: z.record(z.string(), z.unknown()).default({}),
 });
@@ -164,6 +165,33 @@ const hiringApplicationSchema = z.object({
   responses: z.record(z.string(), z.unknown()).optional(),
 });
 
+/**
+ * Student daily check-in arriving from an external form (Google Forms via
+ * Apps Script, or anything else that can POST). Deliberately the same shape
+ * `submitDailyWin` already takes from the in-app /daily-win page — one writer,
+ * one validation path, so an external form cannot create rows the in-app form
+ * could not.
+ *
+ * `financial_amount_cents` is only honoured when win_types includes
+ * "financial"; submitDailyWin enforces that, so a form that sends an amount
+ * without the tag cannot inflate Student Cash Logged.
+ */
+const dailyWinSchema = z.object({
+  student_name: z.string().min(1).max(255),
+  win_description: z.string().min(1).max(4000),
+  win_types: z.array(z.string().max(60)).default([]),
+  win_date: z.string().max(40).optional(),
+  yesterday_commitment: z.string().max(2000).optional(),
+  yesterday_status: z.string().max(60).optional(),
+  work_done: z.string().max(4000).optional(),
+  financial_amount_cents: z.number().int().min(0).optional(),
+  financial_source: z.string().max(255).optional(),
+  proof_url: z.string().url().max(500).optional(),
+  energy_score: z.number().int().min(1).max(10).optional(),
+  blocker: z.string().max(2000).optional(),
+  tomorrow_needle_mover: z.string().max(2000).optional(),
+});
+
 // Wistia has no push/webhook API for stats — this is always fed by a poller
 // (n8n calling Wistia's Stats API, then pushing the transformed result here)
 // rather than Wistia calling AscendOS directly. wistia_video_id resolves to
@@ -262,6 +290,17 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
               responses: v.responses as never,
             });
             if (error) throw error;
+          } else if (event_type === "daily_win") {
+            const v = dailyWinSchema.parse(data);
+            const { insertDailyWin } = await import("@/lib/daily-wins.server");
+            await insertDailyWin({
+              ...v,
+              org_id: orgId,
+              // The table's default; the in-app form asks the question, an
+              // external form generally won't.
+              yesterday_status: v.yesterday_status ?? "done",
+              source: "google_form",
+            });
           } else if (event_type === "hiring_application") {
             const v = hiringApplicationSchema.parse(data);
             const { scoreApplicant, recommendStageFromScore } =

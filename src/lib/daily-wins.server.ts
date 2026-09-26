@@ -15,7 +15,7 @@ export type DailyWinInput = {
   energy_score?: number | null;
   blocker?: string | null;
   tomorrow_needle_mover?: string | null;
-  source?: "manual" | "typeform";
+  source?: "manual" | "typeform" | "google_form";
 };
 
 export async function insertDailyWin(input: DailyWinInput) {
@@ -95,7 +95,7 @@ export type WinRow = {
 };
 
 export async function analyzeWins(rows: WinRow[], days: number) {
-  const apiKey = process.env['LOVABLE_API_KEY'];
+  const apiKey = process.env["LOVABLE_API_KEY"];
   if (!apiKey) return { insight: "AI is not configured." };
   if (!rows.length) return { insight: "No daily wins logged in this window yet." };
 
@@ -104,7 +104,9 @@ export async function analyzeWins(rows: WinRow[], days: number) {
       (r) =>
         `${r.win_date} · ${r.student_name} · [${(r.win_types ?? []).join("/") || "none"}] energy ${r.energy_score ?? "?"}/10 · commitment ${r.yesterday_status}` +
         `\n  WIN: ${r.win_description}` +
-        (r.financial_amount_cents ? `\n  CASH: $${Math.round(r.financial_amount_cents / 100)} — ${r.financial_source ?? ""}` : "") +
+        (r.financial_amount_cents
+          ? `\n  CASH: $${Math.round(r.financial_amount_cents / 100)} — ${r.financial_source ?? ""}`
+          : "") +
         (r.blocker ? `\n  BLOCKER: ${r.blocker}` : "") +
         (r.tomorrow_needle_mover ? `\n  NEXT: ${r.tomorrow_needle_mover}` : ""),
     )
