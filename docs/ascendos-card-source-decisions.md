@@ -209,3 +209,42 @@ section. Fixed and deployed; the report builds now.
 5. **Ticket tier threshold** — confirm $1,000, applied to contract value.
 6. **Cash reconciliation** — do you want a view that surfaces reported-vs-actual
    gaps, rather than silently taking the larger?
+
+---
+
+## Two corrections found on the readiness pass (2026-09-28)
+
+Both contradict an assumption in the walkthrough, and both would have surfaced
+only *after* connecting Close — which is the worst time to find them.
+
+### Close will not drive your funnel statuses
+
+`close.ts:144-151` mirrors name, email and phone, and **deliberately does not
+mirror status**. Close's `status_label` is org-configured free text; this app's
+`leads.status` is a fixed enum that show rate, close rate and the whole
+attribution chain are computed from. There is no defensible automatic mapping
+between the two, so a mirrored lead keeps the column default on insert and is
+never restatused on update. The real Close label stays visible in
+`raw_payloads`.
+
+Consequence: you said "Close is authoritative, AscendOS mirrors it." That holds
+for lead *identity*, not for lead *stage*. Moving a lead to "Qualified" in
+Close will not move it here, and will not move show rate or close rate. If you
+want that, it needs a status mapping table — a real, small piece of work, but
+it does not exist today.
+
+### Close will not give you call duration or talk time
+
+The walkthrough put "avg call duration, talk time, talk/listen" on Close,
+because dialers dial there. The Close webhook handles the `lead` object only,
+and `crm_call_sessions` — the table those metrics read — is written **solely by
+`twilio.$event.ts`**. Nothing in the Close path touches it.
+
+So those three cards need one of:
+- dialing routed through Twilio, which already writes the table, or
+- a Close *activity* webhook plus a new handler mapping call activities into
+  `crm_call_sessions` (does not exist), or
+- accepting them as not-tracked
+
+This is the same gap the data-source map called gap 1. It is not blocked on an
+API key; it is unbuilt.
