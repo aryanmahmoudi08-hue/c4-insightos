@@ -1,3 +1,4 @@
+import { DemoEditableValue } from "@/components/demo-editable-value";
 import type { CSSProperties, ReactNode } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -162,7 +163,14 @@ export function MetricCard({
               unavailable ? undefined : tone === "default" ? "text-foreground" : TONE_TEXT[tone],
             )}
           >
-            {display}
+            {/* Every KpiCard / StatCard / KpiBand headline value renders
+                through here, so wrapping once makes the whole app's KPI
+                surface editable under Mock Data — and only under Mock Data.
+                DemoEditableValue is a pass-through when demoMode is off, so
+                a real workspace renders exactly what it rendered before. An
+                unavailable state ("Not tracked") is prose rather than a
+                figure and stays unedited. */}
+            {unavailable ? display : <DemoEditableValue label={label}>{display}</DemoEditableValue>}
           </div>
           {comparison && <div className="mt-1 text-2xs text-muted-foreground">{comparison}</div>}
         </div>

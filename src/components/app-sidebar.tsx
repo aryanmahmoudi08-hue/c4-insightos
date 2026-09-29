@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+import { clearOverrides } from "@/lib/demo-overrides";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
@@ -668,6 +670,21 @@ export function AppSidebar() {
                         </span>
                         <Switch checked={demoMode} onCheckedChange={setDemoMode} />
                       </label>
+                      {demoMode && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearOverrides();
+                            toast.success("Demo edits cleared");
+                          }}
+                          className="mt-1 w-full cursor-pointer rounded-md px-1 py-1 text-left text-3xs text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground"
+                        >
+                          Clear demo edits
+                          <span className="block text-3xs text-muted-foreground/70">
+                            Resets any figures you retyped on the cards
+                          </span>
+                        </button>
+                      )}
                     </div>
                   </>
                 )}
