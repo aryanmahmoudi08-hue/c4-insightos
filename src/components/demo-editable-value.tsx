@@ -95,6 +95,7 @@ export function DemoEditableValue({
         setDraft(override ?? (typeof children === "string" ? children : ""));
         setEditing(true);
       }}
+      data-demo-editable="kpi"
       title="Demo mode — click to edit this value"
       className={cn(
         "cursor-text text-left text-inherit",
