@@ -585,12 +585,7 @@ export function AppSidebar() {
               could get without crowding the other). Bigger on its own row
               reads as real brand presence instead of a small icon glued to
               a text label. */}
-          <div
-            className={cn(
-              "flex items-center",
-              !showExpanded ? "justify-center" : "justify-between",
-            )}
-          >
+          <div className={cn("flex items-center", !showExpanded && "justify-center")}>
             {/* Two real theme-specific assets per state (not a CSS invert
                 approximation) — .theme-logo-dark shows by default,
                 .theme-logo-light shows only under .light (styles.css), so
@@ -602,19 +597,21 @@ export function AppSidebar() {
                 rail allows. Expanded swaps to the full AscendOS lockup —
                 mark stacked over the wordmark, also ~1.5:1 rather than the
                 wide horizontal wordmark this used to carry, so it needs more
-                height than the old 3.4:1 asset did before "OS" is legible.
-                Hence h-20 here rather than h-14.
+                height than the old 3.4:1 asset did before "OS" is legible,
+                and it is centred rather than flush-left — it is a centred
+                composition, so left-aligning it leaves the header visually
+                lopsided with dead space beside the mark.
 
                 The company rebranded to Ascend Capital, but this is the
                 software, so these are deliberately the AscendOS marks — the
                 Ascend Capital lockups are not used in this app. */}
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
               <img
                 src={showExpanded ? ascendOsInlineWhite : ascendOsStackedWhite}
                 alt="AscendOS"
                 className={cn(
                   "theme-logo-dark shrink-0 object-contain transition-[height] duration-200",
-                  !showExpanded ? "h-9 w-9" : "h-20 w-auto",
+                  !showExpanded ? "h-9 w-9" : "h-14 w-auto",
                 )}
               />
               <img
@@ -622,7 +619,7 @@ export function AppSidebar() {
                 alt="AscendOS"
                 className={cn(
                   "theme-logo-light shrink-0 object-contain transition-[height] duration-200",
-                  !showExpanded ? "h-9 w-9" : "h-20 w-auto",
+                  !showExpanded ? "h-9 w-9" : "h-14 w-auto",
                 )}
               />
             </div>
