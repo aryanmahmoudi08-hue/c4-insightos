@@ -595,19 +595,26 @@ export function AppSidebar() {
                 approximation) — .theme-logo-dark shows by default,
                 .theme-logo-light shows only under .light (styles.css), so
                 the swap is pure CSS/SSR-safe with no theme-detection flash.
-                Collapsed (rail-only) uses the stacked mark — its ~1.9:1
-                ratio fits the narrow rail's available width in a square
-                box. Expanded swaps to the inline wordmark — wide (~3.1:1),
-                so it reads as a real horizontal brand lockup on its own row
-                instead of the stacked mark stretched taller than it needs
-                to be. */}
+                White assets are the dark-mode pair, black the light-mode one.
+
+                Collapsed (rail-only) shows the Ascend mark alone (~1.5:1),
+                which object-contain fits inside the square box the narrow
+                rail allows. Expanded swaps to the full AscendOS lockup —
+                mark stacked over the wordmark, also ~1.5:1 rather than the
+                wide horizontal wordmark this used to carry, so it needs more
+                height than the old 3.4:1 asset did before "OS" is legible.
+                Hence h-20 here rather than h-14.
+
+                The company rebranded to Ascend Capital, but this is the
+                software, so these are deliberately the AscendOS marks — the
+                Ascend Capital lockups are not used in this app. */}
             <div className="flex min-w-0 items-center gap-2">
               <img
                 src={showExpanded ? ascendOsInlineWhite : ascendOsStackedWhite}
                 alt="AscendOS"
                 className={cn(
                   "theme-logo-dark shrink-0 object-contain transition-[height] duration-200",
-                  !showExpanded ? "h-9 w-9" : "h-14 w-auto",
+                  !showExpanded ? "h-9 w-9" : "h-20 w-auto",
                 )}
               />
               <img
@@ -615,7 +622,7 @@ export function AppSidebar() {
                 alt="AscendOS"
                 className={cn(
                   "theme-logo-light shrink-0 object-contain transition-[height] duration-200",
-                  !showExpanded ? "h-9 w-9" : "h-14 w-auto",
+                  !showExpanded ? "h-9 w-9" : "h-20 w-auto",
                 )}
               />
             </div>

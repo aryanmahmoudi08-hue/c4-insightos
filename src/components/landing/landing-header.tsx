@@ -45,12 +45,12 @@ export function LandingHeader() {
           <img
             src={ascendOsWhite}
             alt="AscendOS"
-            className="theme-logo-dark h-10 w-auto shrink-0 object-contain md:h-12"
+            className="theme-logo-dark h-12 w-auto shrink-0 object-contain md:h-14"
           />
           <img
             src={ascendOsBlack}
             alt="AscendOS"
-            className="theme-logo-light h-10 w-auto shrink-0 object-contain md:h-12"
+            className="theme-logo-light h-12 w-auto shrink-0 object-contain md:h-14"
           />
         </a>
 
