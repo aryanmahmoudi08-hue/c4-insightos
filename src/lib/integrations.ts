@@ -26,6 +26,12 @@ export type IntegrationKind =
   | "manual";
 
 export type Integration = {
+  /** The vendor's own brand colour, for the card's mark. Deliberately a
+   *  colour and a glyph rather than the vendor's logo file: shipping a
+   *  dozen third-party trademarks into the bundle is a licensing question
+   *  nobody here has answered, and a wrong-era logo looks worse than none.
+   *  Swap in real brand SVGs whenever they are approved. */
+  brand: string;
   /** Matches the connector id in connections-panel.tsx where kind !== "manual". */
   id: string;
   name: string;
@@ -45,6 +51,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
     items: [
       {
         id: "typeform",
+        brand: "#262627",
         name: "Typeform",
         kind: "webhook",
         feeds: "Applications — every answer, stored against the lead.",
@@ -54,6 +61,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
       },
       {
         id: "calendly",
+        brand: "#006BFF",
         name: "Calendly",
         kind: "webhook",
         feeds: "Bookings, reschedules and cancellations.",
@@ -63,6 +71,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
       },
       {
         id: "close",
+        brand: "#1B7FFB",
         name: "Close CRM",
         kind: "webhook",
         feeds: "Lead and opportunity changes from Close.",
@@ -71,6 +80,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
       },
       {
         id: "google_forms",
+        brand: "#7248B9",
         name: "Google Forms",
         kind: "manual",
         feeds: "The Daily W check-in — wins, cash logged, energy, commitments.",
@@ -86,6 +96,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
     items: [
       {
         id: "stripe",
+        brand: "#635BFF",
         name: "Stripe",
         kind: "webhook",
         feeds: "Charges, refunds and failed payments.",
@@ -95,6 +106,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
       },
       {
         id: "whop",
+        brand: "#FF6243",
         name: "Whop",
         kind: "webhook",
         feeds: "Payments and membership events.",
@@ -103,6 +115,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
       },
       {
         id: "fanbasis",
+        brand: "#12B981",
         name: "Fanbasis (Commas)",
         kind: "webhook",
         feeds: "Payments and payment-plan installments.",
@@ -111,6 +124,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
       },
       {
         id: "paypal",
+        brand: "#009CDE",
         name: "PayPal",
         kind: "webhook",
         feeds: "Payments and refunds.",
@@ -120,6 +134,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
       },
       {
         id: "wise",
+        brand: "#9FE870",
         name: "Wise",
         kind: "webhook",
         feeds: "Transfers received.",
@@ -134,6 +149,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
     items: [
       {
         id: "meta",
+        brand: "#0866FF",
         name: "Meta Ads",
         kind: "oauth",
         feeds: "Ad spend per account, pulled on a schedule.",
@@ -143,6 +159,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
       },
       {
         id: "webinarjam",
+        brand: "#2B6CB0",
         name: "WebinarJam",
         kind: "webhook",
         feeds: "Registrations, attendance and at-pitch timing.",
@@ -151,6 +168,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
       },
       {
         id: "wistia",
+        brand: "#4990E2",
         name: "Wistia",
         kind: "manual",
         feeds: "VSL plays, average percent watched and drop-off per milestone.",
@@ -165,7 +183,18 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
     blurb: "Where events go once something happens in here.",
     items: [
       {
+        id: "twilio",
+        brand: "#F22F46",
+        name: "Twilio",
+        kind: "webhook",
+        feeds: "Inbound SMS and voice, call status and recordings.",
+        landsOn: "Legacy Leads · Inbound Dialer",
+        setup:
+          "Point your Twilio number's SMS and Voice webhooks at the per-event URLs on this page. Requests are signature-verified.",
+      },
+      {
         id: "discord",
+        brand: "#5865F2",
         name: "Discord",
         kind: "webhook",
         feeds: "Outbound only — new leads, booked calls, payments, failures.",
@@ -174,11 +203,22 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
       },
       {
         id: "zapier",
+        brand: "#FF4F00",
         name: "Zapier",
         kind: "webhook",
         feeds: "Outbound only — anything the Event Bus emits, into any Zap.",
         landsOn: "Event Bus",
         setup: "Create a Catch Hook in Zapier and paste its URL here.",
+      },
+      {
+        id: "custom_webhook",
+        brand: "#8A8F98",
+        name: "Slack · n8n · any webhook",
+        kind: "manual",
+        feeds: "Outbound only — the same events, as raw JSON to any URL you own.",
+        landsOn: "Event Bus",
+        setup:
+          "Add the destination as a subscription on the Event Bus page. Discord gets a formatted message; everything else receives JSON.",
       },
     ],
   },

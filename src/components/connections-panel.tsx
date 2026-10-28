@@ -29,7 +29,7 @@ type ConnectorRow = {
  * because the backend logic exists. Read straight from connector_connections
  * (RLS-scoped to the caller's org), the same table connectWorkspaceConnector
  * writes. */
-function useConnections(orgId?: string) {
+export function useConnections(orgId?: string) {
   return useQuery({
     queryKey: ["connector-connections", orgId],
     enabled: !!orgId,
@@ -98,7 +98,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
  * content_post, onboarding_response) points at. Same token/endpoint already
  * surfaced on the Event Bus page — repeated here so "Connections" is one
  * complete stop rather than sending you hunting across two settings pages. */
-function IngestEndpointCard({ orgId, isAdmin }: { orgId?: string; isAdmin: boolean }) {
+export function IngestEndpointCard({ orgId, isAdmin }: { orgId?: string; isAdmin: boolean }) {
   const { devBypass } = useAuth();
   const qc = useQueryClient();
   const getFn = useServerFn(getOrCreateIngestToken);
@@ -435,7 +435,7 @@ const PRE_CONNECT_URL_CONNECTORS = new Set([
  * connection's id, and shown back via `row.config.webhookUrl`. */
 const POST_CONNECT_URL_CONNECTORS = new Set(["typeform", "webinarjam"]);
 
-function ConnectorCard({
+export function ConnectorCard({
   connectorId,
   row,
   isAdmin,
@@ -612,7 +612,13 @@ function ConnectorCard({
  * a ConnectorCard's field list it gets a button that starts the authorization
  * flow. The access token never comes back to the browser — it's written
  * server-side into connector_oauth_tokens, which org members can't read. */
-function MetaConnectorCard({ row, isAdmin }: { row: ConnectorRow | undefined; isAdmin: boolean }) {
+export function MetaConnectorCard({
+  row,
+  isAdmin,
+}: {
+  row: ConnectorRow | undefined;
+  isAdmin: boolean;
+}) {
   const { devBypass } = useAuth();
   const startFn = useServerFn(startMetaOAuth);
   const syncFn = useServerFn(syncMetaSpendNow);
