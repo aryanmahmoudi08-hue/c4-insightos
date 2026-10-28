@@ -15,6 +15,48 @@ import { DEMO_OVERRIDES_EVENT, readOverrides, writeOverride } from "@/lib/demo-o
  * Renders nothing. Mounted once inside the authenticated layout.
  */
 
+/**
+ * Anything the operator clicks to *do* something, rather than to read it.
+ *
+ * This is the guard that was missing. The handler below takes the click in
+ * the capture phase and calls preventDefault/stopPropagation, so without
+ * this list any control whose own label happens to contain a digit — the
+ * "7d" and "30d" range chips above every dashboard, a tab with a count on
+ * it, a paginator — got turned into a text box and became impossible to
+ * click. Editing a figure is a demo convenience; operating the app is the
+ * demo. The app wins every time.
+ *
+ * Roles are listed alongside tags because this app's controls are Radix
+ * primitives, which are frequently a <div role="..."> rather than a <button>.
+ */
+const INTERACTIVE = [
+  "button",
+  "a[href]",
+  "input",
+  "textarea",
+  "select",
+  "label",
+  "summary",
+  "[contenteditable='true']",
+  "[data-demo-editable]",
+  "[data-demo-noedit]",
+  "[tabindex]:not([tabindex='-1'])",
+  "[role='button']",
+  "[role='link']",
+  "[role='tab']",
+  "[role='menuitem']",
+  "[role='menuitemcheckbox']",
+  "[role='menuitemradio']",
+  "[role='option']",
+  "[role='checkbox']",
+  "[role='radio']",
+  "[role='switch']",
+  "[role='combobox']",
+  "[role='slider']",
+  "[role='spinbutton']",
+  "[role='textbox']",
+].join(", ");
+
 /** Text that is worth offering to edit: contains a digit, and is short enough
  *  to be a figure rather than a sentence that happens to include a number. */
 function looksLikeFigure(text: string): boolean {
@@ -109,7 +151,9 @@ export function DemoEditAnything() {
       if (!target) return;
       // Leave the MetricCard path to DemoEditableValue, and never hijack a
       // real control the operator needs in order to navigate the demo.
-      if (target.closest("input, textarea, select, [data-demo-editable]")) return;
+      // `closest` rather than a test on the target itself: the click usually
+      // lands on a <span> inside the control, not on the control.
+      if (target.closest(INTERACTIVE)) return;
       // The test is whether this element renders the figure *itself* — i.e.
       // has its own direct text nodes containing a digit — not whether it is
       // a childless leaf. A badge like "69.2% set rate" holds a <span> for its

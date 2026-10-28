@@ -69,13 +69,23 @@ export function DemoEditableValue({
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
+        // A clickable KPI card is a <button> around this, so without these
+        // the click that puts the caret in the box also fires the card's
+        // drill-down and navigates away mid-edit.
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
+          e.stopPropagation();
           if (e.key === "Enter") commit();
           // Escape abandons the edit rather than committing a half-typed value.
           if (e.key === "Escape") setEditing(false);
         }}
+        // Sized to the value, not to the card. `w-full` stretched a two-digit
+        // figure into a box across the whole tile, which read as the layout
+        // having broken rather than as a field waiting for input.
+        style={{ width: `${Math.max(draft.length, 3) + 1}ch` }}
         className={cn(
-          "w-full min-w-0 rounded border border-amber-500/60 bg-amber-500/10 px-1 outline-none",
+          "max-w-full min-w-0 rounded border border-amber-500/60 bg-amber-500/10 px-1 outline-none",
           "font-sans tabular-nums text-inherit",
           className,
         )}
@@ -86,14 +96,32 @@ export function DemoEditableValue({
 
   const shown = override ?? children;
 
+  const begin = () => {
+    // Seed the input with the current override if there is one, otherwise
+    // the rendered text, so editing starts from what is on screen.
+    setDraft(override ?? (typeof children === "string" ? children : ""));
+    setEditing(true);
+  };
+
   return (
-    <button
-      type="button"
-      onClick={() => {
-        // Seed the input with the current override if there is one, otherwise
-        // the rendered text, so editing starts from what is on screen.
-        setDraft(override ?? (typeof children === "string" ? children : ""));
-        setEditing(true);
+    // A <span role="button">, not a <button>: MetricCard renders a real
+    // <button> around its whole surface when the card has a drill-down, and a
+    // nested button is invalid HTML whose click fires both handlers — so
+    // clicking the figure to edit it also navigated to the drilldown.
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        begin();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          begin();
+        }
       }}
       data-demo-editable="kpi"
       title="Demo mode — click to edit this value"
@@ -109,6 +137,6 @@ export function DemoEditableValue({
       )}
     >
       {shown}
-    </button>
+    </span>
   );
 }
