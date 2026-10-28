@@ -24,6 +24,7 @@ import {
 import { Loader2, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useDemoMode } from "@/hooks/use-demo-mode";
 import {
   EMPTY_WEBINAR_METRIC,
   countInputToNumber,
@@ -105,6 +106,12 @@ export function WebinarMetricsDialog({
   trigger: ReactNode;
 }) {
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
+  // Saving stays blocked in Demo Mode as well as under Dev Bypass. Dev
+  // Bypass has no session to write with; Demo Mode has a perfectly good one,
+  // which is the problem — the figures on screen are fixtures, so a save
+  // would write invented numbers into the real workspace.
+  const readOnly = devBypass || demoMode;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [webinarId, setWebinarId] = useState(defaultWebinarId ?? "");
@@ -272,7 +279,7 @@ export function WebinarMetricsDialog({
               <Button
                 size="sm"
                 className="gap-1.5"
-                disabled={save.isPending || devBypass || !webinarId}
+                disabled={save.isPending || readOnly || !webinarId}
                 onClick={() => save.mutate("manual")}
               >
                 {save.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -334,7 +341,7 @@ export function WebinarMetricsDialog({
                 className="gap-1.5"
                 disabled={
                   save.isPending ||
-                  devBypass ||
+                  readOnly ||
                   !webinarId ||
                   !csvPreview ||
                   !!csvPreview.error ||
@@ -350,10 +357,11 @@ export function WebinarMetricsDialog({
           </TabsContent>
         </Tabs>
 
-        {devBypass && (
+        {readOnly && (
           <p className="text-2xs text-muted-foreground">
-            Dev preview — metrics read from a fixture here, so saving needs a real signed-in
-            session.
+            {devBypass
+              ? "Dev preview — metrics read from a fixture here, so saving needs a real signed-in session."
+              : "Mock Data is on — these figures are fixtures, so saving is disabled to keep them out of your real workspace."}
           </p>
         )}
       </DialogContent>

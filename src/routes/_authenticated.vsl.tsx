@@ -80,6 +80,7 @@ import {
 } from "@/lib/media-intelligence";
 import { priorPeriod } from "@/lib/trend";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { useDemoMode } from "@/hooks/use-demo-mode";
 import { supabase } from "@/integrations/supabase/client";
 import {
   mockVsls,
@@ -151,6 +152,13 @@ const VSL_NOT_A_FUNNEL_RATE: Derivation = {
 function VslFunnelPanel({ vsl }: { vsl: any }) {
   const vslMoney = useMoney();
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
+  // `devBypass` is compiled out of the production build (it is gated on
+  // import.meta.env.DEV), so on the deployed app it is permanently false and
+  // these fixtures had no path to the screen at all — turning Mock Data on
+  // left this page blank. Demo Mode is the production-side switch, so both
+  // feed the same fixtures.
+  const demo = devBypass || demoMode;
   // The Wistia-native stages (landing/play/milestones/CTA) reflect a single
   // latest snapshot regardless of range — only the CRM/cash stages
   // (application/show/close/cash), tagged via source_vsl_id, are scoped to
@@ -159,9 +167,9 @@ function VslFunnelPanel({ vsl }: { vsl: any }) {
   const { range } = useDateRange();
   const loadFunnel = useServerFn(getVslFunnelData);
   const { data: funnelInput } = useQuery({
-    queryKey: ["vsl_funnel", vsl.id, devBypass, range.from, range.to],
+    queryKey: ["vsl_funnel", vsl.id, demo, range.from, range.to],
     queryFn: (): Promise<VslFunnelInput> =>
-      devBypass
+      demo
         ? Promise.resolve(mockVslFunnel(vsl.id))
         : loadFunnel({ data: { vsl_id: vsl.id, from: range.from, to: range.to } }),
   });
@@ -170,9 +178,9 @@ function VslFunnelPanel({ vsl }: { vsl: any }) {
   // second data model.
   const priorRange = priorPeriod(range.from, range.to);
   const { data: priorFunnelInput } = useQuery({
-    queryKey: ["vsl_funnel", vsl.id, devBypass, priorRange.from, priorRange.to],
+    queryKey: ["vsl_funnel", vsl.id, demo, priorRange.from, priorRange.to],
     queryFn: (): Promise<VslFunnelInput> =>
-      devBypass
+      demo
         ? Promise.resolve(mockVslFunnel(vsl.id, { prior: true }))
         : loadFunnel({ data: { vsl_id: vsl.id, from: priorRange.from, to: priorRange.to } }),
   });
@@ -387,17 +395,19 @@ function VslFunnelMetricsGrid({
 function VslPage() {
   const load = useServerFn(listVsls);
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
+  const demo = devBypass || demoMode;
   const { range } = useDateRange();
   const qc = useQueryClient();
   const { data: vsls = [], isLoading } = useQuery({
-    queryKey: ["vsls", devBypass],
-    queryFn: (): Promise<any[]> => (devBypass ? Promise.resolve(mockVsls()) : load()),
+    queryKey: ["vsls", demo],
+    queryFn: (): Promise<any[]> => (demo ? Promise.resolve(mockVsls()) : load()),
   });
   const loadActionQueue = useServerFn(listVslActionQueue);
   const { data: actionQueueItems = [] } = useQuery({
-    queryKey: ["vsl_action_queue", devBypass],
+    queryKey: ["vsl_action_queue", demo],
     queryFn: (): Promise<VideoActionQueueItem[]> =>
-      devBypass ? Promise.resolve(mockVslActionQueue()) : loadActionQueue(),
+      demo ? Promise.resolve(mockVslActionQueue()) : loadActionQueue(),
   });
   const upsertRec = useServerFn(upsertVslRecommendation);
   const setRecStatus = useServerFn(setVslRecommendationStatus);
@@ -409,7 +419,7 @@ function VslPage() {
       item: VideoActionQueueItem;
       status: VideoActionQueueItem["status"];
     }) => {
-      if (devBypass) return;
+      if (demo) return;
       const { evidence_json, confidence } = buildRecommendationEvidence({ reason: item.reason });
       if (item.recommendation_id) {
         return setRecStatus({
@@ -619,13 +629,15 @@ function VslCard({ vsl, range }: { vsl: any; range: { from: string; to: string }
   const analyze = useServerFn(analyzeVsl);
   const del = useServerFn(deleteVsl);
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
+  const demo = devBypass || demoMode;
   const [insights, setInsights] = useState<any | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
 
   const { data: snaps = [] } = useQuery({
-    queryKey: ["vsl_snaps", vsl.id, range.from, range.to, devBypass],
+    queryKey: ["vsl_snaps", vsl.id, range.from, range.to, demo],
     queryFn: () =>
-      devBypass
+      demo
         ? Promise.resolve(mockVslSnapshots(vsl.id))
         : loadSnaps({
             data: { vsl_id: vsl.id, from: `${range.from}T00:00:00`, to: `${range.to}T23:59:59` },
@@ -639,9 +651,7 @@ function VslCard({ vsl, range }: { vsl: any; range: { from: string; to: string }
     setAnalyzing(true);
     try {
       setInsights(
-        devBypass
-          ? await withMockDelay(mockVslInsights())
-          : await analyze({ data: { vsl_id: vsl.id } }),
+        demo ? await withMockDelay(mockVslInsights()) : await analyze({ data: { vsl_id: vsl.id } }),
       );
       toast.success("Analysis ready");
     } catch (e: any) {
@@ -1005,6 +1015,8 @@ function ScriptTranscriptEditor({ vsl }: { vsl: any }) {
   const upsert = useServerFn(upsertVsl);
   const trans = useServerFn(transcribeAudio);
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
+  const demo = devBypass || demoMode;
   const [script, setScript] = useState<string>(vsl.script || "");
   const [transcriptText, setTranscriptText] = useState<string>(() => {
     const arr = Array.isArray(vsl.transcript_json) ? vsl.transcript_json : [];
@@ -1053,7 +1065,7 @@ function ScriptTranscriptEditor({ vsl }: { vsl: any }) {
     if (file.size > 25 * 1024 * 1024) return toast.error("File must be under 25 MB");
     setUploading(true);
     try {
-      if (devBypass) {
+      if (demo) {
         const lines = mockTranscriptLines();
         await withMockDelay(undefined);
         setTranscriptText(lines.map((l) => `[${mmss(l.t)}] ${l.text}`).join("\n"));
@@ -1269,16 +1281,18 @@ function FaqVideosSection() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
+  const demo = devBypass || demoMode;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<FaqVideo | null>(null);
   const [statsFor, setStatsFor] = useState<FaqVideo | null>(null);
 
   const { data: faqs, isLoading } = useQuery({
-    queryKey: ["faq-videos", orgId, devBypass],
-    enabled: devBypass || !!orgId,
+    queryKey: ["faq-videos", orgId, demo],
+    enabled: demo || !!orgId,
     queryFn: async () => {
-      if (devBypass) return mockFaqVideos() as FaqVideo[];
+      if (demo) return mockFaqVideos() as FaqVideo[];
       const { data, error } = await supabase
         .from("faq_videos")
         .select("*")

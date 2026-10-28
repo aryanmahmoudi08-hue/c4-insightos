@@ -5,6 +5,7 @@
  * dashboard hub and its Traffic/Rep/Client bands special-case `devBypass` and render this
  * instead of an all-zero shell. Dev-only — never imported outside a devBypass branch.
  */
+import { scaleMockPeriod, type MockPeriod } from "@/lib/mock-period";
 
 import type { MechanismKey } from "@/lib/content-mechanisms";
 import type { WeeklyReport } from "@/lib/weekly-report.server";
@@ -20,20 +21,7 @@ export const DEV_BYPASS_ORG = {
 
 const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : null);
 
-type Period = {
-  cash: number;
-  paymentsCash: number;
-  callsCash: number;
-  setterCash: number;
-  newLeads: number;
-  totalCalls: number;
-  showed: number;
-  offers: number;
-  closed: number;
-  contractValue: number;
-  views: number;
-  contentLeads: number;
-};
+type Period = MockPeriod;
 
 const MOCK_CURR: Period = {
   cash: 4_250_000,
@@ -288,6 +276,12 @@ const MOCK_CONTENT_ATTRIBUTION = [
 ];
 
 export function mockDashboardStats(from: string, to: string) {
+  // Scaled to the selected range. MOCK_CURR/MOCK_PREV are authored for a
+  // 30-day window, and handing the same object back for every range is what
+  // made the date chips look dead — Today, 30d and All time all rendered the
+  // identical $42,500 / 46 leads / 8 closes.
+  const curr = scaleMockPeriod(MOCK_CURR, from, to);
+  const prev = scaleMockPeriod(MOCK_PREV, from, to);
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -302,20 +296,20 @@ export function mockDashboardStats(from: string, to: string) {
     // which is why every funnel drilldown showed "No records in range" and
     // the Disqualified stage had nothing to render.
     curr: {
-      ...MOCK_CURR,
+      ...curr,
       disqualified: MOCK_DISQUALIFIED,
       disqualifiedUnattributed: MOCK_DISQUALIFIED_UNATTRIBUTED,
       leadRows: MOCK_LEAD_ROWS,
       callRows: MOCK_CALL_ROWS,
     },
     prev: {
-      ...MOCK_PREV,
+      ...prev,
       disqualified: MOCK_PREV_DISQUALIFIED,
       disqualifiedUnattributed: 0,
       leadRows: [] as typeof MOCK_LEAD_ROWS,
       callRows: [] as typeof MOCK_CALL_ROWS,
     },
-    series: mockSeries(from, to, MOCK_CURR.cash, MOCK_CURR.newLeads, MOCK_CURR.views),
+    series: mockSeries(from, to, curr.cash, curr.newLeads, curr.views),
     closers: MOCK_CLOSERS,
     setters: MOCK_SETTERS,
     funnel: MOCK_FUNNEL,

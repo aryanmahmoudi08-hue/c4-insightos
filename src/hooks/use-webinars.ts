@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { useDemoMode } from "@/hooks/use-demo-mode";
 import { supabase } from "@/integrations/supabase/client";
 import { createMockWebinarFixture } from "@/lib/webinar-mock-data";
 import type { WebinarRecord } from "@/lib/webinar-filter";
@@ -20,13 +21,20 @@ const db = supabase as any;
 export function useWebinars() {
   const { data: org } = useCurrentOrg();
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
+  // `devBypass` is compiled out of the production build (it is gated on
+  // import.meta.env.DEV), so on the deployed app it is permanently false and
+  // these fixtures had no path to the screen at all — turning Mock Data on
+  // left this page blank. Demo Mode is the production-side switch, so both
+  // feed the same fixtures.
+  const demo = devBypass || demoMode;
   const orgId = (org as { org_id?: string } | undefined)?.org_id;
 
   const query = useQuery({
-    queryKey: ["webinars-filter", orgId, devBypass],
-    enabled: devBypass || !!orgId,
+    queryKey: ["webinars-filter", orgId, demo],
+    enabled: demo || !!orgId,
     queryFn: async (): Promise<WebinarRecord[]> => {
-      if (devBypass) {
+      if (demo) {
         const fixture = createMockWebinarFixture();
         return fixture.webinars.map((w) => ({
           id: w.id,

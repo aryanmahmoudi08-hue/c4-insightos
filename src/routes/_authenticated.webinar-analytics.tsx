@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import { WebinarFilter } from "@/components/webinar-filter";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { useDemoMode } from "@/hooks/use-demo-mode";
 import { useDateRange } from "@/hooks/use-date-range";
 import { useResourcePermissions } from "@/hooks/use-resource-permission";
 import { useWebinars } from "@/hooks/use-webinars";
@@ -116,6 +117,13 @@ function WebinarAnalyticsPage() {
   const currency = useCurrency();
   const { data: org } = useCurrentOrg();
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
+  // `devBypass` is compiled out of the production build (it is gated on
+  // import.meta.env.DEV), so on the deployed app it is permanently false and
+  // these fixtures had no path to the screen at all — turning Mock Data on
+  // left this page blank. Demo Mode is the production-side switch, so both
+  // feed the same fixtures.
+  const demo = devBypass || demoMode;
   const { range } = useDateRange();
   const orgId = (org as { org_id?: string } | undefined)?.org_id;
   const { webinars, paidWebinars, organicWebinars, unclassifiedWebinars, webinarsById } =
@@ -126,9 +134,9 @@ function WebinarAnalyticsPage() {
   const { getPerm } = useResourcePermissions();
   const canEditWebinars = getPerm("webinar_analytics").can_edit;
   const [selectedFilter, setSelectedFilterRaw] = useState<WebinarFilterValue>(
-    devBypass ? { kind: "webinar", webinarId: "mock-webinar-a" } : ALL_WEBINARS_FILTER,
+    demo ? { kind: "webinar", webinarId: "mock-webinar-a" } : ALL_WEBINARS_FILTER,
   );
-  const [comparisonId, setComparisonId] = useState(devBypass ? "mock-webinar-b" : "none");
+  const [comparisonId, setComparisonId] = useState(demo ? "mock-webinar-b" : "none");
   // Only "Live at Pitch" has a real per-lead join available (webinar_events,
   // via lead_id) — every other Executive KPI is an aggregate webinar_metrics
   // column with no row-level population to drill into. Gated on real event
@@ -177,10 +185,10 @@ function WebinarAnalyticsPage() {
   const scopeKey = resolvedIds === null ? "all" : resolvedIds.join(",");
 
   const metricsQuery = useQuery({
-    queryKey: ["webinar-metrics", orgId, scopeKey, range.from, range.to, devBypass],
-    enabled: (devBypass || !!orgId) && hasWebinarsToQuery,
+    queryKey: ["webinar-metrics", orgId, scopeKey, range.from, range.to, demo],
+    enabled: (demo || !!orgId) && hasWebinarsToQuery,
     queryFn: async (): Promise<WebinarMetric[]> => {
-      if (devBypass) {
+      if (demo) {
         const ids = resolvedIds ?? webinars.map((w) => w.id);
         return ids.flatMap((id) => mockFixture.metrics[id] ?? []);
       }
@@ -201,10 +209,10 @@ function WebinarAnalyticsPage() {
 
   const latest = metricsQuery.data?.[0];
   const comparisonQuery = useQuery({
-    queryKey: ["webinar-metrics-comparison", orgId, comparisonId, range.from, range.to, devBypass],
-    enabled: (devBypass || !!orgId) && comparisonId !== "none" && comparisonId !== "all",
+    queryKey: ["webinar-metrics-comparison", orgId, comparisonId, range.from, range.to, demo],
+    enabled: (demo || !!orgId) && comparisonId !== "none" && comparisonId !== "all",
     queryFn: async (): Promise<WebinarMetricRow[]> => {
-      if (devBypass) return mockFixture.metrics[comparisonId] ?? [];
+      if (demo) return mockFixture.metrics[comparisonId] ?? [];
       const { data, error } = await db
         .from("webinar_metrics")
         .select("*")
@@ -218,10 +226,10 @@ function WebinarAnalyticsPage() {
     retry: false,
   });
   const eventsQuery = useQuery({
-    queryKey: ["webinar-events", orgId, scopeKey, range.from, range.to, devBypass],
-    enabled: (devBypass || !!orgId) && hasWebinarsToQuery,
+    queryKey: ["webinar-events", orgId, scopeKey, range.from, range.to, demo],
+    enabled: (demo || !!orgId) && hasWebinarsToQuery,
     queryFn: async (): Promise<WebinarEvent[]> => {
-      if (devBypass) {
+      if (demo) {
         const ids = resolvedIds ?? webinars.map((w) => w.id);
         return ids.flatMap((id) => mockFixture.events[id] ?? []);
       }
@@ -246,10 +254,10 @@ function WebinarAnalyticsPage() {
     [eventsQuery.data],
   );
   const spendQuery = useQuery({
-    queryKey: ["acquisition-spend", orgId, scopeKey, range.from, range.to, devBypass],
-    enabled: (devBypass || !!orgId) && hasWebinarsToQuery,
+    queryKey: ["acquisition-spend", orgId, scopeKey, range.from, range.to, demo],
+    enabled: (demo || !!orgId) && hasWebinarsToQuery,
     queryFn: async (): Promise<AcquisitionSpendRecord[]> => {
-      if (devBypass) {
+      if (demo) {
         const ids = resolvedIds ?? webinars.map((w) => w.id);
         return ids.flatMap((id) => mockFixture.spend[id] ?? []);
       }
