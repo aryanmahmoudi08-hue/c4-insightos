@@ -2,7 +2,8 @@ import type { CSSProperties, ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, CheckCircle2, ChevronRight, Clock3, Info, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { type KpiEmphasis, kpiGradient, kpiGradientBorder } from "@/lib/spectrum";
+import { type KpiEmphasis, type SpectrumPosition } from "@/lib/spectrum";
+import { MetricCard } from "@/components/metric-card";
 
 /**
  * Home's own semantic color language — reuses the app's existing spectrum
@@ -23,16 +24,6 @@ const TONE_BADGE: Record<HomeTone, string> = {
   neutral: "bg-muted text-muted-foreground",
 };
 
-const TONE_BORDER: Record<HomeTone, string> = {
-  cold: "border-t-spectrum-cold",
-  mid: "border-t-spectrum-mid",
-  hot: "border-t-spectrum-hot",
-  success: "border-t-[color:var(--color-success)]",
-  warning: "border-t-[color:var(--color-warning)]",
-  destructive: "border-t-destructive",
-  neutral: "border-t-border",
-};
-
 /** Raw color var per tone, for the gradient-KPI-card treatment (kpiGradient
  * in spectrum.ts) — "neutral" has none, so `emphasis` on a neutral-tone
  * HomeStat is a deliberate no-op rather than an arbitrary fallback color. */
@@ -45,10 +36,15 @@ const TONE_VAR: Partial<Record<HomeTone, string>> = {
   destructive: "var(--destructive)",
 };
 
-/** Card shell every Home section uses — same border/radius/card surface as
- * the rest of the app, with a thin tone-colored top accent and a colored
- * icon badge instead of a flat gray icon, so sections read as distinct at a
- * glance instead of an undifferentiated stack of identical boxes. */
+/**
+ * Section header for a Home block — the same anatomy the rest of the app
+ * uses (accent tick, caps title, hairline out to the controls).
+ *
+ * Was a bordered card with a tone-coloured top edge wrapped around a grid
+ * of bordered tiles: cards inside cards, four loud outlines down the page,
+ * and a shape that appeared nowhere else in the product. A section header
+ * divides without competing — the tiles below it are already cards.
+ */
 export function HomeSection({
   title,
   subtitle,
@@ -67,30 +63,25 @@ export function HomeSection({
   className?: string;
 }) {
   return (
-    <section
-      className={cn(
-        "rounded-2xl border border-t-2 border-border bg-card p-4 shadow-sm md:p-5",
-        TONE_BORDER[tone],
-        className,
-      )}
-    >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          {icon && (
-            <span
-              className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                TONE_BADGE[tone],
-              )}
-            >
-              {icon}
-            </span>
+    <section className={cn("space-y-3", className)}>
+      <div
+        className="flex items-center gap-3"
+        style={{ "--chip-color": TONE_VAR[tone] ?? "var(--muted-foreground)" } as CSSProperties}
+      >
+        {icon && (
+          <span className="metric-chip metric-chip-lg" aria-hidden>
+            {icon}
+          </span>
+        )}
+        <div className="min-w-0">
+          <h2 className="truncate text-2xs font-bold uppercase leading-tight tracking-[0.14em] text-foreground">
+            {title}
+          </h2>
+          {subtitle && (
+            <p className="truncate text-2xs leading-tight text-muted-foreground">{subtitle}</p>
           )}
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
-          </div>
         </div>
+        <span className="h-px min-w-4 flex-1 bg-border" aria-hidden />
         {right && <div className="shrink-0">{right}</div>}
       </div>
       {children}
@@ -98,12 +89,17 @@ export function HomeSection({
   );
 }
 
-/** Compact metric tile purpose-built for Home — a snapshot page, not a
- * trend page, so it deliberately skips MetricCard's chart/sparkline anatomy
- * (its "No daily series" placeholder is meant for pages that mostly do have
- * one; forcing it here just fills the page with empty dashed boxes). Same
- * typographic treatment as every other KPI surface in the app (font-sans
- * tabular-nums bold value), with a colored icon badge carrying the tone. */
+/**
+ * A Home metric tile — a thin adapter over MetricCard, the component every
+ * other KPI in the app renders through.
+ *
+ * It used to be a hand-rolled tile with its own padding, its own badge and
+ * its own type scale, which is most of why Home looked like a different
+ * product. The one reason it existed — MetricCard's old empty state was a
+ * dashed "No daily series" box, too heavy for a snapshot page — no longer
+ * applies: that state is now a thin accent rule along the card's bottom
+ * edge, which is exactly what these tiles want.
+ */
 export function HomeStat({
   label,
   value,
@@ -118,54 +114,21 @@ export function HomeStat({
   tone?: HomeTone;
   hint?: string;
   /** Opts this tile into the gradient-KPI-card treatment (see MetricCard) —
-   * reserve for the 1 genuinely top-tier metric on a Home variant (usually
-   * Cash Collected where it appears). Value text already renders neutral
-   * (text-foreground) regardless of tone, so there's no contrast risk to
-   * manage here the way hand-rolled tone-colored value text elsewhere
-   * needed fixing. */
+   * reserve for the 1 genuinely top-tier metric on a Home variant. */
   emphasis?: KpiEmphasis;
 }) {
-  const color = TONE_VAR[tone];
-  const gradient = emphasis && color ? kpiGradient(color, emphasis) : undefined;
-  const gradientBorder = emphasis && color ? kpiGradientBorder(color, emphasis) : undefined;
+  const spectrum =
+    tone === "cold" || tone === "mid" || tone === "hot" ? (tone as SpectrumPosition) : undefined;
   return (
-    <div
-      className={cn(
-        "rounded-xl border p-3.5",
-        gradient
-          ? "kpi-gradient"
-          : "border-border bg-background/40 transition-colors hover:border-foreground/15",
-      )}
-      style={
-        gradient
-          ? ({
-              background: gradient,
-              "--kpi-border": gradientBorder!.border,
-              "--kpi-border-hover": gradientBorder!.borderHover,
-            } as CSSProperties)
-          : undefined
-      }
-      title={hint}
-    >
-      <div className="flex items-center gap-2">
-        {icon && (
-          <span
-            className={cn(
-              "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
-              TONE_BADGE[tone],
-            )}
-          >
-            {icon}
-          </span>
-        )}
-        <span className="min-w-0 truncate text-3xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          {label}
-        </span>
-      </div>
-      <div className="mt-2 font-sans text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-[1.65rem]">
-        {value}
-      </div>
-    </div>
+    <MetricCard
+      label={label}
+      value={value}
+      icon={icon}
+      spectrum={spectrum}
+      accentColor={spectrum ? undefined : TONE_VAR[tone]}
+      emphasis={emphasis}
+      supporting={hint}
+    />
   );
 }
 
@@ -211,30 +174,31 @@ export function FocusRow({
   search?: Record<string, string>;
 }) {
   const ToneIcon = TONE_ROW_ICON[tone];
+  // Each row is its own card rather than a line inside a wrapper, so a list
+  // section needs no box around it — which is what let HomeSection stop
+  // being one.
   const content = (
-    <div className={cn("flex items-center gap-2.5 rounded-lg px-2 py-2", TONE_ROW_TINT[tone])}>
-      <span
-        className={cn(
-          "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
-          TONE_BADGE[tone],
-        )}
-      >
-        <ToneIcon className="h-3.5 w-3.5" />
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 shadow-[var(--shadow-xs)] transition-colors",
+        to && "hover:border-foreground/20",
+        TONE_ROW_TINT[tone],
+      )}
+      style={{ "--chip-color": TONE_VAR[tone] ?? "var(--muted-foreground)" } as CSSProperties}
+    >
+      <span className="metric-chip" aria-hidden>
+        <ToneIcon />
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm text-foreground">{label}</div>
         {detail && <div className="truncate text-2xs text-muted-foreground">{detail}</div>}
       </div>
-      {to && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+      {to && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
     </div>
   );
   if (!to) return content;
   return (
-    <Link
-      to={to}
-      search={search as never}
-      className="-mx-2 block rounded-lg transition-colors hover:bg-muted/40"
-    >
+    <Link to={to} search={search as never} className="block">
       {content}
     </Link>
   );
@@ -243,9 +207,12 @@ export function FocusRow({
 /** Honest "nothing here" row — never a fabricated zero-state pretending to be a real count of zero work. */
 export function FocusEmpty({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-lg bg-[color:var(--color-success)]/[0.04] px-2 py-2.5 text-xs text-muted-foreground">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-success)]/15 text-[color:var(--color-success)]">
-        <Sparkles className="h-3.5 w-3.5" />
+    <div
+      className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-xs text-muted-foreground shadow-[var(--shadow-xs)]"
+      style={{ "--chip-color": "var(--success-vivid)" } as CSSProperties}
+    >
+      <span className="metric-chip" aria-hidden>
+        <Sparkles />
       </span>
       {label}
     </div>
@@ -255,8 +222,8 @@ export function FocusEmpty({ label }: { label: string }) {
 /** Data-unavailable row — for metrics the underlying schema genuinely doesn't support yet, distinct from "zero work today." */
 export function FocusUnavailable({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-lg px-2 py-2.5 text-xs text-muted-foreground/70">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+    <div className="flex items-center gap-3 rounded-xl border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground/70">
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-[0.5rem] bg-muted text-muted-foreground">
         <AlertTriangle className="h-3.5 w-3.5" />
       </span>
       {label}

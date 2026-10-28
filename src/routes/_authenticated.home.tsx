@@ -6,7 +6,6 @@ import { useRole } from "@/hooks/use-role";
 import { useDevPreviewRole, DEV_PREVIEW_ROLES } from "@/hooks/use-dev-preview-role";
 import { ROLE_LABELS, type ManagedRole } from "@/lib/permissions";
 import { supabase } from "@/integrations/supabase/client";
-import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -14,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PageHero } from "@/components/page-hero";
 import { HomeRepDashboard } from "@/components/home/home-rep-dashboard";
 import { HomeCloser } from "@/components/home/home-closer";
 import { HomeManager } from "@/components/home/home-manager";
@@ -35,13 +35,14 @@ const ROLE_ACCENT: Record<string, "cold" | "mid" | "hot" | "success" | "warning"
   admin: "warning",
   owner: "warning",
 };
-const ROLE_BADGE_CLASS: Record<string, string> = {
-  cold: "bg-spectrum-cold/15 text-spectrum-cold",
-  mid: "bg-spectrum-mid/15 text-spectrum-mid",
-  hot: "bg-spectrum-hot/15 text-spectrum-hot",
-  success: "bg-[color:var(--color-success)]/15 text-[color:var(--color-success)]",
-  warning: "bg-[color:var(--color-warning)]/15 text-[color:var(--color-warning)]",
-  neutral: "bg-muted text-muted-foreground",
+/** The role accent, as a PageHero status-pill spectrum position. The two
+ *  non-spectrum tones (success/warning) have no funnel position, so they
+ *  fall through to undefined and the pill renders in its neutral tone
+ *  rather than borrowing a colour that would claim a stage. */
+const ROLE_PILL_SPECTRUM: Record<string, "cold" | "mid" | "hot" | undefined> = {
+  cold: "cold",
+  mid: "mid",
+  hot: "hot",
 };
 
 function HomePage() {
@@ -103,47 +104,34 @@ function HomePage() {
   const roleTone = ROLE_ACCENT[effectiveRole ?? ""] ?? "neutral";
 
   return (
-    <main className="space-y-5 p-4 md:p-6">
-      <div className="flex items-center gap-3.5">
-        <span
-          className={cn(
-            "hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl sm:flex",
-            ROLE_BADGE_CLASS[roleTone],
-          )}
-        >
-          <Sparkles className="h-5 w-5" />
-        </span>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="display-serif text-2xl leading-none md:text-3xl">
-              {timeGreeting}, {firstName}
-            </h1>
-            {roleLabel && (
-              <span
-                className={cn(
-                  "rounded-full px-2.5 py-1 text-3xs font-bold uppercase tracking-wider",
-                  ROLE_BADGE_CLASS[roleTone],
-                )}
-              >
-                {roleLabel}
-              </span>
-            )}
-          </div>
-          <p className="mt-1.5 text-sm text-muted-foreground">How can I help you today</p>
-        </div>
-      </div>
+    <main className="space-y-6 p-4 md:p-6">
+      {/* Home is the one page with no TopBar, so it renders its own hero
+          rather than going without the one piece of furniture every other
+          page in the app now opens on. The greeting IS the title, which
+          means PageHero's accent-on-the-last-word lands on the person's
+          name, and the role becomes a status pill — the same slot every
+          other hero uses for "what is true right now". */}
+      <PageHero
+        eyebrow="Your workspace"
+        title={`${timeGreeting}, ${firstName}`}
+        subtitle="What moved today, and what needs you."
+        icon={<Sparkles className="h-6 w-6" />}
+        status={
+          roleLabel ? [{ label: roleLabel, spectrum: ROLE_PILL_SPECTRUM[roleTone] }] : undefined
+        }
+      />
 
       {devPreviewActive && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-amber-500/50 bg-amber-500/5 px-3 py-2">
-          <FlaskConical className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-          <span className="text-2xs font-bold uppercase tracking-wider text-amber-500">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-[color:var(--color-warning)]/50 bg-[color:var(--color-warning)]/[0.06] px-3 py-2">
+          <FlaskConical className="h-3.5 w-3.5 shrink-0 text-[color:var(--color-warning)]" />
+          <span className="text-2xs font-bold uppercase tracking-wider text-[color:var(--color-warning)]">
             Dev Preview — Role
           </span>
           <Select
             value={previewKey ?? "__real__"}
             onValueChange={(v) => setPreviewKey(v === "__real__" ? null : (v as never))}
           >
-            <SelectTrigger className="h-7 w-[190px] border-amber-500/40 bg-transparent text-xs text-amber-200">
+            <SelectTrigger className="h-7 w-[190px] border-[color:var(--color-warning)]/40 bg-transparent text-xs text-foreground">
               <SelectValue placeholder="Real role" />
             </SelectTrigger>
             <SelectContent>
@@ -155,7 +143,7 @@ function HomePage() {
               ))}
             </SelectContent>
           </Select>
-          <span className="text-2xs text-amber-500/70">
+          <span className="text-2xs text-muted-foreground">
             Dev-only — simulates Home content, never real permissions.
           </span>
         </div>
