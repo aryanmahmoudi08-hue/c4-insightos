@@ -16,10 +16,19 @@ export type SpectrumPosition = "cold" | "mid" | "hot";
 /** cold = top-of-funnel volume (views, dials, leads contacted, reach)
  *  mid  = qualified/booked (convos, sets, calls booked, applications)
  *  hot  = converted/cash (closes, cash collected, revenue, renewals) */
+/**
+ * The FILL colour for a funnel position — chips, bars, sparklines, accent
+ * rules, card washes.
+ *
+ * Deliberately the `-vivid` variant, not the base: in light mode the base is
+ * tuned to be dark enough to set text in, which is too muddy to fill with.
+ * Text keeps the base via SPECTRUM_TEXT_CLASS below. In dark mode the two
+ * are the same value, so nothing changes there.
+ */
 export const SPECTRUM_VAR: Record<SpectrumPosition, string> = {
-  cold: "var(--spectrum-cold)",
-  mid: "var(--spectrum-mid)",
-  hot: "var(--spectrum-hot)",
+  cold: "var(--spectrum-cold-vivid)",
+  mid: "var(--spectrum-mid-vivid)",
+  hot: "var(--spectrum-hot-vivid)",
 };
 
 export const SPECTRUM_TEXT_CLASS: Record<SpectrumPosition, string> = {
