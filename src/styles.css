@@ -122,6 +122,14 @@
    gradient KPI cards: scarcity. One primary action per screen, never a
    secondary/ghost/outline button, never more than one at a time. Every
    other button in the app stays achromatic.
+   Settled 2026-10-28, after it was asked directly: cash stays HOT PINK, not
+   green. Green is the money convention everywhere else, but in this app
+   green already means "up" — every delta pill uses it — so a green cash
+   card having a bad month would show a green tile beside a red arrow, and
+   green would stop being a signal. Pink is also not decoration here: it is
+   where cash sits in the funnel, which is what lets a tile's stage be read
+   without reading its label. Don't revisit without replacing the delta
+   colours too.
    Semantic accents are separate from the spectrum and stay grounded: success
    green, warning amber, danger red. Danger red is deliberately pushed toward
    crimson — lower chroma AND lower lightness than spectrum-hot pink, plus
