@@ -502,7 +502,7 @@ export function AppSidebar() {
         aria-label={cat.label}
         aria-pressed={isSelected}
         className={cn(
-          "group relative flex w-full shrink-0 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl px-1 py-2.5 transition-all",
+          "group relative flex w-full shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg px-0.5 py-1 transition-all",
           isSelected ? "bg-sidebar-accent shadow-sm" : "hover:bg-sidebar-accent/45",
           !isHome &&
             (isSelected
@@ -513,7 +513,7 @@ export function AppSidebar() {
         {isSelected && (
           <motion.div
             layoutId="sidebar-rail-indicator"
-            className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-accent"
+            className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-r-full bg-accent"
             transition={{ type: "spring", stiffness: 500, damping: 35 }}
           />
         )}
@@ -524,24 +524,24 @@ export function AppSidebar() {
         {isHome ? (
           <span
             className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.6rem] bg-sidebar-primary text-sidebar-primary-foreground shadow-sm transition-transform",
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-[0.55rem] bg-sidebar-primary text-sidebar-primary-foreground shadow-sm transition-transform",
               isSelected && "scale-105",
             )}
           >
-            <Icon className="h-[18px] w-[18px]" />
+            <Icon className="h-4 w-4" />
           </span>
         ) : isSelected ? (
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.6rem] bg-accent text-white shadow-sm">
-            <Icon className="h-[18px] w-[18px]" />
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[0.55rem] bg-accent text-white shadow-sm">
+            <Icon className="h-4 w-4" />
           </span>
         ) : (
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center">
-            <Icon className="h-[18px] w-[18px] shrink-0" />
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+            <Icon className="h-4 w-4 shrink-0" />
           </span>
         )}
         <span
           className={cn(
-            "w-full truncate text-center text-[10px] font-semibold leading-none tracking-[0.01em]",
+            "w-full truncate text-center text-[9px] font-semibold leading-none tracking-[0.01em]",
             isHome &&
               (isSelected ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/60"),
           )}
@@ -575,7 +575,7 @@ export function AppSidebar() {
         onBlurCapture={collapseOnBlurIfPointerOutside}
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-[color:var(--sidebar)] shadow-[var(--shadow-lg)] transition-[transform,width] duration-200 motion-reduce:transition-none",
-          !showExpanded ? "w-72 md:w-20" : "w-72",
+          !showExpanded ? "w-72 md:w-[4.25rem]" : "w-72",
           "md:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
@@ -583,7 +583,7 @@ export function AppSidebar() {
         <div
           className={cn(
             "border-b border-sidebar-border transition-[padding] duration-200",
-            !showExpanded ? "px-2.5 py-3.5" : "px-4 py-4",
+            !showExpanded ? "px-2 py-2.5" : "px-4 py-4",
           )}
         >
           {/* Priority 9 — the logo now sits on its own row, above the
@@ -618,7 +618,7 @@ export function AppSidebar() {
                 alt="AscendOS"
                 className={cn(
                   "theme-logo-dark shrink-0 object-contain transition-[height] duration-200",
-                  !showExpanded ? "h-9 w-9" : "h-14 w-auto",
+                  !showExpanded ? "h-8 w-8" : "h-14 w-auto",
                 )}
               />
               <img
@@ -626,7 +626,7 @@ export function AppSidebar() {
                 alt="AscendOS"
                 className={cn(
                   "theme-logo-light shrink-0 object-contain transition-[height] duration-200",
-                  !showExpanded ? "h-9 w-9" : "h-14 w-auto",
+                  !showExpanded ? "h-8 w-8" : "h-14 w-auto",
                 )}
               />
             </div>
@@ -711,67 +711,65 @@ export function AppSidebar() {
               System sits below a spacer as an eighth, visually-secondary
               icon alongside the other utility controls (search/theme/sign
               out/pin), since it's not one of the primary categories. */}
-          <div className="flex w-20 shrink-0 flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]">
-            <nav className="flex flex-1 flex-col items-center gap-1.5 overflow-y-auto px-2 py-3">
+          <div className="flex w-[4.25rem] shrink-0 flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]">
+            <nav className="flex flex-1 flex-col items-center gap-0.5 overflow-y-auto px-1.5 py-2">
               {categories.map((cat) => railCategoryBtn(cat))}
             </nav>
-            <div className="flex flex-col items-center gap-1.5 border-t border-sidebar-border px-2 py-3">
+            <div className="flex flex-col items-center gap-0.5 border-t border-sidebar-border px-1.5 py-2">
               {extraCategories.map((cat) => railCategoryBtn(cat))}
-              <button
-                type="button"
-                onClick={openCommandPalette}
-                title="Search (⌘K)"
-                aria-label="Search"
-                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg text-sidebar-foreground/70 transition-all hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-              >
-                <Search className="h-[18px] w-[18px]" />
-              </button>
-              <button
-                type="button"
-                onClick={toggle}
-                title={theme === "dark" ? "Light mode" : "Dark mode"}
-                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg text-sidebar-foreground/70 transition-all hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-              >
-                {theme === "dark" ? (
-                  <Sun className="h-[18px] w-[18px]" />
-                ) : (
-                  <Moon className="h-[18px] w-[18px]" />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  // Dev Bypass has no real session for supabase.auth.signOut() to
-                  // clear — its flag only gets read once, on mount, so it has to
-                  // be cleared explicitly here or it just re-authenticates the
-                  // very next render. A hard navigation (rather than the router's
-                  // client-side nav) forces a fresh mount everywhere, so /welcome
-                  // never has a chance to read stale pre-sign-out auth state and
-                  // bounce straight back into the app.
-                  if (devBypass) disableDevBypass();
-                  await supabase.auth.signOut();
-                  window.location.href = "/welcome";
-                }}
-                title="Sign out"
-                aria-label="Sign out"
-                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg text-sidebar-foreground/70 transition-all hover:bg-destructive/10 hover:text-destructive"
-              >
-                <LogOut className="h-[18px] w-[18px]" />
-              </button>
-              <button
-                type="button"
-                onClick={toggleCollapsed}
-                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                className="hidden h-10 w-10 cursor-pointer items-center justify-center rounded-lg text-sidebar-foreground/50 transition-all hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/80 md:flex"
-              >
-                {collapsed ? (
-                  <ChevronsRight className="h-4 w-4" />
-                ) : (
-                  <ChevronsLeft className="h-4 w-4" />
-                )}
-              </button>
+              <div className="mt-0.5 grid w-full grid-cols-2 place-items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={openCommandPalette}
+                  title="Search (⌘K)"
+                  aria-label="Search"
+                  className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-sidebar-foreground/70 transition-all hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                >
+                  <Search className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={toggle}
+                  title={theme === "dark" ? "Light mode" : "Dark mode"}
+                  aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                  className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-sidebar-foreground/70 transition-all hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                >
+                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    // Dev Bypass has no real session for supabase.auth.signOut() to
+                    // clear — its flag only gets read once, on mount, so it has to
+                    // be cleared explicitly here or it just re-authenticates the
+                    // very next render. A hard navigation (rather than the router's
+                    // client-side nav) forces a fresh mount everywhere, so /welcome
+                    // never has a chance to read stale pre-sign-out auth state and
+                    // bounce straight back into the app.
+                    if (devBypass) disableDevBypass();
+                    await supabase.auth.signOut();
+                    window.location.href = "/welcome";
+                  }}
+                  title="Sign out"
+                  aria-label="Sign out"
+                  className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-sidebar-foreground/70 transition-all hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleCollapsed}
+                  title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  className="hidden h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-sidebar-foreground/50 transition-all hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/80 md:flex"
+                >
+                  {collapsed ? (
+                    <ChevronsRight className="h-4 w-4" />
+                  ) : (
+                    <ChevronsLeft className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
