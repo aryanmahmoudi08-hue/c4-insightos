@@ -71,7 +71,30 @@ export function PageHero({
         }}
         aria-hidden
       />
-      <div className="relative flex flex-wrap items-start justify-between gap-5">
+      {/* Glass monolith in the right margin. Only when the hero has no
+          toolbar — `actions` renders into that same corner, and a control
+          sitting on top of the artwork looks like a mistake rather than a
+          composition. Hidden below md, where there is no margin to spare. */}
+      {icon && !actions && (
+        <div
+          className="pointer-events-none absolute right-6 top-1/2 hidden h-[200px] w-[220px] -translate-y-1/2 lg:block"
+          aria-hidden
+        >
+          <div className="hero-slab-ghost absolute right-3 top-3 h-24 w-24 rotate-[24deg]" />
+          <div className="hero-slab absolute bottom-4 right-[4.5rem] h-[4.5rem] w-[4.5rem] -rotate-[20deg]" />
+          <div className="hero-slab absolute right-7 top-1/2 grid h-[8.5rem] w-[8.5rem] -translate-y-1/2 -rotate-[12deg] place-items-center">
+            {/* Counter-rotated so the glyph reads upright while its pane is
+                tilted — the pane is the object with perspective, not the icon. */}
+            <span className="hero-slab-icon rotate-[12deg] [&_svg]:h-12 [&_svg]:w-12">{icon}</span>
+          </div>
+        </div>
+      )}
+      <div
+        className={cn(
+          "relative flex flex-wrap items-start justify-between gap-5",
+          icon && !actions && "lg:pr-60",
+        )}
+      >
         <div className="flex min-w-0 items-start gap-3.5">
           {icon && (
             <div

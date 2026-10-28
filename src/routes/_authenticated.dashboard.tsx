@@ -2927,31 +2927,44 @@ function CashHero({
   const heroBorder = kpiGradientBorder(SPECTRUM_VAR.hot, "strong");
   return (
     <div
-      className="kpi-gradient group relative flex h-full flex-col justify-between overflow-hidden rounded-xl border p-4 shadow-sm"
+      className="kpi-gradient group relative flex h-full flex-col justify-between overflow-hidden rounded-[1.4rem] border p-5 shadow-[var(--shadow-md)]"
       style={
         {
           background: heroGradient,
           "--kpi-border": heroBorder.border,
           "--kpi-border-hover": heroBorder.borderHover,
+          "--chip-color": SPECTRUM_VAR.hot,
+          "--aurora-a": SPECTRUM_VAR.hot,
+          "--aurora-b": SPECTRUM_VAR.mid,
         } as CSSProperties
       }
     >
-      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-2xl" />
-      <div className="relative flex items-center justify-between gap-3 border-b border-border/60 pb-2.5">
-        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          <Activity className="h-4 w-4 shrink-0 text-spectrum-hot" />
+      {/* The gradient alone is a flat wash across a card this large; the
+          aurora gives it a light source, so the surface has somewhere the
+          colour is coming from rather than being evenly tinted. */}
+      <div className="card-aurora" aria-hidden />
+      <div className="glass-highlight pointer-events-none absolute inset-0 rounded-[1.4rem]" />
+      <div className="relative flex items-center justify-between gap-3 border-b border-border/50 pb-3">
+        <div className="flex min-w-0 items-center gap-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-foreground/80">
+          <span className="metric-chip" aria-hidden>
+            <Activity />
+          </span>
           <span className="truncate">Cash Collected vs. Revenue Generated</span>
         </div>
         {hasDelta && (
           <span
-            className={cn(
-              "flex shrink-0 items-center gap-1 rounded-full border border-border/70 bg-background/35 px-2 py-1 font-sans tabular-nums text-2xs",
-              up && "text-[color:var(--color-success)]",
-              down && "text-destructive",
-              !up && !down && "text-muted-foreground",
-            )}
+            className="delta-pill"
+            style={
+              {
+                "--pill-color": up
+                  ? "var(--color-success)"
+                  : down
+                    ? "var(--destructive)"
+                    : "var(--muted-foreground)",
+              } as CSSProperties
+            }
           >
-            <DeltaIcon className="h-2.5 w-2.5" />{" "}
+            <DeltaIcon className="h-3 w-3" />
             {delta === null ? "—" : `${Math.abs(delta).toFixed(0)}%`}
           </span>
         )}
@@ -2990,14 +3003,17 @@ function CashHero({
           Revenue
         </span>
       </div>
-      <div className="relative mt-3 flex h-full min-h-0 flex-1 flex-col rounded-lg border border-border/60 bg-background/20 px-1 py-1">
+      <div className="relative mt-3 flex h-full min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={series} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
               <defs>
+                {/* The card itself is magenta, so a magenta area fill at
+                    40% was invisible against it. Lifted, and anchored on
+                    the vivid fill token rather than the text one. */}
                 <linearGradient id="cashHeroGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--spectrum-hot)" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="var(--spectrum-hot)" stopOpacity={0} />
+                  <stop offset="0%" stopColor="var(--spectrum-hot-vivid)" stopOpacity={0.75} />
+                  <stop offset="100%" stopColor="var(--spectrum-hot-vivid)" stopOpacity={0.04} />
                 </linearGradient>
               </defs>
               <CartesianGrid
@@ -3016,9 +3032,9 @@ function CashHero({
                 type="monotone"
                 dataKey="cash"
                 name="cash"
-                stroke="var(--spectrum-hot)"
+                stroke="var(--spectrum-hot-vivid)"
                 fill="url(#cashHeroGrad)"
-                strokeWidth={2}
+                strokeWidth={2.5}
                 dot={false}
                 isAnimationActive={false}
               />
@@ -3026,9 +3042,10 @@ function CashHero({
                 type="monotone"
                 dataKey="revenue"
                 name="revenue"
-                stroke="var(--muted-foreground)"
-                strokeDasharray="5 4"
-                strokeWidth={1.6}
+                stroke="var(--foreground)"
+                strokeOpacity={0.5}
+                strokeDasharray="6 4"
+                strokeWidth={1.8}
                 dot={false}
                 isAnimationActive={false}
               />
@@ -3105,26 +3122,30 @@ function PaceTallCard({
   const paceBorder = kpiGradientBorder(SPECTRUM_VAR.mid, "subtle");
   return (
     <div
-      className="kpi-gradient relative flex h-full flex-col gap-3 overflow-hidden rounded-xl border p-4 shadow-sm"
+      className="kpi-gradient relative flex h-full flex-col gap-3 overflow-hidden rounded-[1.4rem] border p-5 shadow-[var(--shadow-md)]"
       style={
         {
           background: paceGradient,
           "--kpi-border": paceBorder.border,
           "--kpi-border-hover": paceBorder.borderHover,
+          "--chip-color": SPECTRUM_VAR.mid,
+          "--aurora-a": SPECTRUM_VAR.mid,
+          "--aurora-b": SPECTRUM_VAR.cold,
         } as CSSProperties
       }
     >
-      <div className="flex items-center gap-2">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted/60 text-spectrum-mid">
-          <Target className="h-4 w-4" />
-        </div>
-        <div className="flex-1 text-3xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+      <div className="card-aurora" aria-hidden />
+      <div className="relative flex items-center gap-2.5">
+        <span className="metric-chip metric-chip-lg" aria-hidden>
+          <Target />
+        </span>
+        <div className="flex-1 text-3xs font-semibold uppercase tracking-[0.14em] text-foreground/80">
           Month-end pace
         </div>
-        <span className="h-1.5 w-1.5 rounded-full bg-spectrum-mid" />
+        <span className="status-dot text-spectrum-mid" />
       </div>
 
-      <div className="flex flex-1 flex-col justify-center gap-2">
+      <div className="relative flex flex-1 flex-col justify-center gap-2">
         <div>
           <div className="font-sans text-4xl font-bold tabular-nums tracking-tight text-spectrum-mid">
             {money(pace.projection)}
@@ -3204,7 +3225,7 @@ function PaceTallCard({
         )}
       </div>
 
-      <div>
+      <div className="relative">
         <div className="mb-1.5 flex justify-between text-3xs uppercase tracking-[0.14em] text-muted-foreground">
           <span>
             Day {pace.dayOfMonth}/{pace.daysInMonth} (calendar month)
@@ -3213,8 +3234,14 @@ function PaceTallCard({
             {remaining} left · {progress.toFixed(0)}%
           </span>
         </div>
-        <div className="h-1.5 rounded-full bg-muted">
-          <div className="h-full rounded-full bg-spectrum-mid" style={{ width: `${progress}%` }} />
+        <div className="h-2 overflow-hidden rounded-full bg-muted/70">
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: `${progress}%`,
+              background: `linear-gradient(90deg, ${SPECTRUM_VAR.cold}, ${SPECTRUM_VAR.mid})`,
+            }}
+          />
         </div>
       </div>
     </div>

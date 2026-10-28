@@ -995,6 +995,92 @@
     filter: brightness(1.08);
   }
 
+  /* ---------------------------------------------------------------- *
+   * Hero artwork — the glass monolith in a PageHero's right margin, and
+   * the aurora behind the two big Main Hub cards.
+   *
+   * Drawn, not an image file. Three rotated panes of tinted glass with the
+   * page's own icon suspended in the front one: an <img> would need an
+   * asset per module and would not follow the theme, while this reads the
+   * same spectrum tokens as everything else and flips with it for free.
+   * Decoration only — always behind the content, always aria-hidden, and
+   * never the carrier of a number.
+   * ---------------------------------------------------------------- */
+  .hero-slab {
+    border-radius: 1.75rem;
+    border: 1px solid oklch(1 0 0 / 22%);
+    background: linear-gradient(
+      145deg,
+      color-mix(in oklch, var(--spectrum-mid) 34%, transparent),
+      color-mix(in oklch, var(--spectrum-hot) 20%, transparent) 55%,
+      transparent 100%
+    );
+    backdrop-filter: blur(6px) saturate(150%);
+    -webkit-backdrop-filter: blur(6px) saturate(150%);
+    box-shadow:
+      inset 0 1px 0 oklch(1 0 0 / 40%),
+      inset 0 -20px 34px -26px oklch(1 0 0 / 35%),
+      0 26px 52px -22px color-mix(in oklch, var(--spectrum-hot) 60%, transparent);
+  }
+  .light .hero-slab {
+    border-color: oklch(0.2 0 0 / 9%);
+    background: linear-gradient(
+      145deg,
+      color-mix(in oklch, var(--spectrum-mid-vivid) 20%, oklch(1 0 0 / 70%)),
+      color-mix(in oklch, var(--spectrum-hot-vivid) 14%, oklch(1 0 0 / 55%)) 55%,
+      oklch(1 0 0 / 25%) 100%
+    );
+    box-shadow:
+      inset 0 1px 0 oklch(1 0 0 / 90%),
+      0 22px 46px -24px color-mix(in oklch, var(--spectrum-hot-vivid) 45%, transparent);
+  }
+
+  .hero-slab-ghost {
+    border-radius: 1.4rem;
+    border: 1px solid oklch(1 0 0 / 12%);
+    background: linear-gradient(145deg, oklch(1 0 0 / 9%), transparent 72%);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+  .light .hero-slab-ghost {
+    border-color: oklch(0.2 0 0 / 7%);
+    background: linear-gradient(145deg, oklch(1 0 0 / 75%), transparent 72%);
+  }
+
+  .hero-slab-icon {
+    color: color-mix(in oklch, var(--spectrum-hot) 70%, oklch(1 0 0));
+    filter: drop-shadow(0 0 16px color-mix(in oklch, var(--spectrum-hot) 70%, transparent));
+  }
+  .light .hero-slab-icon {
+    color: var(--spectrum-hot-vivid);
+    filter: drop-shadow(0 0 14px color-mix(in oklch, var(--spectrum-hot-vivid) 45%, transparent));
+  }
+
+  /* Ambient colour bloom behind a card's content. Inset negatively so the
+     blur's own soft edge is clipped away by the card instead of showing as
+     a visible rectangle inside it. */
+  .card-aurora {
+    position: absolute;
+    inset: -35%;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        42% 60% at 82% 8%,
+        color-mix(in oklch, var(--aurora-a, var(--spectrum-mid)) 55%, transparent),
+        transparent 62%
+      ),
+      radial-gradient(
+        38% 55% at 12% 92%,
+        color-mix(in oklch, var(--aurora-b, var(--spectrum-hot)) 45%, transparent),
+        transparent 64%
+      );
+    filter: blur(26px);
+  }
+  .light .card-aurora {
+    opacity: 0.5;
+    filter: blur(32px);
+  }
+
   /* Full-bleed rule along a card's bottom edge, in that card's own accent.
      This is the rhythm element for tiles that have no daily series to plot:
      the row still scans as a row, without a chart being invented to fill
