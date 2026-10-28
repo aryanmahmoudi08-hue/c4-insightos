@@ -51,6 +51,8 @@ const JOBS: Record<SopDoc["key"], JobMap> = {
     payments:
       "View only, by design. You are watching the ledger and the recovery queue, not logging money — that is growth ops or the owner.",
     copy: "Keep offers, positioning and ticket tiers current. Half the app's classification depends on what is set here.",
+    integrations:
+      "Every outside system wired into this workspace, what each one brings in, and where to connect or disconnect it.",
     events:
       "Where you go when a connector looks wrong — the raw event stream and ingestion payloads.",
     weekly_report: "The seven-day digest to read before a team meeting, not during one.",
@@ -75,6 +77,8 @@ const JOBS: Record<SopDoc["key"], JobMap> = {
     copy: "Offers and positioning. Keep this true or the ticket-tier split everywhere else goes wrong.",
     payments:
       "Full access, including logging. You and the owner are the only two roles trusted with it.",
+    integrations:
+      "Your page. Connect Typeform, Stripe, Calendly, Close, Meta Ads and the rest, and see at a glance which systems are live.",
     events: "Connector health and raw payloads when an integration looks wrong.",
   },
   sales_manager: {

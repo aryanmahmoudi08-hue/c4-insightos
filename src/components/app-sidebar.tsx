@@ -21,6 +21,7 @@ import {
   Brain,
   Activity,
   PhoneIncoming,
+  PlugZap,
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
@@ -198,7 +199,10 @@ const ANALYTICS_NAV: NavItem[] = [
 // SYSTEM — deliberately not one of the primary categories (admin/
 // account routes don't fit any of them), so it lives as its own rail icon
 // down in the utility footer instead of the primary category list.
-const SYSTEM_NAV: NavItem[] = [{ to: "/events", label: "Event Bus", icon: Activity }];
+const SYSTEM_NAV: NavItem[] = [
+  { to: "/integrations", label: "Integrations", icon: PlugZap },
+  { to: "/events", label: "Event Bus", icon: Activity },
+];
 
 // HELP — every role's SOP library. Not resource-gated (no PATH_TO_RESOURCE
 // entry for /help): everyone gets a Help icon, the page itself decides

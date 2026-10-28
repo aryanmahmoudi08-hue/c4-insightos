@@ -29,6 +29,7 @@ import { Route as AuthenticatedPermissionsRouteImport } from './routes/_authenti
 import { Route as AuthenticatedPaymentsRouteImport } from './routes/_authenticated.payments'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated.onboarding'
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated.leads'
+import { Route as AuthenticatedIntegrationsRouteImport } from './routes/_authenticated.integrations'
 import { Route as AuthenticatedInboundDialerRouteImport } from './routes/_authenticated.inbound-dialer'
 import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated.home'
 import { Route as AuthenticatedHiringRouteImport } from './routes/_authenticated.hiring'
@@ -159,6 +160,12 @@ const AuthenticatedLeadsRoute = AuthenticatedLeadsRouteImport.update({
   path: '/leads',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedIntegrationsRoute =
+  AuthenticatedIntegrationsRouteImport.update({
+    id: '/integrations',
+    path: '/integrations',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedInboundDialerRoute =
   AuthenticatedInboundDialerRouteImport.update({
     id: '/inbound-dialer',
@@ -314,6 +321,7 @@ export interface FileRoutesByFullPath {
   '/hiring': typeof AuthenticatedHiringRoute
   '/home': typeof AuthenticatedHomeRoute
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
+  '/integrations': typeof AuthenticatedIntegrationsRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/payments': typeof AuthenticatedPaymentsRoute
@@ -361,6 +369,7 @@ export interface FileRoutesByTo {
   '/hiring': typeof AuthenticatedHiringRoute
   '/home': typeof AuthenticatedHomeRoute
   '/inbound-dialer': typeof AuthenticatedInboundDialerRoute
+  '/integrations': typeof AuthenticatedIntegrationsRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/payments': typeof AuthenticatedPaymentsRoute
@@ -410,6 +419,7 @@ export interface FileRoutesById {
   '/_authenticated/hiring': typeof AuthenticatedHiringRoute
   '/_authenticated/home': typeof AuthenticatedHomeRoute
   '/_authenticated/inbound-dialer': typeof AuthenticatedInboundDialerRoute
+  '/_authenticated/integrations': typeof AuthenticatedIntegrationsRoute
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/payments': typeof AuthenticatedPaymentsRoute
@@ -459,6 +469,7 @@ export interface FileRouteTypes {
     | '/hiring'
     | '/home'
     | '/inbound-dialer'
+    | '/integrations'
     | '/leads'
     | '/onboarding'
     | '/payments'
@@ -506,6 +517,7 @@ export interface FileRouteTypes {
     | '/hiring'
     | '/home'
     | '/inbound-dialer'
+    | '/integrations'
     | '/leads'
     | '/onboarding'
     | '/payments'
@@ -554,6 +566,7 @@ export interface FileRouteTypes {
     | '/_authenticated/hiring'
     | '/_authenticated/home'
     | '/_authenticated/inbound-dialer'
+    | '/_authenticated/integrations'
     | '/_authenticated/leads'
     | '/_authenticated/onboarding'
     | '/_authenticated/payments'
@@ -745,6 +758,13 @@ declare module '@tanstack/react-router' {
       path: '/leads'
       fullPath: '/leads'
       preLoaderRoute: typeof AuthenticatedLeadsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/integrations': {
+      id: '/_authenticated/integrations'
+      path: '/integrations'
+      fullPath: '/integrations'
+      preLoaderRoute: typeof AuthenticatedIntegrationsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/inbound-dialer': {
@@ -947,6 +967,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedHiringRoute: typeof AuthenticatedHiringRoute
   AuthenticatedHomeRoute: typeof AuthenticatedHomeRoute
   AuthenticatedInboundDialerRoute: typeof AuthenticatedInboundDialerRoute
+  AuthenticatedIntegrationsRoute: typeof AuthenticatedIntegrationsRoute
   AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedPaymentsRoute: typeof AuthenticatedPaymentsRoute
@@ -976,6 +997,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedHiringRoute: AuthenticatedHiringRoute,
   AuthenticatedHomeRoute: AuthenticatedHomeRoute,
   AuthenticatedInboundDialerRoute: AuthenticatedInboundDialerRoute,
+  AuthenticatedIntegrationsRoute: AuthenticatedIntegrationsRoute,
   AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedPaymentsRoute: AuthenticatedPaymentsRoute,

@@ -26,6 +26,7 @@ import {
   Link2,
   Plus,
   Trash2,
+  PlugZap,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ROLE_LABELS, ROLE_BLURBS, type ManagedRole } from "@/lib/permissions";
@@ -35,7 +36,6 @@ import {
   DEFAULT_WORKSPACE_SETTINGS,
   type WorkspaceSettings,
 } from "@/lib/workspace-settings.functions";
-import { ConnectionsPanel } from "@/components/connections-panel";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: Settings,
@@ -174,11 +174,20 @@ function Settings() {
           </dl>
         </Section>
 
+        {/* The panel itself moved to its own page, next to the catalogue
+            that explains what each system feeds and where it lands. Two
+            homes for connections is how one of them goes stale. */}
         <Section
           title="Connections"
-          description="Connect Typeform, Zapier, and Discord for your workspace. Each client workspace connects its own accounts here — no new code needed per client."
+          description="Every integration — Typeform, Stripe, Calendly, Close, Meta Ads and the rest — now lives on its own page, alongside what each one brings in and where that data lands."
         >
-          <ConnectionsPanel orgId={org?.org_id} isAdmin={isAdmin} />
+          <Link
+            to="/integrations"
+            className="btn-accent inline-flex h-9 items-center gap-2 rounded-md px-4 text-sm font-medium"
+          >
+            <PlugZap className="h-4 w-4" />
+            Open Integrations
+          </Link>
         </Section>
 
         <ContentEngineSection orgId={org?.org_id} isAdmin={isAdmin} />

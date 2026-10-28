@@ -10,6 +10,7 @@ import {
   HelpCircle,
   Home,
   LayoutDashboard,
+  PlugZap,
   MessageSquare,
   PhoneCall,
   PhoneIncoming,
@@ -82,6 +83,7 @@ export const PAGE_IDENTITY: Record<string, PageIdentity> = {
   "/weekly-report": { eyebrow: "Analytics", icon: FileText },
 
   "/events": { eyebrow: "System", icon: Activity },
+  "/integrations": { eyebrow: "System", icon: PlugZap },
   "/settings": { eyebrow: "System", icon: Settings },
   "/permissions": { eyebrow: "System", icon: ShieldCheck },
 

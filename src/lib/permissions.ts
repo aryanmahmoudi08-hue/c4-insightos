@@ -199,6 +199,14 @@ export const RESOURCES: ResourceDef[] = [
     edit: "Send the report to your connected Discord/Slack/n8n channel.",
   },
   {
+    key: "integrations",
+    label: "Integrations",
+    group: "System",
+    sensitive: true,
+    view: "The catalogue of every outside system this workspace reads from or writes to, and the live state of each connector.",
+    edit: "Connect and disconnect integrations, and rotate their secrets.",
+  },
+  {
     key: "events",
     label: "Event Bus",
     group: "System",
@@ -243,6 +251,7 @@ export const PATH_TO_RESOURCE: Record<string, string> = {
   "/fulfillment": "fulfillment",
   "/payments": "payments",
   "/weekly-report": "weekly_report",
+  "/integrations": "integrations",
   "/events": "events",
 };
 
