@@ -89,3 +89,19 @@ describe("clearOverrides", () => {
     expect(countOverrides()).toBe(0);
   });
 });
+
+describe("readOverrides — retiring the removed overlay's keys", () => {
+  it("drops keys that are not in overrideKey()'s shape", () => {
+    // `pathname##domPath` is what the deleted "edit anything" overlay wrote.
+    // Nothing reads those now, and writeOverride() re-persists the whole
+    // blob, so they would otherwise outlive the feature indefinitely.
+    window.localStorage.setItem(
+      DEMO_OVERRIDES_STORAGE_KEY,
+      JSON.stringify({
+        "/dashboard::Cash Collected": "$1",
+        "/dashboard##div:0>span:2": "99",
+      }),
+    );
+    expect(readOverrides()).toEqual({ "/dashboard::Cash Collected": "$1" });
+  });
+});

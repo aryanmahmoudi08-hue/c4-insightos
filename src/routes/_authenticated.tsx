@@ -1,4 +1,3 @@
-import { DemoEditAnything } from "@/components/demo-edit-anything";
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { MotionConfig } from "motion/react";
@@ -79,9 +78,6 @@ function AuthedShell() {
     <div className="min-h-screen bg-background">
       <AppSidebar />
       <CommandPalette />
-      {/* Renders nothing; attaches the Mock-Data-only click-to-edit handler
-          once for the whole authed shell. Inert unless demoMode is on. */}
-      <DemoEditAnything />
       <main
         className={cn(
           "relative min-h-screen overflow-x-clip transition-[margin] duration-200",

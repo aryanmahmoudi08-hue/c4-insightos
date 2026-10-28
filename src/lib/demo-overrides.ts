@@ -27,6 +27,9 @@ export type DemoOverrides = Record<string, string>;
  * alone would make one edit silently change all three, which is confusing
  * mid-demo and impossible to undo selectively.
  */
+/** The separator used by the deleted DOM-path overlay — see readOverrides. */
+const RETIRED_KEY_SEPARATOR = "##";
+
 export function overrideKey(pathname: string, label: string): string {
   return `${pathname}::${label}`;
 }
@@ -40,9 +43,14 @@ export function readOverrides(): DemoOverrides {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     // Drop anything non-string rather than trusting the blob — this is
     // user-editable storage and a bad value would render as "[object Object]".
+    // Keys written by the removed "edit anything" overlay are dropped on the
+    // way out. It keyed on `pathname##domPath`, which nothing reads any more,
+    // and writeOverride() merges and re-persists the whole blob — so without
+    // this they would be carried forward forever in the browsers of anyone
+    // who used the feature while it existed.
     const out: DemoOverrides = {};
     for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof v === "string") out[k] = v;
+      if (typeof v === "string" && !k.includes(RETIRED_KEY_SEPARATOR)) out[k] = v;
     }
     return out;
   } catch {
