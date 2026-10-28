@@ -2999,7 +2999,7 @@ function CashHero({
           Cash
         </span>
         <span className="flex items-center gap-2">
-          <span className="h-0 w-3 border-t-2 border-dashed border-[color:var(--spectrum-cold-vivid)]" />
+          <span className="h-0 w-3 border-t-2 border-dashed border-[color:var(--series-contrast)]" />
           Revenue
         </span>
       </div>
@@ -3038,22 +3038,17 @@ function CashHero({
                 dot={false}
                 isAnimationActive={false}
               />
-              {/* Cyan, and a deliberate departure from the rule that a
-                  spectrum colour states funnel position. Both series here
-                  are the same position — revenue generated and cash
-                  collected are both `hot` on the tiles above — so hue
-                  cannot separate them by meaning, and the two it can be
-                  read against (the magenta cash line, the magenta card)
-                  are the same hue again. Grey was the previous answer and
-                  disappeared into the card. Cold is the far stop, so it is
-                  the only one with real separation from both; the legend
-                  and the axis carry what each line is. Scoped to this one
-                  chart — nothing else reads cold as cash. */}
+              {/* Same hue family as cash, separated by value rather than
+                  by colour — see --series-contrast. Revenue generated and
+                  cash collected are both `hot` on the tiles above, so a
+                  different hue here would have claimed a difference in kind
+                  that isn't there. The direction flips per theme: a pale
+                  pink against the dark card, a deep one against the light. */}
               <Line
                 type="monotone"
                 dataKey="revenue"
                 name="revenue"
-                stroke="var(--spectrum-cold-vivid)"
+                stroke="var(--series-contrast)"
                 strokeOpacity={1}
                 strokeDasharray="6 4"
                 strokeWidth={2}

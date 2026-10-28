@@ -59,15 +59,17 @@ export function PageHero({
 
   return (
     <div className="relative overflow-hidden rounded-[1.4rem] border border-border bg-card p-5 shadow-[var(--shadow-md)] md:p-6">
-      {/* Two offset washes rather than one centred gradient: the warm stop
-          anchors the right edge where the toolbar sits, the cool one sits
-          behind the title, and the card surface shows through between them. */}
+      {/* Both washes are the hot stop. The title's accent word and the
+          artwork's glow are already magenta, and a violet corner opposite
+          them made the banner read as two different brands meeting in the
+          middle. Depth comes from the two washes differing in strength and
+          position instead of in hue. */}
       <div
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(90% 150% at 2% 0%, color-mix(in oklch, var(--spectrum-mid) 28%, transparent), transparent 64%)," +
-            "radial-gradient(75% 140% at 100% 105%, color-mix(in oklch, var(--spectrum-hot) 20%, transparent), transparent 68%)",
+            "radial-gradient(85% 150% at 0% 0%, color-mix(in oklch, var(--spectrum-hot) 30%, transparent), transparent 62%)," +
+            "radial-gradient(70% 135% at 100% 110%, color-mix(in oklch, var(--spectrum-hot) 17%, transparent), transparent 66%)",
         }}
         aria-hidden
       />
@@ -99,7 +101,9 @@ export function PageHero({
           {icon && (
             <div
               className="metric-chip grid h-12 w-12 shrink-0 place-items-center rounded-[0.9rem]"
-              style={{ "--chip-color": "var(--accent)" } as CSSProperties}
+              // Matches the title's accent word and the artwork's glow, so
+              // the whole top-left corner reads as one colour.
+              style={{ "--chip-color": "var(--spectrum-hot-vivid)" } as CSSProperties}
             >
               {icon}
             </div>

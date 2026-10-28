@@ -213,6 +213,12 @@
   --spectrum-mid-vivid: var(--spectrum-mid);
   --spectrum-hot-vivid: var(--spectrum-hot);
 
+  /* A second series drawn on a card that is already the FIRST series'
+     colour. Hue can't separate them — they are the same metric family — so
+     value does, and which direction counts as "away from the card" flips
+     with the theme: lighter than a dark card, darker than a pale one. */
+  --series-contrast: color-mix(in oklch, var(--spectrum-hot) 42%, oklch(1 0 0));
+
   --border: oklch(1 0 0 / 10%);
   --input: oklch(0.218 0.022 266);
   --ring: oklch(0.62 0.16 295 / 55%);
@@ -350,6 +356,8 @@
   --spectrum-cold-vivid: oklch(0.62 0.19 232);
   --spectrum-mid-vivid: oklch(0.6 0.27 296);
   --spectrum-hot-vivid: oklch(0.6 0.28 352);
+
+  --series-contrast: color-mix(in oklch, var(--spectrum-hot-vivid) 72%, oklch(0 0 0));
 
   --border: oklch(0.16 0 0 / 9%);
   --input: oklch(1 0 0);
