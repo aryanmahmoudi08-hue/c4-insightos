@@ -1,27 +1,40 @@
-import { useState } from "react";
 import { Input } from "@/components/ui/input";
+import {
+  CUSTOM_LABEL,
+  presetRange,
+  rangeKeyForLabel,
+  type DateRange,
+  type RangeKey,
+} from "@/lib/date-range";
 
-export type DateRange = { from: string; to: string; label: string };
+export type { DateRange } from "@/lib/date-range";
 
-const today = () => new Date().toISOString().slice(0, 10);
-const daysAgo = (n: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
-};
-
+/**
+ * Preset builders, kept on this module because several call sites already
+ * import them from here. The dates themselves are computed in `lib/
+ * date-range.ts` — a pure, tested module — because every one of these is a
+ * claim about the *viewer's* calendar ("today", "this month") and the old
+ * implementation built them with `toISOString()`, which is UTC. West of UTC
+ * that made "Today" mean tomorrow for the whole evening, so clicking it
+ * returned an empty page.
+ */
 export const RANGES = {
-  today: (): DateRange => ({ from: today(), to: today(), label: "Today" }),
-  yesterday: (): DateRange => ({ from: daysAgo(1), to: daysAgo(1), label: "Yesterday" }),
-  last7: (): DateRange => ({ from: daysAgo(6), to: today(), label: "Last 7d" }),
-  last30: (): DateRange => ({ from: daysAgo(29), to: today(), label: "Last 30d" }),
-  mtd: (): DateRange => {
-    const d = new Date();
-    const f = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-    return { from: f, to: today(), label: "MTD" };
-  },
-  all: (): DateRange => ({ from: "2000-01-01", to: today(), label: "All time" }),
+  today: (): DateRange => presetRange("today"),
+  yesterday: (): DateRange => presetRange("yesterday"),
+  last7: (): DateRange => presetRange("last7"),
+  last30: (): DateRange => presetRange("last30"),
+  mtd: (): DateRange => presetRange("mtd"),
+  all: (): DateRange => presetRange("all"),
 };
+
+const PRESETS: { key: RangeKey; label: string }[] = [
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "last7", label: "7d" },
+  { key: "last30", label: "30d" },
+  { key: "mtd", label: "MTD" },
+  { key: "all", label: "All" },
+];
 
 export function DateRangePicker({
   value,
@@ -30,38 +43,43 @@ export function DateRangePicker({
   value: DateRange;
   onChange: (r: DateRange) => void;
 }) {
-  const [custom, setCustom] = useState(false);
-  const presets: { key: keyof typeof RANGES; label: string }[] = [
-    { key: "today", label: "Today" },
-    { key: "yesterday", label: "Yesterday" },
-    { key: "last7", label: "7d" },
-    { key: "last30", label: "30d" },
-    { key: "mtd", label: "MTD" },
-    { key: "all", label: "All" },
-  ];
+  // Derived from the range itself rather than held in local state. As local
+  // state it desynced constantly: it reset to false on every remount, so a
+  // custom range came back with no chip lit and its two date inputs gone,
+  // while the range driving the page was still custom.
+  const activeKey = rangeKeyForLabel(value.label);
+  const custom = value.label === CUSTOM_LABEL;
+
+  const chip = (selected: boolean) =>
+    `cursor-pointer rounded-full px-2.5 py-1 text-2xs font-medium transition-all ${
+      selected
+        ? "bg-primary text-primary-foreground shadow-sm"
+        : "text-muted-foreground hover:text-foreground"
+    }`;
+
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex flex-wrap items-center gap-2">
       <div className="flex items-center gap-0.5 rounded-full border border-border bg-muted/30 p-0.5">
-        {presets.map((p) => {
-          const active = value.label === RANGES[p.key]().label && !custom;
-          return (
-            <button
-              key={p.key}
-              type="button"
-              onClick={() => {
-                setCustom(false);
-                onChange(RANGES[p.key]());
-              }}
-              className={`rounded-full px-2.5 py-1 text-2xs font-medium transition-all ${active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              {p.label}
-            </button>
-          );
-        })}
+        {PRESETS.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            aria-pressed={activeKey === p.key}
+            onClick={() => onChange(presetRange(p.key))}
+            className={chip(activeKey === p.key)}
+          >
+            {p.label}
+          </button>
+        ))}
         <button
           type="button"
-          onClick={() => setCustom(true)}
-          className={`rounded-full px-2.5 py-1 text-2xs font-medium transition-all ${custom ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          aria-pressed={custom}
+          // Switching to Custom commits a real range immediately, seeded with
+          // the dates already on screen. Previously it only flipped a local
+          // flag, so the page kept querying the old preset's dates while the
+          // control claimed to be custom.
+          onClick={() => onChange({ from: value.from, to: value.to, label: CUSTOM_LABEL })}
+          className={chip(custom)}
         >
           Custom
         </button>
@@ -71,20 +89,29 @@ export function DateRangePicker({
           <span className="text-muted-foreground">From</span>
           <Input
             type="date"
-            defaultValue={value.from}
+            // Controlled, not defaultValue: an uncontrolled input kept
+            // whatever was first rendered into it and silently ignored the
+            // range changing underneath it.
+            value={value.from}
+            max={value.to}
             className="h-7 w-36 text-xs"
-            onChange={(e) => onChange({ ...value, from: e.target.value, label: "Custom" })}
+            onChange={(e) =>
+              e.target.value && onChange({ ...value, from: e.target.value, label: CUSTOM_LABEL })
+            }
           />
           <span className="text-muted-foreground">To</span>
           <Input
             type="date"
-            defaultValue={value.to}
+            value={value.to}
+            min={value.from}
             className="h-7 w-36 text-xs"
-            onChange={(e) => onChange({ ...value, to: e.target.value, label: "Custom" })}
+            onChange={(e) =>
+              e.target.value && onChange({ ...value, to: e.target.value, label: CUSTOM_LABEL })
+            }
           />
         </div>
       )}
-      <span className="text-2xs text-muted-foreground font-sans tabular-nums">
+      <span className="font-sans text-2xs tabular-nums text-muted-foreground">
         {value.from} → {value.to}
       </span>
     </div>

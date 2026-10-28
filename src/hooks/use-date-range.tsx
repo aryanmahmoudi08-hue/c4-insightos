@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { RANGES, type DateRange } from "@/components/date-range-picker";
+import { normalizeStoredRange, presetRange, type DateRange } from "@/lib/date-range";
 
 type Ctx = { range: DateRange; setRange: (r: DateRange) => void };
 const DateRangeCtx = createContext<Ctx | null>(null);
@@ -7,26 +7,37 @@ const STORAGE_KEY = "c4_date_range_v1";
 
 export function DateRangeProvider({ children }: { children: ReactNode }) {
   const [range, setRangeState] = useState<DateRange>(() => {
-    if (typeof window === "undefined") return RANGES.last30();
+    if (typeof window === "undefined") return presetRange("last30");
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as DateRange;
-        if (parsed?.from && parsed?.to && parsed?.label) return parsed;
-      }
-    } catch { /* ignore */ }
-    return RANGES.last30();
+      // A stored preset is re-resolved against today rather than restored
+      // verbatim: what gets persisted is the dates the rule produced when it
+      // was clicked, so a tab reopened the next morning showed the "Today"
+      // chip lit over yesterday's numbers. A custom range is kept as typed.
+      if (raw) return normalizeStoredRange(JSON.parse(raw));
+    } catch {
+      /* ignore */
+    }
+    return presetRange("last30");
   });
 
   const setRange = (r: DateRange) => {
     setRangeState(r);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(r)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(r));
+    } catch {
+      /* ignore */
+    }
   };
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY && e.newValue) {
-        try { setRangeState(JSON.parse(e.newValue)); } catch { /* ignore */ }
+        try {
+          setRangeState(normalizeStoredRange(JSON.parse(e.newValue)));
+        } catch {
+          /* ignore */
+        }
       }
     };
     window.addEventListener("storage", onStorage);
