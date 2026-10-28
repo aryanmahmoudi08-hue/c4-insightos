@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
@@ -286,49 +286,37 @@ export function computeOverlapColumns<T extends { id: string; startMin: number; 
   return layout;
 }
 
-const STATUS_TONE: Record<OverallConfirmationStatus, string> = {
-  confirmed: "border-emerald-500/50 bg-emerald-500/20 text-emerald-300",
-  awaiting: "border-border/60 bg-muted/25 text-muted-foreground",
-  overdue: "border-red-500/50 bg-red-500/20 text-red-300",
-  at_risk: "border-amber-500/50 bg-amber-500/20 text-amber-300",
-  cancelled: "border-border/40 bg-muted/10 text-muted-foreground/60",
-  rescheduled: "border-blue-500/50 bg-blue-500/20 text-blue-300",
+/**
+ * The one colour per confirmation status, as the app's own semantic tokens.
+ *
+ * Was emerald/red/amber/blue/slate straight out of Tailwind's palette —
+ * colours that appear nowhere else in this product, at a saturation nothing
+ * else here uses, which is why the calendar looked like a different
+ * application. Success, danger and warning already exist as tokens; the
+ * fourth hue (rescheduled) takes spectrum-cold, the app's blue. Both
+ * neutral states share muted-foreground and are told apart by treatment,
+ * not hue: cancelled is struck through and unfilled, awaiting is filled.
+ */
+const STATUS_VAR: Record<OverallConfirmationStatus, string> = {
+  confirmed: "var(--color-success)",
+  awaiting: "var(--muted-foreground)",
+  overdue: "var(--destructive)",
+  at_risk: "var(--color-warning)",
+  cancelled: "var(--muted-foreground)",
+  rescheduled: "var(--spectrum-cold-vivid)",
 };
 
-// Solid, borderless status color — the one true color-per-status mapping
-// (matches STATUS_LABEL/LEGEND_DOT exactly: confirmed=green, overdue=red,
-// at_risk=amber, cancelled=neutral, rescheduled=blue, awaiting=gray) used
-// for booking blocks, month-grid chips, and the status legend cards. Each
-// status is a smooth bottom(dark)-to-top(light) gradient within its OWN
-// hue — never a flat single color, never a different hue mixed in. Light
-// mode = a bright/saturated pair with white text; dark mode = a deeper
-// pair of the SAME hue with near-black text — never opacity tricks, two
-// intentional color pairs per status (Google Calendar-style behavior).
-const STATUS_SOLID: Record<OverallConfirmationStatus, { bg: string; text: string }> = {
-  confirmed: {
-    bg: "bg-gradient-to-t from-emerald-600 to-emerald-400 dark:from-emerald-800 dark:to-emerald-500",
-    text: "text-white dark:text-emerald-950",
-  },
-  awaiting: {
-    bg: "bg-gradient-to-t from-slate-500 to-slate-300 dark:from-slate-800 dark:to-slate-600",
-    text: "text-white dark:text-slate-950",
-  },
-  overdue: {
-    bg: "bg-gradient-to-t from-red-600 to-red-400 dark:from-red-800 dark:to-red-600",
-    text: "text-white dark:text-red-950",
-  },
-  at_risk: {
-    bg: "bg-gradient-to-t from-amber-600 to-amber-400 dark:from-amber-800 dark:to-amber-600",
-    text: "text-white dark:text-amber-950",
-  },
-  cancelled: {
-    bg: "bg-gradient-to-t from-neutral-400 to-neutral-200 dark:from-neutral-700 dark:to-neutral-500",
-    text: "text-neutral-800 dark:text-neutral-100",
-  },
-  rescheduled: {
-    bg: "bg-gradient-to-t from-blue-600 to-blue-400 dark:from-blue-800 dark:to-blue-600",
-    text: "text-white dark:text-blue-950",
-  },
+/** Inline style for any element driven by a status. */
+const statusStyle = (status: OverallConfirmationStatus): CSSProperties =>
+  ({ "--status-color": STATUS_VAR[status], "--chip-color": STATUS_VAR[status] }) as CSSProperties;
+
+const STATUS_TONE: Record<OverallConfirmationStatus, string> = {
+  confirmed: "border-border/60 bg-muted/25 text-[color:var(--color-success)]",
+  awaiting: "border-border/60 bg-muted/25 text-muted-foreground",
+  overdue: "border-border/60 bg-muted/25 text-destructive",
+  at_risk: "border-border/60 bg-muted/25 text-[color:var(--color-warning)]",
+  cancelled: "border-border/40 bg-muted/10 text-muted-foreground/60",
+  rescheduled: "border-border/60 bg-muted/25 text-spectrum-cold",
 };
 
 // The ORIGINAL status's color, used only for cancelled/rescheduled booking
@@ -340,18 +328,15 @@ const ORIGINAL_STATUS_ACCENT: Record<
   NonNullable<CallConfirmationRow>["previous_status"] & string,
   { border: string; text: string }
 > = {
-  awaiting: {
-    border: "border-slate-400 dark:border-slate-500",
-    text: "text-slate-600 dark:text-slate-300",
-  },
+  awaiting: { border: "border-muted-foreground/60", text: "text-muted-foreground" },
   confirmed: {
-    border: "border-emerald-500 dark:border-emerald-500",
-    text: "text-emerald-600 dark:text-emerald-400",
+    border: "border-[color:var(--color-success)]",
+    text: "text-[color:var(--color-success)]",
   },
-  overdue: { border: "border-red-500 dark:border-red-500", text: "text-red-600 dark:text-red-400" },
+  overdue: { border: "border-destructive", text: "text-destructive" },
   at_risk: {
-    border: "border-amber-500 dark:border-amber-500",
-    text: "text-amber-600 dark:text-amber-400",
+    border: "border-[color:var(--color-warning)]",
+    text: "text-[color:var(--color-warning)]",
   },
 };
 
@@ -369,12 +354,12 @@ const STATUS_LABEL: Record<OverallConfirmationStatus, string> = {
 // a third parallel status list, so the legend can never say something the
 // actual event blocks don't.
 const LEGEND_DOT: Record<OverallConfirmationStatus, string> = {
-  confirmed: "border-emerald-500 bg-emerald-500",
+  confirmed: "border-[color:var(--color-success)] bg-[color:var(--color-success)]",
   awaiting: "border-muted-foreground/60 bg-muted-foreground/40",
-  overdue: "border-red-500 bg-red-500",
-  at_risk: "border-amber-500 bg-amber-500",
+  overdue: "border-destructive bg-destructive",
+  at_risk: "border-[color:var(--color-warning)] bg-[color:var(--color-warning)]",
   cancelled: "border-border bg-transparent",
-  rescheduled: "border-blue-500 bg-blue-500",
+  rescheduled: "border-spectrum-cold bg-spectrum-cold",
 };
 const LEGEND_ICON: Record<OverallConfirmationStatus, string> = {
   confirmed: "✓",
@@ -1032,26 +1017,35 @@ export function CallsOnCalendar() {
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {(Object.keys(STATUS_LABEL) as OverallConfirmationStatus[]).map((status) => {
-            const solid = STATUS_SOLID[status];
             const isSelected = statusFilter === status;
             return (
+              /* The same anatomy every other count in the app uses — a
+                 tinted chip, a caps label, a tabular figure on the card
+                 surface — rather than six saturated slabs. The status is
+                 still unmistakable; it lives in the chip and the selected
+                 border instead of flooding the whole tile. */
               <button
                 key={status}
                 type="button"
                 onClick={() => setStatusFilter(isSelected ? "all" : status)}
                 aria-pressed={isSelected}
                 title={`Filter to ${STATUS_LABEL[status]}`}
-                className={`cursor-pointer rounded-lg p-2 text-left transition ${solid.bg} ${solid.text} ${
+                style={statusStyle(status)}
+                className={`cursor-pointer rounded-xl border bg-card p-2.5 text-left transition ${
                   isSelected
-                    ? "ring-2 ring-foreground ring-offset-2 ring-offset-card"
-                    : "opacity-95 hover:opacity-100 hover:brightness-105"
+                    ? "border-[color:var(--status-color)] shadow-[var(--shadow-sm)]"
+                    : "border-border hover:border-[color:var(--status-color)]"
                 }`}
               >
-                <div className="flex items-start gap-1.5 text-3xs font-semibold uppercase tracking-wide">
-                  <span className="shrink-0">{LEGEND_ICON[status]}</span>{" "}
-                  <span>{STATUS_LABEL[status]}</span>
+                <div className="flex items-center gap-2">
+                  <span className="metric-chip h-6 w-6 rounded-[0.45rem] text-[11px] font-bold">
+                    {LEGEND_ICON[status]}
+                  </span>
+                  <span className="min-w-0 break-words text-3xs font-semibold uppercase leading-tight tracking-[0.09em] text-foreground/75">
+                    {STATUS_LABEL[status]}
+                  </span>
                 </div>
-                <div className="mt-0.5 font-sans text-lg font-bold tabular-nums">
+                <div className="mt-1.5 font-sans text-2xl font-bold tabular-nums tracking-tight">
                   {periodStatusCounts[status]}
                 </div>
               </button>
@@ -1074,14 +1068,14 @@ export function CallsOnCalendar() {
             <span>Not sent</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="grid h-2.5 w-2.5 shrink-0 place-items-center rounded-full border border-neutral-400 bg-neutral-300 dark:border-neutral-300 dark:bg-neutral-300">
-              <Mail className="h-2 w-2 text-neutral-700" />
+            <span className="grid h-2.5 w-2.5 shrink-0 place-items-center rounded-full border border-muted-foreground/60 bg-muted-foreground/40">
+              <Mail className="h-2 w-2 text-background" />
             </span>
             <span>Sent, no response</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="grid h-2.5 w-2.5 shrink-0 place-items-center rounded-full border border-emerald-500 bg-emerald-500">
-              <Check className="h-2 w-2 text-neutral-900 dark:text-white" strokeWidth={3.5} />
+            <span className="grid h-2.5 w-2.5 shrink-0 place-items-center rounded-full border border-[color:var(--color-success)] bg-[color:var(--color-success)]">
+              <Check className="h-2 w-2 text-background" strokeWidth={3.5} />
             </span>
             <span>Responded</span>
           </div>
@@ -1524,7 +1518,7 @@ function TimelineGrid({
                   className={
                     isToday
                       ? "grid h-8 w-8 cursor-pointer place-items-center rounded-full bg-primary text-base font-bold text-primary-foreground"
-                      : "grid h-8 w-8 cursor-pointer place-items-center rounded-full text-lg font-bold text-foreground transition hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                      : "grid h-8 w-8 cursor-pointer place-items-center rounded-full text-lg font-bold text-foreground transition hover:bg-muted"
                   }
                 >
                   {kd}
@@ -1560,10 +1554,10 @@ function TimelineGrid({
                     never disappears behind an event. */}
                 {key === todayKey && nowTop >= 0 && nowTop <= gridHeight && (
                   <div
-                    className="pointer-events-none absolute left-0 right-0 z-[5] border-t-2 border-red-500"
+                    className="pointer-events-none absolute left-0 right-0 z-[5] border-t-2 border-[color:var(--spectrum-hot-vivid)]"
                     style={{ top: nowTop }}
                   >
-                    <span className="absolute -top-1.5 left-0 h-3 w-3 rounded-full bg-red-500" />
+                    <span className="absolute -top-1.5 left-0 h-3 w-3 rounded-full bg-[color:var(--spectrum-hot-vivid)]" />
                   </div>
                 )}
                 {withTimes.map(({ id, entry: e, startMin }) => {
@@ -1669,9 +1663,9 @@ function ConfirmationCircles({
             title={`${TOUCHPOINT_LABELS[tp]} — ${stateLabel}`}
             className={`grid h-1 w-1 shrink-0 place-items-center rounded-full border @[100px]:h-2.5 @[100px]:w-2.5 ${
               responded
-                ? "border-emerald-500 bg-emerald-500"
+                ? "border-[color:var(--color-success)] bg-[color:var(--color-success)]"
                 : sentNoResponse
-                  ? "border-neutral-400 bg-neutral-300 dark:border-neutral-300 dark:bg-neutral-300"
+                  ? "border-muted-foreground/60 bg-muted-foreground/40"
                   : "border-current/30 bg-transparent"
             }`}
           >
@@ -1680,12 +1674,9 @@ function ConfirmationCircles({
                 distinction alone still carries the three real states there;
                 the icon is a bonus once there's room, never the only signal. */}
             {responded && (
-              <Check
-                className="hidden h-2 w-2 text-neutral-900 dark:text-white @[100px]:block"
-                strokeWidth={3.5}
-              />
+              <Check className="hidden h-2 w-2 text-background @[100px]:block" strokeWidth={3.5} />
             )}
-            {sentNoResponse && <Mail className="hidden h-2 w-2 text-neutral-700 @[100px]:block" />}
+            {sentNoResponse && <Mail className="hidden h-2 w-2 text-background @[100px]:block" />}
           </span>
         );
       })}
@@ -1785,18 +1776,16 @@ function CallBlock({
     );
   }
 
-  // Solid status color, no separate border — the block's own fill IS the
-  // status indicator (item 10/11), directly off overallStatus so it can
-  // never drift from the legend (checklist/lead-quality shaped the OLD
-  // ad-hoc tone here, which meant "at risk" and "overdue" rendered
-  // identically and "awaiting"/"rescheduled" never got their own color).
-  const solid = STATUS_SOLID[overallStatus];
-
+  // The status is carried by a solid left edge plus a quiet tint of the
+  // same colour (see .status-surface), straight off overallStatus so it can
+  // never drift from the legend. The whole block used to be a saturated
+  // gradient fill, which at eight bookings in a day made the calendar
+  // unreadable and matched nothing else in the app.
   return (
     <button
       onClick={() => onSelect(call.id)}
-      style={style}
-      className={`@container cursor-pointer overflow-hidden rounded-md px-1.5 py-1 text-left text-3xs shadow-sm ${solid.bg} ${solid.text}`}
+      style={{ ...style, ...statusStyle(overallStatus) }}
+      className="status-surface @container cursor-pointer overflow-hidden rounded-lg px-2 py-1 text-left text-3xs text-foreground shadow-sm"
     >
       {/* Priority order when the box is narrow (item 26): 1) lead name,
           2) closer, 3) the five confirmation circles. The lead name always
@@ -1974,8 +1963,8 @@ function MonthGrid({
                     key === todayKey
                       ? "bg-primary text-primary-foreground"
                       : inMonth
-                        ? "text-foreground hover:bg-neutral-300 dark:hover:bg-neutral-700"
-                        : "text-foreground/30 hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                        ? "text-foreground hover:bg-muted"
+                        : "text-foreground/30 hover:bg-muted"
                   }`}
                 >
                   {d}
@@ -2012,12 +2001,12 @@ function MonthGrid({
                       </button>
                     );
                   }
-                  const solid = STATUS_SOLID[e.overallStatus];
                   return (
                     <button
                       key={e.call.id}
                       onClick={() => onSelect(e.call.id)}
-                      className={`block w-full cursor-pointer truncate rounded px-1 py-0.5 text-left text-3xs ${solid.bg} ${solid.text}`}
+                      style={statusStyle(e.overallStatus)}
+                      className="status-surface block w-full cursor-pointer truncate rounded-md px-1.5 py-0.5 text-left text-3xs text-foreground"
                       title={`${displayName(lead?.full_name ?? lead?.handle) || "Unknown"} · ${timeLabel}`}
                     >
                       {timeLabel} {displayName(lead?.full_name ?? lead?.handle) || "Unknown"}
@@ -2121,7 +2110,7 @@ function YearGrid({
                     className={
                       isToday
                         ? "grid h-6 w-6 place-items-center rounded-full bg-primary text-3xs font-bold text-primary-foreground"
-                        : `grid h-6 w-6 place-items-center rounded-full text-3xs transition hover:bg-neutral-300 dark:hover:bg-neutral-700 ${inMonth ? "text-foreground" : "text-foreground/30"}`
+                        : `grid h-6 w-6 place-items-center rounded-full text-3xs transition hover:bg-muted ${inMonth ? "text-foreground" : "text-foreground/30"}`
                     }
                   >
                     {cellDate.getDate()}
@@ -2185,7 +2174,7 @@ function ConfirmationPolicyPopover({
           {policy?.at_risk_after_hours ?? 4}h.
         </p>
         <p
-          className={`rounded-md border px-2 py-1 text-3xs ${policy?.auto_cancel_enabled ? "border-red-500/40 bg-red-500/5 text-red-300" : "border-border/50 bg-muted/10 text-muted-foreground"}`}
+          className={`rounded-md border px-2 py-1 text-3xs ${policy?.auto_cancel_enabled ? "border-destructive/40 bg-destructive/5 text-destructive" : "border-border/50 bg-muted/10 text-muted-foreground"}`}
         >
           Automatic cancellation is currently {policy?.auto_cancel_enabled ? "ACTIVE" : "off"}.
           Unconfirmed calls{" "}
@@ -2308,7 +2297,7 @@ function TouchpointRow({
         <div className="flex flex-wrap items-center justify-end gap-2">
           {status === "responded" ? (
             <>
-              <span className="text-3xs text-emerald-400">Responded</span>
+              <span className="text-3xs text-[color:var(--color-success)]">Responded</span>
               <Button
                 size="sm"
                 variant="ghost"
@@ -2686,7 +2675,11 @@ function CallDetailDrawer({
             <ul className="space-y-1">
               {checklist.map((c) => (
                 <li key={c.label} className="flex items-center gap-2 text-xs">
-                  <span className={c.done ? "text-emerald-400" : "text-muted-foreground"}>
+                  <span
+                    className={
+                      c.done ? "text-[color:var(--color-success)]" : "text-muted-foreground"
+                    }
+                  >
                     {c.done ? "✓" : "○"}
                   </span>
                   {c.label}

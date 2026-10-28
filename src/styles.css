@@ -1089,6 +1089,35 @@
     filter: blur(32px);
   }
 
+  /* A surface tinted by a status, with that status as a solid left edge.
+     The calendar's booking blocks and month chips.
+
+     Replaces per-status Tailwind gradients (emerald/red/amber/blue/slate,
+     two hand-tuned pairs each, twelve values in all) that belonged to no
+     palette in this app and turned the calendar into six saturated slabs.
+     One rule, driven by --status-color, which the component sets from the
+     same semantic tokens the rest of the app uses for success/danger/
+     warning. The edge carries the status at full strength so it is still
+     readable at a glance; the fill stays quiet enough that a day with
+     eight bookings reads as a schedule rather than a paint chart. */
+  .status-surface {
+    --sc: var(--status-color, var(--muted-foreground));
+    border: 1px solid color-mix(in oklch, var(--sc) 38%, transparent);
+    background: color-mix(in oklch, var(--sc) 17%, var(--card));
+    box-shadow: inset 3px 0 0 0 var(--sc);
+  }
+  .light .status-surface {
+    background: color-mix(in oklch, var(--sc) 13%, oklch(1 0 0));
+  }
+  /* Cancelled and rescheduled keep the surface but drop the fill — the
+     block is history, not something on today's schedule. */
+  .status-surface-muted {
+    --sc: var(--status-color, var(--muted-foreground));
+    border: 1px dashed color-mix(in oklch, var(--sc) 45%, transparent);
+    background: transparent;
+    box-shadow: none;
+  }
+
   /* Full-bleed rule along a card's bottom edge, in that card's own accent.
      This is the rhythm element for tiles that have no daily series to plot:
      the row still scans as a row, without a chart being invented to fill
