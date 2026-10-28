@@ -829,13 +829,45 @@ export function mockAdminPaymentsToday() {
 }
 
 export function mockAdminCallsToday() {
+  // Carries closer_name/lead_email as well now, because Home's own
+  // "Today's Calendar" rail lists these rather than only counting them.
   return mockManagerCallsToday().map((c) => ({
     id: c.id,
     status: c.status,
     closed: c.closed,
     contract_value_cents: c.contract_value_cents,
     scheduled_for: c.scheduled_for,
+    closer_name: c.closer_name,
+    lead_email: c.lead_email,
   }));
+}
+
+/** Seven days of collected payments, for the Cash Collected tile's trend.
+ *  Deterministic so a demo doesn't reshuffle between loads. */
+export function mockAdminCash7d() {
+  const perDay = [820_000, 300_000, 0, 1_240_000, 640_000, 410_000, 1_850_000];
+  return perDay.flatMap((cents, i) =>
+    cents === 0
+      ? []
+      : [
+          {
+            amount_cents: cents,
+            status: "paid",
+            collected_at: `${dateDaysAgo(6 - i)}T15:00:00.000Z`,
+          },
+        ],
+  );
+}
+
+/** New leads over the same seven days, for the lead-volume tile. */
+export function mockAdminLeads7d() {
+  const perDay = [6, 9, 4, 11, 7, 5, 8];
+  return perDay.flatMap((n, i) =>
+    Array.from({ length: n }, (_, k) => ({
+      id: `home-lead-${i}-${k}`,
+      created_at: `${dateDaysAgo(6 - i)}T12:00:00.000Z`,
+    })),
+  );
 }
 
 export function mockAdminClients() {

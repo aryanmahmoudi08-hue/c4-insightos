@@ -66,7 +66,6 @@ import { FunnelInstrument } from "@/components/funnel-instrument";
 import { MoneyInstrument, type MoneyPoint } from "@/components/money-instrument";
 import { KpiBand, type KpiBandItem } from "@/components/kpi-band";
 import { OperationalWorkflowPanel } from "@/components/operational-workflow-panel";
-import { DialerCallbackFab } from "@/components/dialer-callback-fab";
 import { DialerFollowUpRows } from "@/components/dialer-followup-list";
 import { groupBySourcePlatform } from "@/lib/attribution-flow";
 import { RateSmallMultiples, type RateChartSpec } from "@/components/rate-small-multiples";
@@ -3736,7 +3735,6 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         {/* Log a Callback — extracted to a shared component (also used
             standalone on Home) so the dialer's own callback list, lead
             search, and mutations aren't duplicated here. */}
-        {isDialer && orgId && <DialerCallbackFab orgId={orgId} devBypass={devBypass} />}
         {/* Leaderboard with metric selector + independent date range (Part C3) + spectrum activity heatmap (Part C4) */}
         <div className="grid gap-4 lg:grid-cols-2">
           <RepLeaderboard

@@ -106,6 +106,8 @@ export function HomeStat({
   icon,
   tone = "neutral",
   hint,
+  spark,
+  sparkLabels,
   emphasis,
 }: {
   label: string;
@@ -113,6 +115,11 @@ export function HomeStat({
   icon?: ReactNode;
   tone?: HomeTone;
   hint?: string;
+  /** A daily series, where the tile genuinely has one. Most Home tiles are
+   *  point-in-time counts with no history to plot, so this is the exception
+   *  rather than the rule — pass it only when the numbers are real. */
+  spark?: number[];
+  sparkLabels?: string[];
   /** Opts this tile into the gradient-KPI-card treatment (see MetricCard) —
    * reserve for the 1 genuinely top-tier metric on a Home variant. */
   emphasis?: KpiEmphasis;
@@ -127,6 +134,8 @@ export function HomeStat({
       spectrum={spectrum}
       accentColor={spectrum ? undefined : TONE_VAR[tone]}
       emphasis={emphasis}
+      spark={spark}
+      sparkLabels={sparkLabels}
       supporting={hint}
       // Home is a snapshot: not one tile here has a daily series, so the
       // caption would read identically on every card.

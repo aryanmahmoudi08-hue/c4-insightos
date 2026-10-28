@@ -11,7 +11,6 @@ import {
   FocusUnavailable,
   TimeframeLabel,
 } from "./home-shared";
-import { DialerCallbackFab } from "@/components/dialer-callback-fab";
 import { DialerFollowUpRows } from "@/components/dialer-followup-list";
 import {
   Select,
@@ -282,7 +281,6 @@ export function HomeRepDashboard({
               >
                 <DialerFollowUpRows orgId={orgId} devBypass={devBypass} limit={6} />
               </HomeSection>
-              <DialerCallbackFab orgId={orgId} devBypass={devBypass} />
             </>
           )}
 

@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { HomeSection, HomeStat, FocusRow, FocusEmpty, HomeGrid } from "./home-shared";
 import { clientAtRiskReason, daysUntilDate } from "@/lib/client-risk";
+import { localISODate } from "@/lib/date-range";
 import {
   buildRecoveryQueue,
   RECOVERY_BUCKET_LABELS,
@@ -11,21 +12,28 @@ import {
 import {
   AlertTriangle,
   Building2,
+  CalendarClock,
   CheckCircle2,
   DollarSign,
   PhoneCall,
   Users,
+  UserCheck,
   UserPlus,
 } from "lucide-react";
 import {
   mockAdminPaymentsToday,
   mockAdminCallsToday,
+  mockAdminCash7d,
+  mockAdminLeads7d,
   mockAdminClients,
   mockAdminClientPayments,
   MOCK_ADMIN_HIRING_COUNTS,
 } from "@/lib/home-dev-mock-data";
 
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = localISODate(new Date());
+/** Inclusive 7-day window ending today, in the viewer's own calendar. */
+const WEEK_START = localISODate(new Date(Date.now() - 6 * 86400e3));
+const dayKeyAgo = (n: number) => localISODate(new Date(Date.now() - n * 86400e3));
 const DEFAULT_RENEWAL_AT_RISK_DAYS = 14;
 
 const OVERDUE_BUCKETS: RecoveryBucketKey[] = ["overdue_1_7", "overdue_8_30", "overdue_30_plus"];
@@ -57,11 +65,48 @@ export function HomeAdmin({ orgId }: { orgId: string }) {
       if (devBypass) return mockAdminCallsToday();
       const { data, error } = await supabase
         .from("calls")
-        .select("id, status, closed, contract_value_cents, scheduled_for")
+        .select("id, status, closed, contract_value_cents, scheduled_for, closer_name, lead_email")
         .eq("org_id", orgId)
         .gte("scheduled_for", `${TODAY}T00:00:00`)
         .lte("scheduled_for", `${TODAY}T23:59:59`)
         .limit(500);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  // Seven days of collected cash and of new leads. Home showed a cash
+  // figure with nothing to compare it against and no lead volume at all,
+  // so today's number carried no context — $18,500 reads completely
+  // differently against a week of $20k days than a week of $4k days.
+  const { data: cash7d = [] } = useQuery({
+    queryKey: ["home-admin-cash-7d", orgId, devBypass],
+    enabled: !!orgId,
+    queryFn: async () => {
+      if (devBypass) return mockAdminCash7d();
+      const { data, error } = await supabase
+        .from("payments")
+        .select("amount_cents, status, collected_at")
+        .eq("org_id", orgId)
+        .eq("status", "paid")
+        .gte("collected_at", `${WEEK_START}T00:00:00`)
+        .lte("collected_at", `${TODAY}T23:59:59`);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: leads7d = [] } = useQuery({
+    queryKey: ["home-admin-leads-7d", orgId, devBypass],
+    enabled: !!orgId,
+    queryFn: async () => {
+      if (devBypass) return mockAdminLeads7d();
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, created_at")
+        .eq("org_id", orgId)
+        .gte("created_at", `${WEEK_START}T00:00:00`)
+        .lte("created_at", `${TODAY}T23:59:59`);
       if (error) throw error;
       return data ?? [];
     },
@@ -125,6 +170,28 @@ export function HomeAdmin({ orgId }: { orgId: string }) {
   const cashToday = paymentsToday.reduce((s, p) => s + (p.amount_cents ?? 0), 0);
   const closesToday = calls.filter((c) => c.closed || c.status === "closed").length;
 
+  // Both series are bucketed into the same seven slots so the two tiles
+  // line up day for day. A day with nothing is a real zero here — the
+  // metric exists and its value that day was none — unlike a rate with no
+  // denominator, which is why these plot a 0 where seriesRatioPoints drops
+  // the day entirely.
+  const DAY_KEYS = Array.from({ length: 7 }, (_, i) => dayKeyAgo(6 - i));
+  const cashSeries = DAY_KEYS.map((d) =>
+    cash7d
+      .filter((p) => (p.collected_at ?? "").slice(0, 10) === d)
+      .reduce((sum, p) => sum + (p.amount_cents ?? 0), 0),
+  );
+  const leadSeries = DAY_KEYS.map(
+    (d) => leads7d.filter((l) => (l.created_at ?? "").slice(0, 10) === d).length,
+  );
+  const cashWeekCents = cashSeries.reduce((a, b) => a + b, 0);
+  const leadsWeek = leadSeries.reduce((a, b) => a + b, 0);
+
+  // Still on the calendar today: booked, not closed, not cancelled.
+  const upcomingToday = calls
+    .filter((c) => c.scheduled_for && c.status !== "closed" && c.status !== "cancelled")
+    .sort((a, b) => (a.scheduled_for ?? "").localeCompare(b.scheduled_for ?? ""));
+
   const renewalsAtRisk = clients
     .map((c) => ({
       client: c,
@@ -163,13 +230,18 @@ export function HomeAdmin({ orgId }: { orgId: string }) {
             icon={<Building2 className="h-4 w-4" />}
             tone="hot"
           >
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {/* Two across rather than three: there are four tiles here now
+                and the two that plot need the width for their series. */}
+            <div className="grid grid-cols-2 gap-3">
               <HomeStat
                 label="Cash Collected"
                 value={`$${(cashToday / 100).toLocaleString()}`}
                 icon={<DollarSign className="h-4 w-4" />}
                 tone="hot"
                 emphasis="strong"
+                spark={cashSeries}
+                sparkLabels={DAY_KEYS}
+                hint={`$${(cashWeekCents / 100).toLocaleString()} over 7d`}
               />
               <HomeStat
                 label="Closes"
@@ -178,9 +250,18 @@ export function HomeAdmin({ orgId }: { orgId: string }) {
                 tone="mid"
               />
               <HomeStat
+                label="New Leads · 7d"
+                value={leadsWeek}
+                icon={<Users className="h-4 w-4" />}
+                tone="cold"
+                spark={leadSeries}
+                sparkLabels={DAY_KEYS}
+                hint={`${leadSeries[6]} today`}
+              />
+              <HomeStat
                 label="Active Mentees"
                 value={clients.length}
-                icon={<Users className="h-4 w-4" />}
+                icon={<UserCheck className="h-4 w-4" />}
                 tone="cold"
                 emphasis="subtle"
               />
@@ -241,6 +322,29 @@ export function HomeAdmin({ orgId }: { orgId: string }) {
                   />
                 )}
               </>
+            )}
+          </HomeSection>
+
+          <HomeSection
+            title="Today's Calendar"
+            subtitle="Booked and still open"
+            icon={<CalendarClock className="h-4 w-4" />}
+            tone="cold"
+          >
+            {upcomingToday.length === 0 ? (
+              <FocusEmpty label="Nothing left on the calendar today." />
+            ) : (
+              upcomingToday.slice(0, 5).map((c) => (
+                <FocusRow
+                  key={c.id}
+                  label={`${c.lead_email ?? "Booked call"}${c.closer_name ? ` · ${c.closer_name}` : ""}`}
+                  detail={new Date(c.scheduled_for!).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  to="/team-calendar"
+                />
+              ))
             )}
           </HomeSection>
 
