@@ -293,15 +293,17 @@ export function computeOverlapColumns<T extends { id: string; startMin: number; 
  * colours that appear nowhere else in this product, at a saturation nothing
  * else here uses, which is why the calendar looked like a different
  * application. Success, danger and warning already exist as tokens; the
- * fourth hue (rescheduled) takes spectrum-cold, the app's blue. Both
+ * fourth hue (rescheduled) takes spectrum-cold, the app's blue. These are
+ * the `-vivid` fill variants — the base tones are tuned to be read as
+ * text, which is too quiet to fill a block with. Both
  * neutral states share muted-foreground and are told apart by treatment,
  * not hue: cancelled is struck through and unfilled, awaiting is filled.
  */
 const STATUS_VAR: Record<OverallConfirmationStatus, string> = {
-  confirmed: "var(--color-success)",
+  confirmed: "var(--success-vivid)",
   awaiting: "var(--muted-foreground)",
-  overdue: "var(--destructive)",
-  at_risk: "var(--color-warning)",
+  overdue: "var(--destructive-vivid)",
+  at_risk: "var(--warning-vivid)",
   cancelled: "var(--muted-foreground)",
   rescheduled: "var(--spectrum-cold-vivid)",
 };

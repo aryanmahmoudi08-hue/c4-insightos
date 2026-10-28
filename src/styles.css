@@ -199,6 +199,14 @@
   --destructive-foreground: oklch(0.98 0 0);
   --success: oklch(0.7 0.13 152);
   --warning: oklch(0.78 0.12 78);
+  /* Fill variants, same split as the spectrum's: the base values are tuned
+     to be read as text, which is too restrained to fill a surface with.
+     Danger stays firmly at hue ~18 — clearly red, never close enough to
+     spectrum-hot's magenta (350) for a failing status to read as cash, the
+     rule the restrained --destructive exists to protect. */
+  --success-vivid: oklch(0.79 0.23 150);
+  --warning-vivid: oklch(0.85 0.19 80);
+  --destructive-vivid: oklch(0.66 0.25 18);
 
   /* Spectrum — the funnel-position data language (chart series, heatmaps,
      rank ladders, status dots) — never chrome. */
@@ -337,6 +345,9 @@
   --destructive-foreground: oklch(0.99 0 0);
   --success: oklch(0.58 0.17 150);
   --warning: oklch(0.68 0.16 72);
+  --success-vivid: oklch(0.69 0.23 148);
+  --warning-vivid: oklch(0.78 0.2 78);
+  --destructive-vivid: oklch(0.6 0.26 20);
 
   /* Spectrum, light mode, in two sets.
      --spectrum-*       text: dark enough to read as a word on white.
@@ -1102,12 +1113,19 @@
      eight bookings reads as a schedule rather than a paint chart. */
   .status-surface {
     --sc: var(--status-color, var(--muted-foreground));
-    border: 1px solid color-mix(in oklch, var(--sc) 38%, transparent);
-    background: color-mix(in oklch, var(--sc) 17%, var(--card));
-    box-shadow: inset 3px 0 0 0 var(--sc);
+    border: 1px solid color-mix(in oklch, var(--sc) 52%, transparent);
+    /* Mixed toward a near-neutral dark rather than --card. The card is
+       navy, and 24% of a red mixed into navy lands on violet — the overdue
+       blocks read purple at a glance, which is the one reading a failing
+       status must not have. */
+    background: color-mix(in oklch, var(--sc) 26%, oklch(0.17 0.006 280));
+    box-shadow:
+      inset 4px 0 0 0 var(--sc),
+      0 0 18px -10px color-mix(in oklch, var(--sc) 70%, transparent);
   }
   .light .status-surface {
-    background: color-mix(in oklch, var(--sc) 13%, oklch(1 0 0));
+    background: color-mix(in oklch, var(--sc) 17%, oklch(1 0 0));
+    box-shadow: inset 4px 0 0 0 var(--sc);
   }
   /* Cancelled and rescheduled keep the surface but drop the fill — the
      block is history, not something on today's schedule. */
