@@ -1,4 +1,5 @@
 import type { SopDoc } from "@/lib/sop-types";
+import { pageMapSection } from "./page-map";
 import sidebarExpanded from "@/assets/sop/sidebar-expanded-sales.png";
 import commandPalette from "@/assets/sop/command-palette.png";
 import homeDialer from "@/assets/sop/home-inbound-dialer.png";
@@ -115,6 +116,7 @@ export const inboundDialerSop: SopDoc = {
         },
       ],
     },
+    pageMapSection("inbound_dialer"),
     {
       id: "home",
       title: "Home — your daily starting point",

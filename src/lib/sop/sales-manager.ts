@@ -1,4 +1,5 @@
 import type { SopDoc } from "@/lib/sop-types";
+import { pageMapSection } from "./page-map";
 import sidebarExpanded from "@/assets/sop/sidebar-expanded-sales.png";
 import commandPalette from "@/assets/sop/command-palette.png";
 import homeSalesManager from "@/assets/sop/home-sales-manager.png";
@@ -130,6 +131,7 @@ export const salesManagerSop: SopDoc = {
         },
       ],
     },
+    pageMapSection("sales_manager"),
     {
       id: "home-and-main",
       title: "Home & Main Hub — your daily and company-wide view",

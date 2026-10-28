@@ -1,4 +1,5 @@
 import type { SopDoc } from "@/lib/sop-types";
+import { pageMapSection } from "./page-map";
 import sidebarExpanded from "@/assets/sop/sidebar-expanded-sales.png";
 import commandPalette from "@/assets/sop/command-palette.png";
 import homeDmSetter from "@/assets/sop/home-dm-setter.png";
@@ -129,6 +130,7 @@ export const dmSetterSop: SopDoc = {
         },
       ],
     },
+    pageMapSection("dm_setter"),
     {
       id: "home",
       title: "Home — your daily starting point",

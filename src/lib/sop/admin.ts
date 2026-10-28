@@ -1,4 +1,5 @@
 import type { SopDoc } from "@/lib/sop-types";
+import { pageMapSection } from "./page-map";
 import sidebarExpanded from "@/assets/sop/sidebar-expanded-sales.png";
 import commandPalette from "@/assets/sop/command-palette.png";
 import homeAdmin from "@/assets/sop/home-admin.png";
@@ -103,6 +104,7 @@ export const adminSop: SopDoc = {
         },
       ],
     },
+    pageMapSection("admin"),
     {
       id: "home-and-main",
       title: "Home & Main Hub",

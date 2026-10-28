@@ -1,4 +1,5 @@
 import type { SopDoc } from "@/lib/sop-types";
+import { pageMapSection } from "./page-map";
 import sidebarExpanded from "@/assets/sop/sidebar-expanded-sales.png";
 import commandPalette from "@/assets/sop/command-palette.png";
 import homeGrowthOps from "@/assets/sop/home-growth-ops.png";
@@ -126,6 +127,7 @@ export const growthOpsSop: SopDoc = {
         },
       ],
     },
+    pageMapSection("growth_ops"),
     {
       id: "home-and-main",
       title: "Home & Main Hub",
