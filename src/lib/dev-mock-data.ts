@@ -8,6 +8,7 @@
 import { scaleMockPeriod, type MockPeriod } from "@/lib/mock-period";
 
 import type { MechanismKey } from "@/lib/content-mechanisms";
+import { addWeights, emptyWeights, scoreText } from "@/lib/content-mechanisms";
 import type { WeeklyReport } from "@/lib/weekly-report.server";
 import { computeDisqualified, disqualifiedLeadCount } from "@/lib/disqualification";
 
@@ -2628,4 +2629,198 @@ export function mockRawPayloads() {
     processed_at: s[2] ? null : new Date(now - i * 53 * 60_000 + 900).toISOString(),
     process_error: s[2],
   }));
+}
+
+/* ------------------------------------------------------------------ *
+ * Mentee Onboarding intakes.
+ *
+ * Shaped exactly like the route's own select: responses keyed by the
+ * QUESTIONS keys, plus the clients join. `mechanism_signals` is NOT typed
+ * out by hand — it is computed here with the same scoreText/addWeights
+ * the real submit path uses, so the Mechanism Signal Tags band shows the
+ * tags these answers would genuinely have produced rather than a set of
+ * numbers chosen to look good.
+ * ------------------------------------------------------------------ */
+const MOCK_INTAKE_ANSWERS: {
+  client: string;
+  offer: string;
+  daysAgo: number;
+  submitted: boolean;
+  a: Record<string, string>;
+}[] = [
+  {
+    client: "Jordan Ellis",
+    offer: "Operator System",
+    daysAgo: 38,
+    submitted: true,
+    a: {
+      name: "Jordan Ellis",
+      first_touchpoint:
+        "A breakdown video explaining how you structure a $10k offer — I watched it twice.",
+      pivotal_moment:
+        "The case study where the client went from 2 to 9 calls a week. The numbers were specific, not hype.",
+      objections_before:
+        "I'd been burned by a mastermind that was just a Slack group. I didn't believe this was different.",
+      join_sooner:
+        "Show the actual weekly cadence earlier. I didn't know what I'd be doing day to day until the call.",
+      why_us: "You were the only one who showed the system instead of the lifestyle.",
+      current_pain: "I'm closing but my pipeline is feast or famine — no predictable lead flow.",
+      desired_identity: "An operator who runs a team, not a freelancer who sells their own calls.",
+      tried_before:
+        "Cold email agency, a VA for DMs, and two courses. All tactics, no operating system.",
+      fear: "That I'll build the machine and still be the bottleneck inside it.",
+      beliefs_shifted: "That $30k months come from throughput, not from charging more per client.",
+      content_type_helped:
+        "The teardown format — watching you audit someone else's funnel line by line.",
+      experience_level: "Intermediate",
+      current_revenue: "$18,000/mo",
+      target_revenue_90d: "$45,000/mo",
+      north_star_outcome: "A sales team of two closers running without me on every call.",
+      success_metric: "Calls booked per week, and close rate holding above 35%.",
+      current_offer: "Done-with-you operator coaching, $5k, 12 weeks.",
+      audience_size: "9,400 on IG, 1,200 email",
+      current_funnel: "IG content -> DM -> call. No VSL, no paid.",
+      biggest_bottleneck: "Lead flow. Everything downstream converts fine.",
+      team_setup: "Me and one part-time setter.",
+      tech_stack: "Close, Calendly, Stripe, Notion",
+      weekly_hours: "25",
+      learning_style: "Watch then do",
+      accountability_pref: "Weekly call",
+    },
+  },
+  {
+    client: "Casey Nguyen",
+    offer: "Operator System",
+    daysAgo: 21,
+    submitted: true,
+    a: {
+      name: "Casey Nguyen",
+      first_touchpoint:
+        "A client result post — the screenshot of their Stripe dashboard with the caption about churn.",
+      pivotal_moment: "When you replied to my comment with an actual diagnosis instead of 'DM me'.",
+      objections_before:
+        "The price. I had the money but I couldn't justify it against another hire.",
+      join_sooner:
+        "A shorter proof path. One 15-minute call where you tell me what's broken would have closed me a month earlier.",
+      why_us: "Proof. Everyone else had testimonials; you had numbers with dates on them.",
+      current_pain: "My offer converts on calls but nobody books. The top of the funnel is dead.",
+      desired_identity: "Someone whose calendar fills without them posting every day.",
+      tried_before:
+        "Paid ads with no offer clarity. Burned $6k learning that traffic can't fix positioning.",
+      fear: "That the problem is me on camera, and no system fixes that.",
+      beliefs_shifted:
+        "That consistency beats quality — I was polishing one post a week instead of shipping five.",
+      content_type_helped:
+        "Behind the scenes of your own calls. Seeing the objection handled live.",
+      experience_level: "Advanced",
+      current_revenue: "$32,000/mo",
+      target_revenue_90d: "$60,000/mo",
+      north_star_outcome: "Predictable 40 calls a month without paid spend.",
+      success_metric: "Applications per week.",
+      current_offer: "High-ticket consulting, $12k, 6 months.",
+      audience_size: "22,000 on IG, 4,100 email",
+      current_funnel: "Content -> application -> call. No nurture sequence.",
+      biggest_bottleneck: "Application volume.",
+      team_setup: "Me, an editor, and a VA.",
+      tech_stack: "HubSpot, Calendly, Stripe",
+      weekly_hours: "35",
+      learning_style: "Read then ask",
+      accountability_pref: "Async check-ins",
+    },
+  },
+  {
+    client: "Priya Advani",
+    offer: "Operator System",
+    daysAgo: 9,
+    submitted: true,
+    a: {
+      name: "Priya Advani",
+      first_touchpoint: "A friend sent me your thread about why discovery calls don't close.",
+      pivotal_moment:
+        "Reading the thread twice and realising I was doing every single thing in the 'don't' list.",
+      objections_before: "Timing. I was mid-launch and thought I couldn't take on anything else.",
+      join_sooner:
+        "Nothing you could have done — I needed the launch to fail first to believe the diagnosis.",
+      why_us: "You were specific about who it is not for, which made me trust that it was for me.",
+      current_pain:
+        "I don't know which of my content actually produces revenue, so I can't double down.",
+      desired_identity: "An owner who makes decisions from a dashboard instead of a feeling.",
+      tried_before: "A tracking spreadsheet I abandoned after three weeks.",
+      fear: "That the data will show most of what I do doesn't matter.",
+      beliefs_shifted:
+        "That attribution is possible at my size. I assumed it was an enterprise problem.",
+      content_type_helped: "Long-form teaching. The threads, not the reels.",
+      experience_level: "Intermediate",
+      current_revenue: "$11,000/mo",
+      target_revenue_90d: "$25,000/mo",
+      north_star_outcome: "Know the cash value of every content pillar.",
+      success_metric: "Revenue attributed per piece.",
+      current_offer: "Group program, $3k, 8 weeks.",
+      audience_size: "6,800 on IG, 900 email",
+      current_funnel: "Threads -> email list -> group launch twice a year.",
+      biggest_bottleneck: "No evergreen offer between launches.",
+      team_setup: "Solo.",
+      tech_stack: "ConvertKit, Stripe, Airtable",
+      weekly_hours: "20",
+      learning_style: "Watch then do",
+      accountability_pref: "Weekly call",
+    },
+  },
+  {
+    client: "Marcus Webb",
+    offer: "Starter Track",
+    daysAgo: 2,
+    submitted: false,
+    a: {
+      name: "Marcus Webb",
+      first_touchpoint: "Your podcast episode on why most setters quit in week three.",
+      pivotal_moment: "",
+      objections_before: "Whether I'm too early — I've only had four clients total.",
+      join_sooner: "",
+      why_us: "",
+      current_pain: "I have no repeatable way to get the next client.",
+      desired_identity: "",
+      tried_before: "",
+      fear: "",
+      beliefs_shifted: "",
+      content_type_helped: "",
+      experience_level: "Beginner",
+      current_revenue: "$3,500/mo",
+      target_revenue_90d: "$12,000/mo",
+      north_star_outcome: "",
+      success_metric: "",
+      current_offer: "1:1 coaching, $1.5k",
+      audience_size: "1,100 on IG",
+      current_funnel: "",
+      biggest_bottleneck: "",
+      team_setup: "Solo.",
+      tech_stack: "",
+      weekly_hours: "",
+      learning_style: "",
+      accountability_pref: "",
+    },
+  },
+];
+
+/** Intake rows in the exact shape `_authenticated.onboarding.tsx` selects. */
+export function mockOnboardingResponses() {
+  const now = Date.now();
+  return MOCK_INTAKE_ANSWERS.map((row, i) => {
+    const created = new Date(now - row.daysAgo * 86400e3).toISOString();
+    let weights = emptyWeights();
+    for (const key of ["first_touchpoint", "pivotal_moment", "join_sooner"] as const) {
+      weights = addWeights(weights, scoreText(row.a[key], 1));
+    }
+    return {
+      id: `mock-intake-${i + 1}`,
+      responses: row.a,
+      mechanism_signals: weights,
+      // An unsubmitted row is a real state the page counts separately
+      // ("Pending"), so one fixture is deliberately left open.
+      submitted_at: row.submitted ? created : null,
+      created_at: created,
+      share_token: `mock-token-${i + 1}`,
+      clients: { full_name: row.client, offer_name: row.offer },
+    };
+  });
 }

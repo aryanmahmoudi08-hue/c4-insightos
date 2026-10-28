@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useWebinars } from "@/hooks/use-webinars";
 import { normalizeAcquisitionSource } from "@/lib/acquisition-source";
-import { HomeSection, HomeStat, FocusRow, FocusEmpty } from "./home-shared";
+import { HomeSection, HomeStat, FocusRow, FocusEmpty, HomeGrid } from "./home-shared";
 import { Radar, Target, TrendingUp, Users, Video } from "lucide-react";
 import { mockGrowthLeadsToday, mockGrowthContentToday } from "@/lib/home-dev-mock-data";
 
@@ -55,62 +55,71 @@ export function HomeGrowth({ orgId }: { orgId: string }) {
   const highReachNoLeads = contentToday.filter((c) => (c.views ?? 0) > 1000 && !c.leads_generated);
 
   return (
-    <div className="space-y-4">
-      <HomeSection title="Growth Today" icon={<TrendingUp className="h-4 w-4" />} tone="cold">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <HomeStat
-            label="Leads Generated"
-            value={leadsToday.length}
-            icon={<Users className="h-4 w-4" />}
-            tone="cold"
-          />
-          <HomeStat
-            label="Paid Leads"
-            value={paid}
-            icon={<Target className="h-4 w-4" />}
-            tone="cold"
-          />
-          <HomeStat
-            label="Organic Leads"
-            value={organic}
-            icon={<Radar className="h-4 w-4" />}
-            tone="cold"
-          />
-        </div>
-      </HomeSection>
-
-      <HomeSection title="Content Attention" icon={<Radar className="h-4 w-4" />} tone="warning">
-        {highReachNoLeads.length === 0 ? (
-          <FocusEmpty label="No high-reach, zero-lead content flagged today." />
-        ) : (
-          <FocusRow
-            tone="warning"
-            label={`${highReachNoLeads.length} piece${highReachNoLeads.length === 1 ? "" : "s"} with 1,000+ views and no attributed leads today`}
-            to="/content"
-          />
-        )}
-      </HomeSection>
-
-      <HomeSection title="Webinars" icon={<Video className="h-4 w-4" />} tone="mid">
-        {webinars.length === 0 ? (
-          <FocusEmpty label="No webinars tracked yet." />
-        ) : (
-          <>
-            <FocusRow
-              label={`${webinars.length} webinar${webinars.length === 1 ? "" : "s"} tracked — ${paidWebinars.length} paid, ${organicWebinars.length} organic`}
-              to="/webinar-analytics"
+    <HomeGrid
+      main={
+        <HomeSection title="Growth Today" icon={<TrendingUp className="h-4 w-4" />} tone="cold">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <HomeStat
+              label="Leads Generated"
+              value={leadsToday.length}
+              icon={<Users className="h-4 w-4" />}
+              tone="cold"
             />
-            {webinars.slice(0, 3).map((w) => (
+            <HomeStat
+              label="Paid Leads"
+              value={paid}
+              icon={<Target className="h-4 w-4" />}
+              tone="cold"
+            />
+            <HomeStat
+              label="Organic Leads"
+              value={organic}
+              icon={<Radar className="h-4 w-4" />}
+              tone="cold"
+            />
+          </div>
+        </HomeSection>
+      }
+      side={
+        <>
+          <HomeSection
+            title="Content Attention"
+            icon={<Radar className="h-4 w-4" />}
+            tone="warning"
+          >
+            {highReachNoLeads.length === 0 ? (
+              <FocusEmpty label="No high-reach, zero-lead content flagged today." />
+            ) : (
               <FocusRow
-                key={w.id}
-                label={w.name}
-                detail={w.status ?? undefined}
-                to="/webinar-analytics"
+                tone="warning"
+                label={`${highReachNoLeads.length} piece${highReachNoLeads.length === 1 ? "" : "s"} with 1,000+ views and no attributed leads today`}
+                to="/content"
               />
-            ))}
-          </>
-        )}
-      </HomeSection>
-    </div>
+            )}
+          </HomeSection>
+
+          <HomeSection title="Webinars" icon={<Video className="h-4 w-4" />} tone="mid">
+            {webinars.length === 0 ? (
+              <FocusEmpty label="No webinars tracked yet." />
+            ) : (
+              <>
+                <FocusRow
+                  label={`${webinars.length} webinar${webinars.length === 1 ? "" : "s"} tracked — ${paidWebinars.length} paid, ${organicWebinars.length} organic`}
+                  to="/webinar-analytics"
+                />
+                {webinars.slice(0, 3).map((w) => (
+                  <FocusRow
+                    key={w.id}
+                    label={w.name}
+                    detail={w.status ?? undefined}
+                    to="/webinar-analytics"
+                  />
+                ))}
+              </>
+            )}
+          </HomeSection>
+        </>
+      }
+    />
   );
 }

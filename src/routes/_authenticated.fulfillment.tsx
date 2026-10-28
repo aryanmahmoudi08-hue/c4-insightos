@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { useDemoMode } from "@/hooks/use-demo-mode";
 import { TopBar } from "@/components/app-sidebar";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,12 @@ function Fulfillment() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
+  // `devBypass` is compiled out of the production build, so Mock Data was
+  // the only switch that could reach these fixtures on the deployed app —
+  // and it never did. Same amendment as Webinar/VSL Analytics; see the note
+  // in use-demo-mode.tsx.
+  const demo = devBypass || demoMode;
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
@@ -72,18 +79,18 @@ function Fulfillment() {
   // overriding real data.
   const demoClients = useMemo(
     () =>
-      devBypass && (clients?.length ?? 0) === 0
+      demo && (clients?.length ?? 0) === 0
         ? (mockClients().filter((c) => c.status === "active") as unknown as ClientLite[])
         : null,
-    [devBypass, clients],
+    [demo, clients],
   );
   const rosterClients = demoClients ?? clients;
 
   const { data: intake } = useQuery({
-    queryKey: ["fulfillment-intake", orgId, selected, devBypass],
-    enabled: (devBypass || !!orgId) && !!selected,
+    queryKey: ["fulfillment-intake", orgId, selected, demo],
+    enabled: (demo || !!orgId) && !!selected,
     queryFn: async () => {
-      if (devBypass) return mockFulfillmentIntake();
+      if (demo) return mockFulfillmentIntake();
       const { data } = await supabase
         .from("onboarding_responses")
         .select("responses, submitted_at")
@@ -103,10 +110,10 @@ function Fulfillment() {
     isLoading: checkpointsLoading,
     isError: checkpointsError,
   } = useQuery({
-    queryKey: ["fulfillment-checkpoints", orgId, selected, devBypass],
-    enabled: (devBypass || !!orgId) && !!selected,
+    queryKey: ["fulfillment-checkpoints", orgId, selected, demo],
+    enabled: (demo || !!orgId) && !!selected,
     queryFn: async () => {
-      if (devBypass) return mockFulfillmentCheckpoints(selected!) as CheckpointRow[];
+      if (demo) return mockFulfillmentCheckpoints(selected!) as CheckpointRow[];
       const { data, error } = await supabase
         .from("daily_wins")
         .select(

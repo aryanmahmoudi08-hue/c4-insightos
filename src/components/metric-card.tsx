@@ -84,6 +84,7 @@ export function MetricCard({
   spark,
   sparkLabels,
   sparkVariant = "line",
+  seriesNote = true,
   chart,
   numericValue,
   format,
@@ -105,6 +106,15 @@ export function MetricCard({
   spark?: number[];
   sparkLabels?: string[];
   sparkVariant?: "line" | "bar";
+  /** Whether a tile with no daily series says so in words.
+   *
+   * True everywhere by default: on a page where some tiles plot and others
+   * don't, the absence is information and gets stated. Set false only on a
+   * surface where NO tile has a series and none is implied — Home's
+   * snapshot counts — where repeating the same caption on every card is
+   * noise rather than honesty. The accent rule still marks the absence; the
+   * page just stops saying it six times. */
+  seriesNote?: boolean;
   chart?: ReactNode;
   numericValue?: number;
   format?: (n: number) => string;
@@ -245,9 +255,11 @@ export function MetricCard({
       <div className="mt-auto">
         {series ?? (
           <>
-            <div className="px-4 pb-1.5 text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground/45">
-              No daily series
-            </div>
+            {seriesNote && (
+              <div className="px-4 pb-1.5 text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground/45">
+                No daily series
+              </div>
+            )}
             <div className="accent-rule" />
           </>
         )}

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { HomeSection, HomeStat, FocusRow, FocusEmpty } from "./home-shared";
+import { HomeSection, HomeStat, FocusRow, FocusEmpty, HomeGrid } from "./home-shared";
 import {
   AlertTriangle,
   CalendarClock,
@@ -106,133 +106,140 @@ export function HomeManager({ orgId }: { orgId: string }) {
   const closerRows = Array.from(byCloser.entries()).sort((a, b) => b[1].cash - a[1].cash);
 
   return (
-    <div className="space-y-4">
-      <HomeSection title="Team Health · Today" icon={<Users className="h-4 w-4" />} tone="hot">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-          <HomeStat
-            label="Calls Booked"
-            value={booked}
+    <HomeGrid
+      main={
+        <>
+          <HomeSection title="Team Health · Today" icon={<Users className="h-4 w-4" />} tone="hot">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+              <HomeStat
+                label="Calls Booked"
+                value={booked}
+                icon={<CalendarClock className="h-4 w-4" />}
+                tone="cold"
+                emphasis="subtle"
+              />
+              <HomeStat
+                label="Showed"
+                value={showed}
+                icon={<CheckCircle2 className="h-4 w-4" />}
+                tone="cold"
+              />
+              <HomeStat
+                label="Offers"
+                value={offers}
+                icon={<ListChecks className="h-4 w-4" />}
+                tone="mid"
+                emphasis="subtle"
+              />
+              <HomeStat
+                label="Closes"
+                value={closes}
+                icon={<CheckCircle2 className="h-4 w-4" />}
+                tone="mid"
+              />
+              <HomeStat
+                label="Cash Collected"
+                value={`$${(cashToday / 100).toLocaleString()}`}
+                icon={<DollarSign className="h-4 w-4" />}
+                tone="hot"
+                emphasis="strong"
+              />
+            </div>
+            <div className="mt-2 text-2xs text-muted-foreground">
+              Cash collected, last 7 days: ${(cashWeek / 100).toLocaleString()}
+            </div>
+          </HomeSection>
+
+          <HomeSection
+            title="Closer Performance · Last 7 Days"
+            icon={<CalendarClock className="h-4 w-4" />}
+            tone="mid"
+          >
+            {closerRows.length === 0 ? (
+              <FocusEmpty label="No calls logged in the last 7 days." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-2xs uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="p-1.5 text-left">Closer</th>
+                      <th className="p-1.5 text-right">Booked</th>
+                      <th className="p-1.5 text-right">Showed</th>
+                      <th className="p-1.5 text-right">Closes</th>
+                      <th className="p-1.5 text-right">Cash</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {closerRows.map(([name, row]) => (
+                      <tr key={name} className="border-t border-border/60">
+                        <td className="p-1.5 font-medium">{name}</td>
+                        <td className="p-1.5 text-right font-sans tabular-nums">{row.booked}</td>
+                        <td className="p-1.5 text-right font-sans tabular-nums">{row.showed}</td>
+                        <td className="p-1.5 text-right font-sans tabular-nums">{row.closes}</td>
+                        <td className="p-1.5 text-right font-sans tabular-nums font-semibold text-spectrum-hot">
+                          ${(row.cash / 100).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </HomeSection>
+        </>
+      }
+      side={
+        <>
+          <HomeSection
+            title="Attention Required"
+            icon={<AlertTriangle className="h-4 w-4" />}
+            tone="destructive"
+          >
+            {noShows.length === 0 && !slaBreaches ? (
+              <FocusEmpty label="No unrecovered no-shows or open SLA breaches right now." />
+            ) : (
+              <>
+                {noShows.length > 0 && (
+                  <FocusRow
+                    tone="destructive"
+                    label={`${noShows.length} no-show${noShows.length === 1 ? "" : "s"} today not yet recovered`}
+                    to="/closer"
+                  />
+                )}
+                {!!slaBreaches && (
+                  <FocusRow
+                    tone="destructive"
+                    label={`${slaBreaches} lead${slaBreaches === 1 ? "" : "s"} past the 5-minute speed-to-lead SLA`}
+                    to="/inbound-dialer"
+                  />
+                )}
+              </>
+            )}
+          </HomeSection>
+
+          <HomeSection
+            title="Today's Calendar"
             icon={<CalendarClock className="h-4 w-4" />}
             tone="cold"
-            emphasis="subtle"
-          />
-          <HomeStat
-            label="Showed"
-            value={showed}
-            icon={<CheckCircle2 className="h-4 w-4" />}
-            tone="cold"
-          />
-          <HomeStat
-            label="Offers"
-            value={offers}
-            icon={<ListChecks className="h-4 w-4" />}
-            tone="mid"
-            emphasis="subtle"
-          />
-          <HomeStat
-            label="Closes"
-            value={closes}
-            icon={<CheckCircle2 className="h-4 w-4" />}
-            tone="mid"
-          />
-          <HomeStat
-            label="Cash Collected"
-            value={`$${(cashToday / 100).toLocaleString()}`}
-            icon={<DollarSign className="h-4 w-4" />}
-            tone="hot"
-            emphasis="strong"
-          />
-        </div>
-        <div className="mt-2 text-2xs text-muted-foreground">
-          Cash collected, last 7 days: ${(cashWeek / 100).toLocaleString()}
-        </div>
-      </HomeSection>
-
-      <HomeSection
-        title="Attention Required"
-        icon={<AlertTriangle className="h-4 w-4" />}
-        tone="destructive"
-      >
-        {noShows.length === 0 && !slaBreaches ? (
-          <FocusEmpty label="No unrecovered no-shows or open SLA breaches right now." />
-        ) : (
-          <>
-            {noShows.length > 0 && (
-              <FocusRow
-                tone="destructive"
-                label={`${noShows.length} no-show${noShows.length === 1 ? "" : "s"} today not yet recovered`}
-                to="/closer"
-              />
+          >
+            {upcoming.length === 0 ? (
+              <FocusEmpty label="No more booked calls remaining today." />
+            ) : (
+              upcoming.slice(0, 6).map((c) => (
+                <FocusRow
+                  key={c.id}
+                  label={`${c.lead_email ?? "Booked call"}${c.closer_name ? ` · ${c.closer_name}` : ""}`}
+                  detail={new Date(c.scheduled_for!).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  to="/team-calendar"
+                />
+              ))
             )}
-            {!!slaBreaches && (
-              <FocusRow
-                tone="destructive"
-                label={`${slaBreaches} lead${slaBreaches === 1 ? "" : "s"} past the 5-minute speed-to-lead SLA`}
-                to="/inbound-dialer"
-              />
-            )}
-          </>
-        )}
-      </HomeSection>
-
-      <HomeSection
-        title="Closer Performance · Last 7 Days"
-        icon={<CalendarClock className="h-4 w-4" />}
-        tone="mid"
-      >
-        {closerRows.length === 0 ? (
-          <FocusEmpty label="No calls logged in the last 7 days." />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-2xs uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="p-1.5 text-left">Closer</th>
-                  <th className="p-1.5 text-right">Booked</th>
-                  <th className="p-1.5 text-right">Showed</th>
-                  <th className="p-1.5 text-right">Closes</th>
-                  <th className="p-1.5 text-right">Cash</th>
-                </tr>
-              </thead>
-              <tbody>
-                {closerRows.map(([name, row]) => (
-                  <tr key={name} className="border-t border-border/60">
-                    <td className="p-1.5 font-medium">{name}</td>
-                    <td className="p-1.5 text-right font-sans tabular-nums">{row.booked}</td>
-                    <td className="p-1.5 text-right font-sans tabular-nums">{row.showed}</td>
-                    <td className="p-1.5 text-right font-sans tabular-nums">{row.closes}</td>
-                    <td className="p-1.5 text-right font-sans tabular-nums font-semibold text-spectrum-hot">
-                      ${(row.cash / 100).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </HomeSection>
-
-      <HomeSection
-        title="Today's Calendar"
-        icon={<CalendarClock className="h-4 w-4" />}
-        tone="cold"
-      >
-        {upcoming.length === 0 ? (
-          <FocusEmpty label="No more booked calls remaining today." />
-        ) : (
-          upcoming.slice(0, 6).map((c) => (
-            <FocusRow
-              key={c.id}
-              label={`${c.lead_email ?? "Booked call"}${c.closer_name ? ` · ${c.closer_name}` : ""}`}
-              detail={new Date(c.scheduled_for!).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-              to="/team-calendar"
-            />
-          ))
-        )}
-      </HomeSection>
-    </div>
+          </HomeSection>
+        </>
+      }
+    />
   );
 }

@@ -84,7 +84,7 @@ export function HomeSection({
         <span className="h-px min-w-4 flex-1 bg-border" aria-hidden />
         {right && <div className="shrink-0">{right}</div>}
       </div>
-      {children}
+      <div className="space-y-2">{children}</div>
     </section>
   );
 }
@@ -128,6 +128,9 @@ export function HomeStat({
       accentColor={spectrum ? undefined : TONE_VAR[tone]}
       emphasis={emphasis}
       supporting={hint}
+      // Home is a snapshot: not one tile here has a daily series, so the
+      // caption would read identically on every card.
+      seriesNote={false}
     />
   );
 }
@@ -237,5 +240,24 @@ export function TimeframeLabel({ children }: { children: ReactNode }) {
       <Clock3 className="h-3 w-3" />
       {children}
     </span>
+  );
+}
+
+/**
+ * Home's page shape: measures on the left, things to act on down a
+ * narrower right rail.
+ *
+ * Home was a single column of full-width bands — on a wide screen that is
+ * a long scroll past a lot of empty margin, and it gave every section the
+ * same weight, so nothing led. Splitting it puts the numbers and the queue
+ * side by side the way they are actually read: glance left, act right.
+ * Collapses to one column below lg, main first.
+ */
+export function HomeGrid({ main, side }: { main: ReactNode; side: ReactNode }) {
+  return (
+    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
+      <div className="space-y-5">{main}</div>
+      <div className="space-y-5">{side}</div>
+    </div>
   );
 }

@@ -2,7 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
-import { mockIntakeInsights, withMockDelay } from "@/lib/dev-mock-data";
+import { useDemoMode } from "@/hooks/use-demo-mode";
+import {
+  mockClients,
+  mockIntakeInsights,
+  mockOnboardingResponses,
+  withMockDelay,
+} from "@/lib/dev-mock-data";
 import { TopBar } from "@/components/app-sidebar";
 import { StatCard } from "@/components/stat-card";
 import { useState, useMemo } from "react";
@@ -454,6 +460,12 @@ function Onboarding() {
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const { devBypass } = useAuth();
+  const { demoMode } = useDemoMode();
+  // `devBypass` is compiled out of the production build, so Mock Data was
+  // the only switch that could reach these fixtures on the deployed app —
+  // and it never did. Same amendment as Webinar/VSL Analytics; see the note
+  // in use-demo-mode.tsx.
+  const demo = devBypass || demoMode;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -513,7 +525,7 @@ function Onboarding() {
   const aggregateFn = useServerFn(analyzeIntakesAggregate);
   const analyzeMut = useMutation({
     mutationFn: (id: string) =>
-      devBypass ? withMockDelay(mockIntakeInsights()) : analyzeFn({ data: { responseId: id } }),
+      demo ? withMockDelay(mockIntakeInsights()) : analyzeFn({ data: { responseId: id } }),
     onSuccess: (res, id) => {
       setInsightsByResp((m) => ({ ...m, [id]: res }));
       toast.success("AI insights ready");
@@ -522,7 +534,7 @@ function Onboarding() {
   });
   const aggregateMut = useMutation({
     mutationFn: () =>
-      devBypass
+      demo
         ? withMockDelay(mockIntakeInsights())
         : aggregateFn({ data: { from: activeRange.from, to: activeRange.to } }),
     onSuccess: (res) => {
@@ -533,9 +545,10 @@ function Onboarding() {
   });
 
   const { data: responses } = useQuery({
-    queryKey: ["onboarding", orgId],
-    enabled: !!orgId,
+    queryKey: ["onboarding", orgId, demo],
+    enabled: demo || !!orgId,
     queryFn: async () => {
+      if (demo) return mockOnboardingResponses();
       const { data, error } = await supabase
         .from("onboarding_responses")
         .select(
@@ -549,9 +562,10 @@ function Onboarding() {
   });
 
   const { data: clients } = useQuery({
-    queryKey: ["clients-pick", orgId],
-    enabled: !!orgId && open,
+    queryKey: ["clients-pick", orgId, demo],
+    enabled: (demo || !!orgId) && open,
     queryFn: async () => {
+      if (demo) return mockClients().map((c) => ({ id: c.id, full_name: c.full_name }));
       const { data } = await supabase.from("clients").select("id, full_name").eq("org_id", orgId!);
       return data ?? [];
     },

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { HomeSection, HomeStat, FocusRow, FocusEmpty } from "./home-shared";
+import { HomeSection, HomeStat, FocusRow, FocusEmpty, HomeGrid } from "./home-shared";
 import { clientAtRiskReason, daysUntilDate } from "@/lib/client-risk";
 import {
   buildRecoveryQueue,
@@ -155,111 +155,118 @@ export function HomeAdmin({ orgId }: { orgId: string }) {
   const atRiskCents = overdueRows.reduce((s, r) => s + r.amountCents, 0);
 
   return (
-    <div className="space-y-4">
-      <HomeSection
-        title="Business Health · Today"
-        icon={<Building2 className="h-4 w-4" />}
-        tone="hot"
-      >
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <HomeStat
-            label="Cash Collected"
-            value={`$${(cashToday / 100).toLocaleString()}`}
-            icon={<DollarSign className="h-4 w-4" />}
+    <HomeGrid
+      main={
+        <>
+          <HomeSection
+            title="Business Health · Today"
+            icon={<Building2 className="h-4 w-4" />}
             tone="hot"
-            emphasis="strong"
-          />
-          <HomeStat
-            label="Closes"
-            value={closesToday}
-            icon={<CheckCircle2 className="h-4 w-4" />}
-            tone="mid"
-          />
-          <HomeStat
-            label="Active Mentees"
-            value={clients.length}
-            icon={<Users className="h-4 w-4" />}
-            tone="cold"
-            emphasis="subtle"
-          />
-        </div>
-      </HomeSection>
-
-      <HomeSection
-        title="Attention Required"
-        icon={<AlertTriangle className="h-4 w-4" />}
-        tone="destructive"
-      >
-        {overdueRows.length === 0 && renewalsAtRisk.length === 0 ? (
-          <FocusEmpty label="No overdue installments or renewal risk detected." />
-        ) : (
-          <>
-            {overdueRows.length > 0 && (
-              <FocusRow
-                tone="destructive"
-                label={`${overdueRows.length} overdue installment${overdueRows.length === 1 ? "" : "s"} — $${(atRiskCents / 100).toLocaleString()} at risk`}
-                to="/payments"
+          >
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <HomeStat
+                label="Cash Collected"
+                value={`$${(cashToday / 100).toLocaleString()}`}
+                icon={<DollarSign className="h-4 w-4" />}
+                tone="hot"
+                emphasis="strong"
               />
-            )}
-            {renewalsAtRisk.length > 0 && (
-              <FocusRow
+              <HomeStat
+                label="Closes"
+                value={closesToday}
+                icon={<CheckCircle2 className="h-4 w-4" />}
+                tone="mid"
+              />
+              <HomeStat
+                label="Active Mentees"
+                value={clients.length}
+                icon={<Users className="h-4 w-4" />}
+                tone="cold"
+                emphasis="subtle"
+              />
+            </div>
+          </HomeSection>
+
+          <HomeSection title="Team & Hiring" icon={<Users className="h-4 w-4" />} tone="mid">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <HomeStat
+                label="Calls Today"
+                value={calls.length}
+                icon={<PhoneCall className="h-4 w-4" />}
+                tone="cold"
+              />
+              <HomeStat
+                label="Hiring — Needs Grading"
+                value={hiringCounts?.needsGrading ?? 0}
+                icon={<UserPlus className="h-4 w-4" />}
                 tone="warning"
-                label={`${renewalsAtRisk.length} renewal${renewalsAtRisk.length === 1 ? "" : "s"} due soon or overdue`}
-                detail={renewalsAtRisk
-                  .slice(0, 3)
-                  .map((r) => `${r.client.full_name} (${r.reason})`)
-                  .join(" · ")}
-                to="/payments"
               />
+              <HomeStat
+                label="Hiring — Interview-Worthy"
+                value={hiringCounts?.interviewWorthy ?? 0}
+                icon={<UserPlus className="h-4 w-4" />}
+                tone="mid"
+              />
+            </div>
+          </HomeSection>
+        </>
+      }
+      side={
+        <>
+          <HomeSection
+            title="Attention Required"
+            icon={<AlertTriangle className="h-4 w-4" />}
+            tone="destructive"
+          >
+            {overdueRows.length === 0 && renewalsAtRisk.length === 0 ? (
+              <FocusEmpty label="No overdue installments or renewal risk detected." />
+            ) : (
+              <>
+                {overdueRows.length > 0 && (
+                  <FocusRow
+                    tone="destructive"
+                    label={`${overdueRows.length} overdue installment${overdueRows.length === 1 ? "" : "s"} — $${(atRiskCents / 100).toLocaleString()} at risk`}
+                    to="/payments"
+                  />
+                )}
+                {renewalsAtRisk.length > 0 && (
+                  <FocusRow
+                    tone="warning"
+                    label={`${renewalsAtRisk.length} renewal${renewalsAtRisk.length === 1 ? "" : "s"} due soon or overdue`}
+                    detail={renewalsAtRisk
+                      .slice(0, 3)
+                      .map((r) => `${r.client.full_name} (${r.reason})`)
+                      .join(" · ")}
+                    to="/payments"
+                  />
+                )}
+              </>
             )}
-          </>
-        )}
-      </HomeSection>
+          </HomeSection>
 
-      <HomeSection title="Team & Hiring" icon={<Users className="h-4 w-4" />} tone="mid">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <HomeStat
-            label="Calls Today"
-            value={calls.length}
-            icon={<PhoneCall className="h-4 w-4" />}
-            tone="cold"
-          />
-          <HomeStat
-            label="Hiring — Needs Grading"
-            value={hiringCounts?.needsGrading ?? 0}
-            icon={<UserPlus className="h-4 w-4" />}
-            tone="warning"
-          />
-          <HomeStat
-            label="Hiring — Interview-Worthy"
-            value={hiringCounts?.interviewWorthy ?? 0}
-            icon={<UserPlus className="h-4 w-4" />}
-            tone="mid"
-          />
-        </div>
-      </HomeSection>
-
-      <HomeSection title="Renewals" icon={<Building2 className="h-4 w-4" />} tone="warning">
-        {renewalsAtRisk.length === 0 ? (
-          <FocusEmpty label="No renewals due within the configured window." />
-        ) : (
-          renewalsAtRisk
-            .slice(0, 6)
-            .map(({ client, reason }) => (
-              <FocusRow
-                key={client.id}
-                label={client.full_name}
-                detail={`${reason} · ${client.offer_name ?? "No offer on file"}${
-                  client.renewal_date
-                    ? ` · ${daysUntilDate(client.renewal_date)! >= 0 ? "in" : ""} ${Math.abs(daysUntilDate(client.renewal_date)!)}d ${daysUntilDate(client.renewal_date)! >= 0 ? "" : "overdue"}`
-                    : ""
-                }`}
-                to="/payments"
-                search={{ client: client.id }}
-              />
-            ))
-        )}
-      </HomeSection>
-    </div>
+          <HomeSection title="Renewals" icon={<Building2 className="h-4 w-4" />} tone="warning">
+            {renewalsAtRisk.length === 0 ? (
+              <FocusEmpty label="No renewals due within the configured window." />
+            ) : (
+              renewalsAtRisk
+                .slice(0, 6)
+                .map(({ client, reason }) => (
+                  <FocusRow
+                    key={client.id}
+                    label={client.full_name}
+                    detail={`${reason} · ${client.offer_name ?? "No offer on file"}${
+                      client.renewal_date
+                        ? ` · ${daysUntilDate(client.renewal_date)! >= 0 ? "in" : ""} ${Math.abs(daysUntilDate(client.renewal_date)!)}d ${daysUntilDate(client.renewal_date)! >= 0 ? "" : "overdue"}`
+                        : ""
+                    }`}
+                    to="/payments"
+                    search={{ client: client.id }}
+                  />
+                ))
+            )}
+          </HomeSection>
+        </>
+      }
+    />
   );
 }
