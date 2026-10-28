@@ -2573,7 +2573,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
   })();
   return (
     <>
-      <TopBar title={title} subtitle={subtitle} showDateRange />
+      <TopBar title={title} subtitle={subtitle} showDateRange hero={false} />
       <div className="p-6 space-y-4">
         {/* Summary hero moved to the top of the page (was buried below Speed
             to Lead / Active Leads for the Dialer role) so it appears first,

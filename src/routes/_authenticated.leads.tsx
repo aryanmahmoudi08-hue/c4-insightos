@@ -907,6 +907,7 @@ function Leads() {
       <TopBar
         title="Leads CRM"
         subtitle="Pipeline stage · priority · pre-call vid tracking · notes"
+        hero={false}
       />
       <div className="p-6 space-y-5">
         <PageHero

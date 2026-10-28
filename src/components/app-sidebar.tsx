@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import { clearOverrides } from "@/lib/demo-overrides";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import {
@@ -75,6 +75,8 @@ import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useDisplayCurrency } from "@/hooks/use-display-currency";
 import { DISPLAY_CURRENCIES } from "@/lib/currency";
 import { openCommandPalette } from "@/components/command-palette";
+import { PageHero } from "@/components/page-hero";
+import { pageIdentityFor } from "@/lib/page-identity";
 
 type NavItem = {
   to: string;
@@ -820,70 +822,97 @@ export function TopBar({
   title,
   subtitle,
   showDateRange = false,
+  hero = true,
 }: {
   title: string;
   subtitle?: string;
   showDateRange?: boolean;
+  /** Set false on a page that renders its own PageHero — one with status
+   *  pills or a toolbar it populates from its own data. Those are richer
+   *  than anything this can derive, so the page wins and this stands down
+   *  rather than the page getting two heroes. */
+  hero?: boolean;
 }) {
   const { range, setRange } = useDateRange();
   const { user } = useAuth();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const identity = hero ? pageIdentityFor(pathname) : null;
   return (
-    <div className="glass-header sticky top-8 z-20 border-b px-4 md:px-6 py-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0 pl-10 md:pl-0">
-          <div className="eyebrow">— Overview</div>
-          {/* Sans, not the serif the module heroes use. The two headings
+    <>
+      <div className="glass-header sticky top-8 z-20 border-b px-4 md:px-6 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0 pl-10 md:pl-0">
+            {/* No eyebrow here. It used to be the literal string "— Overview"
+              on every page in the app; now that every page carries a hero
+              directly below this bar, and that hero names the module, an
+              eyebrow here is the same words twice, four lines apart. */}
+            {/* Sans, not the serif the module heroes use. The two headings
               stack on most routes — the sticky bar title directly above a
               PageHero carrying the same words — and two serif headings in a
               column read as a mistake. The bar is chrome; the hero is the
               page. */}
-          <h1 className="mt-1 truncate text-2xl font-bold leading-tight tracking-[-0.02em] md:text-[1.7rem]">
-            {title}
-          </h1>
-          {subtitle && (
-            <p className="mt-1.5 text-xs text-muted-foreground hidden sm:block">{subtitle}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Opens the real Cmd+K command palette (leads/clients/content/
+            <h1 className="mt-1 truncate text-2xl font-bold leading-tight tracking-[-0.02em] md:text-[1.7rem]">
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="mt-1.5 text-xs text-muted-foreground hidden sm:block">{subtitle}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Opens the real Cmd+K command palette (leads/clients/content/
               metrics search + page nav) rather than owning a second, parallel
               search implementation — this box used to submit to a hardcoded
               /payments route no matter what was typed. */}
-          <button
-            type="button"
-            onClick={() => openCommandPalette()}
-            className="relative hidden h-9 w-80 items-center rounded-full border border-border bg-input pl-9 pr-2 text-xs text-muted-foreground outline-none transition-all hover:border-ring/40 md:flex"
-          >
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <span className="truncate">Search leads, metrics, clients, content…</span>
-            <span className="badge-glass ml-auto shrink-0 text-3xs normal-case tracking-normal">
-              ⌘K
-            </span>
-          </button>
-          <Button variant="ghost" size="icon" className="relative h-8 w-8 hidden sm:inline-flex">
-            <Bell className="h-4 w-4" />
-          </Button>
-          <ThemeToggle />
-          <Button asChild variant="ghost" size="icon" className="h-8 w-8 hidden sm:inline-flex">
-            <Link to="/settings" aria-label="Settings">
-              <Settings className="h-4 w-4" />
-            </Link>
-          </Button>
-          {/* The signed-in identity belongs in the top bar, not only at the
+            <button
+              type="button"
+              onClick={() => openCommandPalette()}
+              className="relative hidden h-9 w-80 items-center rounded-full border border-border bg-input pl-9 pr-2 text-xs text-muted-foreground outline-none transition-all hover:border-ring/40 md:flex"
+            >
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <span className="truncate">Search leads, metrics, clients, content…</span>
+              <span className="badge-glass ml-auto shrink-0 text-3xs normal-case tracking-normal">
+                ⌘K
+              </span>
+            </button>
+            <Button variant="ghost" size="icon" className="relative h-8 w-8 hidden sm:inline-flex">
+              <Bell className="h-4 w-4" />
+            </Button>
+            <ThemeToggle />
+            <Button asChild variant="ghost" size="icon" className="h-8 w-8 hidden sm:inline-flex">
+              <Link to="/settings" aria-label="Settings">
+                <Settings className="h-4 w-4" />
+              </Link>
+            </Button>
+            {/* The signed-in identity belongs in the top bar, not only at the
               foot of an expanded sidebar that is collapsed most of the time. */}
-          <Link to="/settings" aria-label="Account" className="hidden shrink-0 sm:block">
-            <AvatarInitials name={user?.email ?? "?"} size="sm" />
-          </Link>
+            <Link to="/settings" aria-label="Account" className="hidden shrink-0 sm:block">
+              <AvatarInitials name={user?.email ?? "?"} size="sm" />
+            </Link>
+          </div>
         </div>
+        {showDateRange && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <DateRangePicker value={range} onChange={setRange} />
+            <CurrencySelector />
+          </div>
+        )}
+        <div className="rule-gold mt-3 -mx-4 md:-mx-7" />
       </div>
-      {showDateRange && (
-        <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <DateRangePicker value={range} onChange={setRange} />
-          <CurrencySelector />
+      {/* The hero sits OUTSIDE the sticky bar above — inside it, it would
+        stick to the top of the viewport and follow the page down. Title and
+        subtitle are the bar's own, so there is no second copy to keep in
+        step; the registry only supplies which module this is and its mark. */}
+      {identity && (
+        <div className="px-4 pt-4 md:px-6">
+          <PageHero
+            eyebrow={identity.eyebrow}
+            title={title}
+            subtitle={subtitle}
+            icon={<identity.icon className="h-6 w-6" />}
+          />
         </div>
       )}
-      <div className="rule-gold mt-3 -mx-4 md:-mx-7" />
-    </div>
+    </>
   );
 }
 

@@ -81,7 +81,11 @@ function EodReportsPage() {
   if (!canAccessSelected || !effectiveRole) {
     return (
       <>
-        <TopBar title="EOD Reports" subtitle="Role-restricted daily reporting workflows." />
+        <TopBar
+          title="EOD Reports"
+          subtitle="Role-restricted daily reporting workflows."
+          hero={false}
+        />
         <div className="p-4 md:p-6">
           <PageHero
             icon={<ClipboardCheck className="h-5 w-5" />}
@@ -104,6 +108,7 @@ function EodReportsPage() {
       <TopBar
         title="EOD Reports"
         subtitle="One question at a time — DM Setter, Dialer and Closer daily logs."
+        hero={false}
       />
       <div className="p-4 md:p-6 space-y-4">
         <PageHero

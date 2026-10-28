@@ -56,7 +56,6 @@ import { useServerFn } from "@tanstack/react-start";
 import { analyzeContent } from "@/lib/analyze-content.functions";
 import { coachContentFn } from "@/lib/coach-content.functions";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
-import { PageHero } from "@/components/page-hero";
 import {
   mockContentPieces,
   mockContentFunnel,

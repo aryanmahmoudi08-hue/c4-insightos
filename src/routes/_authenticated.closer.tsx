@@ -2208,6 +2208,7 @@ function Closer() {
         title="Closer Dashboard"
         subtitle="Calls, offers, deposits, cash collected — per-call tracking"
         showDateRange
+        hero={false}
       />
       <div className="p-4 md:p-6 space-y-4">
         <PageHero
