@@ -839,23 +839,20 @@ export function TopBar({
   const identity = hero ? pageIdentityFor(pathname) : null;
   return (
     <>
-      <div className="glass-header sticky top-8 z-20 border-b px-4 md:px-6 py-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0 pl-10 md:pl-0">
-            {/* No eyebrow here. It used to be the literal string "— Overview"
-              on every page in the app; now that every page carries a hero
-              directly below this bar, and that hero names the module, an
-              eyebrow here is the same words twice, four lines apart. */}
-            {/* Sans, not the serif the module heroes use. The two headings
-              stack on most routes — the sticky bar title directly above a
-              PageHero carrying the same words — and two serif headings in a
-              column read as a mistake. The bar is chrome; the hero is the
-              page. */}
-            <h1 className="mt-1 truncate text-2xl font-bold leading-tight tracking-[-0.02em] md:text-[1.7rem]">
-              {title}
-            </h1>
-            {subtitle && (
-              <p className="mt-1.5 text-xs text-muted-foreground hidden sm:block">{subtitle}</p>
+      {/* A control bar, not a header. The title and subtitle used to live
+          here and are now the hero's directly below — the same words twice,
+          one above the other. `title`/`subtitle` are still props because
+          this is where the hero gets them; they just aren't drawn twice.
+          With the heading gone the date range moves up beside the search
+          rather than leaving an empty first row. */}
+      <div className="glass-header sticky top-8 z-20 border-b px-4 py-2.5 md:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 pl-10 md:pl-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {showDateRange && (
+              <>
+                <DateRangePicker value={range} onChange={setRange} />
+                <CurrencySelector />
+              </>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -890,13 +887,6 @@ export function TopBar({
             </Link>
           </div>
         </div>
-        {showDateRange && (
-          <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            <DateRangePicker value={range} onChange={setRange} />
-            <CurrencySelector />
-          </div>
-        )}
-        <div className="rule-gold mt-3 -mx-4 md:-mx-7" />
       </div>
       {/* The hero sits OUTSIDE the sticky bar above — inside it, it would
         stick to the top of the viewport and follow the page down. Title and
