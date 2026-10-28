@@ -3775,7 +3775,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
 
         {member !== ALL_MEMBERS && (
           <div className="space-y-2">
-            <div className="text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+            <div className="flex items-center gap-2.5 text-2xs font-bold uppercase tracking-[0.14em] text-foreground before:h-3.5 before:w-[3px] before:shrink-0 before:rounded-full before:bg-accent before:content-[''] after:h-px after:min-w-4 after:flex-1 after:bg-border after:content-['']">
               {member} · Targets
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

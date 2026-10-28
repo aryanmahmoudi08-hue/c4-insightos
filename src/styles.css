@@ -54,7 +54,13 @@
   --color-canvas: var(--background);
   --color-surface: var(--card);
   --color-raised: var(--popover);
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Geist is the UI face (replacing Inter in the 2026-10 visual revamp):
+     a grotesk drawn for dense product UI, with genuinely tabular lining
+     figures — which matters more here than anywhere, since most of this
+     app is columns of numbers. Inter is kept one step down the stack so a
+     blocked/failed Google Fonts fetch degrades to the previous face
+     rather than to a system default with different metrics. */
+  --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-serif: "Instrument Serif", "Times New Roman", ui-serif, Georgia, serif;
 
@@ -110,6 +116,12 @@
    cards on any page still stay plain --card. Every other rule above still
    holds (chrome stays achromatic, buttons stay unfilled, gradient text is
    still unused).
+   Amendment 2 — the primary action button: `.btn-accent` carries a
+   mid -> hot gradient with a white label. This is a second, deliberate
+   exception to "never a filled button", granted on the same terms as the
+   gradient KPI cards: scarcity. One primary action per screen, never a
+   secondary/ghost/outline button, never more than one at a time. Every
+   other button in the app stays achromatic.
    Semantic accents are separate from the spectrum and stay grounded: success
    green, warning amber, danger red. Danger red is deliberately pushed toward
    crimson — lower chroma AND lower lightness than spectrum-hot pink, plus
@@ -126,7 +138,11 @@
 
 :root,
 .dark {
-  --radius: 0.375rem;
+  /* 2026-10 revamp: 0.375rem (6px) read as a 2015-era admin panel. The
+     card radius is the single loudest shape signal in a dashboard, so it
+     carries the new look more than any color does. 0.875rem => sm 10 /
+     md 12 / lg 14 / xl 18px. */
+  --radius: 0.875rem;
 
   /* Surfaces — L0 canvas / L1 surface / L2 raised (B2). Near-neutral gray,
      a bare whisper of cool cast (chroma ≤0.006), not the violet-tinted
@@ -141,27 +157,33 @@
      0.05→0.10) with chroma scaling gently alongside lightness
      (0.003→0.011) so the app reads as a tinted charcoal rather than
      literal #000 — still unmistakably black, just with room to breathe
-     between page → card → elevated surface. Hue held at the existing 300
-     (the app's one whisper of cool cast) rather than chasing a literal hex
-     target's slightly different hue, so this doesn't introduce a second,
-     competing tint. Border opacity nudged 14%→15% (10%→11% sidebar) to
+     between page → card → elevated surface.
+     2026-10 revamp: the whole dark theme then moved off hue 300
+     (violet-grey) onto hue 266 at roughly triple the chroma — a true dark
+     navy rather than a charcoal with a whisper of cool in it. Every dark
+     surface moves together, sidebar/input/glass chrome included; one
+     surface left behind on 300 reads as a stain beside the rest. Border opacity nudged 14%→15% (10%→11% sidebar) to
      track the lifted surfaces it sits on. */
-  --background: oklch(0.145 0.006 300);
-  --foreground: oklch(0.97 0 0);
-  --card: oklch(0.185 0.009 300);
-  --card-foreground: oklch(0.97 0 0);
-  --popover: oklch(0.215 0.011 300);
-  --popover-foreground: oklch(0.97 0 0);
+  /* 2026-10 revamp: canvas pushed back down and card pulled further up,
+     so a card reads as a lifted object rather than a bordered region of
+     the same plane. The gap (0.128 -> 0.182) is what lets the border
+     drop to 10% without the card dissolving. */
+  --background: oklch(0.118 0.018 266);
+  --foreground: oklch(0.975 0 0);
+  --card: oklch(0.168 0.023 266);
+  --card-foreground: oklch(0.975 0 0);
+  --popover: oklch(0.212 0.026 266);
+  --popover-foreground: oklch(0.975 0 0);
 
   /* Brand — white on black. White is the primary ACTION color (B4 rule #1). */
   --primary: oklch(0.97 0 0);
   --primary-foreground: oklch(0.16 0 0);
   --primary-glow: oklch(1 0 0);
 
-  --secondary: oklch(0.205 0.006 300);
-  --secondary-foreground: oklch(0.97 0 0);
-  --muted: oklch(0.2 0.007 300);
-  --muted-foreground: oklch(0.6 0.004 300);
+  --secondary: oklch(0.198 0.022 266);
+  --secondary-foreground: oklch(0.975 0 0);
+  --muted: oklch(0.194 0.021 266);
+  --muted-foreground: oklch(0.655 0.022 266);
 
   /* Accent — the one sanctioned chrome color (active-nav/focus-ring/primary
      buttons/links/selected states). Same hue as spectrum-mid below, but
@@ -184,8 +206,8 @@
   --spectrum-mid: oklch(0.62 0.24 295);
   --spectrum-hot: oklch(0.68 0.26 350);
 
-  --border: oklch(1 0 0 / 15%);
-  --input: oklch(0.225 0.006 300);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(0.218 0.022 266);
   --ring: oklch(0.62 0.16 295 / 55%);
 
   /* Charts — a monochrome ramp, with two semantic outliers at the end */
@@ -200,13 +222,16 @@
      Lifted proportionally with the charcoal-lift pass above (0.05→0.10)
      so it stays the darkest plane in the app without collapsing all the
      way to literal black now that the page canvas itself sits higher. */
-  --sidebar: oklch(0.1 0.005 300);
+  --sidebar: oklch(0.086 0.016 266);
   --sidebar-foreground: oklch(0.88 0 0);
   --sidebar-primary: oklch(0.97 0 0);
   --sidebar-primary-foreground: oklch(0.16 0 0);
-  --sidebar-accent: oklch(0.22 0.008 300);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(1 0 0 / 11%);
+  /* The selected-nav fill now carries a trace of the accent hue instead
+     of being a flat gray step. At 0.03 chroma it is still unmistakably
+     chrome, but the active row no longer looks like a hover state. */
+  --sidebar-accent: oklch(0.252 0.045 276);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 9%);
   --sidebar-ring: oklch(0.62 0.16 295 / 55%);
 
   /* Editorial flourishes — kept, now neutral */
@@ -216,11 +241,33 @@
   --shadow-gold: 0 0 0 1px oklch(1 0 0 / 12%), 0 18px 36px -20px oklch(0 0 0 / 60%);
   --hairline: oklch(1 0 0 / 14%);
 
+  /* Coloured-KPI-card mix strengths (see kpiGradient() in spectrum.ts).
+     Raised when the dark theme moved to a navy card: mixing magenta into a
+     blue surface lands on violet far sooner than mixing it into a neutral
+     charcoal did, so the accent needs a bigger share to still read as its
+     own hue rather than as a bluer version of the card. */
+  --kpi-mix-subtle: 18%;
+  --kpi-mix-strong: 52%;
+  --kpi-mix-strong-mid: 30%;
+  --kpi-mix-strong-tail: 9%;
+
   /* Elevation scale — soft ambient shadows, layered for depth without color */
-  --shadow-xs: 0 1px 2px oklch(0 0 0 / 40%);
-  --shadow-sm: 0 1px 0 oklch(1 0 0 / 4%) inset, 0 2px 6px oklch(0 0 0 / 35%);
-  --shadow-md: 0 1px 0 oklch(1 0 0 / 5%) inset, 0 8px 20px -6px oklch(0 0 0 / 50%);
-  --shadow-lg: 0 1px 0 oklch(1 0 0 / 6%) inset, 0 20px 44px -16px oklch(0 0 0 / 65%);
+  /* Two-part ambient shadows — a tight contact shadow plus a wide, very
+     soft one. A single mid-blur shadow is what makes a dark card look
+     like it has a gray halo stuck to it. */
+  --shadow-xs: 0 1px 2px oklch(0 0 0 / 35%);
+  --shadow-sm:
+    0 1px 0 oklch(1 0 0 / 5%) inset,
+    0 1px 2px oklch(0 0 0 / 30%),
+    0 6px 18px -10px oklch(0 0 0 / 45%);
+  --shadow-md:
+    0 1px 0 oklch(1 0 0 / 6%) inset,
+    0 2px 4px oklch(0 0 0 / 30%),
+    0 14px 34px -14px oklch(0 0 0 / 60%);
+  --shadow-lg:
+    0 1px 0 oklch(1 0 0 / 7%) inset,
+    0 4px 8px oklch(0 0 0 / 32%),
+    0 32px 64px -24px oklch(0 0 0 / 70%);
   /* Restrained — a hint of lift, not a halo. Reserve for genuinely "live/
      active" indicators, never decorative card chrome. */
   --shadow-glow: 0 0 0 1px oklch(1 0 0 / 8%), 0 0 14px -6px oklch(1 0 0 / 10%);
@@ -229,8 +276,8 @@
      not content. Base lightness nudged up with the charcoal-lift pass so a
      glass panel still composites as visibly elevated chrome over the new,
      lighter page canvas instead of reading flush with (or darker than) it. */
-  --glass-bg: oklch(0.16 0 0 / 55%);
-  --glass-bg-strong: oklch(0.18 0 0 / 78%);
+  --glass-bg: oklch(0.15 0.018 266 / 55%);
+  --glass-bg-strong: oklch(0.172 0.02 266 / 78%);
   /* Fully opaque — the two stacked sticky headers (LiveTicker + TopBar) need
      to stay fully legible no matter what scrolls behind them; both
      glass-strong's 78% and an earlier 96% attempt here still let bright/bold
@@ -238,7 +285,7 @@
      this alpha level, especially under the blur's smearing. 100% + blur
      keeps the same visual texture (blur still softens the border/shadow
      transition) with zero readable bleed-through. */
-  --glass-bg-header: oklch(0.115 0 0 / 100%);
+  --glass-bg-header: oklch(0.112 0.017 266 / 100%);
   --glass-border: oklch(1 0 0 / 9%);
   --glass-highlight: oklch(1 0 0 / 6%);
 }
@@ -246,21 +293,26 @@
 .light {
   /* Not an inversion — a real warm-white second theme. Same violet whisper
      the dark canvas carries, just at the opposite end of the lightness scale. */
-  --background: oklch(0.99 0.004 300);
-  --foreground: oklch(0.16 0 0);
-  --card: oklch(1 0.002 300);
-  --card-foreground: oklch(0.16 0 0);
+  /* 2026-10 revamp: the old canvas sat at 0.99 with cards at 1.0 — a
+     1% difference, so light mode rendered as one undifferentiated white
+     sheet with hairlines drawn on it. Dropping the canvas to 0.965 and
+     holding cards at pure white is the entire fix: every card, panel
+     and popover now reads as paper on a desk. */
+  --background: oklch(0.965 0.004 300);
+  --foreground: oklch(0.155 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.155 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.16 0 0);
+  --popover-foreground: oklch(0.155 0 0);
 
   --primary: oklch(0.19 0 0);
   --primary-foreground: oklch(0.99 0 0);
   --primary-glow: oklch(0.34 0 0);
 
-  --secondary: oklch(0.96 0 0);
+  --secondary: oklch(0.948 0.003 300);
   --secondary-foreground: oklch(0.19 0 0);
-  --muted: oklch(0.965 0 0);
-  --muted-foreground: oklch(0.46 0.01 300);
+  --muted: oklch(0.952 0.003 300);
+  --muted-foreground: oklch(0.475 0.012 300);
 
   /* Accent — restrained relative to spectrum-mid below (same reasoning as
      dark mode): chrome (active nav, primary buttons, links, selected
@@ -279,8 +331,8 @@
   --spectrum-mid: oklch(0.48 0.22 295);
   --spectrum-hot: oklch(0.52 0.24 350);
 
-  --border: oklch(0.16 0 0 / 12%);
-  --input: oklch(0.97 0 0);
+  --border: oklch(0.16 0 0 / 9%);
+  --input: oklch(1 0 0);
   --ring: oklch(0.48 0.14 295 / 45%);
 
   --chart-1: oklch(0.22 0 0);
@@ -289,13 +341,18 @@
   --chart-4: oklch(0.55 0.13 152);
   --chart-5: oklch(0.44 0.18 20);
 
-  --sidebar: oklch(0.975 0.003 300);
-  --sidebar-foreground: oklch(0.24 0 0);
-  --sidebar-primary: oklch(0.19 0 0);
+  /* Inverted relative to the old light theme: the rail is now the
+     LIGHTEST plane (pure white) sitting on a gray canvas, rather than a
+     gray rail beside white content. Same relationship as dark mode in
+     reverse — chrome separates itself from content by stepping away
+     from the canvas, in whichever direction the theme has room. */
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.26 0 0);
+  --sidebar-primary: oklch(0.18 0 0);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.93 0.006 300);
-  --sidebar-accent-foreground: oklch(0.16 0 0);
-  --sidebar-border: oklch(0.16 0 0 / 10%);
+  --sidebar-accent: oklch(0.945 0.022 298);
+  --sidebar-accent-foreground: oklch(0.2 0.05 298);
+  --sidebar-border: oklch(0.16 0 0 / 8%);
   --sidebar-ring: oklch(0.48 0.14 295 / 45%);
 
   --gradient-gold: linear-gradient(135deg, oklch(0.2 0 0), oklch(0.5 0 0));
@@ -304,10 +361,24 @@
   --shadow-gold: 0 0 0 1px oklch(0.16 0 0 / 10%), 0 14px 30px -18px oklch(0 0 0 / 14%);
   --hairline: oklch(0.16 0 0 / 18%);
 
-  --shadow-xs: 0 1px 2px oklch(0 0 0 / 6%);
-  --shadow-sm: 0 1px 0 oklch(1 0 0 / 70%) inset, 0 2px 6px oklch(0 0 0 / 6%);
-  --shadow-md: 0 1px 0 oklch(1 0 0 / 70%) inset, 0 8px 20px -6px oklch(0 0 0 / 10%);
-  --shadow-lg: 0 1px 0 oklch(1 0 0 / 70%) inset, 0 20px 44px -16px oklch(0 0 0 / 14%);
+  /* An accent mixed into white goes muddy long before it goes loud, so the
+     coloured KPI cards need a much gentler mix here than the same accent
+     needs against a dark surface. See kpiGradient() in spectrum.ts. */
+  --kpi-mix-subtle: 9%;
+  --kpi-mix-strong: 22%;
+  --kpi-mix-strong-mid: 11%;
+  --kpi-mix-strong-tail: 4%;
+
+  --shadow-xs: 0 1px 2px oklch(0 0 0 / 5%);
+  --shadow-sm:
+    0 1px 1px oklch(0 0 0 / 4%),
+    0 4px 12px -6px oklch(0 0 0 / 10%);
+  --shadow-md:
+    0 1px 2px oklch(0 0 0 / 5%),
+    0 10px 26px -10px oklch(0 0 0 / 13%);
+  --shadow-lg:
+    0 2px 4px oklch(0 0 0 / 5%),
+    0 24px 56px -20px oklch(0 0 0 / 18%);
   --shadow-glow: 0 0 0 1px oklch(0.16 0 0 / 6%), 0 0 14px -6px oklch(0.16 0 0 / 8%);
 
   --glass-bg: oklch(1 0 0 / 65%);
@@ -332,18 +403,11 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family:
-      "Inter",
-      ui-sans-serif,
-      system-ui,
-      -apple-system,
-      "Segoe UI",
-      Roboto,
-      sans-serif;
+    font-family: var(--font-sans);
   }
   body {
-    font-feature-settings: "ss01", "cv02", "cv11";
-    letter-spacing: -0.005em;
+    font-feature-settings: "ss03";
+    letter-spacing: -0.006em;
     position: relative;
   }
 
@@ -361,17 +425,17 @@
     background:
       radial-gradient(
         ellipse 80% 50% at 20% 15%,
-        color-mix(in oklch, var(--spectrum-mid) 10%, transparent),
+        color-mix(in oklch, var(--spectrum-mid) 7%, transparent),
         transparent 60%
       ),
       radial-gradient(
         ellipse 70% 60% at 85% 75%,
-        color-mix(in oklch, var(--spectrum-cold) 8%, transparent),
+        color-mix(in oklch, var(--spectrum-cold) 5%, transparent),
         transparent 60%
       ),
       radial-gradient(
         ellipse 60% 50% at 60% 30%,
-        color-mix(in oklch, var(--spectrum-hot) 6%, transparent),
+        color-mix(in oklch, var(--spectrum-hot) 4%, transparent),
         transparent 65%
       );
     background-size: 140% 140%;
@@ -406,7 +470,7 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
   .light body::before {
-    opacity: 0.6;
+    opacity: 0.16;
   }
   .light body::after {
     opacity: 0.02;
@@ -433,7 +497,7 @@
   /* Section eyebrow used above titles */
   .eyebrow {
     font-size: 10px;
-    letter-spacing: 0.22em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--muted-foreground);
     font-weight: 600;
@@ -766,5 +830,157 @@
       opacity: 0;
       transform: translateY(10px);
     }
+  }
+}
+
+/* ==========================================================================
+   Revamp primitives (2026-10). The four shapes below are the whole visual
+   vocabulary of the new card language, defined once here so MetricCard,
+   SlimHeader, PageHero and KpiBand all draw from the same well instead of
+   each re-deriving a tinted chip or a delta pill in Tailwind classes.
+
+   Every one of them is driven by a single custom property the component
+   sets inline — `--chip-color` / `--pill-color` — so a card's accent is
+   passed in as whatever semantic colour that card already had (its
+   spectrum position, its tone, its accentColor). No new palette, and no
+   second colour prop to keep in sync with the existing one.
+   ========================================================================== */
+@layer utilities {
+  /* A metric's identity mark: the icon in a tinted, rounded square. This is
+     what lets a row of otherwise-identical white cards be told apart at a
+     glance without colouring the numbers themselves. */
+  .metric-chip {
+    --chip: var(--chip-color, var(--muted-foreground));
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    height: 1.9rem;
+    width: 1.9rem;
+    border-radius: 0.6rem;
+    /* A solid saturated tile with a white glyph, not a translucent tint
+       with a coloured glyph. The filled tile is what gives a grid of cards
+       its colour rhythm from across the room; a tint disappears at a
+       glance, which is the only distance that matters on a wall display.
+
+       The fill is pulled toward a dark neutral before it is used: the
+       spectrum's own lightness runs as high as 0.78 (cold), and white on
+       0.78 is not a legible glyph. Mixing down to roughly 0.55-0.62 keeps
+       every hue above the 3:1 ratio a non-text graphic needs, in both
+       themes, from one formula — light mode's spectrum values are already
+       dark, so the same mix simply deepens them. */
+    color: oklch(1 0 0);
+    background: color-mix(in oklch, var(--chip) 76%, oklch(0.22 0.02 300));
+    box-shadow:
+      inset 0 1px 0 oklch(1 0 0 / 18%),
+      0 1px 2px oklch(0 0 0 / 18%);
+  }
+  .metric-chip > svg {
+    height: 0.95rem;
+    width: 0.95rem;
+  }
+  /* Light mode inverts the chip: a pale wash of the accent carrying a
+     saturated glyph, instead of a saturated tile carrying a white one. A
+     solid tile that works against a near-black card reads as a row of heavy
+     stamps on white paper — the page is mostly white, so the chip has to be
+     mostly white too, or it becomes the loudest thing on screen. Light
+     mode's spectrum values are already dark enough (0.48-0.55) to sit
+     legibly on their own 14% tint. */
+  .light .metric-chip {
+    color: var(--chip);
+    background: color-mix(in oklch, var(--chip) 14%, oklch(1 0 0));
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--chip) 24%, transparent);
+  }
+
+  .metric-chip-lg {
+    height: 2.35rem;
+    width: 2.35rem;
+    border-radius: 0.8rem;
+  }
+  .metric-chip-lg > svg {
+    height: 1.15rem;
+    width: 1.15rem;
+  }
+
+  /* Period-over-period change. A pill rather than bare coloured text: the
+     delta is a separate fact from the value, and the fill is what keeps it
+     from reading as part of the number. */
+  .delta-pill {
+    --pill: var(--pill-color, var(--muted-foreground));
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    flex: none;
+    border-radius: 999px;
+    padding: 0.15rem 0.45rem;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0;
+    text-transform: none;
+    font-variant-numeric: tabular-nums;
+    color: var(--pill);
+    background: color-mix(in oklch, var(--pill) 15%, transparent);
+  }
+  .light .delta-pill {
+    background: color-mix(in oklch, var(--pill) 12%, oklch(1 0 0));
+  }
+
+  /* The card itself. Lift on hover is deliberately small (2px) and fast —
+     on a page with forty of these, anything larger turns a mouse crossing
+     the grid into a wave. */
+  .metric-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border);
+    background: var(--card);
+    box-shadow: var(--shadow-sm);
+    transition:
+      transform 160ms cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 220ms ease,
+      border-color 220ms ease;
+  }
+  .metric-card:hover,
+  .metric-card:focus-visible {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .metric-card:hover,
+    .metric-card:focus-visible {
+      transform: none;
+    }
+  }
+
+  /* The primary action. This is the one place brand colour is allowed on
+     chrome rather than on data — see the amendment note in the design-law
+     block above. It is a single, scarce element per screen, which is what
+     keeps it from competing with the spectrum's meaning in the cards. */
+  .btn-accent {
+    background-image: linear-gradient(135deg, var(--spectrum-mid), var(--spectrum-hot));
+    color: oklch(1 0 0);
+    box-shadow:
+      inset 0 1px 0 oklch(1 0 0 / 22%),
+      0 6px 18px -10px color-mix(in oklch, var(--spectrum-hot) 75%, transparent);
+  }
+  .btn-accent:hover {
+    filter: brightness(1.08);
+  }
+
+  /* Full-bleed rule along a card's bottom edge, in that card's own accent.
+     This is the rhythm element for tiles that have no daily series to plot:
+     the row still scans as a row, without a chart being invented to fill
+     the space. It carries no value — it is a colour, not data. */
+  .accent-rule {
+    --chip: var(--chip-color, var(--muted-foreground));
+    height: 3px;
+    width: 100%;
+    flex: none;
+    /* Solid and edge to edge. A gradient fade here read as a chart that had
+       run out of data — exactly the wrong reading for a tile that has none. */
+    background: var(--chip);
   }
 }

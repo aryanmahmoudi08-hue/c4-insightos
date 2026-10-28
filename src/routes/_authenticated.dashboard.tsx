@@ -2308,16 +2308,24 @@ function Dashboard() {
             the page's real headline numbers. */}
         {!!stats && (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            {/* These two plot the same per-day `stats.series` the cash hero
+                above already charts — the daily numbers were always there,
+                the tiles just never asked for them and so rendered the
+                "no daily series" state against a real series. */}
             <KpiCard
               label="Total Cash Collected"
               value={money(c?.cash ?? 0)}
               spectrum="hot"
+              spark={stats.series.map((point) => point.cash)}
+              sparkLabels={stats.series.map((point) => point.d)}
               supporting={formatRangeLabel(range) + (c?.fxIncomplete ? " · FX incomplete" : "")}
             />
             <KpiCard
               label="Total Revenue Generated"
               value={money(c?.contractValue ?? 0)}
               spectrum="hot"
+              spark={stats.series.map((point) => point.contractValue)}
+              sparkLabels={stats.series.map((point) => point.d)}
               supporting={formatRangeLabel(range) + (c?.fxIncomplete ? " · FX incomplete" : "")}
             />
             <KpiCard
@@ -2463,7 +2471,7 @@ function Dashboard() {
           </div>
         )}
 
-        <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+        <div className="mt-8 mb-4 flex items-center gap-2.5 text-2xs font-bold uppercase tracking-[0.14em] text-foreground before:h-3.5 before:w-[3px] before:shrink-0 before:rounded-full before:bg-accent before:content-[''] after:h-px after:min-w-4 after:flex-1 after:bg-border after:content-['']">
           Level 2 · Operating performance
         </div>
         {/* Operating metrics — VSL/Applications/Rep-efficiency/Client-momentum
@@ -2474,7 +2482,7 @@ function Dashboard() {
         <HubOperatingMetrics />
 
         <div className="mt-8 mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+          <div className="flex items-center gap-2.5 text-2xs font-bold uppercase tracking-[0.14em] text-foreground before:h-3.5 before:w-[3px] before:shrink-0 before:rounded-full before:bg-accent before:content-[''] after:h-px after:min-w-4 after:flex-1 after:bg-border after:content-['']">
             Level 3 · Content attribution
           </div>
           <label className="grid gap-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -2635,7 +2643,7 @@ function Dashboard() {
           )}
         </div>
 
-        <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+        <div className="mt-8 mb-4 flex items-center gap-2.5 text-2xs font-bold uppercase tracking-[0.14em] text-foreground before:h-3.5 before:w-[3px] before:shrink-0 before:rounded-full before:bg-accent before:content-[''] after:h-px after:min-w-4 after:flex-1 after:bg-border after:content-['']">
           Level 4 · Funnel diagnostic
         </div>
         {/* What part of the funnel is working or leaking? Same real
@@ -2690,7 +2698,7 @@ function Dashboard() {
           )}
         </div>
 
-        <div className="mt-8 mb-4 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+        <div className="mt-8 mb-4 flex items-center gap-2.5 text-2xs font-bold uppercase tracking-[0.14em] text-foreground before:h-3.5 before:w-[3px] before:shrink-0 before:rounded-full before:bg-accent before:content-[''] after:h-px after:min-w-4 after:flex-1 after:bg-border after:content-['']">
           Executive insights
         </div>
         {/* What requires attention? A small, honest list — never a recreation
@@ -2705,7 +2713,7 @@ function Dashboard() {
         />
 
         <div className="mt-8 mb-4 flex items-center justify-between gap-2">
-          <div className="text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+          <div className="flex items-center gap-2.5 text-2xs font-bold uppercase tracking-[0.14em] text-foreground before:h-3.5 before:w-[3px] before:shrink-0 before:rounded-full before:bg-accent before:content-[''] after:h-px after:min-w-4 after:flex-1 after:bg-border after:content-['']">
             Team efficiency
           </div>
           {lbData?.fxIncomplete && (

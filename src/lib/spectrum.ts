@@ -77,6 +77,13 @@ export const SPECTRUM_SEQUENCE: SpectrumPosition[] = ["cold", "mid", "hot"];
  * makes it self-adjusting between themes with no separate light/dark
  * value table: color-mix toward a dark --card lands dark, toward a
  * light --card lands light, automatically.
+ *
+ * The mix strengths come from --kpi-mix-* custom properties (declared in
+ * styles.css, with the dark-theme values as the inline fallbacks here) so
+ * each theme can set its own. They are not cosmetic twins: an accent mixed
+ * into black gains presence as the percentage rises, while the same accent
+ * mixed into white turns muddy well before it gets loud, so light mode needs
+ * a materially gentler mix to read as the same "coloured card".
  * ------------------------------------------------------------------ */
 export type KpiAccent = "cyan" | "violet" | "magenta" | "green" | "amber" | "red";
 export type KpiEmphasis = "subtle" | "strong";
@@ -104,8 +111,8 @@ export const KPI_ACCENT_VAR: Record<KpiAccent, string> = {
  * what makes the colored cards read as important. */
 export function kpiGradient(color: string, emphasis: KpiEmphasis): string {
   return emphasis === "subtle"
-    ? `linear-gradient(135deg, color-mix(in oklch, ${color} 16%, var(--card)) 0%, var(--card) 100%)`
-    : `linear-gradient(135deg, color-mix(in oklch, ${color} 40%, var(--card)) 0%, color-mix(in oklch, ${color} 20%, var(--card)) 55%, color-mix(in oklch, ${color} 6%, var(--popover)) 100%)`;
+    ? `linear-gradient(135deg, color-mix(in oklch, ${color} var(--kpi-mix-subtle, 16%), var(--card)) 0%, var(--card) 100%)`
+    : `linear-gradient(135deg, color-mix(in oklch, ${color} var(--kpi-mix-strong, 40%), var(--card)) 0%, color-mix(in oklch, ${color} var(--kpi-mix-strong-mid, 20%), var(--card)) 55%, color-mix(in oklch, ${color} var(--kpi-mix-strong-tail, 6%), var(--popover)) 100%)`;
 }
 
 /** Resting/hover border-color pair for a gradient KPI card — pairs with the
@@ -115,7 +122,7 @@ export function kpiGradientBorder(
   color: string,
   emphasis: KpiEmphasis,
 ): { border: string; borderHover: string } {
-  const base = emphasis === "strong" ? 40 : 24;
+  const base = emphasis === "strong" ? 36 : 22;
   return {
     border: `color-mix(in oklch, ${color} ${base}%, transparent)`,
     borderHover: `color-mix(in oklch, ${color} ${base + 16}%, transparent)`,

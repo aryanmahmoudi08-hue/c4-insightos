@@ -1184,7 +1184,7 @@ export function HubOperatingMetrics() {
       <KpiBand title="Traffic → VSL" items={trafficItems} />
       <KpiBand title="Applications" items={appItems} />
       <div>
-        <div className="mb-4 mt-8 text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+        <div className="mb-4 mt-8 flex items-center gap-2.5 text-2xs font-bold uppercase tracking-[0.14em] text-foreground before:h-3.5 before:w-[3px] before:shrink-0 before:rounded-full before:bg-accent before:content-[''] after:h-px after:min-w-4 after:flex-1 after:bg-border after:content-['']">
           Operating Rates
         </div>
         <OperatingRatesPipeline charts={rateCharts} />

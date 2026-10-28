@@ -454,14 +454,14 @@ export function AppSidebar() {
           "group relative flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm transition-all",
           it.sub && "ml-3 min-h-8 py-1 text-[13px]",
           active
-            ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm ring-1 ring-white/[0.04]"
-            : "text-sidebar-foreground/65 hover:bg-sidebar-accent/55 hover:text-sidebar-foreground hover:translate-x-[1px]",
+            ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground shadow-sm ring-1 ring-inset ring-accent/20"
+            : "text-sidebar-foreground/65 hover:bg-sidebar-accent/45 hover:text-sidebar-foreground hover:translate-x-[1px]",
         )}
       >
         {active && (
           <motion.div
             layoutId="sidebar-active-indicator"
-            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-sidebar-primary shadow-[0_0_12px_rgba(255,255,255,0.32)]"
+            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-accent"
             transition={{ type: "spring", stiffness: 500, damping: 35 }}
           />
         )}
@@ -500,8 +500,8 @@ export function AppSidebar() {
         aria-label={cat.label}
         aria-pressed={isSelected}
         className={cn(
-          "group relative flex w-full shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 transition-all",
-          isSelected ? "bg-sidebar-accent shadow-sm" : "hover:bg-sidebar-accent/50",
+          "group relative flex w-full shrink-0 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl px-1 py-2.5 transition-all",
+          isSelected ? "bg-sidebar-accent shadow-sm" : "hover:bg-sidebar-accent/45",
           !isHome &&
             (isSelected
               ? "text-sidebar-accent-foreground"
@@ -511,30 +511,35 @@ export function AppSidebar() {
         {isSelected && (
           <motion.div
             layoutId="sidebar-rail-indicator"
-            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-sidebar-primary shadow-[0_0_10px_rgba(255,255,255,0.32)]"
+            className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-accent"
             transition={{ type: "spring", stiffness: 500, damping: 35 }}
           />
         )}
+        {/* Home keeps its own always-filled primary square (it reads as a
+            button, not a tab). Every other category gets an accent-filled
+            tile *while selected* — the same shape, so the rail has one
+            vocabulary, and strong enough to find without reading labels. */}
         {isHome ? (
           <span
             className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground shadow-sm transition-transform",
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.6rem] bg-sidebar-primary text-sidebar-primary-foreground shadow-sm transition-transform",
               isSelected && "scale-105",
             )}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-[18px] w-[18px]" />
+          </span>
+        ) : isSelected ? (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.6rem] bg-accent text-white shadow-sm">
+            <Icon className="h-[18px] w-[18px]" />
           </span>
         ) : (
-          <Icon
-            className={cn(
-              "h-[18px] w-[18px] shrink-0 transition-transform",
-              isSelected && "scale-105",
-            )}
-          />
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+            <Icon className="h-[18px] w-[18px] shrink-0" />
+          </span>
         )}
         <span
           className={cn(
-            "w-full truncate text-center text-[9px] font-medium leading-none tracking-tight",
+            "w-full truncate text-center text-[10px] font-semibold leading-none tracking-[0.01em]",
             isHome &&
               (isSelected ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/60"),
           )}
@@ -567,8 +572,8 @@ export function AppSidebar() {
         onFocusCapture={expandOnFocus}
         onBlurCapture={collapseOnBlurIfPointerOutside}
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]/98 backdrop-blur-xl shadow-lg transition-[transform,width] duration-200 motion-reduce:transition-none",
-          !showExpanded ? "w-72 md:w-16" : "w-72",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-[color:var(--sidebar)] shadow-[var(--shadow-lg)] transition-[transform,width] duration-200 motion-reduce:transition-none",
+          !showExpanded ? "w-72 md:w-20" : "w-72",
           "md:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
@@ -704,11 +709,11 @@ export function AppSidebar() {
               System sits below a spacer as an eighth, visually-secondary
               icon alongside the other utility controls (search/theme/sign
               out/pin), since it's not one of the primary categories. */}
-          <div className="flex w-16 shrink-0 flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]">
-            <nav className="flex flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
+          <div className="flex w-20 shrink-0 flex-col border-r border-sidebar-border bg-[color:var(--sidebar)]">
+            <nav className="flex flex-1 flex-col items-center gap-1.5 overflow-y-auto px-2 py-3">
               {categories.map((cat) => railCategoryBtn(cat))}
             </nav>
-            <div className="flex flex-col items-center gap-1 border-t border-sidebar-border py-2">
+            <div className="flex flex-col items-center gap-1.5 border-t border-sidebar-border px-2 py-3">
               {extraCategories.map((cat) => railCategoryBtn(cat))}
               <button
                 type="button"
@@ -821,12 +826,20 @@ export function TopBar({
   showDateRange?: boolean;
 }) {
   const { range, setRange } = useDateRange();
+  const { user } = useAuth();
   return (
     <div className="glass-header sticky top-8 z-20 border-b px-4 md:px-6 py-4">
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 pl-10 md:pl-0">
           <div className="eyebrow">— Overview</div>
-          <h1 className="display-serif text-xl md:text-2xl leading-none mt-1 truncate">{title}</h1>
+          {/* Sans, not the serif the module heroes use. The two headings
+              stack on most routes — the sticky bar title directly above a
+              PageHero carrying the same words — and two serif headings in a
+              column read as a mistake. The bar is chrome; the hero is the
+              page. */}
+          <h1 className="mt-1 truncate text-2xl font-bold leading-tight tracking-[-0.02em] md:text-[1.7rem]">
+            {title}
+          </h1>
           {subtitle && (
             <p className="mt-1.5 text-xs text-muted-foreground hidden sm:block">{subtitle}</p>
           )}
@@ -839,9 +852,9 @@ export function TopBar({
           <button
             type="button"
             onClick={() => openCommandPalette()}
-            className="relative hidden h-8 w-72 items-center rounded-md border border-input bg-input/40 pl-8 pr-3 text-xs text-muted-foreground outline-none transition-all hover:border-ring/30 md:flex"
+            className="relative hidden h-9 w-80 items-center rounded-full border border-border bg-input pl-9 pr-2 text-xs text-muted-foreground outline-none transition-all hover:border-ring/40 md:flex"
           >
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <span className="truncate">Search leads, metrics, clients, content…</span>
             <span className="badge-glass ml-auto shrink-0 text-3xs normal-case tracking-normal">
               ⌘K
@@ -856,6 +869,11 @@ export function TopBar({
               <Settings className="h-4 w-4" />
             </Link>
           </Button>
+          {/* The signed-in identity belongs in the top bar, not only at the
+              foot of an expanded sidebar that is collapsed most of the time. */}
+          <Link to="/settings" aria-label="Account" className="hidden shrink-0 sm:block">
+            <AvatarInitials name={user?.email ?? "?"} size="sm" />
+          </Link>
         </div>
       </div>
       {showDateRange && (

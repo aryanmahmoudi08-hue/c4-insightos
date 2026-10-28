@@ -67,6 +67,23 @@ export function seriesRatePoints(
     .map((p) => ({ d: p.d, pct: (Number(p[numKey]) / Number(p[denKey])) * 100 }));
 }
 
+/**
+ * Per-day ratio in the numerator's own unit — revenue per close, cash per
+ * call — keeping the date on each point. Same zero-denominator rule as
+ * seriesRatePoints: a day with no closes is dropped, never plotted as 0.
+ * That distinction matters for an average: a 0 would say "the average deal
+ * that day was nothing", which is a claim about deals that did not exist.
+ */
+export function seriesRatioPoints(
+  points: SeriesPoint[],
+  numKey: string,
+  denKey: string,
+): { d: string; value: number }[] {
+  return points
+    .filter((p) => Number(p[denKey] ?? 0) > 0)
+    .map((p) => ({ d: p.d, value: Number(p[numKey]) / Number(p[denKey]) }));
+}
+
 /** Elementwise max across two same-length, same-day-aligned series — for metrics tracked in more than one source table. */
 export function mergeMax(a: SeriesPoint[], b: SeriesPoint[], keys: string[]): SeriesPoint[] {
   return a.map((pt, i) => {

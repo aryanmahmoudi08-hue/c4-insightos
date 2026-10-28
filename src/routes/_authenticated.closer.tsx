@@ -89,6 +89,7 @@ import { scoreText, pickTop, type MechanismKey } from "@/lib/content-mechanisms"
 import {
   dailySeries,
   seriesRatePoints,
+  seriesRatioPoints,
   mergeBySourceTotal,
   priorPeriod,
   pctDelta,
@@ -2230,7 +2231,7 @@ function Closer() {
 
         {member !== ALL_MEMBERS && (
           <div className="space-y-2">
-            <div className="text-sm font-bold uppercase tracking-[0.16em] text-foreground">
+            <div className="flex items-center gap-2.5 text-2xs font-bold uppercase tracking-[0.14em] text-foreground before:h-3.5 before:w-[3px] before:shrink-0 before:rounded-full before:bg-accent before:content-[''] after:h-px after:min-w-4 after:flex-1 after:bg-border after:content-['']">
               {member} · Targets
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -3471,6 +3472,8 @@ function Closer() {
           const closeRatePct = showed ? (closes / showed) * 100 : null;
           const prevCloseRatePct = prevShowed ? (prevClosed / prevShowed) * 100 : null;
           const cashRatePct = revCents ? (cashCents / revCents) * 100 : null;
+          const cashRateDays = seriesRatePoints(heroSeries, "cash", "revenue");
+          const acvDays = seriesRatioPoints(heroSeries, "revenue", "closed");
 
           const closerChartFields: Record<
             string,
@@ -3504,6 +3507,22 @@ function Closer() {
             revenue: {
               values: moneySeries.map((point) => Number(point.revenue ?? 0)),
               labels: moneySeries.map((point) => point.d),
+              variant: "line",
+            },
+            // Both of these are derived per-day from the same heroSeries the
+            // tiles above plot, with the zero-denominator day dropped rather
+            // than drawn as 0 — a day with no revenue has no collection
+            // rate, and a day with no closes has no average deal size.
+            // Days are therefore skipped, not zeroed, so the plotted shape
+            // only ever covers days the metric actually existed on.
+            cashCollectionRate: {
+              values: cashRateDays.map((point) => point.pct),
+              labels: cashRateDays.map((point) => point.d),
+              variant: "line",
+            },
+            avgContractValue: {
+              values: acvDays.map((point) => point.value),
+              labels: acvDays.map((point) => point.d),
               variant: "line",
             },
           };
@@ -3559,7 +3578,7 @@ function Closer() {
           ];
 
           const sectionHeader = (label: string) => (
-            <div className="mt-6 mb-1 text-sm font-bold uppercase tracking-[0.16em] text-foreground first:mt-0">
+            <div className="mt-6 mb-1 flex items-center gap-2.5 text-2xs font-bold uppercase tracking-[0.14em] text-foreground before:h-3.5 before:w-[3px] before:shrink-0 before:rounded-full before:bg-accent before:content-[''] after:h-px after:min-w-4 after:flex-1 after:bg-border after:content-[''] first:mt-0">
               {label}
             </div>
           );

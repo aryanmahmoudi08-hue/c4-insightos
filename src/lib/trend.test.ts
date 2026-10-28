@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mergeBySourceTotal, mergeMax, formatRangeLabel, type SeriesPoint } from "./trend";
+import {
+  mergeBySourceTotal,
+  mergeMax,
+  formatRangeLabel,
+  seriesRatioPoints,
+  type SeriesPoint,
+} from "./trend";
 
 describe("formatRangeLabel", () => {
   it("passes preset labels through unchanged — they're already meaningful", () => {
@@ -75,5 +81,37 @@ describe("mergeBySourceTotal", () => {
     const b: SeriesPoint[] = [{ d: "2026-01-01", cash: 0 }];
     const merged = mergeBySourceTotal(a, b, ["cash"]);
     expect(merged).toEqual([{ d: "2026-01-01", cash: 50 }]);
+  });
+});
+
+describe("seriesRatioPoints", () => {
+  const days: SeriesPoint[] = [
+    { d: "2026-01-01", revenue: 9000, closed: 3 },
+    { d: "2026-01-02", revenue: 0, closed: 0 },
+    { d: "2026-01-03", revenue: 5000, closed: 2 },
+  ];
+
+  it("divides in the numerator's own unit, not as a percent", () => {
+    expect(seriesRatioPoints(days, "revenue", "closed")).toEqual([
+      { d: "2026-01-01", value: 3000 },
+      { d: "2026-01-03", value: 2500 },
+    ]);
+  });
+
+  it("drops a zero-denominator day rather than plotting it as zero", () => {
+    // A day with no closes has no average deal size. Plotting 0 would state
+    // that the average deal that day was nothing, which is a claim about
+    // deals that never happened.
+    const out = seriesRatioPoints(days, "revenue", "closed");
+    expect(out.map((p) => p.d)).not.toContain("2026-01-02");
+  });
+
+  it("keeps dates aligned with values so a chart can label its points", () => {
+    const out = seriesRatioPoints(days, "revenue", "closed");
+    expect(out.map((p) => p.d)).toEqual(["2026-01-01", "2026-01-03"]);
+  });
+
+  it("treats a missing key as a zero denominator", () => {
+    expect(seriesRatioPoints([{ d: "2026-01-01", revenue: 100 }], "revenue", "closed")).toEqual([]);
   });
 });
