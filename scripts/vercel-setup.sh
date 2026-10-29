@@ -64,8 +64,14 @@ read_env() {
   sed -n "s/^$1=//p" "$ENV_FILE" | head -1 | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
 }
 
-echo "==> Linking project"
-"${VERCEL[@]}" link --yes
+if [ -f .vercel/project.json ]; then
+  echo "==> Already linked, leaving the link alone"
+else
+  # Bare `link --yes` answers "create a new project", which 409s when one of
+  # that name already exists. Name the project so it links to the existing one.
+  echo "==> Linking project (${VERCEL_PROJECT:-c4-insightos})"
+  "${VERCEL[@]}" link --yes --project "${VERCEL_PROJECT:-c4-insightos}"
+fi
 
 push_var() {
   local name="$1" value="$2"
