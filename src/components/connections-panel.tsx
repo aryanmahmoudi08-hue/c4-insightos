@@ -62,7 +62,7 @@ function StateBadge({ state }: { state?: string }) {
   );
 }
 
-function CopyField({ label, value }: { label: string; value: string }) {
+export function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="space-y-1">

@@ -190,7 +190,7 @@ export const INTEGRATION_GROUPS: { group: string; blurb: string; items: Integrat
         feeds: "Inbound SMS and voice, call status and recordings.",
         landsOn: "Legacy Leads · Inbound Dialer",
         setup:
-          "Point your Twilio number's SMS and Voice webhooks at the per-event URLs on this page. Requests are signature-verified.",
+          "Four per-event callback URLs — open Show URLs to copy them onto your Twilio number. There is nothing to paste back: the app verifies each request's signature using TWILIO_AUTH_TOKEN, set server-side.",
       },
       {
         id: "discord",

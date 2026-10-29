@@ -20,6 +20,7 @@ import {
 import { TopBar } from "@/components/app-sidebar";
 import {
   ConnectorCard,
+  CopyField,
   IngestEndpointCard,
   MetaConnectorCard,
   useConnections,
@@ -78,6 +79,41 @@ const KIND_TONE: Record<IntegrationKind, string> = {
   manual: "var(--warning-vivid)",
 };
 
+/** The four callbacks `api/public/twilio/$event` accepts — kept in step with
+ *  SUPPORTED_EVENTS there. Twilio is a real webhook integration but it is not
+ *  a `connector_connections` row: there is nothing to paste here, because the
+ *  app authenticates it with TWILIO_AUTH_TOKEN server-side. What a person
+ *  actually needs from this page is the URLs, so show them. */
+const TWILIO_EVENTS = [
+  { event: "sms", label: "Messaging webhook (SMS)" },
+  { event: "voice", label: "Voice webhook (incoming call)" },
+  { event: "voice-status", label: "Call status callback" },
+  { event: "recording", label: "Recording status callback" },
+] as const;
+
+function TwilioEndpoints() {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return (
+    <div className="space-y-3">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
+        Paste each URL into the matching field on your Twilio number, then set{" "}
+        <code className="rounded bg-muted px-1">TWILIO_AUTH_TOKEN</code> and{" "}
+        <code className="rounded bg-muted px-1">TWILIO_WEBHOOK_BASE_URL</code> on the server. Until
+        both are set every callback is answered <b>503 “Twilio webhook is not configured”</b>, and
+        requests whose signature does not verify are rejected 401.
+      </p>
+      {TWILIO_EVENTS.map(({ event, label }) => (
+        <CopyField key={event} label={label} value={`${origin}/api/public/twilio/${event}`} />
+      ))}
+      <p className="text-3xs leading-relaxed text-muted-foreground/70">
+        Inbound traffic is matched to a workspace by the number it was sent to, so the number also
+        has to exist as a connected Twilio communication account. Callbacks for a number that does
+        not are acknowledged and ignored rather than retried.
+      </p>
+    </div>
+  );
+}
+
 /** Which ids the live connector panel can actually connect. Everything else
  *  in the catalogue is real but configured elsewhere, and says so instead of
  *  offering a button that does nothing. */
@@ -112,6 +148,11 @@ function IntegrationCard({
   const [open, setOpen] = useState(false);
   const Icon = GLYPH[item.id] ?? Plug;
   const canConnect = CONNECTABLE.has(item.id) || item.id === "meta";
+  // Twilio has no credentials to paste, but it does have URLs to copy — so it
+  // gets the same expanding panel rather than a dead-end paragraph telling
+  // people to find "the per-event URLs on this page" that were never rendered.
+  const isTwilio = item.id === "twilio";
+  const hasPanel = canConnect || isTwilio;
 
   return (
     <div
@@ -150,7 +191,7 @@ function IntegrationCard({
           <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{item.feeds}</p>
           <p className="mt-1 text-3xs text-muted-foreground/70">Lands on {item.landsOn}</p>
         </div>
-        {canConnect && isAdmin && (
+        {hasPanel && isAdmin && (
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -161,7 +202,7 @@ function IntegrationCard({
                 : "border-border bg-background text-foreground hover:border-foreground/30",
             )}
           >
-            {open ? "Close" : connected ? "Manage" : "Connect"}
+            {open ? "Close" : isTwilio ? "Show URLs" : connected ? "Manage" : "Connect"}
           </button>
         )}
       </div>
@@ -169,9 +210,11 @@ function IntegrationCard({
       {/* The connect form lives in the card rather than in a panel further
           down the page — the setup instructions and the fields they refer
           to belong in the same place. */}
-      {open && canConnect && (
+      {open && hasPanel && (
         <div className="mt-3 border-t border-border/70 pt-3">
-          {item.id === "meta" ? (
+          {isTwilio ? (
+            <TwilioEndpoints />
+          ) : item.id === "meta" ? (
             <MetaConnectorCard row={row} isAdmin={isAdmin} />
           ) : (
             <ConnectorCard
@@ -184,7 +227,10 @@ function IntegrationCard({
         </div>
       )}
 
-      {!canConnect && (
+      {/* Twilio keeps its summary visible alongside the panel: the panel is
+          admin-only, and without this a non-admin would see a card with no
+          explanation of how it is set up at all. */}
+      {(!hasPanel || (isTwilio && !open)) && (
         <p className="mt-3 border-t border-border/70 pt-3 text-2xs leading-relaxed text-muted-foreground">
           {item.setup}
         </p>
