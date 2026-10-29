@@ -21,7 +21,7 @@ hand-maintained code.
 ## Commands
 
 - `npm run dev` — start the Vite dev server (TanStack Start SSR).
-- `npm run build` — production build (Cloudflare Workers target via `@cloudflare/vite-plugin`).
+- `npm run build` — production build (Vercel target via Nitro; see Deployment below).
 - `npm run build:dev` — build in development mode.
 - `npm run preview` — preview a production build.
 - `npm run lint` — ESLint (flat config, includes Prettier as a lint rule — `eslint.config.js`).
@@ -43,7 +43,7 @@ to add it to `minimumReleaseAgeExcludes` in `bunfig.toml` — confirm with the u
 ## Architecture
 
 **Stack**: TanStack Start (React 19, file-based router) + Supabase (Postgres/Auth) + Tailwind v4
-+ shadcn/ui (new-york style), deployed to Cloudflare Workers.
++ shadcn/ui (new-york style), deployed to Vercel.
 
 ### Routing
 
@@ -128,8 +128,21 @@ with strict output sections, hard truncate the input log, graceful "AI is not co
 
 ### Deployment / server entry
 
-Targets Cloudflare Workers (`wrangler.jsonc`, `nodejs_compat`). `src/server.ts` is the actual
-Worker entry (`wrangler.jsonc`'s `main`) — it wraps TanStack Start's generated server entry to
+**Targets Vercel.** The deploy bundle is built by Nitro, whose preset is pinned in
+`vite.config.ts` (`nitro: { preset: process.env.NITRO_PRESET ?? "vercel" }`). That produces
+Vercel's Build Output API v3 in `.vercel/output` — a web-standard `{ fetch }` handler at
+`functions/__server.func`, static assets in `static/`. Note Nitro reads `config.preset`
+*before* `process.env.NITRO_PRESET`, which is why the env var is threaded through the config
+rather than read by Nitro directly; setting `NITRO_PRESET` alone would be silently ignored.
+
+Cloudflare is still a working fallback — `npm run deploy:cloudflare` builds with
+`NITRO_PRESET=cloudflare-module` (output in `.output/`, with `.wrangler/deploy/config.json`
+pointing `wrangler deploy` at it) and `wrangler.jsonc` is kept for exactly that. Lovable's own
+sandbox builds force the Cloudflare preset regardless of this setting, so previews there are
+unaffected by the Vercel switch. `@cloudflare/vite-plugin` is in `package.json` but nothing
+imports it — the Cloudflare target comes from Nitro's preset, not that plugin.
+
+`src/server.ts` is the server entry for both targets — it wraps TanStack Start's generated server entry to
 catch errors that h3 would otherwise swallow into a raw `{"unhandled":true,...}` JSON 500, and
 renders a branded error page (`src/lib/error-page.ts`) instead. `src/start.ts` additionally
 registers a server `errorMiddleware` and the client-side `attachSupabaseAuth` function

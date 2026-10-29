@@ -12,7 +12,8 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && vercel deploy --prebuilt --prod",
+    "deploy:cloudflare": "NITRO_PRESET=cloudflare-module npm run build && wrangler deploy"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",
