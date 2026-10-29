@@ -27,14 +27,23 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+/** `error` is `unknown`, not `Error` — anything can be thrown, and TanStack
+ *  types it honestly. Narrow rather than assert: a thrown string used to render
+ *  as an empty paragraph, which read as "we have no idea what happened". */
+function errorMessageOf(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "An unexpected error occurred.";
+}
+
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   const router = useRouter();
   console.error(error);
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="max-w-md text-center">
         <h1 className="text-lg font-semibold">Something broke</h1>
-        <p className="mt-2 text-xs text-muted-foreground">{error.message}</p>
+        <p className="mt-2 text-xs text-muted-foreground">{errorMessageOf(error)}</p>
         <button
           onClick={() => {
             router.invalidate();
