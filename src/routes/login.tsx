@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { enableDevBypass } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,11 +48,58 @@ function LoginPage() {
     }
   };
 
+  /**
+   * Supabase's own Google OAuth, not Lovable's.
+   *
+   * `@lovable.dev/cloud-auth-js` opens a popup at `/~oauth/initiate` — a
+   * relative path served by Lovable's hosting, not by this app. The moment the
+   * app was deployed anywhere else that path 404s, so the popup loaded a 404
+   * and the flow could never complete. Verified 404 on both the Vercel and the
+   * Cloudflare deployments, so this has been broken since the app left Lovable
+   * hosting rather than being a regression from any one move.
+   *
+   * Supabase is already the session owner here — Lovable's wrapper only existed
+   * to hand its tokens to `supabase.auth.setSession`. Going direct removes the
+   * broker instead of trying to reimplement it.
+   */
   const google = async () => {
-    const res = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
+    // skipBrowserRedirect so we hold the URL instead of leaving immediately.
+    // signInWithOAuth only builds that URL — it never calls it — so a provider
+    // that is switched off produces no client-side error at all. Redirecting
+    // blind lands the visitor on Supabase's raw JSON error page with no way
+    // back, which is a worse failure than the one this replaced.
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/home`, skipBrowserRedirect: true },
     });
-    if (res.error) toast.error("Google sign-in failed");
+    if (error || !data?.url) {
+      toast.error(error?.message ?? "Could not start Google sign-in.");
+      return;
+    }
+
+    // One pre-flight request. A working provider answers 302 to Google, which
+    // `redirect: "manual"` surfaces as an opaqueredirect we deliberately treat
+    // as success; a disabled one answers 400 with a readable body (the endpoint
+    // does send CORS headers, so we can read it).
+    try {
+      const res = await fetch(data.url, { redirect: "manual" });
+      if (res.type !== "opaqueredirect" && res.status >= 400) {
+        const body = await res.text().catch(() => "");
+        const notEnabled = /provider is not enabled|unsupported provider/i.test(body);
+        toast.error(
+          notEnabled
+            ? "Google sign-in isn't enabled for this project yet — enable the Google provider in Supabase."
+            : "Google sign-in is misconfigured. Check the Supabase auth settings.",
+        );
+        return;
+      }
+    } catch {
+      // Network or CORS trouble tells us nothing either way; let the real
+      // redirect happen and report whatever it finds rather than blocking a
+      // sign-in that might have worked.
+    }
+
+    window.location.assign(data.url);
   };
 
   return (
