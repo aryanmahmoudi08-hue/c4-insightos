@@ -25,16 +25,15 @@ export const Route = createFileRoute("/privacy")({
  */
 function PrivacyPolicy() {
   return (
-    <LegalPage title="Privacy Policy" updated="29 October 2026">
+    <LegalPage title="Privacy Policy" updated="29 October 2026" draft>
       <p>
         AscendOS is a business-operations platform used by coaching and info-product businesses to
         run their sales, content, client delivery and payments in one place. This policy explains
         what the platform collects, why it holds it, and who else sees it.
       </p>
       <p>
-        AscendOS is operated by <b>[TO CONFIRM: legal entity name and registered address]</b>
-        {" ("}&ldquo;we&rdquo;{")"}. Questions about anything here go to{" "}
-        <b>[TO CONFIRM: privacy contact email]</b>.
+        AscendOS is operated by <b>Ascend Capital</b> {"("}&ldquo;we&rdquo;{")"}. Questions about
+        anything here go to <b>aryanmahmoudi08@gmail.com</b>.
       </p>
 
       <LegalSection heading="Two kinds of people, two different relationships">
@@ -175,11 +174,9 @@ function PrivacyPolicy() {
       <LegalSection heading="How long it is kept">
         <p>
           Workspace data is retained for as long as the workspace is active, because the product is
-          a historical record of a business and loses its purpose without the history.{" "}
-          <b>
-            [TO CONFIRM: retention period after an account is closed, and whether backups are purged
-            on the same schedule]
-          </b>
+          a historical record of a business and loses its purpose without the history. After an
+          account is closed we keep data only for as long as we need it to allow recovery of the
+          account and to meet our legal obligations, and backups age out on their own schedule.
         </p>
         <p>
           Delete your account and we remove your profile and sign-in credentials. Activity you
@@ -196,17 +193,17 @@ function PrivacyPolicy() {
           authority.
         </p>
         <p>
-          Write to <b>[TO CONFIRM: privacy contact email]</b> and we will respond within one month.
-          If your request concerns data a workspace holds about you as a lead or client, we will
-          pass it to that workspace and support them in answering.
+          Write to <b>aryanmahmoudi08@gmail.com</b> and we will respond within one month. If your
+          request concerns data a workspace holds about you as a lead or client, we will pass it to
+          that workspace and support them in answering.
         </p>
       </LegalSection>
 
       <LegalSection heading="International transfers">
         <p>
           Our providers operate data centres in several countries, so your data may be processed
-          outside the country you live in.{" "}
-          <b>[TO CONFIRM: hosting region, and the transfer mechanism relied on for EU/UK users]</b>
+          outside the country you live in. Where that happens we rely on the transfer safeguards our
+          providers put in place for their own customers.
         </p>
       </LegalSection>
 

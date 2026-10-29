@@ -13,10 +13,13 @@ import ascendOsBlack from "@/assets/ascendos-stacked-black.png";
 export function LegalPage({
   title,
   updated,
+  draft = false,
   children,
 }: {
   title: string;
   updated: string;
+  /** Shows the unreviewed-draft notice. Remove once legal review is done. */
+  draft?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -37,6 +40,18 @@ export function LegalPage({
 
         <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">Last updated {updated}</p>
+
+        {/* Stays until a lawyer has read both documents. Publishing a policy
+            that reads as settled when it has not been reviewed is the part
+            that actually misleads someone — the draft wording below is
+            accurate, but accuracy is not the same as having been checked. */}
+        {draft ? (
+          <p className="mt-4 rounded-lg border border-[color:var(--color-warning)]/40 bg-[color:var(--color-warning)]/10 px-3 py-2 text-xs leading-relaxed text-foreground">
+            <b>Draft.</b> This document describes how AscendOS actually works, but it has not yet
+            been reviewed by a lawyer and some details are still being settled. Email{" "}
+            <b>aryanmahmoudi08@gmail.com</b> if anything here affects a decision you are making.
+          </p>
+        ) : null}
 
         <div className="legal-prose mt-8 space-y-6 text-sm leading-relaxed text-muted-foreground">
           {children}

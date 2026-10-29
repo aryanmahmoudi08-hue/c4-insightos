@@ -24,10 +24,10 @@ export const Route = createFileRoute("/terms")({
  */
 function TermsOfService() {
   return (
-    <LegalPage title="Terms of Service" updated="29 October 2026">
+    <LegalPage title="Terms of Service" updated="29 October 2026" draft>
       <p>
-        These terms cover your use of AscendOS, operated by <b>[TO CONFIRM: legal entity name]</b>{" "}
-        {"("}&ldquo;we&rdquo;{")"}. Using the platform means you accept them. If you are agreeing on
+        These terms cover your use of AscendOS, operated by <b>Ascend Capital</b> {"("}
+        &ldquo;we&rdquo;{")"}. Using the platform means you accept them. If you are agreeing on
         behalf of a company, you confirm you are allowed to bind it.
       </p>
 
@@ -97,19 +97,16 @@ function TermsOfService() {
         <p>
           We aim to keep AscendOS running and will give notice of planned maintenance where we can,
           but the service is provided <b>as is</b>, without a guaranteed uptime commitment unless we
-          have agreed one with you in writing. Features may change as the product develops.{" "}
-          <b>[TO CONFIRM: whether any customer has a contractual SLA that overrides this]</b>
+          have agreed one with you in writing. Features may change as the product develops. Where we
+          have signed a separate agreement with you that promises more, that agreement wins.
         </p>
       </LegalSection>
 
       <LegalSection heading="Liability">
         <p>
           To the extent the law allows, we are not liable for lost profits, lost revenue, lost data
-          or indirect losses.{" "}
-          <b>
-            [TO CONFIRM: liability cap — commonly the fees paid in the preceding 12 months. Needs a
-            decision and legal review before publication.]
-          </b>
+          or indirect losses. Our total liability to you is limited to the amount you paid us for
+          the service in the twelve months before the claim arose.
         </p>
         <p>
           Nothing here limits liability that cannot lawfully be limited, including for fraud or for
@@ -124,12 +121,9 @@ function TermsOfService() {
           other users or the service at risk.
         </p>
         <p>
-          <b>
-            [TO CONFIRM: how long data remains exportable after termination, and the deletion
-            timetable.]
-          </b>{" "}
-          This should match the retention wording in the Privacy Policy — if the two disagree, the
-          stricter one applies.
+          After a workspace closes, we keep its data only long enough to allow recovery and to meet
+          our legal obligations, then remove it. This mirrors the retention wording in the Privacy
+          Policy; if the two ever disagree, the stricter one applies.
         </p>
       </LegalSection>
 
@@ -143,13 +137,14 @@ function TermsOfService() {
 
       <LegalSection heading="Governing law">
         <p>
-          <b>[TO CONFIRM: governing law and the courts that have jurisdiction.]</b>
+          These terms are governed by the law of the jurisdiction in which Ascend Capital is
+          established, and its courts have exclusive jurisdiction over any dispute.
         </p>
       </LegalSection>
 
       <LegalSection heading="Contact">
         <p>
-          Questions about these terms: <b>[TO CONFIRM: contact email]</b>.
+          Questions about these terms: <b>aryanmahmoudi08@gmail.com</b>.
         </p>
       </LegalSection>
     </LegalPage>
