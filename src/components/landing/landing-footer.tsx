@@ -41,6 +41,15 @@ export function LandingFooter() {
           <Link to="/login" className="text-sm text-muted-foreground hover:text-foreground">
             Sign in
           </Link>
+          {/* Reachable from the public site, not only from the Google consent
+              screen: a reviewer and an applicant both expect to find these
+              without signing in. */}
+          <Link to="/privacy" className="text-sm text-muted-foreground hover:text-foreground">
+            Privacy
+          </Link>
+          <Link to="/terms" className="text-sm text-muted-foreground hover:text-foreground">
+            Terms
+          </Link>
         </nav>
         <div className="text-xs text-muted-foreground">
           © {new Date().getFullYear()} AscendOS. All rights reserved.
