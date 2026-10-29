@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { ASSIGNABLE_ROLES, isAppRole, type AppRole } from "@/lib/permissions";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { useRole } from "@/hooks/use-role";
+import { AvatarInitials } from "@/components/ui/avatar-initials";
+import { avatarFor, useOrgAvatars } from "@/hooks/use-org-avatars";
 import { TopBar } from "@/components/app-sidebar";
 import { useDateRange } from "@/hooks/use-date-range";
 import { TeamRosterPanel } from "@/components/team-roster-panel";
@@ -123,6 +125,7 @@ const TEAM_SETTER_METRICS: RepMetricOption<HubSetterPerson>[] = [
 
 function Team() {
   const { data: org } = useCurrentOrg();
+  const rosterAvatars = useOrgAvatars();
   const { isAdmin, canManage } = useRole();
   const { devBypass, user } = useAuth();
   const orgId = org?.org_id;
@@ -802,9 +805,15 @@ function Team() {
                       onClick={() => setProfileMember(m)}
                     >
                       <td className="p-3 flex items-center gap-2">
-                        <div className="grid h-7 w-7 place-items-center rounded-full bg-muted text-2xs font-sans tabular-nums">
-                          {(m.profiles?.display_name ?? "??").slice(0, 2).toUpperCase()}
-                        </div>
+                        {/* Was a plain two-letter slug on a grey circle. AvatarInitials
+                            keeps that fallback with the colour treatment used
+                            elsewhere, and shows the member's photo when one came
+                            through with their access request. */}
+                        <AvatarInitials
+                          name={m.profiles?.display_name ?? m.user_id.slice(0, 8)}
+                          photoUrl={avatarFor(rosterAvatars, m.profiles?.display_name)}
+                          size="sm"
+                        />
                         <span className="font-medium">
                           {m.profiles?.display_name ?? m.user_id.slice(0, 8)}
                         </span>
@@ -995,9 +1004,15 @@ function Team() {
                   {byUser.map((m) => (
                     <tr key={m.user_id} className="border-t border-border/70 hover:bg-muted/20">
                       <td className="p-3 flex items-center gap-2">
-                        <div className="grid h-7 w-7 place-items-center rounded-full bg-muted text-2xs font-sans tabular-nums">
-                          {(m.profiles?.display_name ?? "??").slice(0, 2).toUpperCase()}
-                        </div>
+                        {/* Was a plain two-letter slug on a grey circle. AvatarInitials
+                            keeps that fallback with the colour treatment used
+                            elsewhere, and shows the member's photo when one came
+                            through with their access request. */}
+                        <AvatarInitials
+                          name={m.profiles?.display_name ?? m.user_id.slice(0, 8)}
+                          photoUrl={avatarFor(rosterAvatars, m.profiles?.display_name)}
+                          size="sm"
+                        />
                         <span className="font-medium">
                           {m.profiles?.display_name ?? m.user_id.slice(0, 8)}
                         </span>

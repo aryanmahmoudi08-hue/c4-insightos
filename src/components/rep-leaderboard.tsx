@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { Trophy, X } from "lucide-react";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
+import { avatarFor, useOrgAvatars } from "@/hooks/use-org-avatars";
 import {
   Select,
   SelectContent,
@@ -105,6 +106,11 @@ export function RepLeaderboard<P extends { name: string }>({
   overridden,
   onResetRange,
 }: RepLeaderboardProps<P>) {
+  // Resolved here rather than passed in: a leaderboard row is built from logged
+  // activity and carries only a rep's name, so every one of the six call sites
+  // would otherwise have to join names to profiles itself. Looking it up once,
+  // inside the component, means they all gain faces without changing.
+  const avatars = useOrgAvatars();
   const metric = metrics.find((m) => m.key === metricKey) ?? metrics[0];
   const sorted = [...people].sort((a, b) => metric.rankBy(b) - metric.rankBy(a)).slice(0, 6);
   const maxVal = Math.max(1, ...sorted.map(metric.rankBy));
@@ -164,7 +170,7 @@ export function RepLeaderboard<P extends { name: string }>({
               >
                 {i + 1}
               </div>
-              <AvatarInitials name={p.name} size="sm" />
+              <AvatarInitials name={p.name} photoUrl={avatarFor(avatars, p.name)} size="sm" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate text-foreground">{p.name}</div>
                 <div className="mt-1 h-1.5 w-full rounded overflow-hidden bg-muted/40">
