@@ -321,7 +321,24 @@ function IntegrationsPage() {
               subtitle={g.blurb}
               accent={g.group === "Money" ? "success" : "accent"}
             />
-            <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+            {/* items-start, so a card is only as tall as its own content. The
+                default `stretch` made every card in a row match the tallest —
+                a manual-setup card with a paragraph of instructions left its
+                neighbour with a block of dead space under two lines of text.
+                A card that expands now grows alone.
+
+                The last card of an odd-numbered group would otherwise sit by
+                itself in a half-empty row, so it spans the full width at the
+                two-column breakpoint. At three columns the arithmetic differs
+                (5 items fill as 3+2, 3 items as one full row), so that span is
+                reset rather than left to misfire. */}
+            <div
+              className={cn(
+                "grid items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3",
+                "lg:[&>*:nth-child(odd):last-child]:col-span-2",
+                "2xl:[&>*:nth-child(odd):last-child]:col-span-1",
+              )}
+            >
               {g.items.map((item) => (
                 <IntegrationCard
                   key={item.id}
