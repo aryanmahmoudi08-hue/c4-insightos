@@ -115,7 +115,7 @@ export function OperationalWorkflowPanel({
         <ArrowRight className="hidden h-4 w-4 shrink-0 text-muted-foreground lg:block" />
         <Stage label="Cash" value={cashLabel} tone="success" />
       </div>
-      <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+      <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
         <div className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-muted-foreground">
           <Link2 className="h-3.5 w-3.5 text-cyan-400" />
           Links sent <strong className="ml-auto text-foreground">{linksSent}</strong>

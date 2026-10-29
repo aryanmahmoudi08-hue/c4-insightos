@@ -87,7 +87,7 @@ export function SetterSignalsPanel() {
           limiting beliefs and objections, then decides which mechanism kills them.
         </p>
       </div>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <Input placeholder="Setter name" value={name} onChange={(e) => setName(e.target.value)} />
         <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         <Button

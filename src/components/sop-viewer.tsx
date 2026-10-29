@@ -174,7 +174,7 @@ function FaqRow({ q, a }: { q: string; a: string }) {
  */
 export function SopViewer({ doc }: { doc: SopDoc }) {
   return (
-    <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_1fr]">
       <nav className="hidden lg:block">
         <div className="sticky top-24 space-y-0.5 rounded-lg border border-border bg-card/60 p-3">
           <div className="mb-2 px-1 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">

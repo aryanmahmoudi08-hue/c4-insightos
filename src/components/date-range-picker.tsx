@@ -51,15 +51,18 @@ export function DateRangePicker({
   const custom = value.label === CUSTOM_LABEL;
 
   const chip = (selected: boolean) =>
-    `cursor-pointer rounded-full px-2.5 py-1 text-2xs font-medium transition-all ${
+    `shrink-0 cursor-pointer rounded-full px-2.5 py-1 text-2xs font-medium transition-all ${
       selected
         ? "bg-primary text-primary-foreground shadow-sm"
         : "text-muted-foreground hover:text-foreground"
     }`;
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="flex items-center gap-0.5 rounded-full border border-border bg-muted/30 p-0.5">
+    // min-w-0 so this can shrink below its content width inside the TopBar's
+    // flex row — without it the preset rail's max-w-full resolved against
+    // this div's own overflowing width and clamped nothing.
+    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+      <div className="rail-x flex max-w-full items-center gap-0.5 rounded-full border border-border bg-muted/30 p-0.5">
         {PRESETS.map((p) => (
           <button
             key={p.key}

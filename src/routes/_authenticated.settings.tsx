@@ -144,7 +144,7 @@ function Settings() {
         </Section>
 
         <Section title="Workspace" description="Details of the workspace you're signed into.">
-          <dl className="grid gap-3 sm:grid-cols-2 text-xs">
+          <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-xs">
             <div>
               <dt className="text-muted-foreground">Workspace</dt>
               <dd className="mt-0.5 flex items-center gap-1.5 font-medium">
@@ -196,7 +196,7 @@ function Settings() {
           title="Access & team"
           description="Control what every role — and every individual rep — can view or edit."
         >
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <Button
               asChild
               variant="outline"
@@ -360,7 +360,7 @@ function ContentEngineSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boo
               <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <Radar className="h-3.5 w-3.5" /> {g.title}
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {g.fields.map((f) => (
                   <div key={f.key} className="space-y-1">
                     <Label className="text-xs">{f.label}</Label>

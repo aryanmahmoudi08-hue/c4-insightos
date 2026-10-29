@@ -274,7 +274,7 @@ function SequencesPage() {
           </div>
 
           {!editing && (
-            <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {t.slides.map((s, i) => (
                 <div key={i} className="rounded-md border border-border/60 bg-background/60 p-3">
                   <div className="text-3xs uppercase tracking-wider text-muted-foreground font-mono">Slide {i + 1}</div>
@@ -287,7 +287,7 @@ function SequencesPage() {
 
           {editing && (
             <div className="mt-4 space-y-3">
-              <div className="grid sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <Input value={editing.title} onChange={e => setEditing({ ...editing, title: e.target.value })} placeholder="Sequence title" />
                 <Select value={editing.client_id ?? ""} onValueChange={v => setEditing({ ...editing, client_id: v || null })}>
                   <SelectTrigger><SelectValue placeholder="Client (voice)" /></SelectTrigger>
@@ -310,7 +310,7 @@ function SequencesPage() {
                 <Button onClick={() => save.mutate()} disabled={save.isPending}><Save className="h-4 w-4 mr-1.5" />{save.isPending ? "Saving…" : "Save sequence"}</Button>
                 <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
               </div>
-              <div className="grid sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {editing.slides.map((s, i) => (
                   <div key={i} className="rounded-md border border-border/60 bg-background/60 p-3">
                     <div className="flex items-center justify-between">
@@ -343,7 +343,7 @@ function SequencesPage() {
               No saved sequences yet — pick a day above and hit "New draft" to start.
             </Card>
           ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {sequences.map((s) => {
                 const tpl = templateFor(String(s.template_key));
                 const slides = Array.isArray(s.slides) ? (s.slides as { label: string; body: string }[]) : [];

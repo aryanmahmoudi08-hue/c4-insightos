@@ -384,7 +384,7 @@ function RecommendedMixCard({
           />
         </div>
       ) : (
-        <div className="relative mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="relative mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {MECHANISM_KEYS.map((k) => {
             const pct = demand.mix[k] ?? 0;
             const color = MECHANISM_COLORS[k];
@@ -518,7 +518,7 @@ function WeeklyCheckCard({ weekly }: { weekly: SignalsWeekly }) {
       <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         <CalendarCheck className="h-3.5 w-3.5" /> Weekly check · last 7 days
       </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
         <WeeklyStat
           label="Reels posted"
           value={`${weekly.reels}`}
@@ -544,7 +544,7 @@ function WeeklyCheckCard({ weekly }: { weekly: SignalsWeekly }) {
           onClick={() => setWeeklyDrill("untagged")}
         />
       </div>
-      <div className="mt-2 grid gap-2 md:grid-cols-2">
+      <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
         <div className="space-y-1 rounded-md border border-[color:var(--color-success)]/45 bg-[color:var(--color-success)]/5 p-3 text-xs">
           <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-[color:var(--color-success)]">
             <TrendingUp className="h-3.5 w-3.5" /> Drove the most DMs / calls
@@ -795,7 +795,7 @@ function AIBottleneckReadCard({
               <div className="mt-0.5 text-sm font-semibold leading-snug text-foreground">
                 {insight.finding}
               </div>
-              <dl className="mt-3 grid gap-2 text-2xs sm:grid-cols-2">
+              <dl className="mt-3 grid grid-cols-1 gap-2 text-2xs sm:grid-cols-2">
                 <div>
                   <dt className="uppercase tracking-wider text-muted-foreground">Evidence</dt>
                   <dd className="mt-0.5 text-foreground/90">{insight.supportingData}</dd>

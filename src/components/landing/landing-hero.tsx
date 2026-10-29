@@ -19,7 +19,7 @@ export function LandingHero() {
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_-10%,oklch(0.62_0.24_295/8%),transparent_55%),radial-gradient(circle_at_85%_10%,oklch(0.78_0.14_230/6%),transparent_50%)]"
       />
-      <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 md:grid-cols-2 md:px-6">
+      <div className="relative mx-auto grid grid-cols-1 max-w-6xl items-center gap-12 px-4 md:grid-cols-2 md:px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

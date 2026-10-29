@@ -755,7 +755,7 @@ export function AttributionPageContent({ embedded = false }: { embedded?: boolea
             <div className="text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Attribution model
             </div>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
               {ATTRIBUTION_MODELS.map((m) => (
                 <button
                   key={m}
@@ -795,7 +795,7 @@ export function AttributionPageContent({ embedded = false }: { embedded?: boolea
             )}
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
             <div>
               <div className="mb-1 text-3xs uppercase tracking-wider text-muted-foreground">
                 Platform

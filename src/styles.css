@@ -636,6 +636,19 @@
 }
 
 @layer utilities {
+  /* A horizontal rail that scrolls rather than clipping — tab bars, pill rows
+     and anything else that fits on a desktop but not on a 375px phone. The
+     global thin scrollbar above would eat most of a 36px-tall tab bar, so this
+     hides the bar itself; the rail stays swipeable and keyboard-reachable. */
+  .rail-x {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .rail-x::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Glass chrome — sidebar / topbar / modal surfaces. Deliberately not applied to
      ordinary content cards: glassmorphism reads as *chrome*, not as page content. */
   .glass {

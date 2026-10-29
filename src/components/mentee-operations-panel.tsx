@@ -201,7 +201,7 @@ export function MenteeOperationsPanel({
               {ctxParts.length > 0 && (
                 <div className="mt-1 text-2xs text-muted-foreground">{ctxParts.join(" · ")}</div>
               )}
-              <div className="mt-2 grid gap-2 text-xs sm:grid-cols-5">
+              <div className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-5">
                 <span className="text-muted-foreground">
                   Stage
                   <strong className="block capitalize text-foreground">

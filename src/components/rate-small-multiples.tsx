@@ -31,7 +31,7 @@ export interface RateChartSpec {
  */
 export function RateSmallMultiples({ charts }: { charts: RateChartSpec[] }) {
   return (
-    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       {charts.map((c) => {
         const unavailable = c.currentPct === null;
         // No rate means no comparison either — a delta against an undefined

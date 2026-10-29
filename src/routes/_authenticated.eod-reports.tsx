@@ -120,7 +120,7 @@ function EodReportsPage() {
 
         <div className="rounded-2xl border border-border/80 bg-card/70 p-2 shadow-sm">
           <div
-            className={`grid gap-2 ${allowedRoles.length === 1 ? "sm:grid-cols-1" : allowedRoles.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}
+            className={`grid grid-cols-1 gap-2 ${allowedRoles.length === 1 ? "sm:grid-cols-1" : allowedRoles.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}
           >
             {ROLE_CARDS.filter((c) => allowedRoles.includes(c.role)).map((c) => {
               const selected = c.role === activeRole;

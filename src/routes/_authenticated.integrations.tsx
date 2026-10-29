@@ -262,7 +262,7 @@ function IntegrationsPage() {
         subtitle="Every outside system this workspace reads from or writes to."
       />
       <div className="space-y-6 p-4 md:p-6">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {(
             [
               ["Connected", connectedCount, ShieldCheck, "var(--success-vivid)", "Live right now."],
@@ -334,7 +334,7 @@ function IntegrationsPage() {
                 reset rather than left to misfire. */}
             <div
               className={cn(
-                "grid items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3",
+                "grid grid-cols-1 items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3",
                 "lg:[&>*:nth-child(odd):last-child]:col-span-2",
                 "2xl:[&>*:nth-child(odd):last-child]:col-span-1",
               )}

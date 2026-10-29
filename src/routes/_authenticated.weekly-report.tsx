@@ -159,7 +159,7 @@ function WeeklyReportPage() {
               </BentoCell>
             </BentoGrid>
 
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <RepTable title="Closers" rows={report.repPerformance.closers} />
               <RepTable title="Setters" rows={report.repPerformance.setters} />
             </div>
@@ -175,7 +175,7 @@ function WeeklyReportPage() {
                   resting on thin signal.
                 </div>
               )}
-              <div className="grid gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
                 {(Object.keys(report.contentMix.mix) as MechanismKey[]).map((k) => (
                   <div key={k} className="rounded-md border border-border p-2.5">
                     <div className="text-2xs text-muted-foreground">
@@ -194,7 +194,7 @@ function WeeklyReportPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="rounded-xl border border-border bg-card p-4 space-y-2">
                 <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Client renewal stages

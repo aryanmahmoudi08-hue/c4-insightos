@@ -17,6 +17,17 @@ export default defineConfig({
   nitro: { preset: process.env.NITRO_PRESET ?? "vercel" },
   vite: {
     server: {
+      // The router plugin rewrites src/routeTree.gen.ts with byte-identical
+      // content on a timer. Vite's watcher only sees the touched mtime, treats
+      // it as a change, and does a full page reload — which re-triggers
+      // generation, roughly once a second, forever. Component state is wiped
+      // each time, so anything mid-interaction in dev is unusable.
+      //
+      // Ignoring the generated file breaks that cycle. The cost is that adding
+      // a route no longer reloads on its own; saving any other file picks it
+      // up, as does restarting the dev server. Production builds generate it
+      // from scratch and are unaffected.
+      watch: { ignored: ["**/src/routeTree.gen.ts"] },
       allowedHosts: [
         "4182-ir6qz9hq4v4dp1gbt0qxx-1ef832df.us4.manus.computer",
         "8080-ir6qz9hq4v4dp1gbt0qxx-1ef832df.us4.manus.computer",

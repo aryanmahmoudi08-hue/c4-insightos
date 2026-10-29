@@ -12,7 +12,12 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
+      // justify-start, not center: once the triggers are wider than the screen a
+      // centred flex row overflows in *both* directions and the first tab
+      // becomes unreachable. With the list shrink-wrapped to its content this is
+      // invisible until it overflows, which is exactly when it matters.
+      "inline-flex h-9 max-w-full items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground",
+      "rail-x",
       className,
     )}
     {...props}

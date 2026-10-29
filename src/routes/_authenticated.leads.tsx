@@ -1547,7 +1547,7 @@ function LeadsPipelineDonut({
       </div>
       <div className="p-4">
         {total > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,220px)_1fr]">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,220px)_1fr]">
             <div className="h-52">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -2239,7 +2239,7 @@ function LeadInsightsPanel({ orgId }: { orgId?: string }) {
         </div>
       )}
       {data && (
-        <div className="grid md:grid-cols-3 gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-300">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-300">
           <div className="rounded border border-destructive/30 bg-destructive/5 p-3 space-y-2">
             <div className="text-3xs uppercase tracking-wider text-destructive font-semibold flex items-center gap-1.5">
               <AlertTriangle className="h-3 w-3" /> Bottlenecks

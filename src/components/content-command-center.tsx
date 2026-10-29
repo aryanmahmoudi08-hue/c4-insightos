@@ -628,7 +628,7 @@ export function ContentCommandCenter({
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <CommandKpi
           label="Total views"
           value={fmt(stats.totalViews)}
@@ -734,7 +734,7 @@ export function ContentCommandCenter({
             (no normalized Campaign entity exists yet — see
             src/lib/platform-format.ts and the discovery report's Section 7);
             these filters show real values only, never invented ones. */}
-        <div className="mt-3 grid gap-2 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-4">
           {(
             [
               ["platform", "Platform"],
@@ -882,7 +882,7 @@ export function ContentCommandCenter({
       <TrafficPageContent embedded />
       <AttributionPageContent embedded />
 
-      <div className="grid gap-3 xl:grid-cols-[1.45fr_0.75fr]">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.45fr_0.75fr]">
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
@@ -1221,7 +1221,7 @@ export function ContentCommandCenter({
         onReelTargetChange={onReelTargetChange}
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <AvailabilityCard
           icon={<Users className="h-4 w-4" />}
           label="Audience snapshot"

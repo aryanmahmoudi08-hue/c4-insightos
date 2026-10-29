@@ -712,7 +712,7 @@ export function TrafficPageContent({ embedded = false }: { embedded?: boolean } 
           {hierarchy.platforms.length === 0 ? (
             <EmptyState icon={<Signpost className="h-4 w-4" />} title="No leads tracked yet" />
           ) : (
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,240px)_1fr]">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,240px)_1fr]">
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -832,7 +832,10 @@ export function TrafficPageContent({ embedded = false }: { embedded?: boolean } 
         </section>
 
         {/* Funnel stage analysis */}
-        <section id="traffic-funnel" className="scroll-mt-24 grid gap-3 lg:grid-cols-[1.4fr_0.6fr]">
+        <section
+          id="traffic-funnel"
+          className="scroll-mt-24 grid grid-cols-1 gap-3 lg:grid-cols-[1.4fr_0.6fr]"
+        >
           <FunnelInstrument
             title="Funnel stage"
             subtitle="Leads by TOF / MOF / BOF, from real content funnel_stage tags"
@@ -1347,7 +1350,7 @@ function FormatCard({
                 <MetricRow metrics={metrics} />
               </div>
               <AccordionContent className="px-2.5 pb-2.5">
-                <div className="grid gap-1.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   {items.map((c) => (
                     <ContentLeafTile
                       key={c.key}

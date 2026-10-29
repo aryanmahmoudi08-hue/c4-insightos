@@ -13,7 +13,7 @@ export function LandingRevenue() {
   return (
     <section className="border-t border-border bg-muted/20 py-20 md:py-28">
       <div className="mx-auto max-w-6xl px-4 md:px-6">
-        <div className="grid gap-12 md:grid-cols-2 md:items-center">
+        <div className="grid grid-cols-1 gap-12 md:grid-cols-2 md:items-center">
           <SectionHeading
             eyebrow="Revenue & cash"
             title="Revenue and cash are not the same number."

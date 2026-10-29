@@ -306,7 +306,7 @@ function InboundVelocityCard({
         </div>
         <span className="h-1.5 w-1.5 rounded-full bg-spectrum-cold" />
       </div>
-      <div className="relative mt-3 grid gap-3 lg:grid-cols-[1.5fr_1fr]">
+      <div className="relative mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[1.5fr_1fr]">
         <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
           <div className="text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
             Inbound conversation funnel
@@ -509,7 +509,7 @@ function OperatingRatesPipeline({ charts }: { charts: RateChartSpec[] }) {
         </div>
         <span className="h-1.5 w-1.5 rounded-full bg-spectrum-mid" />
       </div>
-      <div className="relative mt-3 grid gap-3 lg:grid-cols-2">
+      <div className="relative mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
         <div className="space-y-2 rounded-xl border border-border/70 bg-muted/20 p-3">
           <div className="text-3xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
             Marketing efficiency

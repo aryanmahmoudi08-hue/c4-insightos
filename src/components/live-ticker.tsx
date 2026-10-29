@@ -95,7 +95,15 @@ export function LiveTicker() {
   if (!orgId) return null;
 
   return (
-    <div className="glass-header sticky top-0 z-30 flex h-8 items-center gap-4 border-b border-border/70 px-4 py-1.5 text-3xs md:px-6">
+    <div
+      className={cn(
+        "glass-header sticky top-0 z-30 flex h-8 items-center gap-4 border-b border-border/70 py-1.5 text-3xs",
+        // AppSidebar's mobile menu button is `fixed top-3 left-3` and floats
+        // over this bar, so below `md` the first item needs to start clear of
+        // it (36px button + 12px inset + a gap) or "Today" sits underneath it.
+        "pl-14 pr-4 md:px-6",
+      )}
+    >
       <span className="flex items-center gap-1.5 text-muted-foreground">
         <span className={cn("status-dot text-spectrum-hot", "ticker-pulse")} />
         Today

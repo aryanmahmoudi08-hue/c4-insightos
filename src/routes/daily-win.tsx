@@ -175,7 +175,7 @@ function DailyWinForm() {
             Did you win today? <span className="font-semibold">Yes.</span> Every day has a win — your job is to find it.
           </div>
           <Field label="What type of win was it? (select all that apply)">
-            <div className="grid sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {WIN_TYPES.map((t) => {
                 const active = types.includes(t.value);
                 const Icon = t.icon;

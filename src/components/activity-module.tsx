@@ -2489,8 +2489,8 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             ]}
           />
         )}
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FunnelInstrument
               title="Reach"
               subtitle="Inbound Leads → Sets"
@@ -3009,7 +3009,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                           ? { label: "Needs attention", tone: "text-amber-400" }
                           : { label: "Falling behind", tone: "text-destructive" };
                   return (
-                    <div className="mb-4 grid gap-3 rounded-xl border border-border/70 bg-background/40 p-3 sm:grid-cols-4">
+                    <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-border/70 bg-background/40 p-3 sm:grid-cols-4">
                       <div>
                         <div className="text-3xs uppercase tracking-wider text-muted-foreground">
                           Median Response
@@ -3122,7 +3122,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {[
                     [
                       "Median",
@@ -3736,7 +3736,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             standalone on Home) so the dialer's own callback list, lead
             search, and mutations aren't duplicated here. */}
         {/* Leaderboard with metric selector + independent date range (Part C3) + spectrum activity heatmap (Part C4) */}
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <RepLeaderboard
             titlePrefix={isDialer ? "Dialer leaderboard" : "Setter leaderboard"}
             metrics={lbMetrics}
@@ -3776,7 +3776,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
             <div className="flex items-center gap-2.5 text-2xs font-bold uppercase tracking-[0.14em] text-foreground before:h-3.5 before:w-[3px] before:shrink-0 before:rounded-full before:bg-accent before:content-[''] after:h-px after:min-w-4 after:flex-1 after:bg-border after:content-['']">
               {member} · Targets
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {memberTargetCards.map((c) => (
                 <KpiTargetCard
                   key={c.key}

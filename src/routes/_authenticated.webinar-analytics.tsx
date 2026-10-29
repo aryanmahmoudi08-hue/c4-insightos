@@ -832,7 +832,7 @@ function WebinarAnalyticsPage() {
                 retentionRate={summary.webinar.retentionUntilPitch}
               />
             </section>
-            <section className="grid gap-4 lg:grid-cols-2">
+            <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <AnalyticsPanel
                 title="Closing and return"
                 description="Checkout conversion, sales, core offer revenue, refunds, and ROAS"
@@ -1004,21 +1004,21 @@ function TrafficAnalytics({
           strokeDasharray="5 8"
         />
       </svg>
-      <div className="relative grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
+      <div className="relative grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
         <TrafficNode
           icon={<UserRound className="h-4 w-4" />}
           label="Visitors"
           value={number(visitors)}
         />
         <TrafficConnector label="Sign up rate" value={signup} />
-        <div className="grid gap-4 sm:grid-cols-2 md:col-span-1 md:grid-cols-1">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:col-span-1 md:grid-cols-1">
           <div className="relative">
             <TrafficNode
               icon={<ClipboardCheck className="h-4 w-4" />}
               label="Registrants"
               value={number(registrants)}
             />
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 md:absolute md:left-full md:top-0 md:ml-5 md:w-[22rem]">
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 md:absolute md:left-full md:top-0 md:ml-5 md:w-[22rem]">
               <div>
                 <TrafficConnector label="Show up rate" value={showup} />
                 <TrafficNode
@@ -1108,7 +1108,7 @@ function WebinarAnalyticsOverview({
       <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         Key metrics
       </div>
-      <div className="grid gap-x-8 divide-y divide-border sm:grid-cols-2 sm:divide-y-0">
+      <div className="grid grid-cols-1 gap-x-8 divide-y divide-border sm:grid-cols-2 sm:divide-y-0">
         {metrics.map(([icon, label, value]) => (
           <div
             key={label}

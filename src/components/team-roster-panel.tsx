@@ -143,7 +143,7 @@ export function TeamRosterPanel() {
         <Button type="submit" size="sm" disabled={add.isPending}><Plus className="h-4 w-4" />Add</Button>
       </form>
 
-      <div className="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border">
+      <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border">
         {grouped.map(g => (
           <div
             key={g.value}

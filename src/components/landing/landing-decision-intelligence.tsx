@@ -51,7 +51,7 @@ export function LandingDecisionIntelligence() {
   return (
     <section id="intelligence" className="border-t border-border py-20 md:py-28">
       <div className="mx-auto max-w-6xl px-4 md:px-6">
-        <div className="grid gap-12 md:grid-cols-2 md:items-center">
+        <div className="grid grid-cols-1 gap-12 md:grid-cols-2 md:items-center">
           <div>
             <SectionHeading
               eyebrow="Decision intelligence"

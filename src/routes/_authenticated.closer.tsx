@@ -2235,7 +2235,7 @@ function Closer() {
             <div className="flex items-center gap-2.5 text-2xs font-bold uppercase tracking-[0.14em] text-foreground before:h-3.5 before:w-[3px] before:shrink-0 before:rounded-full before:bg-accent before:content-[''] after:h-px after:min-w-4 after:flex-1 after:bg-border after:content-['']">
               {member} · Targets
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {memberTargetCards.map((c) => (
                 <KpiTargetCard
                   key={c.key}
@@ -3784,7 +3784,7 @@ function Closer() {
               />
 
               {sectionHeader("C · No-show recovery")}
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <button
                   type="button"
                   disabled={noShowRecovery.noShowCount === 0}
@@ -3912,7 +3912,7 @@ function Closer() {
               </div>
 
               {sectionHeader("E · Pipeline & team visibility")}
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <button
                   type="button"
                   onClick={() => setSelected({ kind: "pipeline", index: 0 })}
@@ -3959,7 +3959,7 @@ function Closer() {
                   </span>
                 </div>
                 {list.length ? (
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     {dispositionMix.map((item) => (
                       <button
                         key={item.value}
@@ -4003,7 +4003,7 @@ function Closer() {
                   </div>
                 </div>
                 {manualDispositionMix.length ? (
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     {manualDispositionMix.map((item) => (
                       <button
                         key={item.value}
@@ -4147,7 +4147,7 @@ function Closer() {
                   </tbody>
                 </table>
               </GlassTableShell>
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <RepLeaderboard
                   titlePrefix="Closer leaderboard"
                   metrics={closerMetrics}
@@ -4350,7 +4350,7 @@ function Closer() {
               faqVideos={faqVideos}
               emptyLabel="No objections logged yet. Add them when logging calls (comma-separated) to feed content + script strategy."
             />
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="rounded-xl border border-border bg-card p-4">
                 <div className="text-sm font-semibold">By call stage</div>
                 <div className="mt-1 text-xs text-muted-foreground">
@@ -4896,7 +4896,7 @@ function CoachingPanel({ orgId, range }: { orgId: string | undefined; range: Dat
         </Dialog>
       </div>
       {recurringGaps.length > 0 && (
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {recurringGaps.map((g) => (
             <div key={g.value} className="rounded-lg border border-border/70 bg-background/40 p-3">
               <div className="text-3xs uppercase tracking-wider text-muted-foreground">

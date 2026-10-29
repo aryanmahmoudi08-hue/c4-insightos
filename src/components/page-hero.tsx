@@ -58,7 +58,7 @@ export function PageHero({
   const head = words.slice(0, -1).join(" ");
 
   return (
-    <div className="relative overflow-hidden rounded-[1.4rem] border border-border bg-card p-5 shadow-[var(--shadow-md)] md:p-6">
+    <div className="relative overflow-hidden rounded-[1.4rem] border border-border bg-card p-4 shadow-[var(--shadow-md)] sm:p-5 md:p-6">
       {/* Both washes are the hot stop. The title's accent word and the
           artwork's glow are already magenta, and a violet corner opposite
           them made the banner read as two different brands meeting in the
@@ -93,14 +93,14 @@ export function PageHero({
       )}
       <div
         className={cn(
-          "relative flex flex-wrap items-start justify-between gap-5",
+          "relative flex flex-wrap items-start justify-between gap-4 sm:gap-5",
           icon && !actions && "lg:pr-60",
         )}
       >
-        <div className="flex min-w-0 items-start gap-3.5">
+        <div className="flex min-w-0 items-start gap-3 sm:gap-3.5">
           {icon && (
             <div
-              className="metric-chip grid h-12 w-12 shrink-0 place-items-center rounded-[0.9rem]"
+              className="metric-chip grid h-10 w-10 shrink-0 place-items-center rounded-[0.9rem] sm:h-12 sm:w-12"
               // Matches the title's accent word and the artwork's glow, so
               // the whole top-left corner reads as one colour.
               style={{ "--chip-color": "var(--spectrum-hot-vivid)" } as CSSProperties}
@@ -115,7 +115,7 @@ export function PageHero({
                 Intelligence, Client Results — so colouring the noun gives
                 every page a consistent focal point with no per-page config,
                 and a single-word title simply renders in full colour. */}
-            <h1 className="display-serif mt-1 truncate text-[2.1rem] leading-[0.95] md:text-[2.6rem]">
+            <h1 className="display-serif mt-1 text-[1.6rem] leading-[1.05] sm:text-[2.1rem] sm:leading-[0.95] md:truncate md:text-[2.6rem]">
               {head && <span>{head} </span>}
               <span className="text-spectrum-hot">{tail}</span>
             </h1>

@@ -54,7 +54,7 @@ export function KpiBand({
         </span>
         <span className="h-px flex-1 bg-border" aria-hidden />
       </div>
-      <div className="grid gap-3.5 overflow-visible sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3.5 overflow-visible sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {items.map((it) => {
           const hasDelta = it.deltaPct !== undefined && Number.isFinite(it.deltaPct);
           const up = hasDelta && it.deltaPct! > 0.5;

@@ -339,7 +339,7 @@ function VslFunnelMetricsGrid({
         Conversion is this stage vs. the stage before it, same period. Prior-period change compares
         this stage to itself in {priorRangeLabel} — two different comparisons, shown separately.
       </div>
-      <div className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
         {stages.map((stage) => {
           const m = metricsByKey.get(stage.key);
           const volumeUp = m?.volumeDelta != null && m.volumeDelta > 0;
@@ -804,7 +804,7 @@ function InsightsBlock({ insights }: { insights: any }) {
           )}
         </div>
       )}
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
           <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-destructive mb-1.5">
             <TrendingDown className="h-3 w-3" /> Bottlenecks
@@ -1226,7 +1226,7 @@ function TestimonialVideosSection({
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[17rem_minmax(0,1fr)]">
       <div className="h-fit rounded-lg border border-border bg-card p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
           <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">

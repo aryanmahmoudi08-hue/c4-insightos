@@ -232,7 +232,7 @@ export function MetricCard({
             // treatment (tabular-nums/tight tracking) and the hero scale.
             unavailable
               ? "text-sm leading-snug text-muted-foreground"
-              : "text-[1.75rem] leading-[1.05] tabular-nums tracking-[-0.02em] sm:text-[2rem] md:text-[2.15rem]",
+              : "text-[1.45rem] leading-[1.05] tabular-nums tracking-[-0.02em] sm:text-[2rem] md:text-[2.15rem]",
             unavailable ? undefined : tone === "default" ? "text-foreground" : TONE_TEXT[tone],
           )}
         >

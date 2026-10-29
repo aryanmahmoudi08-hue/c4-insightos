@@ -1306,7 +1306,7 @@ function ClientsTab() {
   return (
     <div className="space-y-4 max-w-4xl">
       {/* Positioning snapshot — gauge + reach radar + parameter cards + asset badges */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="rounded-xl border border-border bg-card p-4 flex flex-col items-center justify-center">
           <GaugeChart value={positioningScore} label="Profile completeness" tone="var(--accent)" />
         </div>
@@ -1359,7 +1359,7 @@ function ClientsTab() {
         <div className="flex flex-col sm:flex-row gap-4">
           <ClientAvatar path={(e.avatar_url as string) ?? null} onPick={pickAvatar} />
           <div className="flex-1 space-y-3">
-            <div className="grid sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2">
                 <label className="text-xs text-muted-foreground">Client name</label>
                 <Input
@@ -1413,7 +1413,7 @@ function ClientsTab() {
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Reach & business
         </div>
-        <div className="grid sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {socials.map((s) => (
             <div key={s.key} className="rounded-md border border-border p-3 space-y-2">
               <div className="text-xs font-medium">{s.label}</div>
@@ -1430,7 +1430,7 @@ function ClientsTab() {
             </div>
           ))}
         </div>
-        <div className="grid sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">Business stage</label>
             <Input
@@ -1464,7 +1464,7 @@ function ClientsTab() {
             />
           </div>
         </div>
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">Content pillars</label>
             <Textarea

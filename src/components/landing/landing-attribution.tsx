@@ -49,7 +49,7 @@ export function LandingAttribution() {
           </div>
         </FadeUp>
 
-        <div className="mx-auto mt-14 grid max-w-4xl gap-8 sm:grid-cols-2">
+        <div className="mx-auto mt-14 grid grid-cols-1 max-w-4xl gap-8 sm:grid-cols-2">
           <FadeUp delay={0.05} amount={0.3}>
             <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Attribution perspectives

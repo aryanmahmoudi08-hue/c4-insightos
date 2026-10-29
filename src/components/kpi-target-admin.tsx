@@ -188,7 +188,7 @@ export function KpiTargetAdmin({
         <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <Target className="h-3.5 w-3.5" /> Configure a target
         </div>
-        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
           <Select
             value={role}
             onValueChange={(v) => {

@@ -2728,7 +2728,7 @@ function Dashboard() {
             Collected / Revenue Generated (Part 7). Preserved as-is — not part
             of the Level 3/4 reconstruction, just renumbered out of the way
             since Level 4 now means the funnel diagnostic. */}
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <RepLeaderboard
             titlePrefix="Top closers"
             metrics={HUB_CLOSER_METRICS}
@@ -3322,7 +3322,7 @@ function ExecutiveInsights({
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {insights.slice(0, 5).map((insight) => (
         <div key={insight.key} className="rounded-lg border border-border bg-card p-4">
           <div className="flex items-center gap-2 text-3xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">

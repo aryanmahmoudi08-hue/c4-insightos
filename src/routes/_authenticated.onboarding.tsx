@@ -885,7 +885,7 @@ function Onboarding() {
                 No intakes in this range yet.
               </div>
             ) : (
-              <div className="grid md:grid-cols-2 gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-300">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-300">
                 <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-2">
                   <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-destructive">
                     <TrendingDown className="h-3 w-3" /> Bottlenecks across {aggInsights.sampleSize}{" "}
@@ -1053,7 +1053,7 @@ function Onboarding() {
                             </Button>
                           </div>
                           {insightsByResp[r.id] ? (
-                            <div className="grid md:grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-2">
                                 <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-destructive">
                                   <TrendingDown className="h-3 w-3" /> Bottlenecks to fix

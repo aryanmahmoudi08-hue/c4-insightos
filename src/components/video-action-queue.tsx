@@ -70,7 +70,7 @@ export function VideoActionQueue({
           review yet.
         </p>
       ) : (
-        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
           {active.map((item) => (
             <div
               key={`${item.vsl_id}:${item.action}`}
