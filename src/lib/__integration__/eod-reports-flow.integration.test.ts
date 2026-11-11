@@ -284,7 +284,7 @@ describe("Closer EOD flow — buildClosureCallPayload", () => {
           closer_name: "Flow Test Closer",
           date_of_call: "2026-08-16",
           lead_email: "flow-test-lead-6@example.test",
-          status: "Lost",
+          status: "No Close",
           offer_made: true,
           cash_collected: 0,
           total_revenue: 0,

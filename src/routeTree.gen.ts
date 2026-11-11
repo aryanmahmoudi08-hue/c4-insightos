@@ -9,67 +9,64 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as WelcomeRouteImport } from './routes/welcome'
-import { Route as RequestAccessRouteImport } from './routes/request-access'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as DailyWinRouteImport } from './routes/daily-win'
-import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as PcvTokenRouteImport } from './routes/pcv.$token'
-import { Route as LTokenRouteImport } from './routes/l.$token'
-import { Route as AuthenticatedWeeklyReportRouteImport } from './routes/_authenticated.weekly-report'
-import { Route as AuthenticatedWebinarAnalyticsRouteImport } from './routes/_authenticated.webinar-analytics'
-import { Route as AuthenticatedVslRouteImport } from './routes/_authenticated.vsl'
-import { Route as AuthenticatedTrafficRouteImport } from './routes/_authenticated.traffic'
-import { Route as AuthenticatedTeamCalendarRouteImport } from './routes/_authenticated.team-calendar'
-import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
-import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
-import { Route as AuthenticatedSequencesRouteImport } from './routes/_authenticated.sequences'
-import { Route as AuthenticatedPermissionsRouteImport } from './routes/_authenticated.permissions'
-import { Route as AuthenticatedPaymentsRouteImport } from './routes/_authenticated.payments'
-import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated.onboarding'
-import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated.leads'
-import { Route as AuthenticatedIntegrationsRouteImport } from './routes/_authenticated.integrations'
-import { Route as AuthenticatedInboundDialerRouteImport } from './routes/_authenticated.inbound-dialer'
-import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated.home'
-import { Route as AuthenticatedHiringRouteImport } from './routes/_authenticated.hiring'
-import { Route as AuthenticatedHelpRouteImport } from './routes/_authenticated.help'
-import { Route as AuthenticatedFulfillmentRouteImport } from './routes/_authenticated.fulfillment'
-import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated.events'
-import { Route as AuthenticatedEodReportsRouteImport } from './routes/_authenticated.eod-reports'
-import { Route as AuthenticatedDmSetterRouteImport } from './routes/_authenticated.dm-setter'
-import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
-import { Route as AuthenticatedCopyRouteImport } from './routes/_authenticated.copy'
-import { Route as AuthenticatedContentCalendarRouteImport } from './routes/_authenticated.content-calendar'
-import { Route as AuthenticatedContentRouteImport } from './routes/_authenticated.content'
-import { Route as AuthenticatedCloserRouteImport } from './routes/_authenticated.closer'
+import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as DailyWinRouteImport } from './routes/daily-win'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RequestAccessRouteImport } from './routes/request-access'
+import { Route as TermsRouteImport } from './routes/terms'
+import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AuthenticatedAttributionRouteImport } from './routes/_authenticated.attribution'
-import { Route as ApiPublicWiseRouteImport } from './routes/api/public/wise'
-import { Route as ApiPublicWhopRouteImport } from './routes/api/public/whop'
-import { Route as ApiPublicWebinarjamRouteImport } from './routes/api/public/webinarjam'
-import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typeform'
-import { Route as ApiPublicStripeRouteImport } from './routes/api/public/stripe'
-import { Route as ApiPublicPaypalRouteImport } from './routes/api/public/paypal'
-import { Route as ApiPublicFanbasisRouteImport } from './routes/api/public/fanbasis'
-import { Route as ApiPublicCloseRouteImport } from './routes/api/public/close'
+import { Route as AuthenticatedCloserRouteImport } from './routes/_authenticated.closer'
+import { Route as AuthenticatedContentRouteImport } from './routes/_authenticated.content'
+import { Route as AuthenticatedContentCalendarRouteImport } from './routes/_authenticated.content-calendar'
+import { Route as AuthenticatedCopyRouteImport } from './routes/_authenticated.copy'
+import { Route as AuthenticatedCrmRouteImport } from './routes/_authenticated.crm'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
+import { Route as AuthenticatedDmSetterRouteImport } from './routes/_authenticated.dm-setter'
+import { Route as AuthenticatedEodReportsRouteImport } from './routes/_authenticated.eod-reports'
+import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated.events'
+import { Route as AuthenticatedFulfillmentRouteImport } from './routes/_authenticated.fulfillment'
+import { Route as AuthenticatedHelpRouteImport } from './routes/_authenticated.help'
+import { Route as AuthenticatedHiringRouteImport } from './routes/_authenticated.hiring'
+import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated.home'
+import { Route as AuthenticatedInboundDialerRouteImport } from './routes/_authenticated.inbound-dialer'
+import { Route as AuthenticatedIntegrationsRouteImport } from './routes/_authenticated.integrations'
+import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated.leads'
+import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated.onboarding'
+import { Route as AuthenticatedPaymentsRouteImport } from './routes/_authenticated.payments'
+import { Route as AuthenticatedPermissionsRouteImport } from './routes/_authenticated.permissions'
+import { Route as AuthenticatedSequencesRouteImport } from './routes/_authenticated.sequences'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
+import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
+import { Route as AuthenticatedTeamCalendarRouteImport } from './routes/_authenticated.team-calendar'
+import { Route as AuthenticatedTrafficRouteImport } from './routes/_authenticated.traffic'
+import { Route as AuthenticatedVslRouteImport } from './routes/_authenticated.vsl'
+import { Route as AuthenticatedWebinarAnalyticsRouteImport } from './routes/_authenticated.webinar-analytics'
+import { Route as AuthenticatedWeeklyReportRouteImport } from './routes/_authenticated.weekly-report'
+import { Route as LTokenRouteImport } from './routes/l.$token'
+import { Route as PcvTokenRouteImport } from './routes/pcv.$token'
 import { Route as ApiPublicCalendlyRouteImport } from './routes/api/public/calendly'
-import { Route as ApiPublicTwilioEventRouteImport } from './routes/api/public/twilio.$event'
-import { Route as ApiPublicOauthMetaRouteImport } from './routes/api/public/oauth.meta'
+import { Route as ApiPublicCloseRouteImport } from './routes/api/public/close'
+import { Route as ApiPublicFanbasisRouteImport } from './routes/api/public/fanbasis'
+import { Route as ApiPublicPaypalRouteImport } from './routes/api/public/paypal'
+import { Route as ApiPublicStripeRouteImport } from './routes/api/public/stripe'
+import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typeform'
+import { Route as ApiPublicWebinarjamRouteImport } from './routes/api/public/webinarjam'
+import { Route as ApiPublicWhopRouteImport } from './routes/api/public/whop'
+import { Route as ApiPublicWiseRouteImport } from './routes/api/public/wise'
 import { Route as ApiPublicIngestTokenRouteImport } from './routes/api/public/ingest.$token'
+import { Route as ApiPublicOauthMetaRouteImport } from './routes/api/public/oauth.meta'
+import { Route as ApiPublicTwilioEventRouteImport } from './routes/api/public/twilio.$event'
 
-const WelcomeRoute = WelcomeRouteImport.update({
-  id: '/welcome',
-  path: '/welcome',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RequestAccessRoute = RequestAccessRouteImport.update({
-  id: '/request-access',
-  path: '/request-access',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const AuthenticatedRoute = AuthenticatedRouteImport.update({
+  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DailyWinRoute = DailyWinRouteImport.update({
@@ -77,145 +74,45 @@ const DailyWinRoute = DailyWinRouteImport.update({
   path: '/daily-win',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedRoute = AuthenticatedRouteImport.update({
-  id: '/_authenticated',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PcvTokenRoute = PcvTokenRouteImport.update({
-  id: '/pcv/$token',
-  path: '/pcv/$token',
+const RequestAccessRoute = RequestAccessRouteImport.update({
+  id: '/request-access',
+  path: '/request-access',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LTokenRoute = LTokenRouteImport.update({
-  id: '/l/$token',
-  path: '/l/$token',
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedWeeklyReportRoute =
-  AuthenticatedWeeklyReportRouteImport.update({
-    id: '/weekly-report',
-    path: '/weekly-report',
+const WelcomeRoute = WelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAttributionRoute =
+  AuthenticatedAttributionRouteImport.update({
+    id: '/attribution',
+    path: '/attribution',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedWebinarAnalyticsRoute =
-  AuthenticatedWebinarAnalyticsRouteImport.update({
-    id: '/webinar-analytics',
-    path: '/webinar-analytics',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedVslRoute = AuthenticatedVslRouteImport.update({
-  id: '/vsl',
-  path: '/vsl',
+const AuthenticatedCloserRoute = AuthenticatedCloserRouteImport.update({
+  id: '/closer',
+  path: '/closer',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedTrafficRoute = AuthenticatedTrafficRouteImport.update({
-  id: '/traffic',
-  path: '/traffic',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedTeamCalendarRoute =
-  AuthenticatedTeamCalendarRouteImport.update({
-    id: '/team-calendar',
-    path: '/team-calendar',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
-  id: '/team',
-  path: '/team',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedSequencesRoute = AuthenticatedSequencesRouteImport.update({
-  id: '/sequences',
-  path: '/sequences',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedPermissionsRoute =
-  AuthenticatedPermissionsRouteImport.update({
-    id: '/permissions',
-    path: '/permissions',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedPaymentsRoute = AuthenticatedPaymentsRouteImport.update({
-  id: '/payments',
-  path: '/payments',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
-  id: '/onboarding',
-  path: '/onboarding',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedLeadsRoute = AuthenticatedLeadsRouteImport.update({
-  id: '/leads',
-  path: '/leads',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedIntegrationsRoute =
-  AuthenticatedIntegrationsRouteImport.update({
-    id: '/integrations',
-    path: '/integrations',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedInboundDialerRoute =
-  AuthenticatedInboundDialerRouteImport.update({
-    id: '/inbound-dialer',
-    path: '/inbound-dialer',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedHomeRoute = AuthenticatedHomeRouteImport.update({
-  id: '/home',
-  path: '/home',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedHiringRoute = AuthenticatedHiringRouteImport.update({
-  id: '/hiring',
-  path: '/hiring',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedHelpRoute = AuthenticatedHelpRouteImport.update({
-  id: '/help',
-  path: '/help',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedFulfillmentRoute =
-  AuthenticatedFulfillmentRouteImport.update({
-    id: '/fulfillment',
-    path: '/fulfillment',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedEventsRoute = AuthenticatedEventsRouteImport.update({
-  id: '/events',
-  path: '/events',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedEodReportsRoute = AuthenticatedEodReportsRouteImport.update({
-  id: '/eod-reports',
-  path: '/eod-reports',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedDmSetterRoute = AuthenticatedDmSetterRouteImport.update({
-  id: '/dm-setter',
-  path: '/dm-setter',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedCopyRoute = AuthenticatedCopyRouteImport.update({
-  id: '/copy',
-  path: '/copy',
+const AuthenticatedContentRoute = AuthenticatedContentRouteImport.update({
+  id: '/content',
+  path: '/content',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedContentCalendarRoute =
@@ -224,60 +121,141 @@ const AuthenticatedContentCalendarRoute =
     path: '/content-calendar',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedContentRoute = AuthenticatedContentRouteImport.update({
-  id: '/content',
-  path: '/content',
+const AuthenticatedCopyRoute = AuthenticatedCopyRouteImport.update({
+  id: '/copy',
+  path: '/copy',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedCloserRoute = AuthenticatedCloserRouteImport.update({
-  id: '/closer',
-  path: '/closer',
+const AuthenticatedCrmRoute = AuthenticatedCrmRouteImport.update({
+  id: '/crm',
+  path: '/crm',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedAttributionRoute =
-  AuthenticatedAttributionRouteImport.update({
-    id: '/attribution',
-    path: '/attribution',
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedDmSetterRoute = AuthenticatedDmSetterRouteImport.update({
+  id: '/dm-setter',
+  path: '/dm-setter',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedEodReportsRoute = AuthenticatedEodReportsRouteImport.update({
+  id: '/eod-reports',
+  path: '/eod-reports',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedEventsRoute = AuthenticatedEventsRouteImport.update({
+  id: '/events',
+  path: '/events',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedFulfillmentRoute =
+  AuthenticatedFulfillmentRouteImport.update({
+    id: '/fulfillment',
+    path: '/fulfillment',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const ApiPublicWiseRoute = ApiPublicWiseRouteImport.update({
-  id: '/api/public/wise',
-  path: '/api/public/wise',
+const AuthenticatedHelpRoute = AuthenticatedHelpRouteImport.update({
+  id: '/help',
+  path: '/help',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedHiringRoute = AuthenticatedHiringRouteImport.update({
+  id: '/hiring',
+  path: '/hiring',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedHomeRoute = AuthenticatedHomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedInboundDialerRoute =
+  AuthenticatedInboundDialerRouteImport.update({
+    id: '/inbound-dialer',
+    path: '/inbound-dialer',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedIntegrationsRoute =
+  AuthenticatedIntegrationsRouteImport.update({
+    id: '/integrations',
+    path: '/integrations',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedLeadsRoute = AuthenticatedLeadsRouteImport.update({
+  id: '/leads',
+  path: '/leads',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedPaymentsRoute = AuthenticatedPaymentsRouteImport.update({
+  id: '/payments',
+  path: '/payments',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedPermissionsRoute =
+  AuthenticatedPermissionsRouteImport.update({
+    id: '/permissions',
+    path: '/permissions',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSequencesRoute = AuthenticatedSequencesRouteImport.update({
+  id: '/sequences',
+  path: '/sequences',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedTeamCalendarRoute =
+  AuthenticatedTeamCalendarRouteImport.update({
+    id: '/team-calendar',
+    path: '/team-calendar',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedTrafficRoute = AuthenticatedTrafficRouteImport.update({
+  id: '/traffic',
+  path: '/traffic',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedVslRoute = AuthenticatedVslRouteImport.update({
+  id: '/vsl',
+  path: '/vsl',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedWebinarAnalyticsRoute =
+  AuthenticatedWebinarAnalyticsRouteImport.update({
+    id: '/webinar-analytics',
+    path: '/webinar-analytics',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedWeeklyReportRoute =
+  AuthenticatedWeeklyReportRouteImport.update({
+    id: '/weekly-report',
+    path: '/weekly-report',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const LTokenRoute = LTokenRouteImport.update({
+  id: '/l/$token',
+  path: '/l/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicWhopRoute = ApiPublicWhopRouteImport.update({
-  id: '/api/public/whop',
-  path: '/api/public/whop',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicWebinarjamRoute = ApiPublicWebinarjamRouteImport.update({
-  id: '/api/public/webinarjam',
-  path: '/api/public/webinarjam',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicTypeformRoute = ApiPublicTypeformRouteImport.update({
-  id: '/api/public/typeform',
-  path: '/api/public/typeform',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicStripeRoute = ApiPublicStripeRouteImport.update({
-  id: '/api/public/stripe',
-  path: '/api/public/stripe',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicPaypalRoute = ApiPublicPaypalRouteImport.update({
-  id: '/api/public/paypal',
-  path: '/api/public/paypal',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicFanbasisRoute = ApiPublicFanbasisRouteImport.update({
-  id: '/api/public/fanbasis',
-  path: '/api/public/fanbasis',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicCloseRoute = ApiPublicCloseRouteImport.update({
-  id: '/api/public/close',
-  path: '/api/public/close',
+const PcvTokenRoute = PcvTokenRouteImport.update({
+  id: '/pcv/$token',
+  path: '/pcv/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicCalendlyRoute = ApiPublicCalendlyRouteImport.update({
@@ -285,14 +263,44 @@ const ApiPublicCalendlyRoute = ApiPublicCalendlyRouteImport.update({
   path: '/api/public/calendly',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicTwilioEventRoute = ApiPublicTwilioEventRouteImport.update({
-  id: '/api/public/twilio/$event',
-  path: '/api/public/twilio/$event',
+const ApiPublicCloseRoute = ApiPublicCloseRouteImport.update({
+  id: '/api/public/close',
+  path: '/api/public/close',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicOauthMetaRoute = ApiPublicOauthMetaRouteImport.update({
-  id: '/api/public/oauth/meta',
-  path: '/api/public/oauth/meta',
+const ApiPublicFanbasisRoute = ApiPublicFanbasisRouteImport.update({
+  id: '/api/public/fanbasis',
+  path: '/api/public/fanbasis',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicPaypalRoute = ApiPublicPaypalRouteImport.update({
+  id: '/api/public/paypal',
+  path: '/api/public/paypal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicStripeRoute = ApiPublicStripeRouteImport.update({
+  id: '/api/public/stripe',
+  path: '/api/public/stripe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicTypeformRoute = ApiPublicTypeformRouteImport.update({
+  id: '/api/public/typeform',
+  path: '/api/public/typeform',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicWebinarjamRoute = ApiPublicWebinarjamRouteImport.update({
+  id: '/api/public/webinarjam',
+  path: '/api/public/webinarjam',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicWhopRoute = ApiPublicWhopRouteImport.update({
+  id: '/api/public/whop',
+  path: '/api/public/whop',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicWiseRoute = ApiPublicWiseRouteImport.update({
+  id: '/api/public/wise',
+  path: '/api/public/wise',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicIngestTokenRoute = ApiPublicIngestTokenRouteImport.update({
@@ -300,18 +308,31 @@ const ApiPublicIngestTokenRoute = ApiPublicIngestTokenRouteImport.update({
   path: '/api/public/ingest/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicOauthMetaRoute = ApiPublicOauthMetaRouteImport.update({
+  id: '/api/public/oauth/meta',
+  path: '/api/public/oauth/meta',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicTwilioEventRoute = ApiPublicTwilioEventRouteImport.update({
+  id: '/api/public/twilio/$event',
+  path: '/api/public/twilio/$event',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/request-access': typeof RequestAccessRoute
+  '/terms': typeof TermsRoute
   '/welcome': typeof WelcomeRoute
   '/attribution': typeof AuthenticatedAttributionRoute
   '/closer': typeof AuthenticatedCloserRoute
   '/content': typeof AuthenticatedContentRoute
   '/content-calendar': typeof AuthenticatedContentCalendarRoute
   '/copy': typeof AuthenticatedCopyRoute
+  '/crm': typeof AuthenticatedCrmRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
   '/eod-reports': typeof AuthenticatedEodReportsRoute
@@ -353,13 +374,16 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/request-access': typeof RequestAccessRoute
+  '/terms': typeof TermsRoute
   '/welcome': typeof WelcomeRoute
   '/attribution': typeof AuthenticatedAttributionRoute
   '/closer': typeof AuthenticatedCloserRoute
   '/content': typeof AuthenticatedContentRoute
   '/content-calendar': typeof AuthenticatedContentCalendarRoute
   '/copy': typeof AuthenticatedCopyRoute
+  '/crm': typeof AuthenticatedCrmRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dm-setter': typeof AuthenticatedDmSetterRoute
   '/eod-reports': typeof AuthenticatedEodReportsRoute
@@ -403,13 +427,16 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/daily-win': typeof DailyWinRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/request-access': typeof RequestAccessRoute
+  '/terms': typeof TermsRoute
   '/welcome': typeof WelcomeRoute
   '/_authenticated/attribution': typeof AuthenticatedAttributionRoute
   '/_authenticated/closer': typeof AuthenticatedCloserRoute
   '/_authenticated/content': typeof AuthenticatedContentRoute
   '/_authenticated/content-calendar': typeof AuthenticatedContentCalendarRoute
   '/_authenticated/copy': typeof AuthenticatedCopyRoute
+  '/_authenticated/crm': typeof AuthenticatedCrmRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/dm-setter': typeof AuthenticatedDmSetterRoute
   '/_authenticated/eod-reports': typeof AuthenticatedEodReportsRoute
@@ -453,13 +480,16 @@ export interface FileRouteTypes {
     | '/'
     | '/daily-win'
     | '/login'
+    | '/privacy'
     | '/request-access'
+    | '/terms'
     | '/welcome'
     | '/attribution'
     | '/closer'
     | '/content'
     | '/content-calendar'
     | '/copy'
+    | '/crm'
     | '/dashboard'
     | '/dm-setter'
     | '/eod-reports'
@@ -501,13 +531,16 @@ export interface FileRouteTypes {
     | '/'
     | '/daily-win'
     | '/login'
+    | '/privacy'
     | '/request-access'
+    | '/terms'
     | '/welcome'
     | '/attribution'
     | '/closer'
     | '/content'
     | '/content-calendar'
     | '/copy'
+    | '/crm'
     | '/dashboard'
     | '/dm-setter'
     | '/eod-reports'
@@ -550,13 +583,16 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/daily-win'
     | '/login'
+    | '/privacy'
     | '/request-access'
+    | '/terms'
     | '/welcome'
     | '/_authenticated/attribution'
     | '/_authenticated/closer'
     | '/_authenticated/content'
     | '/_authenticated/content-calendar'
     | '/_authenticated/copy'
+    | '/_authenticated/crm'
     | '/_authenticated/dashboard'
     | '/_authenticated/dm-setter'
     | '/_authenticated/eod-reports'
@@ -600,7 +636,9 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   DailyWinRoute: typeof DailyWinRoute
   LoginRoute: typeof LoginRoute
+  PrivacyRoute: typeof PrivacyRoute
   RequestAccessRoute: typeof RequestAccessRoute
+  TermsRoute: typeof TermsRoute
   WelcomeRoute: typeof WelcomeRoute
   LTokenRoute: typeof LTokenRoute
   PcvTokenRoute: typeof PcvTokenRoute
@@ -620,32 +658,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/welcome': {
-      id: '/welcome'
-      path: '/welcome'
-      fullPath: '/welcome'
-      preLoaderRoute: typeof WelcomeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/request-access': {
-      id: '/request-access'
-      path: '/request-access'
-      fullPath: '/request-access'
-      preLoaderRoute: typeof RequestAccessRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/daily-win': {
-      id: '/daily-win'
-      path: '/daily-win'
-      fullPath: '/daily-win'
-      preLoaderRoute: typeof DailyWinRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -655,200 +672,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/daily-win': {
+      id: '/daily-win'
+      path: '/daily-win'
+      fullPath: '/daily-win'
+      preLoaderRoute: typeof DailyWinRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/pcv/$token': {
-      id: '/pcv/$token'
-      path: '/pcv/$token'
-      fullPath: '/pcv/$token'
-      preLoaderRoute: typeof PcvTokenRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/l/$token': {
-      id: '/l/$token'
-      path: '/l/$token'
-      fullPath: '/l/$token'
-      preLoaderRoute: typeof LTokenRouteImport
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/weekly-report': {
-      id: '/_authenticated/weekly-report'
-      path: '/weekly-report'
-      fullPath: '/weekly-report'
-      preLoaderRoute: typeof AuthenticatedWeeklyReportRouteImport
-      parentRoute: typeof AuthenticatedRoute
+    '/request-access': {
+      id: '/request-access'
+      path: '/request-access'
+      fullPath: '/request-access'
+      preLoaderRoute: typeof RequestAccessRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/webinar-analytics': {
-      id: '/_authenticated/webinar-analytics'
-      path: '/webinar-analytics'
-      fullPath: '/webinar-analytics'
-      preLoaderRoute: typeof AuthenticatedWebinarAnalyticsRouteImport
-      parentRoute: typeof AuthenticatedRoute
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/vsl': {
-      id: '/_authenticated/vsl'
-      path: '/vsl'
-      fullPath: '/vsl'
-      preLoaderRoute: typeof AuthenticatedVslRouteImport
-      parentRoute: typeof AuthenticatedRoute
+    '/welcome': {
+      id: '/welcome'
+      path: '/welcome'
+      fullPath: '/welcome'
+      preLoaderRoute: typeof WelcomeRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/traffic': {
-      id: '/_authenticated/traffic'
-      path: '/traffic'
-      fullPath: '/traffic'
-      preLoaderRoute: typeof AuthenticatedTrafficRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/team-calendar': {
-      id: '/_authenticated/team-calendar'
-      path: '/team-calendar'
-      fullPath: '/team-calendar'
-      preLoaderRoute: typeof AuthenticatedTeamCalendarRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/team': {
-      id: '/_authenticated/team'
-      path: '/team'
-      fullPath: '/team'
-      preLoaderRoute: typeof AuthenticatedTeamRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/settings': {
-      id: '/_authenticated/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/sequences': {
-      id: '/_authenticated/sequences'
-      path: '/sequences'
-      fullPath: '/sequences'
-      preLoaderRoute: typeof AuthenticatedSequencesRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/permissions': {
-      id: '/_authenticated/permissions'
-      path: '/permissions'
-      fullPath: '/permissions'
-      preLoaderRoute: typeof AuthenticatedPermissionsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/payments': {
-      id: '/_authenticated/payments'
-      path: '/payments'
-      fullPath: '/payments'
-      preLoaderRoute: typeof AuthenticatedPaymentsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/onboarding': {
-      id: '/_authenticated/onboarding'
-      path: '/onboarding'
-      fullPath: '/onboarding'
-      preLoaderRoute: typeof AuthenticatedOnboardingRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/leads': {
-      id: '/_authenticated/leads'
-      path: '/leads'
-      fullPath: '/leads'
-      preLoaderRoute: typeof AuthenticatedLeadsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/integrations': {
-      id: '/_authenticated/integrations'
-      path: '/integrations'
-      fullPath: '/integrations'
-      preLoaderRoute: typeof AuthenticatedIntegrationsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/inbound-dialer': {
-      id: '/_authenticated/inbound-dialer'
-      path: '/inbound-dialer'
-      fullPath: '/inbound-dialer'
-      preLoaderRoute: typeof AuthenticatedInboundDialerRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/home': {
-      id: '/_authenticated/home'
-      path: '/home'
-      fullPath: '/home'
-      preLoaderRoute: typeof AuthenticatedHomeRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/hiring': {
-      id: '/_authenticated/hiring'
-      path: '/hiring'
-      fullPath: '/hiring'
-      preLoaderRoute: typeof AuthenticatedHiringRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/help': {
-      id: '/_authenticated/help'
-      path: '/help'
-      fullPath: '/help'
-      preLoaderRoute: typeof AuthenticatedHelpRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/fulfillment': {
-      id: '/_authenticated/fulfillment'
-      path: '/fulfillment'
-      fullPath: '/fulfillment'
-      preLoaderRoute: typeof AuthenticatedFulfillmentRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/events': {
-      id: '/_authenticated/events'
-      path: '/events'
-      fullPath: '/events'
-      preLoaderRoute: typeof AuthenticatedEventsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/eod-reports': {
-      id: '/_authenticated/eod-reports'
-      path: '/eod-reports'
-      fullPath: '/eod-reports'
-      preLoaderRoute: typeof AuthenticatedEodReportsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/dm-setter': {
-      id: '/_authenticated/dm-setter'
-      path: '/dm-setter'
-      fullPath: '/dm-setter'
-      preLoaderRoute: typeof AuthenticatedDmSetterRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/dashboard': {
-      id: '/_authenticated/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/copy': {
-      id: '/_authenticated/copy'
-      path: '/copy'
-      fullPath: '/copy'
-      preLoaderRoute: typeof AuthenticatedCopyRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/content-calendar': {
-      id: '/_authenticated/content-calendar'
-      path: '/content-calendar'
-      fullPath: '/content-calendar'
-      preLoaderRoute: typeof AuthenticatedContentCalendarRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/content': {
-      id: '/_authenticated/content'
-      path: '/content'
-      fullPath: '/content'
-      preLoaderRoute: typeof AuthenticatedContentRouteImport
+    '/_authenticated/attribution': {
+      id: '/_authenticated/attribution'
+      path: '/attribution'
+      fullPath: '/attribution'
+      preLoaderRoute: typeof AuthenticatedAttributionRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/closer': {
@@ -858,67 +728,200 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCloserRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/attribution': {
-      id: '/_authenticated/attribution'
-      path: '/attribution'
-      fullPath: '/attribution'
-      preLoaderRoute: typeof AuthenticatedAttributionRouteImport
+    '/_authenticated/content': {
+      id: '/_authenticated/content'
+      path: '/content'
+      fullPath: '/content'
+      preLoaderRoute: typeof AuthenticatedContentRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/api/public/wise': {
-      id: '/api/public/wise'
-      path: '/api/public/wise'
-      fullPath: '/api/public/wise'
-      preLoaderRoute: typeof ApiPublicWiseRouteImport
+    '/_authenticated/content-calendar': {
+      id: '/_authenticated/content-calendar'
+      path: '/content-calendar'
+      fullPath: '/content-calendar'
+      preLoaderRoute: typeof AuthenticatedContentCalendarRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/copy': {
+      id: '/_authenticated/copy'
+      path: '/copy'
+      fullPath: '/copy'
+      preLoaderRoute: typeof AuthenticatedCopyRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/crm': {
+      id: '/_authenticated/crm'
+      path: '/crm'
+      fullPath: '/crm'
+      preLoaderRoute: typeof AuthenticatedCrmRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/dm-setter': {
+      id: '/_authenticated/dm-setter'
+      path: '/dm-setter'
+      fullPath: '/dm-setter'
+      preLoaderRoute: typeof AuthenticatedDmSetterRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/eod-reports': {
+      id: '/_authenticated/eod-reports'
+      path: '/eod-reports'
+      fullPath: '/eod-reports'
+      preLoaderRoute: typeof AuthenticatedEodReportsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/events': {
+      id: '/_authenticated/events'
+      path: '/events'
+      fullPath: '/events'
+      preLoaderRoute: typeof AuthenticatedEventsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/fulfillment': {
+      id: '/_authenticated/fulfillment'
+      path: '/fulfillment'
+      fullPath: '/fulfillment'
+      preLoaderRoute: typeof AuthenticatedFulfillmentRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/help': {
+      id: '/_authenticated/help'
+      path: '/help'
+      fullPath: '/help'
+      preLoaderRoute: typeof AuthenticatedHelpRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/hiring': {
+      id: '/_authenticated/hiring'
+      path: '/hiring'
+      fullPath: '/hiring'
+      preLoaderRoute: typeof AuthenticatedHiringRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/home': {
+      id: '/_authenticated/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof AuthenticatedHomeRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inbound-dialer': {
+      id: '/_authenticated/inbound-dialer'
+      path: '/inbound-dialer'
+      fullPath: '/inbound-dialer'
+      preLoaderRoute: typeof AuthenticatedInboundDialerRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/integrations': {
+      id: '/_authenticated/integrations'
+      path: '/integrations'
+      fullPath: '/integrations'
+      preLoaderRoute: typeof AuthenticatedIntegrationsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/leads': {
+      id: '/_authenticated/leads'
+      path: '/leads'
+      fullPath: '/leads'
+      preLoaderRoute: typeof AuthenticatedLeadsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/onboarding': {
+      id: '/_authenticated/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof AuthenticatedOnboardingRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/payments': {
+      id: '/_authenticated/payments'
+      path: '/payments'
+      fullPath: '/payments'
+      preLoaderRoute: typeof AuthenticatedPaymentsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/permissions': {
+      id: '/_authenticated/permissions'
+      path: '/permissions'
+      fullPath: '/permissions'
+      preLoaderRoute: typeof AuthenticatedPermissionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/sequences': {
+      id: '/_authenticated/sequences'
+      path: '/sequences'
+      fullPath: '/sequences'
+      preLoaderRoute: typeof AuthenticatedSequencesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/team': {
+      id: '/_authenticated/team'
+      path: '/team'
+      fullPath: '/team'
+      preLoaderRoute: typeof AuthenticatedTeamRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/team-calendar': {
+      id: '/_authenticated/team-calendar'
+      path: '/team-calendar'
+      fullPath: '/team-calendar'
+      preLoaderRoute: typeof AuthenticatedTeamCalendarRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/traffic': {
+      id: '/_authenticated/traffic'
+      path: '/traffic'
+      fullPath: '/traffic'
+      preLoaderRoute: typeof AuthenticatedTrafficRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/vsl': {
+      id: '/_authenticated/vsl'
+      path: '/vsl'
+      fullPath: '/vsl'
+      preLoaderRoute: typeof AuthenticatedVslRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/webinar-analytics': {
+      id: '/_authenticated/webinar-analytics'
+      path: '/webinar-analytics'
+      fullPath: '/webinar-analytics'
+      preLoaderRoute: typeof AuthenticatedWebinarAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/weekly-report': {
+      id: '/_authenticated/weekly-report'
+      path: '/weekly-report'
+      fullPath: '/weekly-report'
+      preLoaderRoute: typeof AuthenticatedWeeklyReportRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/l/$token': {
+      id: '/l/$token'
+      path: '/l/$token'
+      fullPath: '/l/$token'
+      preLoaderRoute: typeof LTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/whop': {
-      id: '/api/public/whop'
-      path: '/api/public/whop'
-      fullPath: '/api/public/whop'
-      preLoaderRoute: typeof ApiPublicWhopRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/webinarjam': {
-      id: '/api/public/webinarjam'
-      path: '/api/public/webinarjam'
-      fullPath: '/api/public/webinarjam'
-      preLoaderRoute: typeof ApiPublicWebinarjamRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/typeform': {
-      id: '/api/public/typeform'
-      path: '/api/public/typeform'
-      fullPath: '/api/public/typeform'
-      preLoaderRoute: typeof ApiPublicTypeformRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/stripe': {
-      id: '/api/public/stripe'
-      path: '/api/public/stripe'
-      fullPath: '/api/public/stripe'
-      preLoaderRoute: typeof ApiPublicStripeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/paypal': {
-      id: '/api/public/paypal'
-      path: '/api/public/paypal'
-      fullPath: '/api/public/paypal'
-      preLoaderRoute: typeof ApiPublicPaypalRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/fanbasis': {
-      id: '/api/public/fanbasis'
-      path: '/api/public/fanbasis'
-      fullPath: '/api/public/fanbasis'
-      preLoaderRoute: typeof ApiPublicFanbasisRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/close': {
-      id: '/api/public/close'
-      path: '/api/public/close'
-      fullPath: '/api/public/close'
-      preLoaderRoute: typeof ApiPublicCloseRouteImport
+    '/pcv/$token': {
+      id: '/pcv/$token'
+      path: '/pcv/$token'
+      fullPath: '/pcv/$token'
+      preLoaderRoute: typeof PcvTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/calendly': {
@@ -928,11 +931,67 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCalendlyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/twilio/$event': {
-      id: '/api/public/twilio/$event'
-      path: '/api/public/twilio/$event'
-      fullPath: '/api/public/twilio/$event'
-      preLoaderRoute: typeof ApiPublicTwilioEventRouteImport
+    '/api/public/close': {
+      id: '/api/public/close'
+      path: '/api/public/close'
+      fullPath: '/api/public/close'
+      preLoaderRoute: typeof ApiPublicCloseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fanbasis': {
+      id: '/api/public/fanbasis'
+      path: '/api/public/fanbasis'
+      fullPath: '/api/public/fanbasis'
+      preLoaderRoute: typeof ApiPublicFanbasisRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/paypal': {
+      id: '/api/public/paypal'
+      path: '/api/public/paypal'
+      fullPath: '/api/public/paypal'
+      preLoaderRoute: typeof ApiPublicPaypalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/stripe': {
+      id: '/api/public/stripe'
+      path: '/api/public/stripe'
+      fullPath: '/api/public/stripe'
+      preLoaderRoute: typeof ApiPublicStripeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/typeform': {
+      id: '/api/public/typeform'
+      path: '/api/public/typeform'
+      fullPath: '/api/public/typeform'
+      preLoaderRoute: typeof ApiPublicTypeformRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/webinarjam': {
+      id: '/api/public/webinarjam'
+      path: '/api/public/webinarjam'
+      fullPath: '/api/public/webinarjam'
+      preLoaderRoute: typeof ApiPublicWebinarjamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/whop': {
+      id: '/api/public/whop'
+      path: '/api/public/whop'
+      fullPath: '/api/public/whop'
+      preLoaderRoute: typeof ApiPublicWhopRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/wise': {
+      id: '/api/public/wise'
+      path: '/api/public/wise'
+      fullPath: '/api/public/wise'
+      preLoaderRoute: typeof ApiPublicWiseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/ingest/$token': {
+      id: '/api/public/ingest/$token'
+      path: '/api/public/ingest/$token'
+      fullPath: '/api/public/ingest/$token'
+      preLoaderRoute: typeof ApiPublicIngestTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/oauth/meta': {
@@ -942,11 +1001,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicOauthMetaRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/ingest/$token': {
-      id: '/api/public/ingest/$token'
-      path: '/api/public/ingest/$token'
-      fullPath: '/api/public/ingest/$token'
-      preLoaderRoute: typeof ApiPublicIngestTokenRouteImport
+    '/api/public/twilio/$event': {
+      id: '/api/public/twilio/$event'
+      path: '/api/public/twilio/$event'
+      fullPath: '/api/public/twilio/$event'
+      preLoaderRoute: typeof ApiPublicTwilioEventRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -958,6 +1017,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedContentRoute: typeof AuthenticatedContentRoute
   AuthenticatedContentCalendarRoute: typeof AuthenticatedContentCalendarRoute
   AuthenticatedCopyRoute: typeof AuthenticatedCopyRoute
+  AuthenticatedCrmRoute: typeof AuthenticatedCrmRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDmSetterRoute: typeof AuthenticatedDmSetterRoute
   AuthenticatedEodReportsRoute: typeof AuthenticatedEodReportsRoute
@@ -988,6 +1048,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedContentRoute: AuthenticatedContentRoute,
   AuthenticatedContentCalendarRoute: AuthenticatedContentCalendarRoute,
   AuthenticatedCopyRoute: AuthenticatedCopyRoute,
+  AuthenticatedCrmRoute: AuthenticatedCrmRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDmSetterRoute: AuthenticatedDmSetterRoute,
   AuthenticatedEodReportsRoute: AuthenticatedEodReportsRoute,
@@ -1021,7 +1082,9 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   DailyWinRoute: DailyWinRoute,
   LoginRoute: LoginRoute,
+  PrivacyRoute: PrivacyRoute,
   RequestAccessRoute: RequestAccessRoute,
+  TermsRoute: TermsRoute,
   WelcomeRoute: WelcomeRoute,
   LTokenRoute: LTokenRoute,
   PcvTokenRoute: PcvTokenRoute,

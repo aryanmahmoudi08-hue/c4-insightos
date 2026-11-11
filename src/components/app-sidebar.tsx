@@ -39,6 +39,7 @@ import {
   DollarSign,
   Radar,
   HelpCircle,
+  KanbanSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -109,6 +110,7 @@ const HOME_NAV: NavItem[] = [{ to: "/home", label: "Home", icon: Home }];
 const MAIN_NAV: NavItem[] = [{ to: "/dashboard", label: "Main Hub", icon: LayoutDashboard }];
 
 const SALES_NAV: NavItem[] = [
+  { to: "/crm", label: "CRM", icon: KanbanSquare },
   { to: "/leads", label: "Legacy Leads", icon: Users },
   { to: "/eod-reports", label: "EOD Reports", icon: ClipboardCheck },
 ];

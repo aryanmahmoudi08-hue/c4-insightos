@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { syncLeadStageFromCall } from "@/lib/crm-board.functions";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { TopBar } from "@/components/app-sidebar";
@@ -174,6 +175,7 @@ function EodFlowForRole({
   onExit: () => void;
 }) {
   const qc = useQueryClient();
+  const syncBoardStage = useServerFn(syncLeadStageFromCall);
   const schema =
     role === "dm_setter"
       ? DM_SETTER_EOD_SCHEMA
@@ -219,6 +221,16 @@ function EodFlowForRole({
         .select("id")
         .single();
       if (error) throw error;
+      // Put the lead in the CRM board stage its Lead Status maps to. Same
+      // call the Closer's Log Call dialog makes, so both entry points place
+      // the card identically. Best-effort: never fails the submission.
+      if (callRow?.id) {
+        try {
+          await syncBoardStage({ data: { callId: callRow.id } });
+        } catch {
+          /* board placement is best-effort */
+        }
+      }
       // One call_objections row per selected category — same table/shape
       // closer.tsx's "Log a sales call" dialog already writes, so both
       // entry points feed the same objection-frequency instrument and "By

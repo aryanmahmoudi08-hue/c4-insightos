@@ -4,7 +4,7 @@
  * The app already has a real, single-column signal for this — the
  * `call_status` enum has carried a `disqualified` value since the very
  * first migration, and the Closer's own EOD/Log Call flow already writes it
- * explicitly (the "DQ" status option, and the free-text EOD's "Lost" /
+ * explicitly (the "DQ" status option, and the free-text EOD's "No Close" /
  * "Bad Fit" / "DQ" Lead Status choices — see eod-reports.ts's
  * LEAD_STATUS_MAP). `closer.tsx` already exposes this as a real, clickable
  * "Post-call disposition mix" entry via

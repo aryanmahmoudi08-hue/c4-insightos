@@ -22,6 +22,7 @@ import {
   UserPlus,
   Users,
   Video,
+  KanbanSquare,
 } from "lucide-react";
 import type { ComponentType } from "react";
 
@@ -50,6 +51,7 @@ export const PAGE_IDENTITY: Record<string, PageIdentity> = {
   "/home": { eyebrow: "Overview", icon: Home },
   "/dashboard": { eyebrow: "Overview", icon: LayoutDashboard },
 
+  "/crm": { eyebrow: "Sales Tracking", icon: KanbanSquare },
   "/leads": { eyebrow: "Sales Tracking", icon: Users },
   "/eod-reports": { eyebrow: "Sales Tracking", icon: ClipboardCheck },
 

@@ -47,6 +47,13 @@ export const RESOURCES: ResourceDef[] = [
     edit: "Rearrange tiles and save custom dashboard widgets / metric definitions.",
   },
   {
+    key: "crm",
+    label: "CRM",
+    group: "Sales",
+    view: "The pipeline board — Applications, Sales and Cancelled calls, with every lead card and its upcoming call.",
+    edit: "Drag leads between stages, and open the Calendly book / cancel / reschedule links on a card.",
+  },
+  {
     key: "leads",
     label: "Legacy Leads",
     group: "Sales",
@@ -230,6 +237,7 @@ export const RESOURCES: ResourceDef[] = [
 export const PATH_TO_RESOURCE: Record<string, string> = {
   "/home": "home",
   "/dashboard": "dashboard",
+  "/crm": "crm",
   "/leads": "leads",
   "/eod-reports": "eod_reports",
   "/dm-setter": "dm_setter",
@@ -342,6 +350,7 @@ const GROWTH_OPS_BACKFILL_RESOURCES = [
 const REP_VISIBLE_RESOURCES = [
   "home",
   "dashboard",
+  "crm",
   "leads",
   "team",
   "team_calendar",
@@ -360,6 +369,7 @@ const REP_VISIBLE_RESOURCES = [
 const SALES_MANAGER_VISIBLE = [
   "home",
   "dashboard",
+  "crm",
   "leads",
   "eod_reports",
   "dm_setter",
@@ -382,6 +392,7 @@ const SALES_MANAGER_VISIBLE = [
  * Webinar Analytics or Weekly Report — those stay read-only reference for
  * them even though they're visible. */
 const SALES_MANAGER_EDITABLE = [
+  "crm",
   "leads",
   "eod_reports",
   "dm_setter",

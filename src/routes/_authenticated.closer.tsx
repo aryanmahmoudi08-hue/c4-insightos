@@ -12,6 +12,7 @@ import { getHistoricalFxRatesFn } from "@/lib/fx.functions";
 import { collectFxPairs, sumNormalizedCents } from "@/lib/currency";
 import { autoIngestCallSignalFn } from "@/lib/content-signals.functions";
 import { captureCallLifecycleEventsFn } from "@/lib/dispatch.functions";
+import { syncLeadStageFromCall } from "@/lib/crm-board.functions";
 import { evaluateAttributionEvidence } from "@/lib/acquisition";
 import { CLOSER_DISPOSITIONS, normalizeCloserDisposition } from "@/lib/operating-workflows";
 import { AttributionEvidencePanel } from "@/components/attribution-evidence-panel";
@@ -2052,6 +2053,7 @@ function Closer() {
 
   const autoIngest = useServerFn(autoIngestCallSignalFn);
   const captureCallLifecycle = useServerFn(captureCallLifecycleEventsFn);
+  const syncBoardStage = useServerFn(syncLeadStageFromCall);
   const create = useMutation({
     mutationFn: async (f: FormData) => {
       const status = f.get("status") as
@@ -2130,6 +2132,14 @@ function Closer() {
       if (error) throw error;
       if (callRow?.id) {
         await captureCallLifecycle({ data: { callId: callRow.id } });
+        // Put the lead in the CRM board stage its Lead Status maps to. Never
+        // allowed to fail the submission — the call is saved either way, and
+        // a card in the wrong column is recoverable by dragging it.
+        try {
+          await syncBoardStage({ data: { callId: callRow.id } });
+        } catch {
+          /* board placement is best-effort */
+        }
       }
       // No-show recovery — this call recovers an earlier no-show for the same
       // lead. Back-links the new call to the most recent no_show call for
@@ -3396,7 +3406,7 @@ function Closer() {
             {
               // Priority 2 (disqualification tracking) — canonical source is
               // `calls.status === "disqualified"`, the closer's own EOD/Log
-              // Call selection (Lead Status "Lost"/"Bad Fit"/"DQ" or the
+              // Call selection (Lead Status "No Close"/"Bad Fit"/"DQ" or the
               // status dropdown's "DQ"), same value the Post-call disposition
               // mix below already reports as "Not Qualified". Clicking opens
               // that exact same drilldown — one canonical event, one place
