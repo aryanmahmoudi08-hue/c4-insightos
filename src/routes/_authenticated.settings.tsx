@@ -190,6 +190,7 @@ function Settings() {
           </Link>
         </Section>
 
+        <SchedulingSection orgId={org?.org_id} isAdmin={isAdmin} />
         <ContentEngineSection orgId={org?.org_id} isAdmin={isAdmin} />
 
         <Section
@@ -292,6 +293,102 @@ const CLIENT_FIELDS: NumField[] = [
     max: 365,
   },
 ];
+/**
+ * The workspace's Calendly scheduling link.
+ *
+ * Only "Book a meeting" on a CRM lead card uses it. Cancel and Reschedule
+ * are per-booking URLs Calendly issues and the webhook stores on the call
+ * row, so they open that specific booking and need nothing configured here.
+ */
+function SchedulingSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boolean }) {
+  const { devBypass } = useAuth();
+  const qc = useQueryClient();
+  const getFn = useServerFn(getWorkspaceSettingsFn);
+  const updateFn = useServerFn(updateWorkspaceSettingsFn);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["workspace-settings", orgId, devBypass],
+    enabled: devBypass || !!orgId,
+    queryFn: () =>
+      devBypass ? Promise.resolve(DEFAULT_WORKSPACE_SETTINGS) : getFn({ data: { orgId: orgId! } }),
+  });
+
+  const [url, setUrl] = useState("");
+  const [seeded, setSeeded] = useState(false);
+  if (data && !seeded) {
+    setUrl(data.scheduling.calendlyUrl);
+    setSeeded(true);
+  }
+
+  const trimmed = url.trim();
+  const invalid = trimmed.length > 0 && !/^https:\/\//i.test(trimmed);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (devBypass) return data ?? DEFAULT_WORKSPACE_SETTINGS;
+      return updateFn({ data: { orgId: orgId!, scheduling: { calendlyUrl: trimmed } } });
+    },
+    onSuccess: (saved) => {
+      toast.success(trimmed ? "Scheduling link saved" : "Scheduling link cleared");
+      qc.setQueryData(["workspace-settings", orgId, devBypass], saved);
+      qc.invalidateQueries({ queryKey: ["crm-board"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Section
+      title="Scheduling"
+      description="Where “Book a meeting” on a CRM lead card sends you. Cancelling and rescheduling use the booking's own Calendly links and need nothing here."
+    >
+      {isLoading ? (
+        <div className="py-6 text-center text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 mx-auto animate-spin" />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Calendly scheduling link</Label>
+            <Input
+              value={url}
+              disabled={!isAdmin}
+              placeholder="https://calendly.com/your-team/intro-call"
+              onChange={(e) => setUrl(e.target.value)}
+            />
+            {invalid ? (
+              <p className="text-3xs text-destructive">Use an HTTPS URL.</p>
+            ) : (
+              <p className="text-3xs text-muted-foreground">
+                Leave blank and the Book button stays disabled, saying no link is set — rather than
+                opening something that does not exist.
+              </p>
+            )}
+          </div>
+          {isAdmin ? (
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => save.mutate()}
+              disabled={save.isPending || invalid}
+            >
+              {save.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}{" "}
+              Save
+            </Button>
+          ) : (
+            <p className="text-2xs text-muted-foreground">
+              Only workspace owners and admins can change this.
+            </p>
+          )}
+        </div>
+      )}
+    </Section>
+  );
+}
+
 function ContentEngineSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boolean }) {
   const { devBypass } = useAuth();
   const qc = useQueryClient();

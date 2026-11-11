@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchWorkspaceSettings } from "@/lib/workspace-settings.functions";
 import { useCurrentOrg } from "@/hooks/use-auth";
 import { moveLeadToStage } from "@/lib/crm-board.functions";
 import {
@@ -259,13 +260,11 @@ function CrmPage() {
         for (const lead of leads) lead.calls = byLead.get(lead.id) ?? [];
       }
 
-      const { data: orgRow } = await supabase
-        .from("organizations")
-        .select("settings")
-        .eq("id", orgId!)
-        .maybeSingle();
-      const raw = (orgRow?.settings as Record<string, unknown> | null)?.["calendly_scheduling_url"];
-      const bookingUrl = typeof raw === "string" && raw.trim() ? raw.trim() : null;
+      // Validated through the same schema the Settings page writes, rather
+      // than poking at the raw jsonb — organizations.settings is shared and
+      // holds other callers' keys too.
+      const settings = await fetchWorkspaceSettings(supabase, orgId!);
+      const bookingUrl = settings.scheduling.calendlyUrl.trim() || null;
 
       return { stages, leads, bookingUrl };
     },

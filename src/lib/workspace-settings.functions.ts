@@ -45,10 +45,11 @@ const FunnelInstrumentSettings = z.object({
   minCapSample: z.number().int().min(1).max(200).default(10),
 });
 
-const TypeformUrl = z
+const HttpsUrl = z
   .string()
   .trim()
-  .refine((value) => !value || /^https:\/\//i.test(value), "Use an HTTPS Typeform URL.");
+  .refine((value) => !value || /^https:\/\//i.test(value), "Use an HTTPS URL.");
+const TypeformUrl = HttpsUrl;
 
 const EodSettings = z.object({
   /** Fallback Typeform for users without a specific user or role assignment. */
@@ -59,12 +60,23 @@ const EodSettings = z.object({
   userUrls: z.record(z.string(), TypeformUrl).default({}),
 });
 
+const SchedulingSettings = z.object({
+  /** The workspace's own Calendly scheduling link — where "Book a meeting"
+   * on a CRM card sends you. Cancel and Reschedule do NOT use this: Calendly
+   * issues per-booking URLs that the webhook already stores on the call row,
+   * and those open the specific booking rather than a blank calendar. Empty
+   * means nobody has set one, and the CRM card says so instead of offering a
+   * button that goes nowhere. */
+  calendlyUrl: HttpsUrl.default(""),
+});
+
 export const WorkspaceSettingsSchema = z.object({
   content_engine: ContentEngineSettings.default({}),
   alerts: AlertSettings.default({}),
   clients: ClientSettings.default({}),
   funnel_instrument: FunnelInstrumentSettings.default({}),
   eod: EodSettings.default({}),
+  scheduling: SchedulingSettings.default({}),
 });
 
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>;
@@ -73,6 +85,7 @@ export type AlertSettingsT = WorkspaceSettings["alerts"];
 export type ClientSettingsT = WorkspaceSettings["clients"];
 export type FunnelInstrumentSettingsT = WorkspaceSettings["funnel_instrument"];
 export type EodSettingsT = WorkspaceSettings["eod"];
+export type SchedulingSettingsT = WorkspaceSettings["scheduling"];
 
 /** Used wherever settings haven't loaded yet, or by any server logic that
  * wants documented defaults without a round-trip (e.g. tests, cold paths). */
@@ -88,6 +101,7 @@ function parseStoredSettings(raw: Record<string, unknown>): WorkspaceSettings {
     clients: raw.clients ?? {},
     funnel_instrument: raw.funnel_instrument ?? {},
     eod: raw.eod ?? {},
+    scheduling: raw.scheduling ?? {},
   });
 }
 
@@ -121,6 +135,7 @@ const UpdateInput = z.object({
   clients: ClientSettings.partial().optional(),
   funnel_instrument: FunnelInstrumentSettings.partial().optional(),
   eod: EodSettings.partial().optional(),
+  scheduling: SchedulingSettings.partial().optional(),
 });
 
 export const updateWorkspaceSettingsFn = createServerFn({ method: "POST" })
@@ -147,6 +162,7 @@ export const updateWorkspaceSettingsFn = createServerFn({ method: "POST" })
         roleUrls: { ...current.eod.roleUrls, ...(data.eod?.roleUrls ?? {}) },
         userUrls: { ...current.eod.userUrls, ...(data.eod?.userUrls ?? {}) },
       },
+      scheduling: { ...current.scheduling, ...(data.scheduling ?? {}) },
     };
     const { error: upErr } = await supabase
       .from("organizations")
