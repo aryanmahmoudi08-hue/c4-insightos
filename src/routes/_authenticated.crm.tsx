@@ -24,6 +24,10 @@ import { moveLeadToStage } from "@/lib/crm-board.functions";
 import {
   BOARD_PIPELINES,
   cardTitle,
+  BOARD_SEGMENTS,
+  segmentOf,
+  stagesBySegment,
+  type BoardSegment,
   groupLeadsByStage,
   sortStages,
   upcomingCall,
@@ -167,6 +171,9 @@ function CallForms({ lead, bookingUrl }: { lead: BoardLead; bookingUrl: string |
 
 function CrmPage() {
   const [pipeline, setPipeline] = useState<string>("Sales");
+  // The board is a worklist, so it opens on what still needs doing. Closed-out
+  // stages grow forever while the live ones stay roughly constant.
+  const [segment, setSegment] = useState<BoardSegment>("in_play");
   const [search, setSearch] = useState("");
   const qc = useQueryClient();
 
@@ -207,9 +214,10 @@ function CrmPage() {
         pipelines.find((p) => p.is_default) ??
         pipelines[0];
 
-      const { data: stageRows, error: sErr } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: stageRows, error: sErr } = await (supabase as any)
         .from("crm_pipeline_stages")
-        .select("id, name, position, is_closed_won, is_closed_lost")
+        .select("id, name, position, is_closed_won, is_closed_lost, board_segment")
         .eq("org_id", orgId!)
         .eq("pipeline_id", active.id)
         .eq("is_archived", false);
@@ -287,7 +295,17 @@ function CrmPage() {
   const move = useMutation({
     mutationFn: (v: { leadId: string; stageId: string }) => moveFn({ data: v }),
     onSuccess: (res) => {
-      if (res && "moved" in res && res.moved) toast.success(`Moved to ${res.stageName}`);
+      if (res && "moved" in res && res.moved) {
+        // Dropping a card into a stage outside the current tab makes it
+        // vanish from view. Say where it went, or that reads as a bug.
+        const landed = stages.find((st) => st.name === res.stageName);
+        const landedSegment = landed ? segmentOf(landed) : null;
+        const leftView = landedSegment && landedSegment !== activeSegment;
+        const segLabel = BOARD_SEGMENTS.find((x) => x.key === landedSegment)?.label;
+        toast.success(
+          leftView ? `Moved to ${res.stageName} — now in ${segLabel}` : `Moved to ${res.stageName}`,
+        );
+      }
       qc.invalidateQueries({ queryKey: ["crm-board"] });
       qc.invalidateQueries({ queryKey: ["crm-unsorted"] });
     },
@@ -309,9 +327,31 @@ function CrmPage() {
     );
   }, [board.data?.leads, search]);
 
+  const segmentGroups = useMemo(() => stagesBySegment(stages), [stages]);
+
+  // A pipeline whose stages all sit in one segment gets no control at all —
+  // Applications has nothing partial, so it would otherwise show a tab that
+  // is always empty.
+  const activeSegment = segmentGroups.some((g) => g.key === segment)
+    ? segment
+    : (segmentGroups[0]?.key ?? "in_play");
+
+  const visibleStages = useMemo(
+    () => segmentGroups.find((g) => g.key === activeSegment)?.stages ?? [],
+    [segmentGroups, activeSegment],
+  );
+
+  // Grouping runs over every stage, not just the visible ones, so the per-tab
+  // counts are real rather than only counting what is on screen.
   const { byStage } = useMemo(() => groupLeadsByStage(filtered, stages), [filtered, stages]);
 
-  const columns = stages.map((s) => ({
+  const countFor = (seg: BoardSegment) =>
+    (segmentGroups.find((g) => g.key === seg)?.stages ?? []).reduce(
+      (n, st) => n + (byStage.get(st.id)?.length ?? 0),
+      0,
+    );
+
+  const columns = visibleStages.map((s) => ({
     key: s.id,
     label: s.name,
     tone: toneFor(s.name, s.is_closed_won, s.is_closed_lost),
@@ -352,6 +392,27 @@ function CrmPage() {
             placeholder="Search leads…"
             className="h-9 w-full max-w-xs"
           />
+          {segmentGroups.length > 1 ? (
+            <div className="rail-x flex max-w-full items-center gap-0.5 rounded-full border border-border bg-muted/30 p-0.5">
+              {segmentGroups.map((g) => (
+                <button
+                  key={g.key}
+                  type="button"
+                  aria-pressed={g.key === activeSegment}
+                  onClick={() => setSegment(g.key)}
+                  className={cn(
+                    "shrink-0 cursor-pointer rounded-full px-2.5 py-1 text-2xs font-medium transition-all",
+                    g.key === activeSegment
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {g.label}
+                  <span className="ml-1 tabular-nums opacity-70">{countFor(g.key)}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
           <span className="text-2xs text-muted-foreground tabular-nums">
             {filtered.length} {filtered.length === 1 ? "lead" : "leads"}
           </span>

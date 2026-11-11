@@ -9,12 +9,31 @@
  * upcoming-call rules can be tested directly rather than against a database.
  */
 
+/**
+ * Which group of a pipeline a stage belongs to.
+ *
+ * Three rather than two because the two terminal booleans cannot express
+ * Deposit: it is `is_closed_won`, but the balance is still being chased, so
+ * it is live work rather than an archive. Stored per stage on
+ * `crm_pipeline_stages.board_segment`.
+ */
+export type BoardSegment = "in_play" | "partial" | "closed_out";
+
+export const BOARD_SEGMENTS: { key: BoardSegment; label: string }[] = [
+  { key: "in_play", label: "In play" },
+  // Only Deposit sits here today; the label names what is in it rather than
+  // the abstraction, because "Partial" tells a closer nothing.
+  { key: "partial", label: "Deposits" },
+  { key: "closed_out", label: "Closed out" },
+];
+
 export type BoardStage = {
   id: string;
   name: string;
   position: number;
   is_closed_won: boolean;
   is_closed_lost: boolean;
+  board_segment?: BoardSegment | null;
 };
 
 export type BoardCall = {
@@ -131,4 +150,34 @@ export function stageForLeadStatus(
   if (!raw) return null;
   const hit = mappings.find((m) => m.legacy_value === raw);
   return hit?.pipeline_stage_id ?? null;
+}
+
+/**
+ * A stage's segment, falling back to what the terminal flags imply.
+ *
+ * The fallback matters for a stage created before `board_segment` existed,
+ * or by something that did not set it: terminal means closed out, anything
+ * else is live. Deposit is the one case the flags get wrong, and it is
+ * stored explicitly for exactly that reason.
+ */
+export function segmentOf(stage: BoardStage): BoardSegment {
+  if (stage.board_segment) return stage.board_segment;
+  return stage.is_closed_won || stage.is_closed_lost ? "closed_out" : "in_play";
+}
+
+/**
+ * Stages grouped by segment, in board order, with empty segments dropped.
+ *
+ * Dropping empties is what keeps the control honest on narrow pipelines:
+ * Applications has nothing partial, so it shows two choices rather than an
+ * always-empty "Deposits" tab.
+ */
+export function stagesBySegment(
+  stages: BoardStage[],
+): { key: BoardSegment; label: string; stages: BoardStage[] }[] {
+  const ordered = sortStages(stages);
+  return BOARD_SEGMENTS.map((seg) => ({
+    ...seg,
+    stages: ordered.filter((s) => segmentOf(s) === seg.key),
+  })).filter((g) => g.stages.length > 0);
 }

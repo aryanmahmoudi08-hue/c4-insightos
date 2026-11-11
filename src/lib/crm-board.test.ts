@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  BOARD_SEGMENTS,
   cardTitle,
+  segmentOf,
+  stagesBySegment,
   groupLeadsByStage,
   sortStages,
   stageForLeadStatus,
@@ -40,7 +43,14 @@ function lead(p: Partial<BoardLead>): BoardLead {
 }
 
 function stage(p: Partial<BoardStage>): BoardStage {
-  return { id: "s", name: "Stage", position: 1, is_closed_won: false, is_closed_lost: false, ...p };
+  return {
+    id: "s",
+    name: "Stage",
+    position: 1,
+    is_closed_won: false,
+    is_closed_lost: false,
+    ...p,
+  };
 }
 
 describe("upcomingCall", () => {
@@ -170,5 +180,91 @@ describe("stageForLeadStatus", () => {
   it("returns null for blank input", () => {
     expect(stageForLeadStatus(null, mappings)).toBeNull();
     expect(stageForLeadStatus("   ", mappings)).toBeNull();
+  });
+});
+
+describe("segmentOf", () => {
+  it("uses the stored segment when there is one", () => {
+    expect(segmentOf(stage({ board_segment: "partial", is_closed_won: true }))).toBe("partial");
+  });
+
+  it("keeps Deposit out of closed_out even though it is closed_won", () => {
+    const deposit = stage({ name: "Deposit", is_closed_won: true, board_segment: "partial" });
+    expect(segmentOf(deposit)).toBe("partial");
+  });
+
+  it("falls back to closed_out for a terminal stage with no segment stored", () => {
+    expect(segmentOf(stage({ is_closed_lost: true }))).toBe("closed_out");
+    expect(segmentOf(stage({ is_closed_won: true }))).toBe("closed_out");
+  });
+
+  it("falls back to in_play for a non-terminal stage with no segment stored", () => {
+    expect(segmentOf(stage({ board_segment: null }))).toBe("in_play");
+  });
+});
+
+describe("stagesBySegment", () => {
+  const sales = [
+    stage({ id: "booked", name: "Booked", position: 1, board_segment: "in_play" }),
+    stage({ id: "noshow", name: "No Show", position: 3, board_segment: "in_play" }),
+    stage({
+      id: "deposit",
+      name: "Deposit",
+      position: 6,
+      is_closed_won: true,
+      board_segment: "partial",
+    }),
+    stage({
+      id: "closed",
+      name: "Closed",
+      position: 7,
+      is_closed_won: true,
+      board_segment: "closed_out",
+    }),
+    stage({
+      id: "dq",
+      name: "DQ",
+      position: 10,
+      is_closed_lost: true,
+      board_segment: "closed_out",
+    }),
+  ];
+
+  it("splits into the three segments in board order", () => {
+    const groups = stagesBySegment(sales);
+    expect(groups.map((g) => g.key)).toEqual(["in_play", "partial", "closed_out"]);
+    expect(groups[0].stages.map((s) => s.id)).toEqual(["booked", "noshow"]);
+    expect(groups[1].stages.map((s) => s.id)).toEqual(["deposit"]);
+    expect(groups[2].stages.map((s) => s.id)).toEqual(["closed", "dq"]);
+  });
+
+  it("orders stages within a segment by position", () => {
+    const groups = stagesBySegment([
+      stage({ id: "late", position: 9, board_segment: "in_play" }),
+      stage({ id: "early", name: "Other", position: 2, board_segment: "in_play" }),
+    ]);
+    expect(groups[0].stages.map((s) => s.id)).toEqual(["early", "late"]);
+  });
+
+  it("drops segments with no stages, so narrow pipelines show fewer tabs", () => {
+    const applications = [
+      stage({ id: "a", name: "Partial Submit", position: 1, board_segment: "in_play" }),
+      stage({
+        id: "b",
+        name: "DQ",
+        position: 5,
+        is_closed_lost: true,
+        board_segment: "closed_out",
+      }),
+    ];
+    expect(stagesBySegment(applications).map((g) => g.key)).toEqual(["in_play", "closed_out"]);
+  });
+
+  it("returns nothing for a pipeline with no stages", () => {
+    expect(stagesBySegment([])).toEqual([]);
+  });
+
+  it("labels every segment it defines", () => {
+    expect(BOARD_SEGMENTS.every((s) => s.label.trim().length > 0)).toBe(true);
   });
 });
