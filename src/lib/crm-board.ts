@@ -19,6 +19,10 @@
  */
 export type BoardSegment = "in_play" | "partial" | "closed_out";
 
+/** The "All" tab is a view over every stage, not a value a stage can carry.
+ *  It is kept out of BoardSegment so nothing can accidentally store it. */
+export type BoardTab = BoardSegment | "all";
+
 export const BOARD_SEGMENTS: { key: BoardSegment; label: string }[] = [
   { key: "in_play", label: "In play" },
   // Only Deposit sits here today; the label names what is in it rather than
@@ -180,4 +184,19 @@ export function stagesBySegment(
     ...seg,
     stages: ordered.filter((s) => segmentOf(s) === seg.key),
   })).filter((g) => g.stages.length > 0);
+}
+
+/**
+ * The tabs to draw: every non-empty segment, plus "All" in front.
+ *
+ * "All" only earns its place when there is more than one segment to
+ * reunite — on a pipeline whose stages all sit in one group it would just
+ * duplicate the single tab next to it.
+ */
+export function boardTabs(
+  stages: BoardStage[],
+): { key: BoardTab; label: string; stages: BoardStage[] }[] {
+  const groups = stagesBySegment(stages);
+  if (groups.length < 2) return groups;
+  return [{ key: "all" as const, label: "All", stages: sortStages(stages) }, ...groups];
 }

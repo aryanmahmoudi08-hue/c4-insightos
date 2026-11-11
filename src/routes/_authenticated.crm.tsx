@@ -19,15 +19,17 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchWorkspaceSettings } from "@/lib/workspace-settings.functions";
-import { useCurrentOrg } from "@/hooks/use-auth";
+import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
+import { mockCrmBoard, withMockDelay } from "@/lib/dev-mock-data";
 import { moveLeadToStage } from "@/lib/crm-board.functions";
 import {
+  boardTabs,
   BOARD_PIPELINES,
   cardTitle,
   BOARD_SEGMENTS,
   segmentOf,
   stagesBySegment,
-  type BoardSegment,
+  type BoardTab,
   groupLeadsByStage,
   sortStages,
   upcomingCall,
@@ -173,10 +175,11 @@ function CrmPage() {
   const [pipeline, setPipeline] = useState<string>("Sales");
   // The board is a worklist, so it opens on what still needs doing. Closed-out
   // stages grow forever while the live ones stay roughly constant.
-  const [segment, setSegment] = useState<BoardSegment>("in_play");
+  const [segment, setSegment] = useState<BoardTab>("in_play");
   const [search, setSearch] = useState("");
   const qc = useQueryClient();
 
+  const { devBypass } = useAuth();
   const { data: org } = useCurrentOrg();
   const orgId = org?.org_id;
   const moveFn = useServerFn(moveLeadToStage);
@@ -190,9 +193,10 @@ function CrmPage() {
    * function: those validate the stage and write an audit activity.
    */
   const board = useQuery({
-    queryKey: ["crm-board", orgId, pipeline],
-    enabled: !!orgId,
+    queryKey: ["crm-board", orgId, pipeline, devBypass],
+    enabled: devBypass || !!orgId,
     queryFn: async () => {
+      if (devBypass) return withMockDelay(mockCrmBoard(pipeline), 120);
       const { data: pipelineRows, error: pErr } = await supabase
         .from("crm_pipelines")
         .select("id, name, is_default")
@@ -279,9 +283,10 @@ function CrmPage() {
   });
 
   const unsorted = useQuery({
-    queryKey: ["crm-unsorted", orgId],
-    enabled: !!orgId,
+    queryKey: ["crm-unsorted", orgId, devBypass],
+    enabled: devBypass || !!orgId,
     queryFn: async () => {
+      if (devBypass) return 4;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { count } = await (supabase as any)
         .from("leads")
@@ -327,7 +332,7 @@ function CrmPage() {
     );
   }, [board.data?.leads, search]);
 
-  const segmentGroups = useMemo(() => stagesBySegment(stages), [stages]);
+  const segmentGroups = useMemo(() => boardTabs(stages), [stages]);
 
   // A pipeline whose stages all sit in one segment gets no control at all —
   // Applications has nothing partial, so it would otherwise show a tab that
@@ -345,7 +350,7 @@ function CrmPage() {
   // counts are real rather than only counting what is on screen.
   const { byStage } = useMemo(() => groupLeadsByStage(filtered, stages), [filtered, stages]);
 
-  const countFor = (seg: BoardSegment) =>
+  const countFor = (seg: BoardTab) =>
     (segmentGroups.find((g) => g.key === seg)?.stages ?? []).reduce(
       (n, st) => n + (byStage.get(st.id)?.length ?? 0),
       0,
@@ -359,7 +364,10 @@ function CrmPage() {
 
   return (
     <>
-      <TopBar title="CRM" subtitle="Pipelines, stages, and lead cards" />
+      {/* This page renders its own PageHero below, with the unsorted-lead
+            pill TopBar cannot derive — so TopBar stands its hero down rather
+            than the page showing two. */}
+      <TopBar title="CRM" subtitle="Pipelines, stages, and lead cards" hero={false} />
       <main className="space-y-6 p-4 md:p-6">
         <PageHero
           eyebrow="Sales tracking"
@@ -428,6 +436,7 @@ function CrmPage() {
             columns={columns}
             itemsByColumn={byStage}
             layout="scroll"
+            dense
             loading={board.isLoading}
             emptyHint="No leads here"
             onDropItem={(leadId, stageId) => move.mutate({ leadId, stageId })}

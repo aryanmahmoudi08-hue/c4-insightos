@@ -25,6 +25,7 @@ export function KanbanBoard<T extends { id: string }>({
   loading,
   emptyHint = "Drop here",
   layout = "grid",
+  dense = false,
 }: {
   columns: KanbanColumnDef[];
   itemsByColumn: Map<string, T[]>;
@@ -35,6 +36,10 @@ export function KanbanBoard<T extends { id: string }>({
   formatValue?: (n: number) => string;
   loading?: boolean;
   emptyHint?: string;
+  /** Narrower columns for a board with many stages, so more of them fit on
+   * screen at once. Only affects `layout="scroll"`; existing callers keep
+   * the original width by default. */
+  dense?: boolean;
   /** "grid" (default) wraps columns onto new rows at narrower viewports — fine
    * for boards with few columns (Clients renewal). "scroll" keeps every column
    * in one horizontally-scrolling row at a fixed width instead — for boards
@@ -63,10 +68,15 @@ export function KanbanBoard<T extends { id: string }>({
             }}
             className={cn(
               "rounded-lg border border-border bg-card min-h-[300px]",
-              layout === "scroll" && "w-72 shrink-0",
+              layout === "scroll" && (dense ? "w-56 shrink-0" : "w-72 shrink-0"),
             )}
           >
-            <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+            <div
+              className={cn(
+                "border-b border-border flex items-center justify-between gap-1",
+                dense ? "px-2 py-1.5" : "px-3 py-2",
+              )}
+            >
               <span
                 className={cn(
                   "text-3xs uppercase tracking-wider rounded px-1.5 py-0.5",
@@ -80,7 +90,7 @@ export function KanbanBoard<T extends { id: string }>({
                 {total !== null ? ` · ${fmt(total)}` : ""}
               </span>
             </div>
-            <div className="p-2 space-y-2">
+            <div className={cn("space-y-2", dense ? "p-1.5" : "p-2")}>
               {rows.map((item) => (
                 <KanbanCard key={item.id} id={item.id}>
                   {renderCard(item)}

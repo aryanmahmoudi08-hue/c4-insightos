@@ -11,6 +11,7 @@ import type { MechanismKey } from "@/lib/content-mechanisms";
 import { addWeights, emptyWeights, scoreText } from "@/lib/content-mechanisms";
 import type { WeeklyReport } from "@/lib/weekly-report.server";
 import { computeDisqualified, disqualifiedLeadCount } from "@/lib/disqualification";
+import type { BoardSegment } from "./crm-board";
 
 export const DEV_BYPASS_ORG_ID = "aaaaaaaa-0000-4000-8000-000000000001";
 
@@ -2823,4 +2824,104 @@ export function mockOnboardingResponses() {
       clients: { full_name: row.client, offer_name: row.offer },
     };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* CRM board                                                           */
+/* ------------------------------------------------------------------ */
+
+/** The stages each pipeline is seeded with, mirroring the CRM board
+ *  migrations. Kept here so dev-bypass draws the same columns a real
+ *  workspace has, rather than an invented shape that hides layout problems. */
+const MOCK_CRM_STAGES: Record<string, [string, boolean, boolean, BoardSegment][]> = {
+  Applications: [
+    ["Partial Submit", false, false, "in_play"],
+    ["Unqualified Application", false, true, "closed_out"],
+    ["Qualified Application", false, false, "in_play"],
+    ["Follow-Up", false, false, "in_play"],
+    ["Ghosted", false, false, "closed_out"],
+    ["DQ", false, true, "closed_out"],
+  ],
+  Sales: [
+    ["Booked", false, false, "in_play"],
+    ["Confirmed", false, false, "in_play"],
+    ["No Show", false, false, "in_play"],
+    ["Follow Up (short term)", false, false, "in_play"],
+    ["Follow Up (long term)", false, false, "in_play"],
+    ["Deposit", true, false, "partial"],
+    ["Closed", true, false, "closed_out"],
+    ["No Close", false, true, "closed_out"],
+    ["Bad Fit", false, true, "closed_out"],
+    ["DQ", false, true, "closed_out"],
+    ["IGNORE", false, true, "closed_out"],
+  ],
+  "Cancelled calls": [
+    ["Cancelled by Lead", false, true, "closed_out"],
+    ["Disqualified", false, true, "closed_out"],
+    ["Didn't Answer", false, false, "in_play"],
+    ["Requested", false, false, "in_play"],
+    ["Follow-Up", false, false, "in_play"],
+    ["Cancelled on Calendly", false, true, "closed_out"],
+  ],
+};
+
+const MOCK_CRM_TIERS = ["high", "low", null];
+const MOCK_CRM_PLATFORMS = ["instagram", "youtube", "tiktok", "linkedin", null];
+
+/**
+ * A populated board for dev-bypass.
+ *
+ * Every stage gets at least one card so the columns, the segment tabs and
+ * the Call forms menu can all be seen without a real workspace. Leads are
+ * spread deterministically rather than randomly, so a screenshot taken
+ * twice looks the same.
+ */
+export function mockCrmBoard(pipeline: string) {
+  const defs = MOCK_CRM_STAGES[pipeline] ?? MOCK_CRM_STAGES.Sales;
+  const now = Date.now();
+  const stages = defs.map(([name, won, lost, segment], i) => ({
+    id: `mock-stage-${pipeline}-${i}`.replace(/\s+/g, "-").toLowerCase(),
+    name,
+    position: i + 1,
+    is_closed_won: won,
+    is_closed_lost: lost,
+    board_segment: segment,
+  }));
+
+  const leads = stages.flatMap((stage, si) =>
+    // 1-3 cards per column, so the board looks uneven the way a real one does.
+    Array.from({ length: (si % 3) + 1 }, (_, j) => {
+      const n = si * 3 + j;
+      const name = MOCK_LEAD_NAMES[n % MOCK_LEAD_NAMES.length];
+      // Only live stages carry an upcoming call — a closed-out lead with a
+      // meeting on the calendar would be a contradiction on the card.
+      const live = stage.board_segment === "in_play";
+      const hasCall = live && j === 0;
+      return {
+        id: `mock-crm-lead-${stage.id}-${j}`,
+        full_name: name,
+        email: `${name.toLowerCase().replace(/\s+/g, ".")}@example.com`,
+        phone: n % 3 === 0 ? `(555) ${100 + n}-${1000 + n * 7}` : null,
+        crm_stage_id: stage.id,
+        ticket_tier: MOCK_CRM_TIERS[n % MOCK_CRM_TIERS.length],
+        source_platform: MOCK_CRM_PLATFORMS[n % MOCK_CRM_PLATFORMS.length],
+        assigned_setter_id: null,
+        created_at: new Date(now - n * 9 * 3600e3).toISOString(),
+        calls: hasCall
+          ? [
+              {
+                id: `mock-call-${stage.id}-${j}`,
+                scheduled_for: new Date(now + (n + 1) * 7 * 3600e3).toISOString(),
+                status: "booked",
+                cancelled: false,
+                calendly_cancel_url: "https://calendly.com/cancellations/mock",
+                calendly_reschedule_url: "https://calendly.com/reschedulings/mock",
+              },
+            ]
+          : [],
+      };
+    }),
+  );
+
+  return { stages, leads, bookingUrl: "https://calendly.com/ascend-capital/intro-call" };
 }
