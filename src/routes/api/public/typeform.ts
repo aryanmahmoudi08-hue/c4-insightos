@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { dispatchEvent } from "@/lib/dispatch.server";
 import { classifyLead, type ClassificationRule } from "@/lib/lead-classification";
-import { indexTypeformAnswers } from "@/lib/typeform-answers";
+import { hiddenAttribution, indexTypeformAnswers, resolveSlot } from "@/lib/typeform-answers";
 
 function verifyTypeformSignature(body: string, secret: string, signature: string | null) {
   if (!signature || !signature.startsWith("sha256=")) return false;
@@ -22,9 +22,14 @@ export const Route = createFileRoute("/api/public/typeform")({
         if (!connectionId)
           return Response.json({ error: "Missing connection_id" }, { status: 400 });
 
-        const { data: connection, error: connectionError } = await supabaseAdmin
+        // `field_map` and `form_definition` are added by
+        // 20261112160000_typeform_field_map and are not in the generated types
+        // until those are regenerated against a database that has it — same
+        // situation crm_stage_id and eod_lead_status were in.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: connection, error: connectionError } = await (supabaseAdmin as any)
           .from("connector_connections")
-          .select("id, org_id, connector_id, config")
+          .select("id, org_id, connector_id, config, field_map")
           .eq("id", connectionId)
           .eq("connector_id", "typeform")
           .eq("state", "connected")
@@ -51,6 +56,24 @@ export const Route = createFileRoute("/api/public/typeform")({
         // is not somewhere this logic can be exercised.
         const { answers, answersByTitle, typedEmail, typedPhone } =
           indexTypeformAnswers(formResponse);
+        // UTMs ride in `form_response.hidden`, which this handler never read
+        // — so an ad-sourced lead arrived with no attribution at all and
+        // displayed as "Unknown / Unattributed".
+        const attribution = hiddenAttribution(formResponse);
+
+        // Keep the latest definition on the connection so the mapping UI can
+        // list this form's real questions without a Typeform API call or a
+        // token. Refreshed every delivery, not just the first — a question
+        // added later has to become mappable. Best-effort: a webhook must not
+        // fail because a convenience for the UI could not be written.
+        if (formResponse.definition) {
+          await supabaseAdmin
+            .from("connector_connections")
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .update({ form_definition: formResponse.definition } as any)
+            .eq("id", connection.id)
+            .then(undefined, () => {});
+        }
 
         const pick = (...keys: string[]) => {
           for (const k of keys) {
@@ -58,23 +81,33 @@ export const Route = createFileRoute("/api/public/typeform")({
           }
           return "";
         };
+        // An explicit per-connection mapping wins; otherwise fall back to the
+        // ref/id/title matching, so a connection nobody has mapped behaves
+        // exactly as it did before.
+        const fieldMap = (connection.field_map ?? {}) as Record<string, string>;
+        const slot = (key: string, ...fallbacks: string[]) =>
+          resolveSlot(key, fieldMap, answers, fallbacks);
+
         const application_data = {
-          experience: pick("experience"),
-          work_school: pick("work_school", "work", "school"),
-          focus: pick("focus"),
-          goal: pick("goal"),
-          candidate_fit: pick("candidate_fit", "fit"),
-          serious_status: pick("serious_status", "serious"),
-          time: pick("time"),
-          income: pick("income"),
-          capital: pick("capital"),
-          credit: pick("credit"),
-          commitment: pick("commitment"),
+          experience: slot("experience"),
+          work_school: slot("work_school", "work", "school"),
+          focus: slot("focus"),
+          goal: slot("goal"),
+          candidate_fit: slot("candidate_fit", "fit"),
+          serious_status: slot("serious_status", "serious"),
+          time: slot("time"),
+          income: slot("income"),
+          capital: slot("capital"),
+          credit: slot("credit"),
+          commitment: slot("commitment"),
           // Every raw field ref -> answer, alongside the narrowed fields
           // above — preserves the original Typeform response on the lead
           // itself so a ticket-tier classification can be audited later,
           // not just inferred from the (lossy) narrowed shape.
           raw_answers: answers,
+          // Every hidden field as delivered. Only utm_source and utm_campaign
+          // have a column on `leads`; the rest would otherwise be dropped.
+          hidden: attribution.hidden,
           // Keyed by the question as a human reads it, which is what survives
           // a form rebuild — `raw_answers` is keyed by ref and goes stale.
           answers_by_title: answersByTitle,
@@ -112,6 +145,12 @@ export const Route = createFileRoute("/api/public/typeform")({
               handle,
               status: "dm_received" as any,
               source_connector: "typeform",
+              // Raw, not categorised: normalizeAcquisitionSource maps this to
+              // one of the standard sources at read time, and keeping the
+              // original means a value it does not recognise stays auditable
+              // rather than being flattened into "Other" on the way in.
+              source_platform: attribution.sourcePlatform,
+              source_campaign: attribution.sourceCampaign,
               application_data,
               qualification_notes: pick("candidate_fit"),
             } as any)

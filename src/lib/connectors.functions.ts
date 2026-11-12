@@ -174,6 +174,49 @@ async function verifyDiscordWebhook(webhookUrl: string) {
   }
 }
 
+/**
+ * Prove the Calendly token can actually talk to Calendly, before storing it.
+ *
+ * The token is not decoration: the webhook only carries a link to each
+ * booking, so every booking's time is resolved by calling Calendly with
+ * this token. A bad one fails at that point — hours later, per booking,
+ * with the card still reading "Connected" — which is the same silent class
+ * of failure as a webhook that was never registered.
+ *
+ * `/users/me` is the cheapest authenticated call Calendly offers and needs
+ * no scope beyond the token itself.
+ */
+/** Connectors whose Connect step makes a live call to the provider and
+ *  fails if the credential is rejected. Everything else is stored on trust,
+ *  and `config.verifiedAt` must not claim otherwise. */
+const VERIFIED_ON_CONNECT = new Set(["discord", "zapier", "calendly"]);
+
+async function verifyCalendlyToken(apiToken: string) {
+  let response: Response;
+  try {
+    response = await fetch("https://api.calendly.com/users/me", {
+      headers: { Authorization: `Bearer ${apiToken}` },
+    });
+  } catch {
+    // A network failure here is not the same as a bad token, and saying so
+    // stops someone re-pasting a perfectly good credential.
+    throw new Error(
+      "Could not reach Calendly to check that token. Check your connection and try again.",
+    );
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(
+      "Calendly rejected that token — check you copied the whole value from Integrations → API & webhooks → Personal access tokens.",
+    );
+  }
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `Calendly could not confirm that token [${response.status}]: ${body.slice(0, 200) || response.statusText}`,
+    );
+  }
+}
+
 async function verifyZapierWebhook(webhookUrl: string) {
   const response = await fetch(webhookUrl, {
     method: "POST",
@@ -290,6 +333,9 @@ export const connectWorkspaceConnector = createServerFn({ method: "POST" })
     if (data.connectorId === "zapier") {
       await verifyZapierWebhook(validatedConfig.webhookUrl);
     }
+    if (data.connectorId === "calendly") {
+      await verifyCalendlyToken(validatedConfig.apiToken);
+    }
 
     const { data: existing, error: existingError } = await supabase
       .from("connector_connections")
@@ -301,9 +347,16 @@ export const connectWorkspaceConnector = createServerFn({ method: "POST" })
     if (existingError) throw new Error(existingError.message);
 
     let connectionId = existing?.id as string | undefined;
+    // `verifiedAt` used to be stamped on every connector, including the ones
+    // nothing checks — a timestamp asserting a verification that never
+    // happened, which is worse than no field at all for anyone reading the
+    // config later to decide whether a credential is good. It now appears
+    // only when a live call to the provider actually succeeded; everything
+    // else records when it was saved, which is all that is really known.
+    const savedAt = new Date().toISOString();
     let config: Record<string, string> = {
       ...validatedConfig,
-      verifiedAt: new Date().toISOString(),
+      ...(VERIFIED_ON_CONNECT.has(data.connectorId) ? { verifiedAt: savedAt } : { savedAt }),
     };
 
     if (connectionId) {
@@ -477,4 +530,66 @@ export const disconnectWorkspaceConnector = createServerFn({ method: "POST" })
       .eq("connector_id", data.connectorId);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+/**
+ * The form's questions and the slot mapping, for the mapping UI.
+ *
+ * `form_definition` is whatever the last webhook delivery carried, so this
+ * returns nothing until the form has fired at least once — which is the
+ * honest state: before a delivery, nobody knows what questions the form has.
+ */
+export const getTypeformFieldMap = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const orgId = await getOrgId(supabase, userId);
+    // `field_map` / `form_definition` are added by
+    // 20261112160000_typeform_field_map and are not in the generated types
+    // until those are regenerated against a database that has them.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any)
+      .from("connector_connections")
+      .select("id, field_map, form_definition")
+      .eq("org_id", orgId)
+      .eq("connector_id", "typeform")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return {
+      connectionId: (data?.id as string) ?? null,
+      fieldMap: (data?.field_map ?? {}) as Record<string, string>,
+      formDefinition: data?.form_definition ?? null,
+    };
+  });
+
+const FieldMapInput = z.object({
+  // A slot key maps to a Typeform field ref, or to "" meaning deliberately
+  // unmapped — Erika's form has no question about hours available, so `time`
+  // has no honest source and clearing it has to be expressible.
+  fieldMap: z.record(z.string().max(60), z.string().trim().max(120)),
+});
+
+export const saveTypeformFieldMap = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => FieldMapInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await getOrgId(supabase, userId);
+    // Drop the blanks rather than storing them: an absent key means "fall
+    // back to matching", and an empty string would be a third state nothing
+    // downstream knows how to read.
+    const cleaned = Object.fromEntries(
+      Object.entries(data.fieldMap).filter(([, ref]) => ref.trim().length > 0),
+    );
+    // `field_map` / `form_definition` are added by
+    // 20261112160000_typeform_field_map and are not in the generated types
+    // until those are regenerated against a database that has them.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any)
+      .from("connector_connections")
+      .update({ field_map: cleaned })
+      .eq("org_id", orgId)
+      .eq("connector_id", "typeform");
+    if (error) throw new Error(error.message);
+    return { ok: true, mapped: Object.keys(cleaned).length };
   });

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { answerValue, indexTypeformAnswers, normalizeFieldKey } from "./typeform-answers";
+import {
+  answerValue,
+  formQuestions,
+  hiddenAttribution,
+  indexTypeformAnswers,
+  normalizeFieldKey,
+  resolveSlot,
+} from "./typeform-answers";
 
 /** The real shape Typeform delivered on form YMjkDIVy — UUID refs, because
  *  the form was rebuilt on a new account. This is the payload that produced
@@ -122,5 +129,85 @@ describe("indexTypeformAnswers", () => {
     });
     expect(indexTypeformAnswers(null).typedEmail).toBe("");
     expect(indexTypeformAnswers({}).answers).toEqual({});
+  });
+});
+
+describe("hiddenAttribution", () => {
+  it("pulls utm_source and utm_campaign off the hidden block", () => {
+    const out = hiddenAttribution({
+      hidden: { utm_source: "ascendos_test", utm_campaign: "postfix_verify" },
+    });
+    expect(out.sourcePlatform).toBe("ascendos_test");
+    expect(out.sourceCampaign).toBe("postfix_verify");
+  });
+
+  it("keeps every hidden field verbatim, not just the mapped two", () => {
+    const out = hiddenAttribution({
+      hidden: { utm_source: "meta", utm_medium: "paid", utm_term: "procurement" },
+    });
+    expect(out.hidden).toEqual({
+      utm_source: "meta",
+      utm_medium: "paid",
+      utm_term: "procurement",
+    });
+  });
+
+  it("treats empty strings and the xxxxx placeholder as no attribution", () => {
+    const out = hiddenAttribution({
+      hidden: { utm_source: "", utm_campaign: "xxxxx", utm_medium: "  " },
+    });
+    expect(out.sourcePlatform).toBeNull();
+    expect(out.sourceCampaign).toBeNull();
+    expect(out.hidden).toEqual({});
+  });
+
+  it("returns nulls rather than throwing when there is no hidden block", () => {
+    expect(hiddenAttribution({}).sourcePlatform).toBeNull();
+    expect(hiddenAttribution(null).hidden).toEqual({});
+    expect(hiddenAttribution({ hidden: "nope" }).hidden).toEqual({});
+  });
+});
+
+describe("formQuestions", () => {
+  it("lists ref/title/type for each field", () => {
+    expect(
+      formQuestions({ fields: [{ ref: "r1", title: "Income?", type: "short_text" }] }),
+    ).toEqual([{ ref: "r1", title: "Income?", type: "short_text" }]);
+  });
+  it("skips fields with no ref or no title, which cannot be offered as a choice", () => {
+    expect(formQuestions({ fields: [{ ref: "r1" }, { title: "T" }, null] })).toEqual([]);
+  });
+  it("returns nothing when no definition has been seen yet", () => {
+    expect(formQuestions(null)).toEqual([]);
+    expect(formQuestions({})).toEqual([]);
+  });
+});
+
+describe("resolveSlot", () => {
+  const answers = { "uuid-income": "120k", income: "legacy-value", salary: "fallback-value" };
+
+  it("prefers the explicitly mapped question", () => {
+    expect(resolveSlot("income", { income: "uuid-income" }, answers)).toBe("120k");
+  });
+
+  it("falls back to ref/title matching when the slot is unmapped", () => {
+    expect(resolveSlot("income", {}, answers)).toBe("legacy-value");
+    expect(resolveSlot("income", null, answers)).toBe("legacy-value");
+  });
+
+  it("uses the extra fallback keys when the slot name itself misses", () => {
+    expect(resolveSlot("income", {}, { salary: "fallback-value" }, ["salary"])).toBe(
+      "fallback-value",
+    );
+  });
+
+  it("stays empty when the mapped question had no answer, rather than substituting", () => {
+    // The mapping says where this slot comes from. Falling back here would
+    // put another question's answer under this label.
+    expect(resolveSlot("income", { income: "uuid-missing" }, answers)).toBe("");
+  });
+
+  it("returns empty for a slot with no mapping and no match", () => {
+    expect(resolveSlot("time", {}, answers)).toBe("");
   });
 });

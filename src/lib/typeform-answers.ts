@@ -122,3 +122,116 @@ export function indexTypeformAnswers(formResponse: unknown): TypeformIndex {
 
   return { answers, answersByTitle, typedEmail, typedPhone };
 }
+
+/**
+ * The UTM values Typeform carries in `form_response.hidden`.
+ *
+ * The webhook handler never read this block at all, so a lead captured from
+ * an ad arrived with no attribution whatsoever and displayed as "Unknown /
+ * Unattributed" — not because attribution failed to interpret the values,
+ * but because they were discarded before anything could.
+ *
+ * Only two UTMs have a column on `leads`: utm_source maps to
+ * `source_platform` (the raw value, which `normalizeAcquisitionSource` then
+ * categorises at read time) and utm_campaign to `source_campaign`. The rest
+ * are kept verbatim so nothing that arrived is thrown away, but they are
+ * deliberately not forced into `source_format` or `source_content_id`,
+ * which mean something else.
+ */
+export type HiddenAttribution = {
+  sourcePlatform: string | null;
+  sourceCampaign: string | null;
+  /** Every hidden field exactly as delivered, for audit. */
+  hidden: Record<string, string>;
+};
+
+export function hiddenAttribution(formResponse: unknown): HiddenAttribution {
+  const raw = (formResponse ?? {}) as { hidden?: unknown };
+  const hidden: Record<string, string> = {};
+  if (raw.hidden && typeof raw.hidden === "object") {
+    for (const [key, value] of Object.entries(raw.hidden as Record<string, unknown>)) {
+      const v = str(value).trim();
+      // Typeform sends unfilled hidden fields as empty strings, and some
+      // funnels pass the literal "xxxxx" placeholder through. Neither is
+      // attribution, and storing either would read as real evidence.
+      if (v && v.toLowerCase() !== "xxxxx") hidden[key] = v;
+    }
+  }
+  return {
+    sourcePlatform: hidden.utm_source ?? null,
+    sourceCampaign: hidden.utm_campaign ?? null,
+    hidden,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Application slots                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The qualification slots a lead's `application_data` carries.
+ *
+ * One list, shared by the webhook that fills them and the UI that maps
+ * questions onto them, so the two can never drift into disagreeing about
+ * what a slot is called.
+ */
+export const APPLICATION_SLOTS = [
+  { key: "experience", label: "Experience" },
+  { key: "work_school", label: "Work / School" },
+  { key: "focus", label: "Focus" },
+  { key: "goal", label: "Goal" },
+  { key: "candidate_fit", label: "Candidate Fit" },
+  { key: "serious_status", label: "Serious" },
+  { key: "time", label: "Time" },
+  { key: "income", label: "Income" },
+  { key: "capital", label: "Capital" },
+  { key: "credit", label: "Credit" },
+  { key: "commitment", label: "Commit" },
+] as const;
+
+export type ApplicationSlotKey = (typeof APPLICATION_SLOTS)[number]["key"];
+
+/** A question as the mapping UI needs to show it. */
+export type FormQuestion = { ref: string; title: string; type: string };
+
+/** The questions on the last delivery, for the mapping dropdowns. */
+export function formQuestions(formDefinition: unknown): FormQuestion[] {
+  const def = (formDefinition ?? {}) as { fields?: unknown };
+  const fields = Array.isArray(def.fields) ? def.fields : [];
+  const out: FormQuestion[] = [];
+  for (const raw of fields) {
+    const f = (raw ?? {}) as Record<string, unknown>;
+    const ref = str(f.ref);
+    const title = str(f.title);
+    if (ref && title) out.push({ ref, title, type: str(f.type) });
+  }
+  return out;
+}
+
+/**
+ * The value for one slot: the explicitly mapped question first, then the
+ * old ref/id/title matching.
+ *
+ * The fallback is kept so a connection nobody has mapped keeps behaving
+ * exactly as it does today — a form with hand-authored semantic refs needs
+ * no configuration at all, and mapping is only required where a client's
+ * wording does not happen to match the vocabulary.
+ *
+ * A slot mapped to a question that produced no answer stays empty rather
+ * than falling back: the mapping is an explicit statement about where that
+ * slot comes from, and quietly substituting another question's answer would
+ * put text under a label it does not belong to.
+ */
+export function resolveSlot(
+  slot: string,
+  fieldMap: Record<string, string> | null | undefined,
+  answers: Record<string, string>,
+  fallbackKeys: string[] = [],
+): string {
+  const mappedRef = fieldMap?.[slot];
+  if (mappedRef) return answers[mappedRef] ?? "";
+  for (const key of [slot, ...fallbackKeys]) {
+    if (answers[key]) return answers[key];
+  }
+  return "";
+}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -13,7 +13,10 @@ import {
   connectWorkspaceConnector,
   disconnectWorkspaceConnector,
   getOrCreateConnectorEndpoint,
+  getTypeformFieldMap,
+  saveTypeformFieldMap,
 } from "@/lib/connectors.functions";
+import { APPLICATION_SLOTS, formQuestions } from "@/lib/typeform-answers";
 import { getOrCreateIngestToken, rotateIngestToken } from "@/lib/ingest.functions";
 import { startMetaOAuth } from "@/lib/meta-oauth.functions";
 import { syncMetaSpendNow } from "@/lib/meta-ads.functions";
@@ -602,7 +605,105 @@ export function ConnectorCard({
               </p>
             )}
           </div>
+
+          {connectorId === "typeform" && connected ? (
+            <TypeformFieldMapper isAdmin={isAdmin} orgId={orgId} />
+          ) : null}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Maps this workspace's Typeform questions onto the 11 application slots.
+ *
+ * The slots are AscendOS's vocabulary; a client writes their questions in
+ * their own words. Matching on the question's wording only works when the
+ * two happen to agree, which for a real client they do not — so the mapping
+ * is stated here per connection rather than guessed.
+ *
+ * Choices come from the last webhook delivery's own form definition, so
+ * there is no Typeform API call and no token. Before a first delivery there
+ * is nothing to offer, and the panel says so rather than showing empty
+ * dropdowns that look broken.
+ */
+function TypeformFieldMapper({ isAdmin, orgId }: { isAdmin: boolean; orgId?: string }) {
+  const qc = useQueryClient();
+  const getMap = useServerFn(getTypeformFieldMap);
+  const saveMap = useServerFn(saveTypeformFieldMap);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["typeform-field-map", orgId],
+    enabled: !!orgId,
+    queryFn: () => getMap({}),
+  });
+
+  const questions = useMemo(() => formQuestions(data?.formDefinition), [data?.formDefinition]);
+  const [draft, setDraft] = useState<Record<string, string> | null>(null);
+  const map = draft ?? data?.fieldMap ?? {};
+
+  const save = useMutation({
+    mutationFn: () => saveMap({ data: { fieldMap: map } }),
+    onSuccess: (res) => {
+      toast.success(`Saved — ${res.mapped} of ${APPLICATION_SLOTS.length} slots mapped`);
+      qc.invalidateQueries({ queryKey: ["typeform-field-map"] });
+      setDraft(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (isLoading) return null;
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Application questions
+      </p>
+      {questions.length === 0 ? (
+        <p className="mt-2 text-2xs text-muted-foreground">
+          Nothing to map yet — the questions are read from the form&rsquo;s own webhook deliveries,
+          so submit one response and they will appear here.
+        </p>
+      ) : (
+        <>
+          <p className="mt-1 text-2xs text-muted-foreground">
+            Which question fills each slot on the lead. Anything left on <b>Not asked</b> stays
+            empty rather than being guessed — leave it there when the form genuinely has no such
+            question.
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {APPLICATION_SLOTS.map((slot) => (
+              <label key={slot.key} className="space-y-1">
+                <span className="text-xs text-foreground">{slot.label}</span>
+                <select
+                  disabled={!isAdmin}
+                  value={map[slot.key] ?? ""}
+                  onChange={(e) => setDraft({ ...map, [slot.key]: e.target.value })}
+                  className="h-8 w-full rounded-md border border-input bg-input/40 px-2 text-xs outline-none transition-all hover:border-ring/30 focus:border-ring disabled:opacity-50"
+                >
+                  <option value="">Not asked</option>
+                  {questions.map((q) => (
+                    <option key={q.ref} value={q.ref}>
+                      {q.title.length > 70 ? `${q.title.slice(0, 70)}…` : q.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+          {isAdmin ? (
+            <Button
+              size="sm"
+              className="mt-3 gap-1.5"
+              onClick={() => save.mutate()}
+              disabled={save.isPending || draft === null}
+            >
+              {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Save mapping
+            </Button>
+          ) : null}
+        </>
       )}
     </div>
   );
