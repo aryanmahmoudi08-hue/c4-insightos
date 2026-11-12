@@ -87,11 +87,21 @@ const connectorRequirements = {
     apiToken: z
       .string()
       .trim()
+      // A Calendly personal access token is a JWT and runs to about a
+      // thousand characters; Calendly issues no shorter form. The old
+      // max(500) could therefore never accept a real token, which made the
+      // connector impossible to connect at all.
+      //
+      // The floor is 100 rather than 20 to catch the failure this field
+      // actually sees: pasting the 64-character webhook signing key into
+      // the token box. Both are opaque strings, the boxes sit next to each
+      // other, and the resulting 401 at request time is far harder to trace
+      // than a message here.
       .min(
-        20,
-        "Paste a Calendly personal access token — the webhook only carries a link to each booking's time, so reading it needs API access",
+        100,
+        "That looks like the signing key, not the token — a Calendly personal access token is much longer and starts with eyJ",
       )
-      .max(500),
+      .max(2000),
   }),
   close: z.object({
     signatureKey: z
@@ -124,7 +134,15 @@ function validateConnectorConfig(connectorId: string, rawConfig: Record<string, 
     return schema.parse(rawConfig);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new Error(error.issues[0]?.message ?? "Connector setup is incomplete");
+      // Name the field, and report every failing one rather than only the
+      // first. Without this the UI can say a length is wrong but not which
+      // of two adjacent secret boxes is wrong, which turns a typo into
+      // several rounds of guessing.
+      const described = error.issues.map((issue) => {
+        const field = issue.path.filter((p) => typeof p === "string").join(".");
+        return field ? `${field}: ${issue.message}` : issue.message;
+      });
+      throw new Error(described.join("; ") || "Connector setup is incomplete");
     }
     throw error;
   }

@@ -3,20 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { dispatchEvent } from "@/lib/dispatch.server";
 import { classifyLead, type ClassificationRule } from "@/lib/lead-classification";
-
-function answerValue(answer: any) {
-  if (answer == null || typeof answer !== "object") return "";
-  if (typeof answer.text === "string") return answer.text;
-  if (typeof answer.email === "string") return answer.email;
-  if (typeof answer.phone_number === "string") return answer.phone_number;
-  if (typeof answer.url === "string") return answer.url;
-  if (typeof answer.number === "number") return String(answer.number);
-  if (typeof answer.boolean === "boolean") return String(answer.boolean);
-  if (answer.choice?.label) return String(answer.choice.label);
-  if (Array.isArray(answer.choices?.labels)) return answer.choices.labels.join(", ");
-  if (answer.date) return String(answer.date);
-  return JSON.stringify(answer);
-}
+import { indexTypeformAnswers } from "@/lib/typeform-answers";
 
 function verifyTypeformSignature(body: string, secret: string, signature: string | null) {
   if (!signature || !signature.startsWith("sha256=")) return false;
@@ -58,11 +45,12 @@ export const Route = createFileRoute("/api/public/typeform")({
 
         const payload = JSON.parse(body);
         const formResponse = payload.form_response ?? {};
-        const answers: Record<string, string> = {};
-        for (const answer of formResponse.answers ?? []) {
-          const key = answer.field?.ref || answer.field?.id || answer.field?.title;
-          if (key) answers[String(key)] = answerValue(answer);
-        }
+
+        // Indexing lives in src/lib/typeform-answers.ts so the matching rules
+        // are unit-tested against the real payload that broke — a webhook route
+        // is not somewhere this logic can be exercised.
+        const { answers, answersByTitle, typedEmail, typedPhone } =
+          indexTypeformAnswers(formResponse);
 
         const pick = (...keys: string[]) => {
           for (const k of keys) {
@@ -87,17 +75,29 @@ export const Route = createFileRoute("/api/public/typeform")({
           // itself so a ticket-tier classification can be audited later,
           // not just inferred from the (lossy) narrowed shape.
           raw_answers: answers,
+          // Keyed by the question as a human reads it, which is what survives
+          // a form rebuild — `raw_answers` is keyed by ref and goes stale.
+          answers_by_title: answersByTitle,
         };
         const full_name =
           [pick("first_name"), pick("last_name")].filter(Boolean).join(" ").trim() ||
           pick("name", "full_name") ||
           null;
-        const email = pick("email") || null;
-        const phone = pick("phone") || null;
+        // Type first, name second: a question typed `email` is an email
+        // whatever it is called, and the names only ever worked by convention.
+        const email = typedEmail || pick("email", "email_address") || null;
+        const phone = typedPhone || pick("phone", "phone_number", "mobile") || null;
         const handle = pick("handle", "instagram", "ig") || null;
-        const isApplication =
-          Object.values(application_data).some(Boolean) ||
-          (connection.config as any)?.kind === "application";
+        // `raw_answers` and `answers_by_title` are objects, so they are
+        // truthy even when empty — which made the check below always true.
+        // Harmless while every delivery was a completed response; not harmless
+        // once this form starts sending partials, where a lead row with no
+        // name, email, phone or answer on it is just litter.
+        const { raw_answers: _raw, answers_by_title: _byTitle, ...narrowed } = application_data;
+        const carriesAnything =
+          Object.values(narrowed).some(Boolean) || Boolean(email || phone || full_name || handle);
+        // `config` above is already the typed view of connection.config.
+        const isApplication = carriesAnything || config.kind === "application";
 
         let leadId: string | null = null;
         let intakeId: string | null = null;
