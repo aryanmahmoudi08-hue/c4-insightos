@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { webhookChannelFor } from "./event-catalog";
 
 interface SubRow {
   id: string;
@@ -37,13 +38,21 @@ export async function dispatchEvent(
   // closed fine. Instead, record it somewhere genuinely visible: the `events`
   // table, which /events already renders live — never console-only.
   if (subsError) {
-    await supabaseAdmin.from("events").insert({
-      org_id: orgId,
-      event_type: "dispatch.lookup_failed",
-      subject_type: "webhook_subscriptions",
-      payload: { original_event_type: eventType, error: subsError.message },
-    }).then(() => {}, () => {});
-    console.error(`dispatchEvent: webhook_subscriptions lookup failed for org ${orgId} (event ${eventType}): ${subsError.message}`);
+    await supabaseAdmin
+      .from("events")
+      .insert({
+        org_id: orgId,
+        event_type: "dispatch.lookup_failed",
+        subject_type: "webhook_subscriptions",
+        payload: { original_event_type: eventType, error: subsError.message },
+      })
+      .then(
+        () => {},
+        () => {},
+      );
+    console.error(
+      `dispatchEvent: webhook_subscriptions lookup failed for org ${orgId} (event ${eventType}): ${subsError.message}`,
+    );
     return;
   }
 
@@ -68,7 +77,10 @@ export async function dispatchEvent(
   await Promise.all(
     matching.map(async (s) => {
       try {
-        const isDiscord = s.channel === "discord";
+        // Read the target URL, not just the stored column: subscriptions
+        // created from the Event Bus page never set `channel`, so it defaulted
+        // to 'slack' and every Discord delivery went out as raw JSON and 400'd.
+        const isDiscord = webhookChannelFor(s.target_url, s.channel) === "discord";
         const requestBody = isDiscord
           ? JSON.stringify({
               content:
@@ -94,7 +106,10 @@ export async function dispatchEvent(
             response_body: respText.slice(0, 1000),
             delivered_at: new Date().toISOString(),
           })
-          .then(() => {}, () => {});
+          .then(
+            () => {},
+            () => {},
+          );
       } catch (err) {
         await supabaseAdmin
           .from("webhook_deliveries")
@@ -105,7 +120,10 @@ export async function dispatchEvent(
             response_code: 0,
             response_body: String(err).slice(0, 1000),
           })
-          .then(() => {}, () => {});
+          .then(
+            () => {},
+            () => {},
+          );
       }
     }),
   );

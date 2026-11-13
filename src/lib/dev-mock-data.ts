@@ -2514,17 +2514,24 @@ export function mockFulfillmentIntake() {
 }
 
 /** Live event stream rows for /events. */
+/** Only event types the app really emits — see src/lib/event-catalog.ts.
+ *  `call.booked` and `alert.fired` used to sit here and nothing emits either,
+ *  so the demo taught event types a subscription could never receive. */
 export function mockEventBusEvents() {
   const now = Date.now();
   const seeds: Array<[string, string, Record<string, unknown>]> = [
     ["payment.collected", "payment", { amount_cents: 250_000, currency: "USD", source: "stripe" }],
     ["call.closed_won", "call", { closer: "Alex Rivera", contract_value_cents: 500_000 }],
     ["lead.created", "lead", { source: "meta_ads", campaign: "Evergreen — Broad" }],
-    ["call.booked", "call", { setter: "Sam Cole", scheduled_for: "tomorrow 15:00" }],
+    [
+      "lead.application_submitted",
+      "lead",
+      { form: "Career AI Accelerator", utm_source: "instagram" },
+    ],
     ["onboarding.submitted", "onboarding_response", { client: "Jordan Ellis" }],
     ["payment.failed", "payment", { amount_cents: 125_000, reason: "insufficient_funds" }],
     ["digest.weekly", "digest", { week_of: "2026-09-21" }],
-    ["alert.fired", "alert", { rule: "Show rate below baseline", severity: "warning" }],
+    ["connector.verified", "connector_connection", { connector: "calendly" }],
   ];
   return seeds.map((s, i) => ({
     id: `mock-event-${i + 1}`,
@@ -2543,9 +2550,15 @@ export function mockWebhookSubscriptions() {
       id: "mock-sub-1",
       org_id: DEV_BYPASS_ORG_ID,
       name: "Discord event alerts",
-      target_url: "https://discord.com/api/webhooks/…",
+      // A full-looking URL, because the panel masks it for display and the
+      // fixture should exercise that rather than pre-masking it here.
+      target_url:
+        "https://discord.com/api/webhooks/1402993771000000/mockTokenThatIsNotRealAtAll0042",
       channel: "discord",
-      event_types: ["lead.created", "call.booked", "call.closed_won", "payment.collected"],
+      // Only types the app actually dispatches: `call.booked` used to sit here
+      // and nothing emits it, so the fixture demonstrated a subscription that
+      // can never fire as though it were a normal one.
+      event_types: ["lead.created", "lead.qualified", "call.closed_won", "payment.collected"],
       active: true,
       created_at: new Date(Date.now() - 52 * 86400e3).toISOString(),
     },
@@ -2553,7 +2566,7 @@ export function mockWebhookSubscriptions() {
       id: "mock-sub-2",
       org_id: DEV_BYPASS_ORG_ID,
       name: "Zapier fan-out",
-      target_url: "https://hooks.zapier.com/hooks/catch/…",
+      target_url: "https://hooks.zapier.com/hooks/catch/18274610/mockcatchhook",
       channel: "zapier",
       event_types: ["payment.collected", "digest.weekly"],
       active: true,

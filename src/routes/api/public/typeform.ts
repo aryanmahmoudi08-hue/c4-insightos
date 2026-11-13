@@ -183,7 +183,10 @@ export const Route = createFileRoute("/api/public/typeform")({
             if (rulesError) {
               console.error("[typeform] classification rules lookup", rulesError);
             } else if (rules && rules.length > 0) {
-              const result = classifyLead(answers, rules as ClassificationRule[]);
+              // Same mapping the application slots resolve through — a rule
+              // keyed `capital` has to find the question the client mapped to
+              // Capital, not a question that happens to be titled "Capital".
+              const result = classifyLead(answers, rules as ClassificationRule[], fieldMap);
               if (result.tierKey) {
                 await (supabaseAdmin as any)
                   .from("leads")

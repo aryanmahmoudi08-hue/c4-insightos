@@ -35,31 +35,36 @@ import {
   RefreshCw,
   Check,
   Inbox,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getOrCreateIngestToken, rotateIngestToken } from "@/lib/ingest.functions";
+import {
+  DISPATCHED_EVENTS,
+  STREAM_ONLY_EVENTS,
+  maskWebhookUrl,
+  undeliverableEventTypes,
+  webhookChannelFor,
+} from "@/lib/event-catalog";
+import { useRole } from "@/hooks/use-role";
+import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { GlassTableShell } from "@/components/glass-table";
 import { EmptyState } from "@/components/empty-state";
 import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { cn } from "@/lib/utils";
-
-const EVENT_TYPES = [
-  "lead.created",
-  "lead.status_changed",
-  "conversation.started",
-  "call.booked",
-  "call.showed",
-  "call.closed_won",
-  "call.closed_lost",
-  "payment.collected",
-  "content.posted",
-  "content.milestone_10k",
-  "onboarding.submitted",
-  "alert.fired",
-  "client.renewed",
-  "digest.weekly",
-];
 
 export const Route = createFileRoute("/_authenticated/events")({ component: EventsBus });
 
@@ -71,7 +76,9 @@ function EventsBus() {
   const fromISO = `${range.from}T00:00:00`;
   const toISO = `${range.to}T23:59:59`;
   const qc = useQueryClient();
+  const { canManage } = useRole();
   const [open, setOpen] = useState(false);
+  const [draftTypes, setDraftTypes] = useState<string[]>(["call.closed_won", "payment.collected"]);
 
   const { data: events } = useQuery({
     queryKey: ["events", orgId, range.from, range.to, devBypass],
@@ -100,10 +107,15 @@ function EventsBus() {
     enabled: devBypass || !!orgId,
     queryFn: async () => {
       if (devBypass) return mockWebhookSubscriptions();
+      // Deliberately not `select("*")`: that shipped `signing_secret` into
+      // the browser payload on every page load, for a column nothing on this
+      // page renders. Name the columns so adding a secret column later cannot
+      // silently leak it.
       const { data, error } = await supabase
         .from("webhook_subscriptions")
-        .select("*")
-        .eq("org_id", orgId!);
+        .select("id, name, target_url, channel, category, event_types, active, created_at")
+        .eq("org_id", orgId!)
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -167,14 +179,20 @@ function EventsBus() {
 
   const create = useMutation({
     mutationFn: async (f: FormData) => {
-      const event_types = String(f.get("event_types") || "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+      // Types come from the checked boxes, not a free-text field. Typing a
+      // type by hand is how a subscription ended up naming events nothing
+      // emits — it saved, reported Active, and was silent forever.
+      const event_types = draftTypes;
+      if (!event_types.length) throw new Error("Pick at least one event type");
+      const target_url = String(f.get("target_url") || "");
       const { error } = await supabase.from("webhook_subscriptions").insert({
         org_id: orgId!,
         name: String(f.get("name") || ""),
-        target_url: String(f.get("target_url") || ""),
+        target_url,
+        // Was never set here, so the column fell to its 'slack' default and a
+        // Discord target got raw JSON and a 400 on every event. Dispatch now
+        // reads the URL too, but store it correctly so the row is honest.
+        channel: webhookChannelFor(target_url),
         signing_secret: String(f.get("secret") || ""),
         event_types,
         active: true,
@@ -187,6 +205,38 @@ function EventsBus() {
       setOpen(false);
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  // A subscription could be created but never paused or removed, so a stale
+  // one kept firing (and kept failing) with the only remedy being direct
+  // database access. `webhook-channels.tsx` had both controls and was never
+  // mounted anywhere, which is why this went unnoticed.
+  const setActive = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      const { error } = await supabase
+        .from("webhook_subscriptions")
+        .update({ active })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, v) => {
+      toast.success(v.active ? "Subscription resumed" : "Subscription paused");
+      qc.invalidateQueries({ queryKey: ["webhook-subs"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to update"),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("webhook_subscriptions").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Subscription deleted");
+      qc.invalidateQueries({ queryKey: ["webhook-subs"] });
+      qc.invalidateQueries({ queryKey: ["webhook-deliveries"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to delete"),
   });
 
   const failed = (deliveries ?? []).filter(
@@ -359,13 +409,39 @@ function EventsBus() {
                         <Input name="secret" type="password" required />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>Event types (comma)</Label>
-                        <Input
-                          name="event_types"
-                          defaultValue="call.closed_won,payment.collected"
-                        />
+                        <Label>Events to send</Label>
+                        <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+                          {DISPATCHED_EVENTS.map((e) => {
+                            const checked = draftTypes.includes(e.type);
+                            return (
+                              <label
+                                key={e.type}
+                                className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs hover:bg-muted/50"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="accent-[color:var(--color-accent)]"
+                                  checked={checked}
+                                  onChange={() =>
+                                    setDraftTypes((prev) =>
+                                      checked
+                                        ? prev.filter((t) => t !== e.type)
+                                        : [...prev, e.type],
+                                    )
+                                  }
+                                />
+                                <span className="flex-1">{e.label}</span>
+                                <span className="font-mono text-3xs text-muted-foreground">
+                                  {e.type}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
                         <div className="text-3xs text-muted-foreground">
-                          Available: {EVENT_TYPES.join(", ")}
+                          These are the events the app dispatches to webhooks.{" "}
+                          {STREAM_ONLY_EVENTS.map((e) => e.type).join(", ")} appear in the live
+                          stream but are never dispatched, so they are not offered here.
                         </div>
                       </div>
                       <Button type="submit" className="w-full" disabled={create.isPending}>
@@ -376,24 +452,109 @@ function EventsBus() {
                 </Dialog>
               </div>
               <div className="divide-y divide-border max-h-60 overflow-y-auto">
-                {(subs ?? []).map((s) => (
-                  <div key={s.id} className="p-3 text-xs">
-                    <div className="flex justify-between">
-                      <span className="font-medium">{s.name}</span>
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-3xs ${s.active ? "bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]" : "bg-muted"}`}
-                      >
-                        {s.active ? "Active" : "Off"}
-                      </span>
+                {(subs ?? []).map((s) => {
+                  const dead = undeliverableEventTypes(s.event_types);
+                  return (
+                    <div key={s.id} className="p-3 text-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0 flex-1 truncate font-medium">{s.name}</span>
+                        <span
+                          className={`shrink-0 rounded px-1.5 py-0.5 text-3xs ${s.active ? "bg-[color:var(--color-success)]/20 text-[color:var(--color-success)]" : "bg-muted"}`}
+                        >
+                          {s.active ? "Active" : "Paused"}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1">
+                        {/* The path of a Discord/Slack/n8n webhook URL is the
+                            credential — it is all anyone needs to post as this
+                            app. Masked so a screenshot of this panel does not
+                            hand it out; Copy still gives the real URL to the
+                            clipboard for whoever needs to check it. */}
+                        <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">
+                          {maskWebhookUrl(s.target_url)}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-5 shrink-0 px-1 text-3xs"
+                          onClick={() => {
+                            navigator.clipboard.writeText(s.target_url ?? "").then(
+                              () => toast.success("Target URL copied"),
+                              () => toast.error("Could not copy"),
+                            );
+                          }}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div className="mt-1 text-3xs text-muted-foreground">
+                        {(s.event_types ?? []).length} event type
+                        {(s.event_types ?? []).length === 1 ? "" : "s"}
+                        {(s.event_types ?? []).length > 0 && (
+                          <span className="font-mono"> · {(s.event_types ?? []).join(", ")}</span>
+                        )}
+                      </div>
+                      {dead.length > 0 && (
+                        /* An event type nothing dispatches makes a subscription
+                           permanently silent while still reporting Active. Say
+                           so here rather than leaving the reader to wonder why
+                           a correctly-configured row never fires. */
+                        <div className="mt-1 flex items-start gap-1 text-3xs text-[color:var(--color-warning)]">
+                          <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+                          <span>
+                            Never delivers: <span className="font-mono">{dead.join(", ")}</span> is
+                            not dispatched to webhooks.
+                          </span>
+                        </div>
+                      )}
+                      {canManage && (
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <label className="flex cursor-pointer items-center gap-1.5 text-3xs text-muted-foreground">
+                            <Switch
+                              checked={!!s.active}
+                              disabled={setActive.isPending}
+                              onCheckedChange={(active) => setActive.mutate({ id: s.id, active })}
+                            />
+                            {s.active ? "Sending" : "Paused"}
+                          </label>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 px-1.5 text-3xs text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Delete
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete “{s.name}”?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Events will stop being sent to{" "}
+                                  <span className="font-mono">{maskWebhookUrl(s.target_url)}</span>.
+                                  This cannot be undone — the target URL and signing secret are
+                                  deleted with it, and its delivery history goes too. To stop
+                                  deliveries without losing the configuration, pause it instead.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => remove.mutate(s.id)}
+                                  disabled={remove.isPending}
+                                >
+                                  Delete subscription
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-muted-foreground truncate mt-0.5 font-mono">
-                      {s.target_url}
-                    </div>
-                    <div className="text-3xs text-muted-foreground mt-1">
-                      {(s.event_types ?? []).length} event types
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {(!subs || subs.length === 0) && (
                   <div className="p-6 text-center text-xs text-muted-foreground">
                     No subscriptions configured.
