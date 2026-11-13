@@ -639,7 +639,15 @@ function OfferEditor({
   const update = (o: Offer, patch: Partial<Offer>) =>
     setDraft((d) => ({ ...d, [o.id]: { ...o, ...patch } }));
 
-  const OfferRow = ({ o, isNew }: { o: Offer; isNew?: boolean }) => {
+  // Rendered as a plain function call, never as <RowName />. Defining a
+  // component inside another component's body gives it a new function
+  // identity on every parent render, so React unmounts and remounts the whole
+  // subtree — which destroys the focused <input> after each keystroke. Typing
+  // "1500" into a threshold stored "1" and dropped the rest, making any value
+  // above 9 unreachable and the classification editor unusable. Inlining
+  // keeps the element types stable (div, Input, ...) so the inputs keep their
+  // identity and their focus across renders.
+  const renderOfferRow = (o: Offer, isNew?: boolean) => {
     const row = isNew ? o : rowFor(o);
     const commit = (patch: Partial<Offer>) => {
       const next = { ...row, ...patch };
@@ -647,7 +655,10 @@ function OfferEditor({
       else update(o, patch);
     };
     return (
-      <div className="grid grid-cols-1 gap-2 rounded-lg border border-border/70 p-3 sm:grid-cols-6">
+      <div
+        key={o.id}
+        className="grid grid-cols-1 gap-2 rounded-lg border border-border/70 p-3 sm:grid-cols-6"
+      >
         <Input
           value={row.name}
           onChange={(e) => commit({ name: e.target.value })}
@@ -739,15 +750,13 @@ function OfferEditor({
         Offers
       </div>
       <div className="space-y-2">
-        {offers.map((o) => (
-          <OfferRow key={o.id} o={o} />
-        ))}
+        {offers.map((o) => renderOfferRow(o))}
         {offers.length === 0 && (
           <p className="text-3xs text-muted-foreground">No offers configured yet.</p>
         )}
       </div>
       {adding ? (
-        <OfferRow o={adding} isNew />
+        renderOfferRow(adding, true)
       ) : (
         <Button type="button" size="sm" variant="outline" onClick={() => setAdding(blank())}>
           <Plus className="mr-1 h-3 w-3" /> New offer
@@ -786,7 +795,15 @@ function PaymentPlanEditor({
     setDraft((d) => ({ ...d, [p.id]: { ...p, ...patch } }));
   const offerName = (id: string) => offers.find((o) => o.id === id)?.name ?? "Unknown offer";
 
-  const PlanRow = ({ p, isNew }: { p: PaymentPlan; isNew?: boolean }) => {
+  // Rendered as a plain function call, never as <RowName />. Defining a
+  // component inside another component's body gives it a new function
+  // identity on every parent render, so React unmounts and remounts the whole
+  // subtree — which destroys the focused <input> after each keystroke. Typing
+  // "1500" into a threshold stored "1" and dropped the rest, making any value
+  // above 9 unreachable and the classification editor unusable. Inlining
+  // keeps the element types stable (div, Input, ...) so the inputs keep their
+  // identity and their focus across renders.
+  const renderPlanRow = (p: PaymentPlan, isNew?: boolean) => {
     const row = isNew ? p : rowFor(p);
     const commit = (patch: Partial<PaymentPlan>) => {
       const next = { ...row, ...patch };
@@ -923,7 +940,7 @@ function PaymentPlanEditor({
         {plans.map((p) => (
           <div key={p.id}>
             <div className="mb-1 text-3xs text-muted-foreground">{offerName(p.offer_id)}</div>
-            <PlanRow p={p} />
+            {renderPlanRow(p)}
           </div>
         ))}
         {plans.length === 0 && (
@@ -931,7 +948,7 @@ function PaymentPlanEditor({
         )}
       </div>
       {adding ? (
-        <PlanRow p={adding} isNew />
+        renderPlanRow(adding, true)
       ) : (
         <Button
           type="button"
@@ -974,7 +991,15 @@ function ClassificationRuleEditor({
     setDraft((d) => ({ ...d, [r.id]: { ...r, ...patch } }));
   const sorted = useMemo(() => [...rules].sort((a, b) => a.priority - b.priority), [rules]);
 
-  const RuleRow = ({ r, isNew }: { r: ClassificationRule; isNew?: boolean }) => {
+  // Rendered as a plain function call, never as <RowName />. Defining a
+  // component inside another component's body gives it a new function
+  // identity on every parent render, so React unmounts and remounts the whole
+  // subtree — which destroys the focused <input> after each keystroke. Typing
+  // "1500" into a threshold stored "1" and dropped the rest, making any value
+  // above 9 unreachable and the classification editor unusable. Inlining
+  // keeps the element types stable (div, Input, ...) so the inputs keep their
+  // identity and their focus across renders.
+  const renderRuleRow = (r: ClassificationRule, isNew?: boolean) => {
     const row = isNew ? r : rowFor(r);
     const commit = (patch: Partial<ClassificationRule>) => {
       const next = { ...row, ...patch };
@@ -982,7 +1007,10 @@ function ClassificationRuleEditor({
       else update(r, patch);
     };
     return (
-      <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/70 p-3 sm:grid-cols-6">
+      <div
+        key={r.id}
+        className="grid grid-cols-2 gap-2 rounded-lg border border-border/70 p-3 sm:grid-cols-6"
+      >
         <Input
           value={String(row.priority)}
           onChange={(e) => commit({ priority: Number(e.target.value) || 0 })}
@@ -1085,15 +1113,13 @@ function ClassificationRuleEditor({
         Low Ticket", priority 2 "investment_budget is at or over $3,000 → High Ticket".
       </p>
       <div className="space-y-2">
-        {sorted.map((r) => (
-          <RuleRow key={r.id} r={r} />
-        ))}
+        {sorted.map((r) => renderRuleRow(r))}
         {rules.length === 0 && (
           <p className="text-3xs text-muted-foreground">No classification rules configured yet.</p>
         )}
       </div>
       {adding ? (
-        <RuleRow r={adding} isNew />
+        renderRuleRow(adding, true)
       ) : (
         <Button
           type="button"
