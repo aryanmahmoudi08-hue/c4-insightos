@@ -47,6 +47,10 @@ export type LeadRow = {
   source_webinar_id: string | null;
   source_format: string | null;
   source_campaign: string | null;
+  /** utm_medium — placement (bio, story, …). */
+  source_medium?: string | null;
+  /** utm_content as delivered. */
+  source_content_tag?: string | null;
   first_touch_at: string | null;
   first_touch_content_id: string | null;
   assigned_setter_id: string | null;
@@ -66,7 +70,7 @@ export type LeadRow = {
 
 /** Columns for a LeadRow, with the call join toLeadRow summarises. */
 export const LEAD_ROW_SELECT =
-  "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, source_platform, source_webinar_id, source_format, source_campaign, first_touch_at, first_touch_content_id, assigned_setter_id, qualification_notes, application_data, notes, created_at, tags, ticket_tier, calls(closer_id, closer_name, scheduled_for)";
+  "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, source_platform, source_webinar_id, source_format, source_campaign, source_medium, source_content_tag, first_touch_at, first_touch_content_id, assigned_setter_id, qualification_notes, application_data, notes, created_at, tags, ticket_tier, calls(closer_id, closer_name, scheduled_for)";
 
 type LeadWithCalls = LeadRow & {
   calls?: Array<{
@@ -327,6 +331,14 @@ export function LeadDetail({
             <PlatformIcon platform={platform} className="h-3.5 w-3.5" />
             {platform}
           </span>
+          {/* The link's own tags, as delivered: placement, campaign, post. */}
+          {(lead.source_medium || lead.source_campaign || lead.source_content_tag) && (
+            <div className="mt-0.5 text-3xs text-muted-foreground">
+              {[lead.source_medium, lead.source_campaign, lead.source_content_tag]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
+          )}
         </div>
         <div>
           <div className="text-3xs uppercase tracking-wider text-muted-foreground">

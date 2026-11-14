@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { dispatchEvent } from "@/lib/dispatch.server";
 import { classifyLead, type ClassificationRule } from "@/lib/lead-classification";
 import { hiddenAttribution, indexTypeformAnswers, resolveSlot } from "@/lib/typeform-answers";
+import { contentIdForTag } from "@/lib/attribution.server";
 
 function verifyTypeformSignature(body: string, secret: string, signature: string | null) {
   if (!signature || !signature.startsWith("sha256=")) return false;
@@ -60,6 +61,13 @@ export const Route = createFileRoute("/api/public/typeform")({
         // — so an ad-sourced lead arrived with no attribution at all and
         // displayed as "Unknown / Unattributed".
         const attribution = hiddenAttribution(formResponse);
+        // utm_content links the lead to a content piece when it matches that
+        // piece's tracking id; unmatched, it is still kept raw below.
+        const contentId = await contentIdForTag(
+          supabaseAdmin,
+          connection.org_id,
+          attribution.contentTag,
+        );
 
         // Keep the latest definition on the connection so the mapping UI can
         // list this form's real questions without a Typeform API call or a
@@ -152,6 +160,9 @@ export const Route = createFileRoute("/api/public/typeform")({
               // rather than being flattened into "Other" on the way in.
               source_platform: attribution.sourcePlatform,
               source_campaign: attribution.sourceCampaign,
+              source_medium: attribution.sourceMedium,
+              source_content_tag: attribution.contentTag,
+              source_content_id: contentId,
               application_data,
               qualification_notes: pick("candidate_fit"),
             } as any)
@@ -264,6 +275,8 @@ export const Route = createFileRoute("/api/public/typeform")({
             ticket_tier_label: tierLabel,
             source_platform: attribution.sourcePlatform,
             source_campaign: attribution.sourceCampaign,
+            source_medium: attribution.sourceMedium,
+            source_content_tag: attribution.contentTag,
           },
           form_title:
             typeof formResponse.definition?.title === "string"

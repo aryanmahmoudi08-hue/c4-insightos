@@ -131,16 +131,21 @@ export function indexTypeformAnswers(formResponse: unknown): TypeformIndex {
  * Unattributed" — not because attribution failed to interpret the values,
  * but because they were discarded before anything could.
  *
- * Only two UTMs have a column on `leads`: utm_source maps to
- * `source_platform` (the raw value, which `normalizeAcquisitionSource` then
- * categorises at read time) and utm_campaign to `source_campaign`. The rest
- * are kept verbatim so nothing that arrived is thrown away, but they are
- * deliberately not forced into `source_format` or `source_content_id`,
- * which mean something else.
+ * utm_source maps to `source_platform` (the raw value, which
+ * `normalizeAcquisitionSource` categorises at read time), utm_campaign to
+ * `source_campaign`, utm_medium to `source_medium` and utm_content to
+ * `source_content_tag` — all raw, as delivered. utm_content also links the
+ * lead to a content piece when it matches that piece's tracking id
+ * (attribution.server.ts). Nothing is forced into `source_format`, which
+ * means the content format, not the placement.
  */
 export type HiddenAttribution = {
   sourcePlatform: string | null;
   sourceCampaign: string | null;
+  /** utm_medium — the placement (bio, story, dm, …). */
+  sourceMedium: string | null;
+  /** utm_content — which post, as a short tracking id when links are tagged. */
+  contentTag: string | null;
   /** Every hidden field exactly as delivered, for audit. */
   hidden: Record<string, string>;
 };
@@ -160,6 +165,8 @@ export function hiddenAttribution(formResponse: unknown): HiddenAttribution {
   return {
     sourcePlatform: hidden.utm_source ?? null,
     sourceCampaign: hidden.utm_campaign ?? null,
+    sourceMedium: hidden.utm_medium ?? null,
+    contentTag: hidden.utm_content ?? null,
     hidden,
   };
 }

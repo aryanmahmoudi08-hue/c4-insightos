@@ -21,6 +21,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calendlyInviteeToLeadRow, type CalendlyInvitee } from "./calendly";
 import { escapeLike } from "./sql-like";
+import { attributionFromUtms, fillMissingAttribution } from "./attribution.server";
 
 // leads/calls columns used here are partly ahead of the generated types.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,11 +65,28 @@ export async function resolveBookingLead(
     .limit(1)
     .maybeSingle();
   if (matchError) throw new Error(`lead lookup: ${matchError.message}`);
-  if (match?.id) return match.id as string;
+
+  const t = invitee.tracking ?? null;
+  const attribution = await attributionFromUtms(db, orgId, {
+    source: t?.utm_source,
+    campaign: t?.utm_campaign,
+    medium: t?.utm_medium,
+    content: t?.utm_content,
+  });
+
+  if (match?.id) {
+    // Someone who applied first already has a source. The booking only
+    // fills what is still empty — where they first came from stands.
+    await fillMissingAttribution(db, orgId, match.id as string, attribution);
+    return match.id as string;
+  }
 
   const { data: created, error: createError } = await db
     .from("leads")
-    .insert(calendlyInviteeToLeadRow(orgId, invitee))
+    .insert({
+      ...calendlyInviteeToLeadRow(orgId, invitee),
+      source_content_id: attribution.source_content_id,
+    })
     .select("id")
     .single();
   if (createError) throw new Error(`lead create: ${createError.message}`);

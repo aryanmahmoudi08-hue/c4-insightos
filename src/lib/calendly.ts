@@ -203,5 +203,7 @@ export function calendlyInviteeToLeadRow(orgId: string, invitee: CalendlyInvitee
     status: "call_booked" as const,
     source_platform: t?.utm_source ?? null,
     source_campaign: t?.utm_campaign ?? null,
+    source_medium: t?.utm_medium ?? null,
+    source_content_tag: t?.utm_content ?? null,
   };
 }

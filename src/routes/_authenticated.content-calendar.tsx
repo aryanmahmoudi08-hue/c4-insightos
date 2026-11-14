@@ -8,6 +8,7 @@ import { useRole } from "@/hooks/use-role";
 import { useDevPreviewRole } from "@/hooks/use-dev-preview-role";
 import { TopBar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Badge, CHIP_TONE_CLASSES } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -66,6 +67,8 @@ type Sched = {
   voice_notes: string | null;
   why_it_works: string | null;
   posting_instructions: string | null;
+  /** Short id used as utm_content on this piece's links. */
+  tracking_id?: string | null;
 };
 
 // Identity colors (content-format, categorical) — deliberately lower saturation
@@ -238,7 +241,7 @@ function ContentCalendar() {
       const { data, error } = await supabase
         .from("content_pieces")
         .select(
-          "id, title, platform, hook, body, cta, funnel_stage, angle, topic, pipeline_status, scheduled_date, scheduled_time, post_format, repurpose_plan, voice_notes, why_it_works, posting_instructions",
+          "id, title, platform, hook, body, cta, funnel_stage, angle, topic, pipeline_status, scheduled_date, scheduled_time, post_format, repurpose_plan, voice_notes, why_it_works, posting_instructions, tracking_id",
         )
         .eq("org_id", orgId!)
         .not("scheduled_date", "is", null)
@@ -756,6 +759,17 @@ function ContentCalendar() {
                   )}
                 </div>
 
+                <TrackingIdField
+                  key={openPiece.id}
+                  pieceId={openPiece.id}
+                  initial={openPiece.tracking_id ?? ""}
+                  devBypass={devBypass}
+                  onSaved={(v) => {
+                    setOpenPiece((p) => (p ? { ...p, tracking_id: v } : p));
+                    qc.invalidateQueries({ queryKey: ["content-schedule"] });
+                  }}
+                />
+
                 {openPiece.hook && (
                   <Block icon={Target} title="Hook — say this first">
                     <p className="italic">"{openPiece.hook}"</p>
@@ -1018,5 +1032,75 @@ function PipelineScheduleDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The short id this piece's links carry as utm_content (e.g.
+ * reel-1114-layoff). A lead arriving with a matching utm_content — any case —
+ * is linked to this piece, so Content-to-Cash and the top-sources reports can
+ * rank individual posts. Unique per workspace.
+ */
+function TrackingIdField({
+  pieceId,
+  initial,
+  devBypass,
+  onSaved,
+}: {
+  pieceId: string;
+  initial: string;
+  devBypass: boolean;
+  onSaved: (value: string | null) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const trimmed = value.trim();
+  const invalid = trimmed !== "" && !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(trimmed);
+  const save = useMutation({
+    mutationFn: async () => {
+      if (devBypass) return;
+      // tracking_id is ahead of the generated types (20261114120000).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
+        .from("content_pieces")
+        .update({ tracking_id: trimmed || null })
+        .eq("id", pieceId);
+      if (error) {
+        if (error.code === "23505")
+          throw new Error(`"${trimmed}" is already the tracking id of another piece.`);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      toast.success(trimmed ? "Tracking id saved" : "Tracking id cleared");
+      onSaved(trimmed || null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs">Tracking id (utm_content)</Label>
+      <div className="flex gap-2">
+        <Input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="reel-1114-layoff"
+          className="h-8 font-mono text-xs"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8"
+          disabled={save.isPending || invalid || trimmed === initial.trim()}
+          onClick={() => save.mutate()}
+        >
+          Save
+        </Button>
+      </div>
+      <p className={cn("text-3xs", invalid ? "text-destructive" : "text-muted-foreground")}>
+        {invalid
+          ? "Letters, numbers, - and _ only, up to 64 characters."
+          : "Put this in the post's link as utm_content and leads from it are credited to this piece."}
+      </p>
+    </div>
   );
 }

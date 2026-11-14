@@ -210,10 +210,15 @@ function application(p: Record<string, unknown>): Body {
       ["Time available", app.time],
       ["Committed", app.commitment],
       ["LinkedIn", findLinkedIn(app.answers_by_title, app.raw_answers)],
+      // Platform · placement · campaign, as tagged on the link.
       [
         "Source",
-        [lead.source_platform, lead.source_campaign].map(text).filter(Boolean).join(" · "),
+        [lead.source_platform, lead.source_medium, lead.source_campaign]
+          .map(text)
+          .filter(Boolean)
+          .join(" · "),
       ],
+      ["Content", lead.source_content_tag],
     ],
     long: [["Why you, why now", app.serious_status]],
     linkPath: leadLink(lead.id ?? p.lead_id),

@@ -182,7 +182,10 @@ export function resolveLead(
     const contentId = lead.source_content_id ?? lead.first_touch_content_id;
     const content = contentId ? contentById.get(contentId) : undefined;
     return {
-      platform: lead.source_platform,
+      // Normalised like every other branch below. Returned raw, a lead's own
+      // "instagram" and an unrecognised test value showed as their own
+      // platform rows beside "Instagram" and "Unknown / Unattributed".
+      platform: normalizeAcquisitionSource(null, lead.source_platform),
       format: lead.source_format ?? "unknown",
       formatLbl: lead.source_format ? formatLabel(lead.source_format) : "Unidentified",
       contentKey: content ? content.id : (lead.source_campaign ?? "unattributed-content"),

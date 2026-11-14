@@ -334,3 +334,20 @@ describe("sales report call numbers", () => {
     expect(msg.content).toContain("**Team** — 4 booked · 1 on calendar");
   });
 });
+
+describe("application source", () => {
+  it("shows platform, placement and campaign, and the post when tagged", () => {
+    const msg = formatDiscordMessage("lead.application_submitted", {
+      lead: {
+        full_name: "UTM Verify",
+        source_platform: "instagram",
+        source_medium: "bio",
+        source_campaign: "evergreen",
+        source_content_tag: "reel-1114-layoff",
+      },
+      application_data: {},
+    });
+    expect(msg.content).toContain("**Source:** instagram · bio · evergreen");
+    expect(msg.content).toContain("**Content:** reel-1114-layoff");
+  });
+});

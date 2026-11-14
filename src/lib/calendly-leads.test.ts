@@ -37,6 +37,19 @@ function fakeDb(tables: Record<string, Row[]>) {
           rows = [...rows].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
         return { data: rows[0] ?? null, error: null };
       },
+      update: (patch: Row) => {
+        const conds: Array<[string, unknown]> = [];
+        const u = {
+          eq: (c: string, v: unknown) => {
+            conds.push([c, v]);
+            if (conds.length < 2) return u;
+            for (const r of tables[table] ?? [])
+              if (conds.every(([k, val]) => r[k] === val)) Object.assign(r, patch);
+            return Promise.resolve({ error: null });
+          },
+        };
+        return u;
+      },
       insert: (row: Row) => {
         const withId = { id: `new-${inserted.length + 1}`, ...row };
         inserted.push({ table, row: withId });
@@ -148,6 +161,47 @@ describe("resolveBookingLead", () => {
     const { db, inserted } = fakeDb({ leads: [] });
     expect(await resolveBookingLead(db, "org", { uri: "u" }, null)).toBeNull();
     expect(inserted).toEqual([]);
+  });
+});
+
+describe("first touch", () => {
+  it("fills a matched lead's empty attribution but never overwrites it", async () => {
+    const applied = {
+      id: "typeform-lead",
+      org_id: "org",
+      email: "test.booking5@example.com",
+      source_platform: "tiktok",
+      source_campaign: null,
+      source_medium: null,
+      source_content_tag: null,
+      source_content_id: null,
+      created_at: "2026-11-12",
+    };
+    const { db } = fakeDb({
+      leads: [applied],
+      content_pieces: [{ id: "piece-1", org_id: "org", tracking_id: "Reel-1114-Layoff" }],
+    });
+    await resolveBookingLead(
+      db,
+      "org",
+      {
+        ...invitee,
+        tracking: {
+          utm_source: "instagram",
+          utm_campaign: "evergreen",
+          utm_medium: "bio",
+          utm_content: "reel-1114-layoff",
+        },
+      },
+      null,
+    );
+    // Where they first came from stands; only the gaps are filled.
+    expect(applied.source_platform).toBe("tiktok");
+    expect(applied.source_campaign).toBe("evergreen");
+    expect(applied.source_medium).toBe("bio");
+    expect(applied.source_content_tag).toBe("reel-1114-layoff");
+    // utm_content matched the piece's tracking id, ignoring case.
+    expect(applied.source_content_id).toBe("piece-1");
   });
 });
 
