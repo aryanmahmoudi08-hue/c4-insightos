@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { addCalendarDays, isValidTimeZone, localDateIn } from "./zoned-time";
 
 async function orgOf(context: unknown) {
   const { supabase, userId } = context as { supabase: any; userId: string };
@@ -10,9 +11,24 @@ async function orgOf(context: unknown) {
 }
 
 const rangeSchema = z.object({
-  from: z.string().default(() => new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)),
-  to: z.string().default(() => new Date().toISOString().slice(0, 10)),
+  from: z.string().optional(),
+  to: z.string().optional(),
 });
+
+/**
+ * A caller that sends no range gets the last 30 days ending today in the
+ * workspace's business timezone. This used to default with
+ * toISOString().slice(0, 10) on the server, which is the UTC date — "today"
+ * was already tomorrow for every evening request in the Americas.
+ */
+function resolveRange(
+  data: { from?: string; to?: string },
+  timeZone: string,
+): { from: string; to: string } {
+  const zone = isValidTimeZone(timeZone) ? timeZone : "UTC";
+  const to = data.to ?? localDateIn(zone);
+  return { from: data.from ?? addCalendarDays(to, -29), to };
+}
 
 /** Recommended posting mix across the 4 mechanisms, derived from FAQ clicks, intakes and setting calls. */
 export const contentDemandFn = createServerFn({ method: "POST" })
@@ -23,7 +39,7 @@ export const contentDemandFn = createServerFn({ method: "POST" })
     const { computeDemand } = await import("./content-signals.server");
     const { fetchWorkspaceSettings } = await import("./workspace-settings.functions");
     const settings = await fetchWorkspaceSettings(supabase, orgId);
-    return computeDemand(supabase, orgId, { from: data.from, to: data.to }, settings.content_engine);
+    return computeDemand(supabase, orgId, resolveRange(data, settings.notifications.timeZone), settings.content_engine);
   });
 
 /** Full bottleneck read: VSL + FAQ + setting calls + intakes + reel performance. */
@@ -35,7 +51,7 @@ export const analyzeContentSystemFn = createServerFn({ method: "POST" })
     const { analyzeContentSystem } = await import("./content-signals.server");
     const { fetchWorkspaceSettings } = await import("./workspace-settings.functions");
     const settings = await fetchWorkspaceSettings(supabase, orgId);
-    return analyzeContentSystem(supabase, orgId, { from: data.from, to: data.to }, settings.content_engine);
+    return analyzeContentSystem(supabase, orgId, resolveRange(data, settings.notifications.timeZone), settings.content_engine);
   });
 
 /**

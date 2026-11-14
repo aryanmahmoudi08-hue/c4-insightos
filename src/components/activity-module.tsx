@@ -157,6 +157,7 @@ import {
   sliceSetterActivityToWindow,
   type SetterActivityActualRow,
 } from "@/lib/rep-kpi-actuals";
+import { localISODate } from "@/lib/date-range";
 
 export type ActivityRole = "dm_setter" | "inbound_dialer";
 
@@ -2732,7 +2733,7 @@ export function ActivityModule({ role, title, subtitle }: Props) {
                     <Input
                       name="activity_date"
                       type="date"
-                      defaultValue={new Date().toISOString().slice(0, 10)}
+                      defaultValue={localISODate(new Date())}
                       required
                     />
                   </div>

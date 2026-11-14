@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { syncLeadStageFromCall } from "@/lib/crm-board.functions";
 import { notifyEodSubmittedFn } from "@/lib/eod-notify.functions";
+import { getWorkspaceSettingsFn } from "@/lib/workspace-settings.functions";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { TopBar } from "@/components/app-sidebar";
@@ -178,6 +179,16 @@ function EodFlowForRole({
   const qc = useQueryClient();
   const syncBoardStage = useServerFn(syncLeadStageFromCall);
   const notifyEod = useServerFn(notifyEodSubmittedFn);
+  // The business timezone decides which day an EOD's date defaults to, so the
+  // form waits for it rather than opening on the browser's date and silently
+  // disagreeing with the nightly report. Same query key the Settings page
+  // uses, so it is usually already cached.
+  const getSettings = useServerFn(getWorkspaceSettingsFn);
+  const { data: settings, isLoading: settingsLoading } = useQuery({
+    queryKey: ["workspace-settings", orgId, devBypass],
+    enabled: !devBypass && !!orgId,
+    queryFn: () => getSettings({ data: { orgId: orgId! } }),
+  });
   const schema =
     role === "dm_setter"
       ? DM_SETTER_EOD_SCHEMA
@@ -277,8 +288,13 @@ function EodFlowForRole({
     }
   };
 
+  if (settingsLoading) {
+    return <div className="py-16 text-center text-xs text-muted-foreground">Loading…</div>;
+  }
+
   return (
     <EodStepFlow
+      timeZone={settings?.notifications.timeZone ?? null}
       title={ROLE_META[role].title}
       subtitle={ROLE_META[role].subtitle}
       schema={schema}

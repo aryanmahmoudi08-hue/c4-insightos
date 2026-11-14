@@ -15,6 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { TeamMemberPicker } from "@/components/team-member-picker";
 import { cn } from "@/lib/utils";
 import {
+  eodToday,
   isAnswered,
   EOD_CURRENCY_OPTIONS,
   type EodQuestion,
@@ -36,6 +37,8 @@ interface Props {
   leadOptions?: EodLeadOption[];
   onSubmit: (values: EodValues) => Promise<void>;
   onExit: () => void;
+  /** Business timezone (Settings → Notifications) for "today" defaults. */
+  timeZone?: string | null;
 }
 
 const currencySymbolFor = (code: string): string => {
@@ -121,13 +124,28 @@ const fmtValue = (
  * Reports Rebuild" plan; nothing role-specific lives in this file, that's
  * entirely in the schema passed in.
  */
-export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, onExit }: Props) {
+/** Starting answers: each question's default, with "today" dates resolved
+ *  now, in the business timezone. */
+function initialValues(schema: EodQuestion[], timeZone: string | null | undefined): EodValues {
+  const initial: EodValues = {};
+  for (const q of schema) {
+    if (q.defaultToday) initial[q.key] = eodToday(timeZone);
+    else if (q.defaultValue !== undefined) initial[q.key] = q.defaultValue;
+  }
+  return initial;
+}
+
+export function EodStepFlow({
+  title,
+  subtitle,
+  schema,
+  leadOptions,
+  onSubmit,
+  onExit,
+  timeZone,
+}: Props) {
   const [step, setStep] = useState(0);
-  const [values, setValues] = useState<EodValues>(() => {
-    const initial: EodValues = {};
-    for (const q of schema) if (q.defaultValue !== undefined) initial[q.key] = q.defaultValue;
-    return initial;
-  });
+  const [values, setValues] = useState<EodValues>(() => initialValues(schema, timeZone));
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -184,9 +202,7 @@ export function EodStepFlow({ title, subtitle, schema, leadOptions, onSubmit, on
   };
 
   const resetFlow = () => {
-    const initial: EodValues = {};
-    for (const q of schema) if (q.defaultValue !== undefined) initial[q.key] = q.defaultValue;
-    setValues(initial);
+    setValues(initialValues(schema, timeZone));
     setStep(0);
     setDone(false);
   };

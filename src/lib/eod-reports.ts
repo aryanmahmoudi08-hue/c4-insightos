@@ -1,4 +1,5 @@
 import type { ActivityRole } from "@/components/activity-module";
+import { browserTimeZone, isValidTimeZone, localDateIn } from "./zoned-time";
 import type { TeamRole } from "@/components/team-member-picker";
 import { DISPLAY_CURRENCIES } from "@/lib/currency";
 import { OTHER_OBJECTION_VALUE, objectionCategoryLabel } from "@/lib/objection-taxonomy";
@@ -61,11 +62,27 @@ export interface EodQuestion {
    * Recomputed on every render, so answering an earlier question can make
    * a later step appear/disappear before the rep reaches it. */
   showIf?: (values: EodValues) => boolean;
+  /** Default to today's date when the form opens — resolved at that moment,
+   * in the business timezone (see eodToday), not once when the module first
+   * loaded, which went stale for a page left open past midnight. */
+  defaultToday?: boolean;
 }
 
 export type EodValues = Record<string, string | number | boolean | undefined>;
 
-const today = () => new Date().toISOString().slice(0, 10);
+/**
+ * Today's date for an EOD, in the business timezone when one is set and the
+ * rep's own browser timezone otherwise.
+ *
+ * This was `new Date().toISOString().slice(0, 10)` — the UTC date. From
+ * about 7 PM in New York onwards that is already tomorrow, so an evening EOD
+ * was filed under the next day and dropped out of that night's sales
+ * report. Business timezone first so the date an EOD is filed under matches
+ * the day the report counts.
+ */
+export function eodToday(timeZone?: string | null, now: Date = new Date()): string {
+  return localDateIn(isValidTimeZone(timeZone) ? timeZone : browserTimeZone(), now);
+}
 
 // Currency options for every EOD schema's money fields — same
 // DISPLAY_CURRENCIES list the dashboard-wide currency selector uses
@@ -133,7 +150,7 @@ export const INBOUND_DIALER_EOD_SCHEMA: EodQuestion[] = [
     teamRole: "inbound_dialer",
     required: true,
   },
-  { key: "activity_date", label: "Date", type: "date", required: true, defaultValue: today() },
+  { key: "activity_date", label: "Date", type: "date", required: true, defaultToday: true },
   { key: "dials", label: "Dials", type: "number", required: true, min: 0, defaultValue: 0 },
   {
     key: "connections",
@@ -206,7 +223,7 @@ export const DM_SETTER_EOD_SCHEMA: EodQuestion[] = [
     teamRole: "dm_setter",
     required: true,
   },
-  { key: "activity_date", label: "Date", type: "date", required: true, defaultValue: today() },
+  { key: "activity_date", label: "Date", type: "date", required: true, defaultToday: true },
   {
     key: "inbound_dms_sent",
     label: "Inbound DMs Sent",
@@ -331,7 +348,7 @@ export const CLOSER_EOD_SCHEMA: EodQuestion[] = [
     label: "Date Of Call",
     type: "date",
     required: true,
-    defaultValue: today(),
+    defaultToday: true,
   },
   { key: "lead_email", label: "Lead Email", type: "email", required: true },
   {
@@ -460,7 +477,7 @@ export function buildSetterActivityPayload(
     org_id: orgId,
     role,
     team_member_name: STR(values.team_member_name),
-    activity_date: STR(values.activity_date) || today(),
+    activity_date: STR(values.activity_date) || eodToday(),
     rate_today: values.rate_today ? Number(values.rate_today) : null,
     objections: STR(values.objections) || null,
     notes: STR(values.notes) || null,

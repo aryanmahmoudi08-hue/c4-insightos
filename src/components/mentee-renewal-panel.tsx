@@ -83,6 +83,7 @@ import {
   getWorkspaceSettingsFn,
   DEFAULT_WORKSPACE_SETTINGS,
 } from "@/lib/workspace-settings.functions";
+import { localISODate } from "@/lib/date-range";
 
 // Order matches the spec's exact renewal pipeline stage list (section 7).
 const STAGES = [
@@ -2107,7 +2108,7 @@ function ClientForm({
           <Input
             name="start_date"
             type="date"
-            defaultValue={initial?.start_date ?? new Date().toISOString().slice(0, 10)}
+            defaultValue={initial?.start_date ?? localISODate(new Date())}
           />
         </div>
       </div>
