@@ -1754,7 +1754,9 @@ function Dashboard() {
             },
             {
               key: "booked",
-              label: "Booked",
+              // Calls scheduled in the range, not bookings made in it — the
+              // funnel's show rate is measured against these.
+              label: "On Calendar",
               value: p.totalCalls,
               spectrum: "mid" as SpectrumPosition,
             },

@@ -1,4 +1,6 @@
 import { createFileRoute, useSearch, useNavigate, Link } from "@tanstack/react-router";
+import { useCallVolume } from "@/hooks/use-call-volume";
+import { callsBookedTotal } from "@/lib/call-booking-metrics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
@@ -901,6 +903,15 @@ function Closer() {
   // "Enterprise metric visualizer" tiles (Part 2), replacing the hardcoded
   // decorative arrays this page shipped with during the visual redesign.
   const prevRange = useMemo(() => priorPeriod(range.from, range.to), [range.from, range.to]);
+  // Bookings made in the range, beside the calls on the calendar in it. See
+  // call-booking-metrics.ts.
+  const { data: volume } = useCallVolume({ orgId, from: range.from, to: range.to, devBypass });
+  const { data: prevVolume } = useCallVolume({
+    orgId,
+    from: prevRange.from,
+    to: prevRange.to,
+    devBypass,
+  });
   const { data: prevCalls } = useQuery({
     queryKey: ["calls-prev", orgId, prevRange.from, prevRange.to, devBypass, demoMode],
     enabled: !!orgId,
@@ -3435,9 +3446,32 @@ function Closer() {
                   label: "Disqualified Leads",
                 }),
             },
+            // Bookings made in the range. Org-wide only: a synced booking
+            // has no closer until someone takes the call, so a per-closer
+            // filter would read 0 — the tile says so instead of lying.
             {
-              key: "oncal",
+              key: "booked",
               label: "Calls Booked",
+              value: useDayLogs ? fmtN0(callsBookedTotal(volume?.booked ?? 0, setBooked)) : "—",
+              spectrum: "mid",
+              deltaPct: useDayLogs
+                ? pctDelta(
+                    callsBookedTotal(volume?.booked ?? 0, setBooked),
+                    callsBookedTotal(prevVolume?.booked ?? 0, prevSetBooked),
+                  )
+                : undefined,
+              priorValue: useDayLogs
+                ? fmtN0(callsBookedTotal(prevVolume?.booked ?? 0, prevSetBooked))
+                : undefined,
+              empty: !useDayLogs,
+              emptyHint: "Bookings are counted for the whole team, not per closer.",
+            },
+            {
+              // Calls scheduled in the range — the denominator show rate and
+              // the funnel below use. Relabelled from "Calls Booked", which it
+              // never was: it counts calls by their scheduled date.
+              key: "oncal",
+              label: "On Calendar",
               value: fmtN0(onCalendar),
               spectrum: "mid",
               deltaPct: pctDelta(onCalendar, prevOnCalendar),

@@ -64,6 +64,7 @@ function sumRows(name: string, rows: LeaderboardRow[]): LeaderboardRow {
     dials: 0,
     sets: 0,
     booked: 0,
+    taken: 0,
     showed: 0,
     noShows: 0,
     closed: 0,
@@ -73,6 +74,7 @@ function sumRows(name: string, rows: LeaderboardRow[]): LeaderboardRow {
     t.dials! += r.dials ?? 0;
     t.sets! += r.sets ?? 0;
     t.booked! += r.booked ?? 0;
+    t.taken! += r.taken ?? 0;
     t.showed! += r.showed ?? 0;
     t.noShows! += r.noShows ?? 0;
     t.closed! += r.closed ?? 0;
@@ -123,13 +125,13 @@ export function buildLeaderboard(
     if (!name) continue;
     const row = closers.get(name) ?? {
       name,
-      booked: 0,
+      taken: 0,
       showed: 0,
       noShows: 0,
       closed: 0,
       cashCents: 0,
     };
-    row.booked! += 1;
+    row.taken! += 1;
     if (c.showed) row.showed! += 1;
     if (isNoShow(c)) row.noShows! += 1;
     if (c.closed) row.closed! += 1;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { localISODate } from "@/lib/date-range";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -22,7 +23,9 @@ import {
 } from "lucide-react";
 import { mockCloserCalls, mockCoachingReviews } from "@/lib/home-dev-mock-data";
 
-const TODAY = new Date().toISOString().slice(0, 10);
+// Local date (as home-admin does), not toISOString() — the UTC date is
+// already tomorrow every evening in the Americas.
+const TODAY = localISODate(new Date());
 function isoDaysAgo(n: number) {
   const d = new Date();
   d.setDate(d.getDate() - n);
@@ -268,7 +271,7 @@ export function HomeCloser({ orgId }: { orgId: string }) {
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
                 <HomeStat
-                  label="Booked"
+                  label="On Calendar"
                   value={booked}
                   icon={<PhoneCall className="h-4 w-4" />}
                   tone="cold"

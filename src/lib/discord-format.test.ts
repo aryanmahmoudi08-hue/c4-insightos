@@ -202,12 +202,12 @@ describe("other event shapes", () => {
   it("renders a leaderboard with rates", () => {
     const msg = formatDiscordMessage("report.daily_sales", {
       period_label: "Thu, Nov 13",
-      closers: [{ name: "Sam", booked: 4, showed: 3, noShows: 1, closed: 1, cashCents: 300000 }],
+      closers: [{ name: "Sam", taken: 4, showed: 3, noShows: 1, closed: 1, cashCents: 300000 }],
       team: { name: "Team", showed: 3, noShows: 1, closed: 1, cashCents: 300000 },
     });
     expect(msg.content).toContain("Daily sales team report — Thu, Nov 13");
     expect(msg.content).toContain(
-      "**Sam** — 4 booked · 3 showed · 1 no-show · 1 closed · $3,000 · show 75% · close 33%",
+      "**Sam** — 4 calls taken · 3 showed · 1 no-show · 1 closed · $3,000 · show 75% · close 33%",
     );
   });
 
@@ -322,5 +322,15 @@ describe("content messages", () => {
     expect(msg.content).toContain("• **Unknown / Unattributed** — 9 leads");
     expect(msg.content).not.toMatch(/\d\. \*\*Unknown/);
     expect(msg.content).toContain("1. **Why your salary is capped**");
+  });
+});
+
+describe("sales report call numbers", () => {
+  it("shows bookings made and calls on calendar on the team line, as separate numbers", () => {
+    const msg = formatDiscordMessage("report.daily_sales", {
+      period_label: "Sat, Nov 14",
+      team: { name: "Team", booked: 4, onCalendar: 1 },
+    });
+    expect(msg.content).toContain("**Team** — 4 booked · 1 on calendar");
   });
 });

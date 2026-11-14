@@ -64,7 +64,7 @@ MAIN-0062,Main Hub,Content attribution (Level 3),Cash,LIVE,LIVE,unchanged,,
 MAIN-0063,Main Hub,Content attribution (Level 3),Revenue,LIVE,LIVE,unchanged,,
 MAIN-0064,Main Hub,Funnel diagnostic (Level 4),Views,LIVE,LIVE,unchanged,,
 MAIN-0065,Main Hub,Funnel diagnostic (Level 4),Leads,LIVE,LIVE,unchanged,,
-MAIN-0066,Main Hub,Funnel diagnostic (Level 4),Booked,LIVE,LIVE,unchanged,,
+MAIN-0066,Main Hub,Funnel diagnostic (Level 4),Booked,LIVE,LIVE,unchanged,,2026-11-14: relabelled On Calendar (calls scheduled in range); unchanged value — funnel show rate is measured against it. See call-booking-metrics.ts.
 MAIN-0067,Main Hub,Funnel diagnostic (Level 4),Showed,LIVE,LIVE,unchanged,,
 MAIN-0068,Main Hub,Funnel diagnostic (Level 4),Offers,LIVE,LIVE,unchanged,,
 MAIN-0069,Main Hub,Funnel diagnostic (Level 4),Disqualified,LIVE,LIVE,unchanged,,
@@ -198,7 +198,7 @@ SALE-0159,Sales Tracking → Team,Team Snapshot,Team Members,LIVE,LIVE,unchanged
 SALE-0160,Sales Tracking → Team,Team Snapshot,Setters,LIVE,LIVE,unchanged,,
 SALE-0161,Sales Tracking → Team,Team Snapshot,Dialers,LIVE,LIVE,unchanged,,
 SALE-0162,Sales Tracking → Team,Team Snapshot,Closers,LIVE,LIVE,unchanged,,
-SALE-0163,Sales Tracking → Team,Team Snapshot,Booked (30D),LIVE,LIVE,correctness-fix,Phase 1/2,
+SALE-0163,Sales Tracking → Team,Team Snapshot,Booked (30D),LIVE,LIVE,correctness-fix,Phase 1/2,"2026-11-14: Booked (30D) = bookings made in the 30 days: max(synced scheduling-tool bookings by created_at, setter-reported calls_on_calendar). New sibling tile On calendar (30D) = calls by scheduled_for. Show rate keeps its prior denominator."
 SALE-0164,Sales Tracking → Team,Team Snapshot,Show Rate,LIVE,LIVE,correctness-fix,Phase 1/2,
 SALE-0165,Sales Tracking → Team,Team Snapshot,Cash Collected (30D),LIVE,LIVE,correctness-fix,Phase 1/2,
 SALE-0166,Sales Tracking → Team,Performance — leaderboards,Closes,LIVE,LIVE,unchanged,,
@@ -415,7 +415,7 @@ SALE-0376,Sales Tracking → Reps → Closer,Money & closing,Cash Collection Rat
 SALE-0377,Sales Tracking → Reps → Closer,Money & closing,Avg Contract Value,LIVE,LIVE,unchanged,,
 SALE-0378,Sales Tracking → Reps → Closer,Money & closing,Closes,LIVE,LIVE,correctness-fix,Phase 1/2,
 SALE-0379,Sales Tracking → Reps → Closer,Money & closing,Disqualified Leads,LIVE,LIVE,unchanged,,
-SALE-0380,Sales Tracking → Reps → Closer,Money & closing,Calls Booked,LIVE,LIVE,unchanged,,
+SALE-0380,Sales Tracking → Reps → Closer,Money & closing,Calls Booked,LIVE,LIVE,unchanged,,"2026-11-14: split. Calls Booked = bookings made in range (org-wide; per-closer shows —). Former figure relabelled On Calendar (calls by scheduled_for), still the show-rate denominator."
 SALE-0381,Sales Tracking → Reps → Closer,Money & closing,Showed,LIVE,LIVE,unchanged,,
 SALE-0382,Sales Tracking → Reps → Closer,Money & closing,Offers Made,LIVE,LIVE,unchanged,,
 SALE-0383,Sales Tracking → Reps → Closer,Rate charts,Show Rate,LIVE,LIVE,unchanged,,
@@ -833,3 +833,9 @@ OPSW-0794,Ops → Webinar Analytics,Compare webinars table,Deposits,NEEDS INTEGR
 OPSW-0795,Ops → Webinar Analytics,Compare webinars table,Total sales,NEEDS INTEGRATION,NEEDS INTEGRATION,unchanged,,
 OPSW-0796,Ops → Webinar Analytics,Compare webinars table,Revenue,NEEDS INTEGRATION,NEEDS INTEGRATION,unchanged,,
 OPSW-0797,Ops → Webinar Analytics,Compare webinars table,ROAS,NEEDS INTEGRATION,NEEDS INTEGRATION,unchanged,,
+SALE-0380b,Sales Tracking → Reps → Closer,KPI band,On Calendar,NEW,LIVE,split,2026-11-14,Calls with scheduled_for in range (former Calls Booked figure).
+SALE-0163b,Sales Tracking → Team,KPI band,On calendar (30D),NEW,LIVE,split,2026-11-14,Calls with scheduled_for in the last 30 days.
+GLOB-TICK-1,Global → Live ticker,Ticker,Booked (today),NEW,LIVE,split,2026-11-14,"max(synced bookings created today, setter-reported calls_on_calendar today); local date."
+GLOB-TICK-2,Global → Live ticker,Ticker,On calendar (today),NEW,LIVE,split,2026-11-14,Calls with scheduled_for today (local).
+HOME-MGR-1,Home → Manager,Team Health · Today,Booked Today,NEW,LIVE,split,2026-11-14,Synced bookings created today. Former Calls Booked tile relabelled On Calendar.
+DISC-SALES-1,Discord → Daily/Weekly sales report,Team line,Booked / On calendar,NEW,LIVE,split,2026-11-14,Team line shows both. Closer rows' former 'booked' was calls taken (post-call logs) and is now labelled so.

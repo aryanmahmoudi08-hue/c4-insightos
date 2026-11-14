@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useCallVolume } from "@/hooks/use-call-volume";
+import { callsBookedTotal } from "@/lib/call-booking-metrics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ASSIGNABLE_ROLES, isAppRole, type AppRole } from "@/lib/permissions";
@@ -418,6 +420,15 @@ function Team() {
     [now],
   );
   const prev30 = useMemo(() => priorPeriod(d30.from, d30.to), [d30]);
+  // Synced bookings and calls on calendar for the same 30 days. See
+  // call-booking-metrics.ts.
+  const { data: volume30 } = useCallVolume({ orgId, from: d30.from, to: d30.to, devBypass });
+  const { data: volumePrev } = useCallVolume({
+    orgId,
+    from: prev30.from,
+    to: prev30.to,
+    devBypass,
+  });
 
   const { data: team30d } = useQuery({
     queryKey: ["team-30d", orgId, d30.from, d30.to, devBypass],
@@ -617,13 +628,32 @@ function Team() {
     { key: "dialers", label: "Dialers", value: String(dialerCount), spectrum: "cold" },
     { key: "closers", label: "Closers", value: String(closerCount), spectrum: "mid" },
     {
+      // Bookings MADE in the 30 days: Calendly bookings, or setters' own
+      // reported bookings where larger — never both added. Show rate below
+      // keeps its own denominator, so this label change shifts nothing.
       key: "booked",
       label: "Booked (30D)",
-      value: String(t?.booked ?? 0),
+      value: String(callsBookedTotal(volume30?.booked ?? 0, t?.booked ?? 0)),
       spectrum: "mid",
       emphasis: "subtle",
-      deltaPct: t && p ? pctDelta(t.booked, p.booked) : undefined,
-      priorValue: p ? String(p.booked) : undefined,
+      deltaPct:
+        t && p
+          ? pctDelta(
+              callsBookedTotal(volume30?.booked ?? 0, t.booked),
+              callsBookedTotal(volumePrev?.booked ?? 0, p.booked),
+            )
+          : undefined,
+      priorValue: p ? String(callsBookedTotal(volumePrev?.booked ?? 0, p.booked)) : undefined,
+    },
+    {
+      key: "onCalendar",
+      label: "On calendar (30D)",
+      value: String(volume30?.onCalendar ?? 0),
+      spectrum: "mid",
+      emphasis: "subtle",
+      deltaPct:
+        volume30 && volumePrev ? pctDelta(volume30.onCalendar, volumePrev.onCalendar) : undefined,
+      priorValue: volumePrev ? String(volumePrev.onCalendar) : undefined,
     },
     {
       key: "showRate",

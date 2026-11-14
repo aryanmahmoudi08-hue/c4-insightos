@@ -348,7 +348,12 @@ export type LeaderboardRow = {
   name: string;
   dials?: number;
   sets?: number;
+  /** Bookings made in the period (setters, and the team line). */
   booked?: number;
+  /** Calls scheduled in the period (team line). */
+  onCalendar?: number;
+  /** Calls a closer took — one post-call log each. Not bookings. */
+  taken?: number;
   showed?: number;
   noShows?: number;
   closed?: number;
@@ -360,6 +365,8 @@ function rowLine(r: LeaderboardRow): string {
   if (r.dials) bits.push(`${r.dials} dials`);
   if (r.sets) bits.push(`${r.sets} sets`);
   if (r.booked) bits.push(`${r.booked} booked`);
+  if (r.onCalendar) bits.push(`${r.onCalendar} on calendar`);
+  if (r.taken) bits.push(`${r.taken} call${r.taken === 1 ? "" : "s"} taken`);
   if (r.showed || r.noShows) bits.push(`${r.showed ?? 0} showed`);
   if (r.noShows) bits.push(`${r.noShows} no-show${r.noShows === 1 ? "" : "s"}`);
   if (r.closed) bits.push(`${r.closed} closed`);

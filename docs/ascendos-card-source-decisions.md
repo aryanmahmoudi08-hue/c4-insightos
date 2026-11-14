@@ -248,3 +248,27 @@ So those three cards need one of:
 
 This is the same gap the data-source map called gap 1. It is not blocked on an
 API key; it is unbuilt.
+
+---
+
+## Decision 2026-11-14 — "Calls booked" vs "Calls on calendar"
+
+Every "calls booked" figure counted calls by their **scheduled** date, so four
+calls booked on a Saturday for Monday read as 0 booked that week. Decided by
+the workspace owner: these are two metrics, shown side by side.
+
+| Metric | Counts | Source |
+|---|---|---|
+| **Calls booked** | Bookings **made** in the period | Calls synced from a scheduling tool (Calendly), by `created_at`. Not post-call logs, which record outcomes. A reschedule is the same booking moved, not a new one. Where setters self-report bookings (`setter_activity.calls_on_calendar`), the larger of the two is used, never the sum. |
+| **Calls on calendar** | Calls **scheduled** in the period | Calls by `scheduled_for` — the figure every surface already showed, relabelled. |
+
+Show rate and other downstream rates keep **calls on calendar** as their
+denominator, so no historical rate shifts. Definition lives in
+`src/lib/call-booking-metrics.ts`; surfaces read it through
+`src/hooks/use-call-volume.ts`.
+
+Applied to: live ticker, Team (30D), Closer KPI band, Home → Manager, Home →
+Closer (relabel), Main Hub funnel (relabel), Discord daily/weekly sales
+reports. Setter and Dialer "Calls Booked" were already bookings made (the
+rep's own report) and are unchanged. The Team Calendar week view stays
+Sunday–Saturday.

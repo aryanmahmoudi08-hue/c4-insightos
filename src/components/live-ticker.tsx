@@ -2,7 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
-import { DollarSign, PhoneCall } from "lucide-react";
+import { CalendarDays, DollarSign, PhoneCall } from "lucide-react";
+import { useCallVolume } from "@/hooks/use-call-volume";
+import { callsBookedTotal } from "@/lib/call-booking-metrics";
+import { localISODate } from "@/lib/date-range";
 import { cn } from "@/lib/utils";
 import { sumNormalizedCents } from "@/lib/currency";
 import { getHistoricalFxRatesFn } from "@/lib/fx.functions";
@@ -12,7 +15,8 @@ import { fetchFxRates } from "@/hooks/use-fx-rates";
 const fmtMoney = (cents: number) => Math.round(cents / 100).toLocaleString();
 
 /**
- * Thin persistent live-status bar (B6) — today's cash and calls booked,
+ * Thin persistent live-status bar (B6) — today's cash, calls booked today
+ * and calls on today's calendar (see call-booking-metrics.ts for the split),
  * refreshed every 30s, with a spectrum-hot pulse signaling "this is live."
  * Rendered once in the authenticated shell, sits above every page's own
  * TopBar. Uses the same Math.max(payments, calls+setter) cash-dedup formula
@@ -22,7 +26,10 @@ export function LiveTicker() {
   const { data: org } = useCurrentOrg();
   const { devBypass } = useAuth();
   const orgId = org?.org_id;
-  const today = new Date().toISOString().slice(0, 10);
+  // Local date, not toISOString() — the UTC date is already tomorrow every
+  // evening in the Americas, so the bar showed tomorrow's (empty) day.
+  const today = localISODate(new Date());
+  const { data: volume } = useCallVolume({ orgId, from: today, to: today, devBypass });
   // Currency-mixing remediation (docs/ascendos-currency-mixing-audit.md):
   // calls/setter_activity cash carries a real original_currency never
   // converted before this fix — same proven sumNormalizedCents
@@ -34,7 +41,7 @@ export function LiveTicker() {
     enabled: !!orgId,
     refetchInterval: 30_000,
     queryFn: async () => {
-      if (devBypass) return { cash: 428000, callsBooked: 7 };
+      if (devBypass) return { cash: 428000, setterBooked: 0, fxIncomplete: false };
       const [payments, calls, setterAgg] = await Promise.all([
         supabase
           .from("payments")
@@ -85,10 +92,12 @@ export function LiveTicker() {
         tickerFxRates,
       );
       const cash = Math.max(paymentsCash, callsCashSum.usdCents + setterCashSum.usdCents);
+      // Setters' self-reported bookings (calls_on_calendar is "calls I put on
+      // the calendar today", i.e. bookings made) — combined with synced
+      // bookings below, never added to them.
       const setterBooked = setterRows.reduce((s, r) => s + (r.calls_on_calendar ?? 0), 0);
-      const callsBooked = Math.max(callRows.length, setterBooked);
       const fxIncomplete = !callsCashSum.isComplete || !setterCashSum.isComplete;
-      return { cash, callsBooked, fxIncomplete };
+      return { cash, setterBooked, fxIncomplete };
     },
   });
 
@@ -114,7 +123,14 @@ export function LiveTicker() {
       </span>
       <span className="flex items-center gap-1 font-sans tabular-nums text-muted-foreground">
         <PhoneCall className="h-3 w-3" />
-        {data ? data.callsBooked : "—"} calls booked
+        {data && volume ? callsBookedTotal(volume.booked, data.setterBooked) : "—"} booked
+      </span>
+      <span
+        className="flex items-center gap-1 font-sans tabular-nums text-muted-foreground"
+        title="Calls scheduled for today, whenever they were booked"
+      >
+        <CalendarDays className="h-3 w-3" />
+        {volume ? volume.onCalendar : "—"} on calendar
       </span>
       {data?.fxIncomplete && (
         <span

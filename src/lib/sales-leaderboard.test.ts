@@ -52,7 +52,7 @@ describe("buildLeaderboard", () => {
     expect(lb.closers[0]).toEqual(
       expect.objectContaining({
         name: "Sam",
-        booked: 3,
+        taken: 3,
         showed: 2,
         noShows: 1,
         closed: 1,

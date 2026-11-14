@@ -26,6 +26,12 @@ import {
   retryFailedFires,
 } from "./notify.server";
 import { buildLeaderboard } from "./sales-leaderboard";
+import {
+  BOOKING_COLUMNS,
+  callsBookedTotal,
+  isBooking,
+  type BookingRow,
+} from "./call-booking-metrics";
 import { buildSourceBoard, type SourceCall, type SourceLead } from "./source-leaderboard";
 import { escapeLike } from "./sql-like";
 import {
@@ -385,6 +391,31 @@ async function fireReport(
   if (closers.error) throw new Error(closers.error.message);
 
   const board = buildLeaderboard(setters.data ?? [], closers.data ?? []);
+
+  // The team line carries both call numbers (call-booking-metrics.ts):
+  // bookings made in the period — synced bookings, or what setters reported
+  // where larger — and calls on the calendar in it.
+  const [madeRes, scheduledRes] = await Promise.all([
+    db
+      .from("calls")
+      .select(BOOKING_COLUMNS)
+      .eq("org_id", orgId)
+      .not("source_connector", "is", null)
+      .gte("created_at", startIso)
+      .lt("created_at", endIso),
+    db
+      .from("calls")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .gte("scheduled_for", startIso)
+      .lt("scheduled_for", endIso),
+  ]);
+  if (madeRes.error) throw new Error(madeRes.error.message);
+  if (scheduledRes.error) throw new Error(scheduledRes.error.message);
+  const synced = ((madeRes.data ?? []) as BookingRow[]).filter(isBooking).length;
+  board.team.booked = callsBookedTotal(synced, board.setter_totals.booked ?? 0);
+  board.team.onCalendar = scheduledRes.count ?? 0;
+
   const sent = await fireOnce(
     orgId,
     eventType,

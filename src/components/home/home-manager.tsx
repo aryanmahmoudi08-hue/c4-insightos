@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { useCallVolume } from "@/hooks/use-call-volume";
+import { localISODate } from "@/lib/date-range";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { HomeSection, HomeStat, FocusRow, FocusEmpty, HomeGrid } from "./home-shared";
@@ -16,13 +18,24 @@ import {
   MOCK_MANAGER_SLA_BREACHES,
 } from "@/lib/home-dev-mock-data";
 
-const TODAY = new Date().toISOString().slice(0, 10);
+// Local date (as home-admin does), not toISOString() — the UTC date is
+// already tomorrow every evening in the Americas.
+const TODAY = localISODate(new Date());
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const untypedDb = supabase as any;
 
 export function HomeManager({ orgId }: { orgId: string }) {
   const { devBypass } = useAuth();
+  // Bookings made today, beside the calls scheduled today below — see
+  // call-booking-metrics.ts. Local date, not the UTC one.
+  const localToday = localISODate(new Date());
+  const { data: volume } = useCallVolume({
+    orgId,
+    from: localToday,
+    to: localToday,
+    devBypass,
+  });
 
   const { data: calls = [] } = useQuery({
     queryKey: ["home-manager-calls", orgId, devBypass],
@@ -110,9 +123,16 @@ export function HomeManager({ orgId }: { orgId: string }) {
       main={
         <>
           <HomeSection title="Team Health · Today" icon={<Users className="h-4 w-4" />} tone="hot">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
               <HomeStat
-                label="Calls Booked"
+                label="Booked Today"
+                value={volume ? volume.booked : "—"}
+                icon={<CalendarClock className="h-4 w-4" />}
+                tone="cold"
+                emphasis="subtle"
+              />
+              <HomeStat
+                label="On Calendar"
                 value={booked}
                 icon={<CalendarClock className="h-4 w-4" />}
                 tone="cold"
