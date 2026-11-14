@@ -9,6 +9,7 @@ import {
   isCalendlyTimestampFresh,
   parseCalendlySignatureHeader,
 } from "./calendly";
+import { tableColumnsFromMigrations } from "./__test-support__/migration-columns";
 
 const NOW = new Date("2026-09-24T12:00:00.000Z");
 const NOW_SECS = Math.floor(NOW.getTime() / 1000);
@@ -153,11 +154,31 @@ describe("mapping to a calls row", () => {
     expect(row.meeting_link).toBe("https://zoom/j/9");
   });
 
-  it("carries the booking's UTMs through, closing the click-to-call gap", () => {
+  it("carries the booking's UTMs into the attribution columns calls really has", () => {
     const row = calendlyBookingToCallRow({ orgId: "org-1", invitee, scheduledEvent });
-    expect(row.utm_source).toBe("meta");
-    expect(row.utm_medium).toBe("paid");
-    expect(row.utm_campaign).toBe("evergreen");
+    expect(row.source_platform).toBe("meta");
+    expect(row.source_campaign).toBe("evergreen");
+  });
+
+  it("leaves attribution untouched when a delivery carries no UTMs", () => {
+    // A reschedule without tracking must not blank what the booking recorded.
+    const row = calendlyBookingToCallRow({
+      orgId: "org-1",
+      invitee: { ...invitee, tracking: null },
+      scheduledEvent,
+    });
+    expect("source_platform" in row).toBe(false);
+    expect("source_campaign" in row).toBe(false);
+  });
+
+  it("writes only columns that exist on public.calls", () => {
+    // The regression: the row carried utm_* keys that calls never had, so
+    // every booking upsert failed with PGRST204 in production. Unit tests on
+    // the builder passed because nothing checked the keys against the schema.
+    const cols = tableColumnsFromMigrations("calls");
+    const row = calendlyBookingToCallRow({ orgId: "org-1", invitee, scheduledEvent });
+    const unknown = Object.keys(row).filter((k) => !cols.has(k));
+    expect(unknown).toEqual([]);
   });
 
   it("leaves scheduled_for null rather than guessing when the event fetch failed", () => {

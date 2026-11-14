@@ -161,9 +161,20 @@ export function calendlyBookingToCallRow(params: {
     // Real attribution straight off the booking link — Calendly carries the
     // UTMs the invitee arrived with, which is otherwise a gap between the ad
     // click and the booked call.
-    utm_source: t?.utm_source ?? null,
-    utm_medium: t?.utm_medium ?? null,
-    utm_campaign: t?.utm_campaign ?? null,
+    //
+    // Written to the attribution columns `calls` already has, the same
+    // mapping the Typeform handler uses for leads: utm_source is the raw
+    // platform (normalizeAcquisitionSource categorises it at read time) and
+    // utm_campaign the campaign. This used to write utm_source / utm_medium /
+    // utm_campaign, which `calls` has never had — every booking upsert failed
+    // with PGRST204 and returned a 500, so no Calendly booking landed at all.
+    // utm_medium has no column on calls and is not forced into source_format,
+    // which means something else.
+    //
+    // Only set when present, so a reschedule arriving without tracking does
+    // not blank attribution an earlier delivery recorded.
+    ...(t?.utm_source ? { source_platform: t.utm_source } : {}),
+    ...(t?.utm_campaign ? { source_campaign: t.utm_campaign } : {}),
     rescheduled_from_external_id: rescheduledFrom ?? null,
   };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildClosureCallPayload } from "./eod-reports";
+import { buildClosureCallPayload, buildSetterActivityPayload } from "./eod-reports";
+import { tableColumnsFromMigrations } from "./__test-support__/migration-columns";
 
 // Remediation (metric-dictionary audit, SALE-0394): calls.payment_plan must
 // be written from explicit closer intent (the new Payment Plan checkbox
@@ -41,5 +42,34 @@ describe("buildClosureCallPayload — payment_plan", () => {
       payment_plan: "on" as unknown as boolean,
     });
     expect(payload?.payment_plan).toBe(false);
+  });
+});
+
+describe("EOD rows only write columns the tables really have", () => {
+  // Same guard as calendly.test.ts: a builder can pass every unit test while
+  // writing a column the database never had, and the insert then fails in
+  // production. Checked against the columns the migrations actually create.
+  it("closer post-call row fits public.calls", () => {
+    const cols = tableColumnsFromMigrations("calls");
+    const row = buildClosureCallPayload("org-1", {
+      status: "Follow Up (short term)",
+      closer_name: "Sam",
+      lead_email: "a@b.c",
+      date_of_call: "2026-11-13",
+      followup_requested_at: "2026-11-14T15:00",
+      followup_amount_pitched: 1500,
+      followup_reason: "money",
+      cash_collected: 100,
+      total_revenue: 500,
+    });
+    expect(Object.keys(row!).filter((k) => !cols.has(k))).toEqual([]);
+  });
+
+  it("setter EOD row fits public.setter_activity", () => {
+    const cols = tableColumnsFromMigrations("setter_activity");
+    for (const role of ["dm_setter", "inbound_dialer"] as const) {
+      const row = buildSetterActivityPayload(role, "org-1", { team_member_name: "Jo", dials: 10 });
+      expect(Object.keys(row).filter((k) => !cols.has(k))).toEqual([]);
+    }
   });
 });
