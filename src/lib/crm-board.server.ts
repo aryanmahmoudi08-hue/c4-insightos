@@ -207,3 +207,94 @@ export async function syncLeadStageFromCallForUser(userId: string, input: { call
   });
   return result ? { moved: true as const, stageName: result.stageName } : { moved: false as const };
 }
+
+/**
+ * A Calendly booking puts its lead in Sales → Booked.
+ *
+ * Nothing placed booked leads on the board: the board reads
+ * `leads.crm_stage_id`, and bookings only ever wrote `calls`, so a lead with
+ * a call on the calendar sat in Applications (or nowhere) and Booked read 0.
+ *
+ * The one thing a booking does not do is pull a lead backwards out of a
+ * Sales outcome. A client at Deposit or Closed who books an onboarding call,
+ * or a lead already marked No Close, DQ or Bad Fit, stays where the closer
+ * put them. Everything else — unplaced, any Applications stage, a cancelled
+ * call, or an earlier Sales stage such as No Show or Follow Up — moves,
+ * because a fresh booking is real evidence of where the lead is now.
+ *
+ * Best-effort: placing a card must never fail the booking it follows.
+ */
+export async function syncLeadStageForBooking(orgId: string, leadId: string | null | undefined) {
+  if (!leadId) return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabaseAdmin as any;
+
+  const { data: sales } = await db
+    .from("crm_pipelines")
+    .select("id")
+    .eq("org_id", orgId)
+    .ilike("name", "sales")
+    .maybeSingle();
+  if (!sales) return null;
+  const { data: booked } = await db
+    .from("crm_pipeline_stages")
+    .select("id, pipeline_id")
+    .eq("org_id", orgId)
+    .eq("pipeline_id", sales.id)
+    .eq("name", "Booked")
+    .maybeSingle();
+  if (!booked) return null;
+
+  const { data: lead } = await db
+    .from("leads")
+    .select("id, crm_stage_id")
+    .eq("org_id", orgId)
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!lead || lead.crm_stage_id === booked.id) return null;
+
+  if (lead.crm_stage_id) {
+    const { data: current } = await db
+      .from("crm_pipeline_stages")
+      .select("pipeline_id, board_segment, is_closed_won, is_closed_lost")
+      .eq("id", lead.crm_stage_id)
+      .maybeSingle();
+    const pastBooked =
+      current?.pipeline_id === booked.pipeline_id &&
+      (current.board_segment === "partial" ||
+        current.board_segment === "closed_out" ||
+        current.is_closed_won ||
+        current.is_closed_lost);
+    if (pastBooked) return null;
+  }
+
+  const { error } = await db
+    .from("leads")
+    .update({ crm_stage_id: booked.id, updated_at: new Date().toISOString() })
+    .eq("id", leadId)
+    .eq("org_id", orgId);
+  if (error) throw new Error(error.message);
+
+  const { data: activity } = await db
+    .from("crm_activities")
+    .insert({
+      org_id: orgId,
+      actor_user_id: null,
+      activity_type: "pipeline_stage_changed",
+      source_type: "crm",
+      title: "Moved to Booked",
+      body: "A call was booked through Calendly.",
+      payload: { lead_id: leadId, to_stage: "Booked", source: "calendly", manual: false },
+    })
+    .select("id")
+    .maybeSingle();
+  if (activity?.id) {
+    await db.from("crm_activity_targets").insert({
+      org_id: orgId,
+      activity_id: activity.id,
+      entity_type: "legacy_lead",
+      entity_id: leadId,
+    });
+  }
+  return { stageId: booked.id as string };
+}

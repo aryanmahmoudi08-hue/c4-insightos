@@ -11,6 +11,7 @@ import {
   type CalendlyWebhookBody,
 } from "@/lib/calendly";
 import { resolveBookingLead } from "@/lib/calendly-leads.server";
+import { syncLeadStageForBooking } from "@/lib/crm-board.server";
 
 // calls.rescheduled_from_external_id is new and not in the generated Supabase
 // type snapshot yet — same cast the other new tables need.
@@ -139,6 +140,13 @@ export const Route = createFileRoute("/api/public/calendly")({
           if (error) {
             console.error("[calendly] booking upsert", error);
             return Response.json({ error: "Could not record booking" }, { status: 500 });
+          }
+          // Put the lead in Sales → Booked on the CRM board. Best-effort: a
+          // board that cannot place a card must not fail a recorded booking.
+          if (leadId) {
+            await syncLeadStageForBooking(connection.org_id, leadId).catch((err) =>
+              console.error("[calendly] board placement", err),
+            );
           }
           return Response.json({ ok: true, mapped: true, action: "booked" });
         }

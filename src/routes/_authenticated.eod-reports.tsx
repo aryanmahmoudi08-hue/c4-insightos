@@ -198,7 +198,11 @@ function EodFlowForRole({
 
   const onSubmit = async (values: EodValues) => {
     if (role === "closer") {
-      const payload = buildClosureCallPayload(orgId ?? "", values);
+      const payload = buildClosureCallPayload(
+        orgId ?? "",
+        values,
+        settings?.notifications.timeZone ?? null,
+      );
       if (payload === null) {
         // "IGNORE" — the rep explicitly asked for this entry not to be
         // recorded. No calls row is written; the review/submit step still

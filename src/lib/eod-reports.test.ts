@@ -114,3 +114,16 @@ describe("EOD date questions", () => {
     }
   });
 });
+
+describe("closer call date", () => {
+  it("stores a date-only call at the start of that day in the business timezone", () => {
+    // Was midnight UTC: 7 PM the evening before in Toronto, so the calendar
+    // showed the call on the wrong day.
+    const row = buildClosureCallPayload(
+      "org-1",
+      { status: "Closed", date_of_call: "2026-11-14" },
+      "America/Toronto",
+    );
+    expect(row!.scheduled_for).toBe("2026-11-14T05:00:00.000Z");
+  });
+});

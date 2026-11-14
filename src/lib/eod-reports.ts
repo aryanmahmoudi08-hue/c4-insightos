@@ -1,5 +1,5 @@
 import type { ActivityRole } from "@/components/activity-module";
-import { browserTimeZone, isValidTimeZone, localDateIn } from "./zoned-time";
+import { browserTimeZone, isValidTimeZone, localDateIn, zonedMidnightUtc } from "./zoned-time";
 import type { TeamRole } from "@/components/team-member-picker";
 import { DISPLAY_CURRENCIES } from "@/lib/currency";
 import { OTHER_OBJECTION_VALUE, objectionCategoryLabel } from "@/lib/objection-taxonomy";
@@ -557,7 +557,32 @@ const LEAD_STATUS_MAP: Record<
 };
 
 /** `null` return means "IGNORE" — the rep explicitly asked for this entry to not be recorded; the caller must skip the insert entirely, not write a row and hide it. */
-export function buildClosureCallPayload(orgId: string, values: EodValues) {
+/**
+ * @param timeZone business timezone (Settings → Notifications). The form only
+ *   asks for a date, so the call is stored at the start of that day there.
+ *   It used to be `new Date("2026-11-14")`, i.e. midnight UTC, which in New
+ *   York is 7 PM the evening before — the calendar showed the call on the
+ *   wrong day and the right day showed nothing.
+ */
+/** A bare date is the start of that day in the business timezone; a value
+ *  that already carries a time keeps it. Unreadable → null, not a guess. */
+function callDateToInstant(raw: string, timeZone?: string | null): string | null {
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return zonedMidnightUtc(
+      raw,
+      isValidTimeZone(timeZone) ? timeZone : browserTimeZone(),
+    ).toISOString();
+  }
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+export function buildClosureCallPayload(
+  orgId: string,
+  values: EodValues,
+  timeZone?: string | null,
+) {
   const rawStatus = STR(values.status);
   if (rawStatus === "IGNORE") return null;
   const mapped = LEAD_STATUS_MAP[rawStatus];
@@ -570,7 +595,7 @@ export function buildClosureCallPayload(orgId: string, values: EodValues) {
     lead_email: STR(values.lead_email) || null,
     status: mapped?.status ?? "follow_up",
     eod_lead_status: rawStatus || null,
-    scheduled_for: values.date_of_call ? new Date(STR(values.date_of_call)).toISOString() : null,
+    scheduled_for: callDateToInstant(STR(values.date_of_call), timeZone),
     showed: mapped?.showed ?? null,
     offer_made: values.offer_made === true,
     closed: mapped?.closed ?? false,
