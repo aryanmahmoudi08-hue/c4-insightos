@@ -68,7 +68,7 @@ describe("formatDiscordMessage — application", () => {
     const why = msg.content.indexOf("Why you, why now");
     expect(why).toBeGreaterThan(msg.content.indexOf("**Budget:**"));
     expect(
-      msg.content.trimEnd().endsWith("(https://ascendos-app.vercel.app/leads?leadId=lead-1)"),
+      msg.content.trimEnd().endsWith("(<https://ascendos-app.vercel.app/leads?leadId=lead-1>)"),
     ).toBe(true);
   });
 
@@ -102,6 +102,26 @@ describe("truncation", () => {
     const msg = formatDiscordMessage("report.daily_sales", { period_label: "Nov 13", setters });
     expect(msg.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
     expect(msg.content).toContain("… (message truncated)");
+  });
+});
+
+describe("link previews", () => {
+  it("suppresses the preview card for the AscendOS link only", () => {
+    const msg = formatDiscordMessage(
+      "call.confirmed",
+      {
+        lead_id: "L",
+        lead: { id: "L", full_name: "Ada" },
+        meeting_link: "https://meet.google.com/abc-defg-hij",
+      },
+      { appUrl: "https://ascendos-app.vercel.app" },
+    );
+    expect(msg.content).toContain(
+      "[Open in AscendOS](<https://ascendos-app.vercel.app/leads?leadId=L>)",
+    );
+    // The meeting link is useful as a preview, so it stays bare.
+    expect(msg.content).toContain("**Meeting link:** https://meet.google.com/abc-defg-hij");
+    expect(msg.content).not.toContain("<https://meet.google.com");
   });
 });
 
@@ -244,7 +264,7 @@ describe("content messages", () => {
     expect(msg.content).toContain("**Link:** https://drive.example/cut-1");
     expect(msg.content).toContain("**Angle:** pain point");
     expect(msg.content).not.toContain("xxxxxxxx");
-    expect(msg.content).toContain("(https://app/content-calendar)");
+    expect(msg.content).toContain("(<https://app/content-calendar>)");
   });
 
   it("lists the day's schedule in order, and says so when nothing is scheduled", () => {

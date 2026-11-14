@@ -141,7 +141,10 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
   const structured = renderLines(body.lines);
   const link =
     body.linkPath && opts.appUrl
-      ? `[Open in AscendOS](${opts.appUrl.replace(/\/+$/, "")}${body.linkPath})`
+      ? // Angle brackets stop Discord unfurling this one URL into a preview
+        // card (the site's OG image), which doubled every post's height.
+        // Only this link: Meet, LinkedIn and content URLs still preview.
+        `[Open in AscendOS](<${opts.appUrl.replace(/\/+$/, "")}${body.linkPath}>)`
       : "";
   const longParts = (body.long ?? [])
     .map(([label, value]) => {
