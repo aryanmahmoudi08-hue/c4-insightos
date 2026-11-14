@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { CrmLeadDrawer } from "@/components/crm-lead-drawer";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
@@ -177,6 +178,9 @@ function CrmPage() {
   // stages grow forever while the live ones stay roughly constant.
   const [segment, setSegment] = useState<BoardTab>("in_play");
   const [search, setSearch] = useState("");
+  // The open lead, by id — read back from the board each render, so a move
+  // made from the drawer shows its new stage without reopening it.
+  const [openLeadId, setOpenLeadId] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { devBypass } = useAuth();
@@ -322,6 +326,9 @@ function CrmPage() {
   // re-run the grouping memo below on every keystroke.
   const stages = useMemo(() => board.data?.stages ?? [], [board.data?.stages]);
   const bookingUrl = board.data?.bookingUrl ?? null;
+  const openLead = openLeadId
+    ? ((board.data?.leads ?? []).find((l) => l.id === openLeadId) ?? null)
+    : null;
 
   const filtered = useMemo(() => {
     const leads = board.data?.leads ?? [];
@@ -445,23 +452,33 @@ function CrmPage() {
               const when = fmtWhen(next?.scheduled_for ?? null);
               return (
                 <div className="space-y-1.5">
-                  <KanbanCardAnatomy
-                    title={cardTitle(lead)}
-                    metaLines={[
-                      lead.email ? (
-                        <span className="flex items-center gap-1 truncate">
-                          <Mail className="h-3 w-3 shrink-0" />
-                          {lead.email}
-                        </span>
-                      ) : null,
-                      lead.phone ?? null,
-                      next && when ? (
-                        <span className="text-[color:var(--color-success)]">
-                          Upcoming call — {when}
-                        </span>
-                      ) : null,
-                    ].filter(Boolean)}
-                  />
+                  {/* Clicking the card's body opens the full lead; the call
+                      buttons below stay their own targets. A drag does not
+                      fire a click, so dragging still moves the card. */}
+                  <button
+                    type="button"
+                    className="block w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => setOpenLeadId(lead.id)}
+                    aria-label={`Open ${cardTitle(lead)}`}
+                  >
+                    <KanbanCardAnatomy
+                      title={cardTitle(lead)}
+                      metaLines={[
+                        lead.email ? (
+                          <span className="flex items-center gap-1 truncate">
+                            <Mail className="h-3 w-3 shrink-0" />
+                            {lead.email}
+                          </span>
+                        ) : null,
+                        lead.phone ?? null,
+                        next && when ? (
+                          <span className="text-[color:var(--color-success)]">
+                            Upcoming call — {when}
+                          </span>
+                        ) : null,
+                      ].filter(Boolean)}
+                    />
+                  </button>
                   {lead.ticket_tier || lead.source_platform ? (
                     <div className="flex flex-wrap gap-1">
                       {[lead.ticket_tier, lead.source_platform].filter(Boolean).map((t) => (
@@ -480,6 +497,16 @@ function CrmPage() {
             }}
           />
         )}
+
+        <CrmLeadDrawer
+          lead={openLead}
+          stages={stages}
+          orgId={orgId}
+          devBypass={devBypass}
+          onClose={() => setOpenLeadId(null)}
+          onMove={(stageId) => openLead && move.mutate({ leadId: openLead.id, stageId })}
+          moving={move.isPending}
+        />
 
         {!board.isLoading && stages.length === 0 ? (
           <p className="text-sm text-muted-foreground">
