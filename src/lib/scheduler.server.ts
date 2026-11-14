@@ -26,12 +26,14 @@ import {
   retryFailedFires,
 } from "./notify.server";
 import { buildLeaderboard } from "./sales-leaderboard";
+import { buildSourceBoard, type SourceCall, type SourceLead } from "./source-leaderboard";
 import { escapeLike } from "./sql-like";
 import {
   DUE_LOOKBACK_MS,
   SCHEDULED_EVENT_TYPES,
   dailyReportWindow,
   followUpEventType,
+  monthlyReportWindow,
   periodLabel,
   unconfirmedCallWindow,
   weeklyReportWindow,
@@ -110,6 +112,37 @@ export async function runSchedulerTick(now: Date = new Date()) {
         );
       else if (w.reason === "no workspace timezone set")
         skipped.push(`report.weekly_sales: ${w.reason}`);
+    }
+
+    if (types.has("content.schedule_daily")) {
+      const w = dailyReportWindow(settings.timeZone, settings.contentScheduleHour, now);
+      if (w.due) await run("content.schedule_daily", () => fireContentSchedule(orgId, w, settings));
+      else if (w.reason === "no workspace timezone set")
+        skipped.push(`content.schedule_daily: ${w.reason}`);
+    }
+    const sourceWindows = [
+      [
+        "report.top_sources_daily",
+        dailyReportWindow(settings.timeZone, settings.dailyReportHour, now),
+      ],
+      [
+        "report.top_sources_weekly",
+        weeklyReportWindow(
+          settings.timeZone,
+          settings.weeklyReportDay,
+          settings.dailyReportHour,
+          now,
+        ),
+      ],
+      [
+        "report.top_sources_monthly",
+        monthlyReportWindow(settings.timeZone, settings.dailyReportHour, now),
+      ],
+    ] as const;
+    for (const [type, w] of sourceWindows) {
+      if (!types.has(type)) continue;
+      if (w.due) await run(type, () => fireTopSources(orgId, type, w, settings));
+      else if (w.reason === "no workspace timezone set") skipped.push(`${type}: ${w.reason}`);
     }
 
     if (errors.length) console.error(`scheduler org ${orgId}:`, errors.join("; "));
@@ -352,6 +385,143 @@ async function fireReport(
   if (closers.error) throw new Error(closers.error.message);
 
   const board = buildLeaderboard(setters.data ?? [], closers.data ?? []);
+  const sent = await fireOnce(
+    orgId,
+    eventType,
+    w.key,
+    { type: "report", id: null },
+    {
+      period_from: w.from,
+      period_to: w.to,
+      period_label: periodLabel(w.from, w.to),
+      time_zone: settings.timeZone,
+      ...board,
+    },
+  );
+  return sent ? 1 : 0;
+}
+
+async function fireContentSchedule(
+  orgId: string,
+  w: { from: string; to: string; key: string },
+  settings: NotificationSettingsT,
+) {
+  if ((await alreadyFired(orgId, "content.schedule_daily", [w.key])).size) return 0;
+  // scheduled_date is the calendar date the piece is planned for, set on the
+  // content calendar in the team's own terms — compared as a date.
+  const { data, error } = await db
+    .from("content_pieces")
+    .select("id, title, platform, scheduled_time, pipeline_status")
+    .eq("org_id", orgId)
+    .eq("scheduled_date", w.from)
+    .order("scheduled_time", { ascending: true, nullsFirst: false });
+  if (error) throw new Error(error.message);
+  const sent = await fireOnce(
+    orgId,
+    "content.schedule_daily",
+    w.key,
+    { type: "report", id: null },
+    {
+      period_label: periodLabel(w.from, w.to),
+      date: w.from,
+      time_zone: settings.timeZone,
+      pieces: data ?? [],
+    },
+  );
+  return sent ? 1 : 0;
+}
+
+async function fireTopSources(
+  orgId: string,
+  eventType:
+    "report.top_sources_daily" | "report.top_sources_weekly" | "report.top_sources_monthly",
+  w: { from: string; to: string; key: string },
+  settings: NotificationSettingsT,
+) {
+  if ((await alreadyFired(orgId, eventType, [w.key])).size) return 0;
+  const { startIso, endIso } = zonedDayRangeUtc(w.from, w.to, settings.timeZone);
+  const leadCols =
+    "id, email, source_platform, source_content_id, first_touch_content_id, application_data, created_at";
+
+  const [leadsRes, callsRes] = await Promise.all([
+    db
+      .from("leads")
+      .select(leadCols)
+      .eq("org_id", orgId)
+      .gte("created_at", startIso)
+      .lt("created_at", endIso),
+    db
+      .from("calls")
+      .select(
+        "lead_id, lead_email, created_at, source_connector, cancelled, cash_collected_cents, original_currency",
+      )
+      .eq("org_id", orgId)
+      .gte("created_at", startIso)
+      .lt("created_at", endIso),
+  ]);
+  if (leadsRes.error) throw new Error(leadsRes.error.message);
+  if (callsRes.error) throw new Error(callsRes.error.message);
+  const windowLeads = (leadsRes.data ?? []) as SourceLead[];
+  const windowCalls = (callsRes.data ?? []) as SourceCall[];
+
+  // Calls in the window can belong to leads created before it; fetch those
+  // so a booking is credited to its lead's real source.
+  const have = new Set(windowLeads.map((l) => l.id));
+  const ids = [
+    ...new Set(windowCalls.map((c) => c.lead_id).filter((x): x is string => !!x)),
+  ].filter((id) => !have.has(id));
+  const emails = [
+    ...new Set(
+      windowCalls
+        .filter((c) => !c.lead_id && c.lead_email)
+        .map((c) => String(c.lead_email).trim().toLowerCase()),
+    ),
+  ];
+  const extra: SourceLead[] = [];
+  if (ids.length) {
+    const { data } = await db.from("leads").select(leadCols).eq("org_id", orgId).in("id", ids);
+    extra.push(...((data ?? []) as SourceLead[]));
+  }
+  // Case-insensitive, with LIKE wildcards escaped (an `_` in an email is a
+  // wildcard otherwise). One small query per email, a few at a time.
+  for (let i = 0; i < emails.length; i += 10) {
+    const batch = await Promise.all(
+      emails
+        .slice(i, i + 10)
+        .map((e) =>
+          db
+            .from("leads")
+            .select(leadCols)
+            .eq("org_id", orgId)
+            .ilike("email", escapeLike(e))
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ),
+    );
+    for (const r of batch) if (r.data) extra.push(r.data as SourceLead);
+  }
+
+  const knownLeads = [...windowLeads, ...extra];
+  const contentIds = [
+    ...new Set(
+      knownLeads
+        .map((l) => l.source_content_id ?? l.first_touch_content_id)
+        .filter((x): x is string => !!x),
+    ),
+  ];
+  const titles = new Map<string, string>();
+  if (contentIds.length) {
+    const { data } = await db
+      .from("content_pieces")
+      .select("id, title")
+      .eq("org_id", orgId)
+      .in("id", contentIds);
+    for (const c of (data ?? []) as Array<{ id: string; title: string | null }>)
+      titles.set(c.id, c.title || "Untitled piece");
+  }
+
+  const board = buildSourceBoard(windowLeads, windowCalls, knownLeads, titles);
   const sent = await fireOnce(
     orgId,
     eventType,

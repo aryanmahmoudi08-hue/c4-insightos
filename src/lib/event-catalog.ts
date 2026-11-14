@@ -149,6 +149,42 @@ export const DISPATCHED_EVENTS: EventCatalogEntry[] = [
     dispatched: true,
     emittedBy: "scheduler.server.ts",
   },
+  {
+    type: "content.ready_to_post.short_form",
+    label: "Short-form ready to post",
+    dispatched: true,
+    emittedBy: "dispatch.functions.ts (reel, TikTok, Short, story, ad creative)",
+  },
+  {
+    type: "content.ready_to_post.long_form",
+    label: "Long-form ready to post",
+    dispatched: true,
+    emittedBy: "dispatch.functions.ts (YouTube, VSL)",
+  },
+  {
+    type: "content.schedule_daily",
+    label: "Today's content schedule",
+    dispatched: true,
+    emittedBy: "scheduler.server.ts",
+  },
+  {
+    type: "report.top_sources_daily",
+    label: "Daily top content sources",
+    dispatched: true,
+    emittedBy: "scheduler.server.ts",
+  },
+  {
+    type: "report.top_sources_weekly",
+    label: "Weekly top content sources",
+    dispatched: true,
+    emittedBy: "scheduler.server.ts",
+  },
+  {
+    type: "report.top_sources_monthly",
+    label: "Monthly top content sources",
+    dispatched: true,
+    emittedBy: "scheduler.server.ts",
+  },
 ];
 
 /**

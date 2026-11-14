@@ -23,14 +23,17 @@ export const dispatchContentReady = createServerFn({ method: "POST" })
     const { supabase } = context;
     const { data: piece } = await supabase
       .from("content_pieces")
-      .select("id, org_id, title, hook, platform, url, funnel_stage, angle, body, pipeline_status")
+      .select(
+        "id, org_id, title, hook, platform, url, funnel_stage, angle, body, pipeline_status, scheduled_date, scheduled_time",
+      )
       .eq("id", data.contentId)
       .maybeSingle();
     if (!piece) throw new Error("Content not found");
 
     const { dispatchEvent, categoryFromPlatform } = await import("./dispatch.server");
+    const { CONTENT_FORM_EVENT, contentFormOf } = await import("./content-events");
     const category = categoryFromPlatform(piece.platform);
-    await dispatchEvent(piece.org_id, "content.ready_to_post", {
+    const payload = {
       category,
       content_id: piece.id,
       title: piece.title,
@@ -39,9 +42,19 @@ export const dispatchContentReady = createServerFn({ method: "POST" })
       angle: piece.angle,
       funnel_stage: piece.funnel_stage,
       url: piece.url,
+      // scheduled_date/scheduled_time are ahead of the generated row type.
+      scheduled_date: (piece as { scheduled_date?: string | null }).scheduled_date ?? null,
+      scheduled_time: (piece as { scheduled_time?: string | null }).scheduled_time ?? null,
       script: (piece.body ?? "").slice(0, 4000),
-    });
-    return { ok: true, category };
+    };
+    await dispatchEvent(piece.org_id, "content.ready_to_post", payload);
+    // Event Bus subscriptions filter by event type only, so one event cannot
+    // feed both #edited-shortform and #edited-longform. A form-specific event
+    // goes out alongside the general one; email, DMs and static posts are
+    // neither and get only the general event.
+    const form = contentFormOf(piece.platform);
+    if (form) await dispatchEvent(piece.org_id, CONTENT_FORM_EVENT[form], payload);
+    return { ok: true, category, form };
   });
 
 export const dispatchLeadEvent = createServerFn({ method: "POST" })

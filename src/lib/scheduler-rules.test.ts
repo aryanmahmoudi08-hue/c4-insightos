@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   dailyReportWindow,
   followUpEventType,
+  monthlyReportWindow,
   periodLabel,
   unconfirmedCallWindow,
   weeklyReportWindow,
@@ -73,5 +74,28 @@ describe("periodLabel", () => {
   it("names a single day with its weekday and a range without", () => {
     expect(periodLabel("2026-11-13", "2026-11-13")).toBe("Fri, Nov 13");
     expect(periodLabel("2026-11-09", "2026-11-15")).toBe("Nov 9 – Nov 15");
+  });
+});
+
+describe("monthlyReportWindow", () => {
+  it("is due on the month's last local day and covers the whole month", () => {
+    // 23:10 NY on Mon Nov 30 2026 = 04:10 UTC Dec 1.
+    expect(monthlyReportWindow(NY, 23, new Date("2026-12-01T04:10:00Z"))).toEqual({
+      due: true,
+      from: "2026-11-01",
+      to: "2026-11-30",
+      key: "2026-11",
+    });
+  });
+
+  it("is not due on any other day, or before the hour", () => {
+    expect(monthlyReportWindow(NY, 23, new Date("2026-11-14T04:10:00Z")).due).toBe(false);
+    expect(monthlyReportWindow(NY, 23, new Date("2026-11-30T20:00:00Z")).due).toBe(false);
+  });
+
+  it("knows February is short", () => {
+    expect(monthlyReportWindow("UTC", 0, new Date("2027-02-28T01:00:00Z"))).toEqual(
+      expect.objectContaining({ due: true, from: "2027-02-01", to: "2027-02-28" }),
+    );
   });
 });

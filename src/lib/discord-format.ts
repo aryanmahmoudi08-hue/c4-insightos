@@ -19,6 +19,7 @@
  */
 
 import { eventCatalogEntry } from "./event-catalog";
+import { platformLabel, statusLabel, timeOfDayLabel } from "./content-events";
 
 /** Discord's hard limit for `content`. */
 export const DISCORD_CONTENT_LIMIT = 2000;
@@ -398,6 +399,114 @@ function leaderboard(kind: "Daily" | "Weekly", p: Record<string, unknown>): Body
   };
 }
 
+function scheduledLabel(date: unknown, time: unknown) {
+  const d = text(date);
+  if (!d) return "";
+  const [y, m, day] = d.split("-").map(Number);
+  if (!y || !m || !day) return d;
+  const label = new Date(Date.UTC(y, m - 1, day)).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const t = timeOfDayLabel(text(time));
+  return t ? `${label}, ${t}` : label;
+}
+
+function contentReady(kind: "Short-form" | "Long-form" | null, p: Record<string, unknown>): Body {
+  return {
+    title: `${kind ? `${kind} ready to post` : "Ready to post"} — ${platformLabel(text(p.platform))}`,
+    lines: [
+      ["Title", p.title],
+      ["Platform", platformLabel(text(p.platform))],
+      ["Hook", p.hook],
+      ["Scheduled", scheduledLabel(p.scheduled_date, p.scheduled_time)],
+      ["Link", p.url],
+      ["Angle", text(p.angle).replace(/_/g, " ")],
+      ["Funnel stage", text(p.funnel_stage).replace(/_/g, " ")],
+    ],
+    linkPath: "/content-calendar",
+  };
+}
+
+type ScheduledPiece = {
+  title?: string | null;
+  platform?: string | null;
+  scheduled_time?: string | null;
+  pipeline_status?: string | null;
+};
+
+function contentSchedule(p: Record<string, unknown>): Body {
+  const pieces = (Array.isArray(p.pieces) ? p.pieces : []) as ScheduledPiece[];
+  const list = pieces.length
+    ? pieces
+        .map((c) =>
+          [
+            timeOfDayLabel(c.scheduled_time) || "Any time",
+            platformLabel(c.platform),
+            `**${text(c.title) || "Untitled"}**`,
+            statusLabel(c.pipeline_status),
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        )
+        .map((l) => `• ${l}`)
+        .join("\n")
+    : // Said out loud so an empty day does not read as a broken feed.
+      "Nothing scheduled today.";
+  return {
+    title: `Content schedule — ${text(p.period_label)}`,
+    lines: [],
+    long: [["Today", list]],
+    linkPath: "/content-calendar",
+  };
+}
+
+type SourceLine = {
+  name: string;
+  leads?: number;
+  applications?: number;
+  booked?: number;
+  cashCents?: number;
+};
+
+function sourceLine(r: SourceLine, rank?: number): string {
+  const bits = [
+    `${r.leads ?? 0} lead${r.leads === 1 ? "" : "s"}`,
+    r.applications ? `${r.applications} application${r.applications === 1 ? "" : "s"}` : "",
+    r.booked ? `${r.booked} booked` : "",
+    money(r.cashCents ?? 0),
+  ].filter(Boolean);
+  return `${rank ? `${rank}. ` : "• "}**${r.name}** — ${bits.join(" · ")}`;
+}
+
+function topSources(kind: "Daily" | "Weekly" | "Monthly", p: Record<string, unknown>): Body {
+  const sources = (Array.isArray(p.sources) ? p.sources : []) as SourceLine[];
+  const content = (Array.isArray(p.content) ? p.content : []) as SourceLine[];
+  const un = obj(p.unattributed) as SourceLine;
+  const ranked = sources.length
+    ? sources.map((r, i) => sourceLine(r, i + 1)).join("\n")
+    : "No attributed leads yet.";
+  const unknownLine =
+    (un.leads ?? 0) || (un.booked ?? 0) || (un.cashCents ?? 0)
+      ? sourceLine({ ...un, name: "Unknown / Unattributed" })
+      : "";
+  const excluded = Number(p.non_usd_rows_excluded) || 0;
+  return {
+    title: `${kind} top content sources — ${text(p.period_label)}`,
+    lines: [],
+    long: [
+      ["By source", [ranked, unknownLine].filter(Boolean).join("\n")],
+      ["Top content", content.map((r, i) => sourceLine(r, i + 1)).join("\n")],
+      [
+        "How this is counted",
+        `Leads created in the period by where they came from; booked calls and closer-logged cash by their lead's source. Anything not tied to a lead is Unattributed.${excluded ? ` ${excluded} cash entr${excluded === 1 ? "y" : "ies"} in another currency not included.` : ""}`,
+      ],
+    ],
+  };
+}
+
 /** Readable fallback for an event with no bespoke shape: top-level scalars. */
 function generic(eventType: string, p: Record<string, unknown>): Body {
   const SKIP = new Set(["answers", "raw_answers", "answers_by_title", "category", "org_id"]);
@@ -455,6 +564,27 @@ export function formatDiscordMessage(
       break;
     case "report.weekly_sales":
       body = leaderboard("Weekly", p);
+      break;
+    case "content.ready_to_post":
+      body = contentReady(null, p);
+      break;
+    case "content.ready_to_post.short_form":
+      body = contentReady("Short-form", p);
+      break;
+    case "content.ready_to_post.long_form":
+      body = contentReady("Long-form", p);
+      break;
+    case "content.schedule_daily":
+      body = contentSchedule(p);
+      break;
+    case "report.top_sources_daily":
+      body = topSources("Daily", p);
+      break;
+    case "report.top_sources_weekly":
+      body = topSources("Weekly", p);
+      break;
+    case "report.top_sources_monthly":
+      body = topSources("Monthly", p);
       break;
     case "call.closed_won":
       body = {

@@ -25,7 +25,7 @@ describe("EVENT_CATALOG", () => {
     for (const entry of EVENT_CATALOG) {
       expect(entry.label.trim().length).toBeGreaterThan(0);
       expect(entry.emittedBy.trim().length).toBeGreaterThan(0);
-      expect(entry.type).toMatch(/^[a-z_]+\.[a-z_0-9]+$/);
+      expect(entry.type).toMatch(/^[a-z_]+(\.[a-z_0-9]+)+$/);
     }
   });
 

@@ -89,6 +89,9 @@ const NotificationSettings = z.object({
   /** Local weekday (0 = Sunday) the weekly report sends, covering the seven
    * days ending that day. */
   weeklyReportDay: z.number().int().min(0).max(6).default(0),
+  /** Local hour (0–23) the day's content schedule posts. Morning, so it is
+   * read before the day's posting starts. */
+  contentScheduleHour: z.number().int().min(0).max(23).default(8),
 });
 
 export const WorkspaceSettingsSchema = z.object({

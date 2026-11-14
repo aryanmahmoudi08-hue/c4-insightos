@@ -564,6 +564,26 @@ function NotificationsSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boo
             day.
           </p>
 
+          <div className="space-y-1">
+            <Label className="text-xs">Content schedule posts at</Label>
+            <select
+              className={SELECT_CLASS}
+              disabled={!isAdmin}
+              value={draft.contentScheduleHour}
+              onChange={(e) => set("contentScheduleHour", Number(e.target.value))}
+            >
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>
+                  {hourLabel(h)}
+                </option>
+              ))}
+            </select>
+            <p className="text-3xs text-muted-foreground">
+              Lists the day’s scheduled content each morning. The top-content-sources reports send
+              with the sales reports, and the monthly one on the last day of the month.
+            </p>
+          </div>
+
           {isAdmin ? (
             <Button
               size="sm"

@@ -158,26 +158,5 @@ export async function dispatchEvent(
   return { lookupFailed: false, deliveries };
 }
 
-/** Map a content_piece platform to a routing category. */
-export function categoryFromPlatform(platform: string | null | undefined): string {
-  switch ((platform ?? "").toLowerCase()) {
-    case "instagram_reel":
-    case "tiktok":
-    case "youtube_short":
-    case "reels":
-      return "reels";
-    case "instagram_story":
-    case "story":
-      return "story";
-    case "email":
-    case "newsletter":
-      return "email";
-    case "youtube":
-    case "long_form":
-    case "blog":
-    case "podcast":
-      return "long-form";
-    default:
-      return "hooks";
-  }
-}
+/** Moved to content-events.ts (pure, testable); re-exported for callers. */
+export { categoryFromPlatform } from "./content-events";

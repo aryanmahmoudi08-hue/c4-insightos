@@ -29,6 +29,10 @@ export const SCHEDULED_EVENT_TYPES = [
   "followup.long_term_due",
   "report.daily_sales",
   "report.weekly_sales",
+  "content.schedule_daily",
+  "report.top_sources_daily",
+  "report.top_sources_weekly",
+  "report.top_sources_monthly",
 ] as const;
 
 /**
@@ -80,6 +84,24 @@ export function weeklyReportWindow(
   if (localHourIn(timeZone, now) < hour) return { due: false, reason: "before send hour" };
   const today = localDateIn(timeZone, now);
   return { due: true, from: addCalendarDays(today, -6), to: today, key: today };
+}
+
+/**
+ * The monthly report is due on the month's last local day from `hour`,
+ * covering the whole calendar month — the same "period ending today" shape as
+ * the daily and weekly reports, and a complete month rather than a rolling 30
+ * days, so two months can be compared.
+ */
+export function monthlyReportWindow(
+  timeZone: string | null | undefined,
+  hour: number,
+  now: Date,
+): ReportWindow {
+  if (!isValidTimeZone(timeZone)) return { due: false, reason: "no workspace timezone set" };
+  const today = localDateIn(timeZone, now);
+  if (!addCalendarDays(today, 1).endsWith("-01")) return { due: false, reason: "not month end" };
+  if (localHourIn(timeZone, now) < hour) return { due: false, reason: "before send hour" };
+  return { due: true, from: `${today.slice(0, 7)}-01`, to: today, key: today.slice(0, 7) };
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

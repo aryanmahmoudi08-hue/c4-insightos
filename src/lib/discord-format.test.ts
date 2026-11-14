@@ -220,3 +220,87 @@ describe("helpers", () => {
     );
   });
 });
+
+describe("content messages", () => {
+  const piece = {
+    title: "Why your salary is capped",
+    platform: "reel",
+    hook: "You're not underpaid, you're under-positioned",
+    scheduled_date: "2026-11-16",
+    scheduled_time: "09:30:00",
+    url: "https://drive.example/cut-1",
+    angle: "pain_point",
+    funnel_stage: "top",
+    script: "x".repeat(4000),
+  };
+
+  it("labels a short-form piece with its schedule, link and angle — not its script", () => {
+    const msg = formatDiscordMessage("content.ready_to_post.short_form", piece, {
+      appUrl: "https://app",
+    });
+    expect(msg.content).toContain("**Short-form ready to post — Instagram reel**");
+    expect(msg.content).toContain("**Title:** Why your salary is capped");
+    expect(msg.content).toContain("**Scheduled:** Mon, Nov 16, 9:30 AM");
+    expect(msg.content).toContain("**Link:** https://drive.example/cut-1");
+    expect(msg.content).toContain("**Angle:** pain point");
+    expect(msg.content).not.toContain("xxxxxxxx");
+    expect(msg.content).toContain("(https://app/content-calendar)");
+  });
+
+  it("lists the day's schedule in order, and says so when nothing is scheduled", () => {
+    const msg = formatDiscordMessage("content.schedule_daily", {
+      period_label: "Mon, Nov 16",
+      pieces: [
+        {
+          title: "Morning reel",
+          platform: "reel",
+          scheduled_time: "09:00:00",
+          pipeline_status: "ready_to_post",
+        },
+        {
+          title: "Evening Short",
+          platform: "youtube_short",
+          scheduled_time: "18:15:00",
+          pipeline_status: "draft",
+        },
+      ],
+    });
+    expect(msg.content).toContain("Content schedule — Mon, Nov 16");
+    expect(msg.content).toContain("• 9:00 AM · Instagram reel · **Morning reel** · Ready to post");
+    expect(msg.content.indexOf("Morning reel")).toBeLessThan(msg.content.indexOf("Evening Short"));
+
+    const empty = formatDiscordMessage("content.schedule_daily", {
+      period_label: "Tue, Nov 17",
+      pieces: [],
+    });
+    expect(empty.content).toContain("Nothing scheduled today.");
+  });
+
+  it("ranks sources and keeps Unknown on its own unranked line", () => {
+    const msg = formatDiscordMessage("report.top_sources_weekly", {
+      period_label: "Nov 10 – Nov 16",
+      sources: [
+        { name: "Instagram", leads: 4, applications: 3, booked: 2, cashCents: 150000 },
+        { name: "TikTok", leads: 1, applications: 0, booked: 0, cashCents: 0 },
+      ],
+      unattributed: {
+        name: "Unknown / Unattributed",
+        leads: 9,
+        applications: 5,
+        booked: 1,
+        cashCents: 0,
+      },
+      content: [
+        { name: "Why your salary is capped", leads: 2, applications: 2, booked: 1, cashCents: 0 },
+      ],
+    });
+    expect(msg.content).toContain("Weekly top content sources — Nov 10 – Nov 16");
+    expect(msg.content).toContain(
+      "1. **Instagram** — 4 leads · 3 applications · 2 booked · $1,500",
+    );
+    expect(msg.content).toContain("2. **TikTok** — 1 lead");
+    expect(msg.content).toContain("• **Unknown / Unattributed** — 9 leads");
+    expect(msg.content).not.toMatch(/\d\. \*\*Unknown/);
+    expect(msg.content).toContain("1. **Why your salary is capped**");
+  });
+});
