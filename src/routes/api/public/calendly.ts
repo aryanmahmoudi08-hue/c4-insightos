@@ -10,6 +10,7 @@ import {
   type CalendlyScheduledEvent,
   type CalendlyWebhookBody,
 } from "@/lib/calendly";
+import { resolveBookingLead } from "@/lib/calendly-leads.server";
 
 // calls.rescheduled_from_external_id is new and not in the generated Supabase
 // type snapshot yet — same cast the other new tables need.
@@ -111,11 +112,26 @@ export const Route = createFileRoute("/api/public/calendly")({
 
         if (change.kind === "booked") {
           const scheduledEvent = await fetchScheduledEvent(invitee.event ?? "", apiToken);
+          // Link the booking to its lead (or create one). A failure here must
+          // not lose the booking itself: it is recorded unlinked and the next
+          // delivery — Calendly retries — tries again.
+          let leadId: string | null = null;
+          try {
+            leadId = await resolveBookingLead(
+              admin,
+              connection.org_id,
+              invitee,
+              change.rescheduledFrom,
+            );
+          } catch (err) {
+            console.error("[calendly] lead link", err);
+          }
           const row = calendlyBookingToCallRow({
             orgId: connection.org_id,
             invitee,
             scheduledEvent,
             rescheduledFrom: change.rescheduledFrom,
+            leadId,
           });
           const { error } = await admin
             .from("calls")

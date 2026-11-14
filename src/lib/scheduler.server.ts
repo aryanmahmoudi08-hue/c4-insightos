@@ -26,6 +26,7 @@ import {
   retryFailedFires,
 } from "./notify.server";
 import { buildLeaderboard } from "./sales-leaderboard";
+import { escapeLike } from "./sql-like";
 import {
   DUE_LOOKBACK_MS,
   SCHEDULED_EVENT_TYPES,
@@ -279,7 +280,7 @@ async function fireFollowUpsDue(
         .from("calls")
         .select("id")
         .eq("org_id", orgId)
-        .ilike("lead_email", String(c.lead_email))
+        .ilike("lead_email", escapeLike(String(c.lead_email)))
         .gt("created_at", String(c.created_at))
         .limit(1);
       if (later?.length) continue;

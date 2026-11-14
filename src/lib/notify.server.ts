@@ -6,6 +6,7 @@
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { dispatchEvent } from "./dispatch.server";
+import { escapeLike } from "./sql-like";
 import {
   MAX_DELIVERY_ATTEMPTS,
   retryDelayMs,
@@ -216,7 +217,7 @@ export async function leadSummary(
       .from("leads")
       .select(cols)
       .eq("org_id", orgId)
-      .ilike("email", ref.email.trim())
+      .ilike("email", escapeLike(ref.email.trim()))
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();

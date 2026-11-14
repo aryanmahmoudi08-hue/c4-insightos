@@ -65,6 +65,8 @@ export type CalendlyInvitee = {
   cancel_url?: string;
   reschedule_url?: string;
   rescheduled?: boolean;
+  /** The number the invitee gave for SMS reminders, when the event asks. */
+  text_reminder_number?: string | null;
   old_invitee?: string | null;
   new_invitee?: string | null;
   no_show?: unknown;
@@ -145,8 +147,10 @@ export function calendlyBookingToCallRow(params: {
   invitee: CalendlyInvitee;
   scheduledEvent: CalendlyScheduledEvent | null;
   rescheduledFrom?: string | null;
+  /** The lead this booking belongs to (calendly-leads.server.ts). */
+  leadId?: string | null;
 }) {
-  const { orgId, invitee, scheduledEvent, rescheduledFrom } = params;
+  const { orgId, invitee, scheduledEvent, rescheduledFrom, leadId } = params;
   const t = invitee.tracking ?? null;
   return {
     org_id: orgId,
@@ -176,5 +180,28 @@ export function calendlyBookingToCallRow(params: {
     ...(t?.utm_source ? { source_platform: t.utm_source } : {}),
     ...(t?.utm_campaign ? { source_campaign: t.utm_campaign } : {}),
     rescheduled_from_external_id: rescheduledFrom ?? null,
+    // Only set when known, so a retry that fails to resolve the lead does not
+    // unlink a booking an earlier delivery already linked.
+    ...(leadId ? { lead_id: leadId } : {}),
+  };
+}
+
+/**
+ * A new lead from a booking nobody had a lead for — someone who went
+ * straight to the calendar link. Same attribution mapping as the Typeform
+ * handler: utm_source is the raw platform, utm_campaign the campaign.
+ */
+export function calendlyInviteeToLeadRow(orgId: string, invitee: CalendlyInvitee) {
+  const t = invitee.tracking ?? null;
+  return {
+    org_id: orgId,
+    full_name: invitee.name?.trim() || null,
+    email: invitee.email?.trim() || null,
+    phone: invitee.text_reminder_number?.trim() || null,
+    source_connector: "calendly",
+    // They booked, so that is where they are — not "DM received".
+    status: "call_booked" as const,
+    source_platform: t?.utm_source ?? null,
+    source_campaign: t?.utm_campaign ?? null,
   };
 }
