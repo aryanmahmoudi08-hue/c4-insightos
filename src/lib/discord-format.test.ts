@@ -1,0 +1,222 @@
+import { describe, expect, it } from "vitest";
+import { DISCORD_CONTENT_LIMIT, findLinkedIn, formatDiscordMessage, money } from "./discord-format";
+
+/** The application that landed as a truncated JSON blob on 2026-11-12. */
+const APPLICATION = {
+  lead_id: "lead-1",
+  form_title: "Career AI Accelerator",
+  lead: {
+    id: "lead-1",
+    full_name: "Tier Verify",
+    email: "tier.verify@careeraiaccelerator.com",
+    phone: "+12015550204",
+    ticket_tier: "mid",
+    ticket_tier_label: "Mid Ticket",
+    source_platform: "instagram",
+    source_campaign: "tier_verify",
+  },
+  // Three copies of every answer — the thing that ate the old budget.
+  answers: Object.fromEntries(
+    Array.from({ length: 60 }, (_, i) => [`d974dd1a-446c-423d-ab98-${i}`, "x".repeat(40)]),
+  ),
+  application_data: {
+    work_school: "Operations Lead, Tier Verify Co",
+    income: "$95-120K",
+    goal: "$130-160K",
+    capital: "$1,500-$3,000",
+    credit: "750+",
+    time: "",
+    commitment: "true",
+    serious_status: "Because I have been underpaid for three years and I am done waiting.",
+    answers_by_title: {
+      "What's your LinkedIn?": "https://www.linkedin.com/in/tier-verify",
+      "First name": "Tier",
+    },
+  },
+};
+
+describe("formatDiscordMessage — application", () => {
+  const msg = formatDiscordMessage("lead.application_submitted", APPLICATION, {
+    appUrl: "https://ascendos-app.vercel.app",
+  });
+
+  it("leads with the things a closer decides on", () => {
+    expect(msg.content).toContain("**Name:** Tier Verify");
+    expect(msg.content).toContain("**Email:** tier.verify@careeraiaccelerator.com");
+    expect(msg.content).toContain("**Phone:** +12015550204");
+    expect(msg.content).toContain("**Ticket tier:** Mid Ticket");
+    expect(msg.content).toContain("**Budget:** $1,500-$3,000");
+    expect(msg.content).toContain("**Current salary:** $95-120K");
+    expect(msg.content).toContain("**Target salary:** $130-160K");
+  });
+
+  it("finds LinkedIn by its URL, not by the question's wording", () => {
+    expect(msg.content).toContain("**LinkedIn:** https://www.linkedin.com/in/tier-verify");
+  });
+
+  it("never renders raw answers, UUIDs or JSON", () => {
+    expect(msg.content).not.toContain("d974dd1a");
+    expect(msg.content).not.toContain("```");
+    expect(msg.content).not.toContain("{");
+  });
+
+  it("skips empty slots instead of printing a label with nothing after it", () => {
+    expect(msg.content).not.toContain("Time available");
+  });
+
+  it("puts the long answer last, just before the link", () => {
+    const why = msg.content.indexOf("Why you, why now");
+    expect(why).toBeGreaterThan(msg.content.indexOf("**Budget:**"));
+    expect(
+      msg.content.trimEnd().endsWith("(https://ascendos-app.vercel.app/leads?leadId=lead-1)"),
+    ).toBe(true);
+  });
+
+  it("omits the link when no app URL is known, rather than inventing one", () => {
+    const noUrl = formatDiscordMessage("lead.application_submitted", APPLICATION, {});
+    expect(noUrl.content).not.toContain("Open in AscendOS");
+  });
+});
+
+describe("truncation", () => {
+  it("cuts the long free text, keeps the contact details, and says it was cut", () => {
+    const huge = {
+      ...APPLICATION,
+      application_data: { ...APPLICATION.application_data, serious_status: "word ".repeat(1000) },
+    };
+    const msg = formatDiscordMessage("lead.application_submitted", huge, {
+      appUrl: "https://ascendos-app.vercel.app",
+    });
+    expect(msg.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
+    expect(msg.content).toContain("**Email:** tier.verify@careeraiaccelerator.com");
+    expect(msg.content).toContain("… (message truncated)");
+    expect(msg.content).toContain("Open in AscendOS");
+  });
+
+  it("stays under the limit even when the fixed part is enormous", () => {
+    const setters = Array.from({ length: 80 }, (_, i) => ({
+      name: `Rep ${i}`,
+      dials: 100,
+      sets: 5,
+    }));
+    const msg = formatDiscordMessage("report.daily_sales", { period_label: "Nov 13", setters });
+    expect(msg.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
+    expect(msg.content).toContain("… (message truncated)");
+  });
+});
+
+describe("mentions", () => {
+  it("pings the roles and whitelists them so Discord actually notifies", () => {
+    const msg = formatDiscordMessage(
+      "call.unconfirmed",
+      { lead_name: "Ada" },
+      {
+        mentionRoleIds: ["1570643974073487430", "1570644095586664649"],
+      },
+    );
+    expect(msg.content.startsWith("<@&1570643974073487430> <@&1570644095586664649>")).toBe(true);
+    expect(msg.allowed_mentions.roles).toEqual(["1570643974073487430", "1570644095586664649"]);
+    expect(msg.allowed_mentions.parse).toEqual([]);
+  });
+
+  it("drops anything that is not a role ID, so @everyone cannot be smuggled in", () => {
+    const msg = formatDiscordMessage(
+      "callback.due",
+      {},
+      { mentionRoleIds: ["everyone", "@here", " 123 "] },
+    );
+    expect(msg.allowed_mentions.roles).toEqual(["123"]);
+    expect(msg.content).not.toContain("everyone");
+  });
+
+  it("pings nobody by default", () => {
+    const msg = formatDiscordMessage("callback.due", {});
+    expect(msg.allowed_mentions.roles).toEqual([]);
+    expect(msg.content).not.toContain("<@&");
+  });
+});
+
+describe("other event shapes", () => {
+  it("renders a call with its time in the workspace timezone", () => {
+    const msg = formatDiscordMessage(
+      "call.confirmed",
+      {
+        lead: { full_name: "Ada Lovelace", phone: "+15550001111" },
+        scheduled_for: "2026-11-13T20:00:00Z",
+        closer_name: "Sam",
+        touchpoint_label: "Morning of call — goals & anticipation",
+      },
+      { timeZone: "America/New_York" },
+    );
+    expect(msg.content).toContain("**Call confirmed**");
+    expect(msg.content).toContain("**Lead:** Ada Lovelace");
+    expect(msg.content).toMatch(/\*\*Call:\*\* Fri, Nov 13, 3:00 PM EST/);
+  });
+
+  it("renders post-call money as currency, not cents", () => {
+    const msg = formatDiscordMessage("closer.post_call_submitted", {
+      closer_name: "Sam",
+      lead_status: "Deposit",
+      cash_collected_cents: 150000,
+      contract_value_cents: 600000,
+      call_summary: "Good call.",
+    });
+    expect(msg.content).toContain("**Cash collected:** $1,500");
+    expect(msg.content).toContain("**Total revenue:** $6,000");
+  });
+
+  it("lists only the EOD numbers a rep actually logged", () => {
+    const msg = formatDiscordMessage("setter.eod_submitted", {
+      team_member_name: "Jo",
+      role: "inbound_dialer",
+      activity_date: "2026-11-13",
+      dials: 120,
+      sets: 4,
+      replies: 0,
+    });
+    expect(msg.content).toContain("**Dials:** 120");
+    expect(msg.content).toContain("**Sets:** 4");
+    expect(msg.content).not.toContain("Replies");
+  });
+
+  it("renders a leaderboard with rates", () => {
+    const msg = formatDiscordMessage("report.daily_sales", {
+      period_label: "Thu, Nov 13",
+      closers: [{ name: "Sam", booked: 4, showed: 3, noShows: 1, closed: 1, cashCents: 300000 }],
+      team: { name: "Team", showed: 3, noShows: 1, closed: 1, cashCents: 300000 },
+    });
+    expect(msg.content).toContain("Daily sales team report — Thu, Nov 13");
+    expect(msg.content).toContain(
+      "**Sam** — 4 booked · 3 showed · 1 no-show · 1 closed · $3,000 · show 75% · close 33%",
+    );
+  });
+
+  it("falls back to readable lines for an event with no bespoke shape", () => {
+    const msg = formatDiscordMessage("payment.collected", {
+      amount_cents: 99900,
+      customer_email: "a@b.c",
+      raw: { nested: true },
+    });
+    expect(msg.content).toContain("**Payment collected**");
+    expect(msg.content).toContain("**Amount cents:** $999");
+    expect(msg.content).toContain("**Customer email:** a@b.c");
+    expect(msg.content).not.toContain("nested");
+  });
+});
+
+describe("helpers", () => {
+  it("money formats cents and keeps foreign currencies explicit", () => {
+    expect(money(150000)).toBe("$1,500");
+    expect(money(150050)).toBe("$1,500.50");
+    expect(money(50000, "CAD")).toBe("500 CAD");
+    expect(money(0)).toBe("");
+    expect(money(null)).toBe("");
+  });
+
+  it("findLinkedIn ignores everything that is not a profile URL", () => {
+    expect(findLinkedIn({ a: "linkedin", b: "https://linkedin.com/company/x" })).toBe("");
+    expect(findLinkedIn({ a: "https://www.linkedin.com/in/ada" })).toBe(
+      "https://www.linkedin.com/in/ada",
+    );
+  });
+});

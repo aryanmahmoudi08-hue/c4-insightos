@@ -95,6 +95,60 @@ export const DISPATCHED_EVENTS: EventCatalogEntry[] = [
     dispatched: true,
     emittedBy: "weekly-report.server.ts",
   },
+  {
+    type: "call.confirmed",
+    label: "Call confirmed",
+    dispatched: true,
+    emittedBy: "event-emitters.server.ts (the configured touchpoint is ticked)",
+  },
+  {
+    type: "call.unconfirmed",
+    label: "Call not confirmed by its deadline",
+    dispatched: true,
+    emittedBy: "scheduler.server.ts",
+  },
+  {
+    type: "closer.post_call_submitted",
+    label: "Closer post-call notes submitted",
+    dispatched: true,
+    emittedBy: "event-emitters.server.ts",
+  },
+  {
+    type: "setter.eod_submitted",
+    label: "Setter EOD report submitted",
+    dispatched: true,
+    emittedBy: "event-emitters.server.ts",
+  },
+  {
+    type: "callback.due",
+    label: "Dialer callback due",
+    dispatched: true,
+    emittedBy: "scheduler.server.ts",
+  },
+  {
+    type: "followup.short_term_due",
+    label: "Short-term follow-up due",
+    dispatched: true,
+    emittedBy: "scheduler.server.ts",
+  },
+  {
+    type: "followup.long_term_due",
+    label: "Long-term follow-up due",
+    dispatched: true,
+    emittedBy: "scheduler.server.ts",
+  },
+  {
+    type: "report.daily_sales",
+    label: "Daily sales team report",
+    dispatched: true,
+    emittedBy: "scheduler.server.ts",
+  },
+  {
+    type: "report.weekly_sales",
+    label: "Weekly sales team report",
+    dispatched: true,
+    emittedBy: "scheduler.server.ts",
+  },
 ];
 
 /**

@@ -70,6 +70,27 @@ const SchedulingSettings = z.object({
   calendlyUrl: HttpsUrl.default(""),
 });
 
+const NotificationSettings = z.object({
+  /** IANA zone the business runs on (e.g. "America/New_York"). Defines what
+   * "today" and "nightly" mean for the scheduled reports. Empty means unset,
+   * and the daily/weekly reports do not send rather than guess — every
+   * date-only window computed in UTC lost the evening, which is when calls
+   * happen. */
+  timeZone: z.string().trim().default(""),
+  /** The Calls-on-Calendar touchpoint that means "this call is confirmed".
+   * Ticking it fires call.confirmed; not ticking it by the touchpoint's own
+   * window close fires call.unconfirmed. Morning-of by default: later steps
+   * are logistics on a call already believed to be happening. */
+  confirmTouchpoint: z
+    .enum(["night_before", "morning", "one_hour", "thirty_min", "ten_min"])
+    .default("morning"),
+  /** Local hour (0–23) the daily sales report sends, covering that day. */
+  dailyReportHour: z.number().int().min(0).max(23).default(23),
+  /** Local weekday (0 = Sunday) the weekly report sends, covering the seven
+   * days ending that day. */
+  weeklyReportDay: z.number().int().min(0).max(6).default(0),
+});
+
 export const WorkspaceSettingsSchema = z.object({
   content_engine: ContentEngineSettings.default({}),
   alerts: AlertSettings.default({}),
@@ -77,6 +98,7 @@ export const WorkspaceSettingsSchema = z.object({
   funnel_instrument: FunnelInstrumentSettings.default({}),
   eod: EodSettings.default({}),
   scheduling: SchedulingSettings.default({}),
+  notifications: NotificationSettings.default({}),
 });
 
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>;
@@ -86,6 +108,7 @@ export type ClientSettingsT = WorkspaceSettings["clients"];
 export type FunnelInstrumentSettingsT = WorkspaceSettings["funnel_instrument"];
 export type EodSettingsT = WorkspaceSettings["eod"];
 export type SchedulingSettingsT = WorkspaceSettings["scheduling"];
+export type NotificationSettingsT = WorkspaceSettings["notifications"];
 
 /** Used wherever settings haven't loaded yet, or by any server logic that
  * wants documented defaults without a round-trip (e.g. tests, cold paths). */
@@ -102,8 +125,13 @@ function parseStoredSettings(raw: Record<string, unknown>): WorkspaceSettings {
     funnel_instrument: raw.funnel_instrument ?? {},
     eod: raw.eod ?? {},
     scheduling: raw.scheduling ?? {},
+    notifications: raw.notifications ?? {},
   });
 }
+
+/** Exported for the scheduler, which reads `organizations.settings` itself
+ * with the service-role client rather than through a member's session. */
+export { parseStoredSettings };
 
 type Sb = SupabaseClient<Database>;
 
@@ -136,6 +164,7 @@ const UpdateInput = z.object({
   funnel_instrument: FunnelInstrumentSettings.partial().optional(),
   eod: EodSettings.partial().optional(),
   scheduling: SchedulingSettings.partial().optional(),
+  notifications: NotificationSettings.partial().optional(),
 });
 
 export const updateWorkspaceSettingsFn = createServerFn({ method: "POST" })
@@ -163,6 +192,7 @@ export const updateWorkspaceSettingsFn = createServerFn({ method: "POST" })
         userUrls: { ...current.eod.userUrls, ...(data.eod?.userUrls ?? {}) },
       },
       scheduling: { ...current.scheduling, ...(data.scheduling ?? {}) },
+      notifications: { ...current.notifications, ...(data.notifications ?? {}) },
     };
     const { error: upErr } = await supabase
       .from("organizations")

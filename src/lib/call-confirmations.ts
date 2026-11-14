@@ -15,12 +15,7 @@
 export type Touchpoint = "night_before" | "morning" | "one_hour" | "thirty_min" | "ten_min";
 
 export type TouchpointStatus =
-  | "not_due"
-  | "due"
-  | "scheduled"
-  | "manually_sent"
-  | "responded"
-  | "not_sent";
+  "not_due" | "due" | "scheduled" | "manually_sent" | "responded" | "not_sent";
 
 export const TOUCHPOINT_LABELS: Record<Touchpoint, string> = {
   night_before: "Night before — pre-call homework video",
@@ -36,7 +31,7 @@ export const TOUCHPOINT_LABELS: Record<Touchpoint, string> = {
  * the org-configurable confirmation/cancellation deadline in
  * `confirmation_policy`, which governs the overall booking's fate, not these
  * message-timing windows. */
-const TOUCHPOINT_WINDOWS: Record<
+export const TOUCHPOINT_WINDOWS: Record<
   Touchpoint,
   { opensMinutesBefore: number; closesMinutesBefore: number }
 > = {

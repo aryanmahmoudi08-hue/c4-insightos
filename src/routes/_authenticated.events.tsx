@@ -66,6 +66,17 @@ import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
 import { BentoGrid, BentoCell } from "@/components/bento-grid";
 import { cn } from "@/lib/utils";
 
+/** Discord role IDs typed into the Add dialog: digits only, deduplicated. */
+function parseRoleIds(raw: string): string[] {
+  return Array.from(new Set(raw.split(/[\s,]+/).filter((t) => /^\d{5,25}$/.test(t))));
+}
+
+/** mention_role_ids is ahead of the generated row type. */
+function rolesOf(s: unknown): string[] {
+  const v = (s as { mention_role_ids?: unknown }).mention_role_ids;
+  return Array.isArray(v) ? (v as string[]) : [];
+}
+
 export const Route = createFileRoute("/_authenticated/events")({ component: EventsBus });
 
 function EventsBus() {
@@ -111,13 +122,28 @@ function EventsBus() {
       // the browser payload on every page load, for a column nothing on this
       // page renders. Name the columns so adding a secret column later cannot
       // silently leak it.
-      const { data, error } = await supabase
+      // mention_role_ids is ahead of the generated types (20261113090000),
+      // so the row shape is stated here rather than inferred.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
         .from("webhook_subscriptions")
-        .select("id, name, target_url, channel, category, event_types, active, created_at")
+        .select(
+          "id, name, target_url, channel, category, event_types, active, created_at, mention_role_ids",
+        )
         .eq("org_id", orgId!)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data;
+      return (data ?? []) as Array<{
+        id: string;
+        name: string;
+        target_url: string;
+        channel: string;
+        category: string | null;
+        event_types: string[];
+        active: boolean;
+        created_at: string;
+        mention_role_ids: string[] | null;
+      }>;
     },
   });
 
@@ -185,7 +211,10 @@ function EventsBus() {
       const event_types = draftTypes;
       if (!event_types.length) throw new Error("Pick at least one event type");
       const target_url = String(f.get("target_url") || "");
-      const { error } = await supabase.from("webhook_subscriptions").insert({
+      const mention_role_ids = parseRoleIds(String(f.get("mention_role_ids") || ""));
+      // mention_role_ids is ahead of the generated types (20261113090000).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).from("webhook_subscriptions").insert({
         org_id: orgId!,
         name: String(f.get("name") || ""),
         target_url,
@@ -193,8 +222,9 @@ function EventsBus() {
         // Discord target got raw JSON and a 400 on every event. Dispatch now
         // reads the URL too, but store it correctly so the row is honest.
         channel: webhookChannelFor(target_url),
-        signing_secret: String(f.get("secret") || ""),
+        signing_secret: String(f.get("secret") || "") || null,
         event_types,
+        mention_role_ids,
         active: true,
       });
       if (error) throw error;
@@ -405,8 +435,24 @@ function EventsBus() {
                         <Input name="target_url" type="url" required />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>Signing secret</Label>
-                        <Input name="secret" type="password" required />
+                        <Label>Signing secret (optional)</Label>
+                        <Input name="secret" type="password" />
+                        <div className="text-3xs text-muted-foreground">
+                          Not needed for Discord, which does not verify signatures.
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Discord roles to ping (optional)</Label>
+                        <Input
+                          name="mention_role_ids"
+                          inputMode="numeric"
+                          placeholder="e.g. 1570643974073487430, 1570644095586664649"
+                        />
+                        <div className="text-3xs text-muted-foreground">
+                          Role IDs, comma-separated. In Discord: Server Settings → Roles →
+                          right-click a role → Copy Role ID (needs Developer Mode). Each message
+                          mentions them and they get notified.
+                        </div>
                       </div>
                       <div className="space-y-1.5">
                         <Label>Events to send</Label>
@@ -494,6 +540,11 @@ function EventsBus() {
                           <span className="font-mono"> · {(s.event_types ?? []).join(", ")}</span>
                         )}
                       </div>
+                      {rolesOf(s).length > 0 && (
+                        <div className="mt-0.5 text-3xs text-muted-foreground">
+                          Pings {rolesOf(s).length} Discord role{rolesOf(s).length === 1 ? "" : "s"}
+                        </div>
+                      )}
                       {dead.length > 0 && (
                         /* An event type nothing dispatches makes a subscription
                            permanently silent while still reporting Active. Say

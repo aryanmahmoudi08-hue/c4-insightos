@@ -134,6 +134,7 @@ export const Route = createFileRoute("/api/public/typeform")({
 
         let leadId: string | null = null;
         let intakeId: string | null = null;
+        let tierKey: string | null = null;
         if (isApplication) {
           const { data: lead, error: leadErr } = await supabaseAdmin
             .from("leads")
@@ -188,6 +189,7 @@ export const Route = createFileRoute("/api/public/typeform")({
               // Capital, not a question that happens to be titled "Capital".
               const result = classifyLead(answers, rules as ClassificationRule[], fieldMap);
               if (result.tierKey) {
+                tierKey = result.tierKey;
                 await (supabaseAdmin as any)
                   .from("leads")
                   .update({
@@ -235,7 +237,38 @@ export const Route = createFileRoute("/api/public/typeform")({
           payload: { answers, application_data, source: "typeform" },
         });
 
+        // The tier's display label ("Mid Ticket"), not its key — the Discord
+        // message is read by a person deciding who to call first.
+        let tierLabel: string | null = null;
+        if (tierKey) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: tier } = await (supabaseAdmin as any)
+            .from("offer_tiers")
+            .select("label")
+            .eq("org_id", connection.org_id)
+            .eq("key", tierKey)
+            .maybeSingle();
+          tierLabel = (tier?.label as string | undefined) ?? null;
+        }
+
         await dispatchEvent(connection.org_id, eventType, {
+          // The lead's own resolved fields, so a formatter never has to dig
+          // them back out of raw answers. JSON subscribers still get
+          // `answers` below, unchanged.
+          lead: {
+            id: leadId,
+            full_name,
+            email,
+            phone,
+            ticket_tier: tierKey,
+            ticket_tier_label: tierLabel,
+            source_platform: attribution.sourcePlatform,
+            source_campaign: attribution.sourceCampaign,
+          },
+          form_title:
+            typeof formResponse.definition?.title === "string"
+              ? formResponse.definition.title
+              : null,
           answers,
           application_data,
           source: "typeform",

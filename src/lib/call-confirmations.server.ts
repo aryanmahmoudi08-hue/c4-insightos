@@ -198,6 +198,11 @@ export async function markTouchpoint(
 
   const { error } = await confirmationsTable().upsert(patch, { onConflict: "call_id" });
   if (error) throw new Error(`Failed to mark ${touchpoint}: ${error.message}`);
+
+  // Fires call.confirmed when this is the workspace's "confirmed" step.
+  // Best-effort and deduplicated inside; never fails the tick itself.
+  const { notifyTouchpointMarked } = await import("./event-emitters.server");
+  await notifyTouchpointMarked(orgId, callId, touchpoint);
 }
 
 export async function setOverallStatus(

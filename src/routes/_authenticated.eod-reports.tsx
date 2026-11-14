@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { syncLeadStageFromCall } from "@/lib/crm-board.functions";
+import { notifyEodSubmittedFn } from "@/lib/eod-notify.functions";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { TopBar } from "@/components/app-sidebar";
@@ -176,6 +177,7 @@ function EodFlowForRole({
 }) {
   const qc = useQueryClient();
   const syncBoardStage = useServerFn(syncLeadStageFromCall);
+  const notifyEod = useServerFn(notifyEodSubmittedFn);
   const schema =
     role === "dm_setter"
       ? DM_SETTER_EOD_SCHEMA
@@ -243,6 +245,12 @@ function EodFlowForRole({
           .insert(objectionRows);
         if (objErr) throw objErr;
       }
+      // Post-call notes to the bus (and any Discord channel subscribed to
+      // closer.post_call_submitted). After the objections insert, so the
+      // message lists them. Best-effort: never fails the submission.
+      if (callRow?.id) {
+        notifyEod({ data: { kind: "closer", id: callRow.id } }).catch(() => {});
+      }
     } else {
       const payload = buildSetterActivityPayload(role, orgId ?? "", values);
       if (devBypass) return;
@@ -250,8 +258,15 @@ function EodFlowForRole({
       // column, see the migration comment) — same convention as the calls
       // insert above.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any).from("setter_activity").insert(payload);
+      const { data: activityRow, error } = await (supabase as any)
+        .from("setter_activity")
+        .insert(payload)
+        .select("id")
+        .single();
       if (error) throw error;
+      if (activityRow?.id) {
+        notifyEod({ data: { kind: "setter", id: activityRow.id } }).catch(() => {});
+      }
     }
     if (!devBypass) {
       // Broad invalidation on a rare, deliberate submit action — every rep

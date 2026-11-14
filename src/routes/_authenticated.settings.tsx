@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { browserTimeZone } from "@/lib/zoned-time";
+import { DISPLAY_TIMEZONES } from "@/hooks/use-display-timezone";
 import {
   Moon,
   Sun,
@@ -35,6 +37,7 @@ import {
   updateWorkspaceSettingsFn,
   DEFAULT_WORKSPACE_SETTINGS,
   type WorkspaceSettings,
+  type NotificationSettingsT,
 } from "@/lib/workspace-settings.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -191,6 +194,7 @@ function Settings() {
         </Section>
 
         <SchedulingSection orgId={org?.org_id} isAdmin={isAdmin} />
+        <NotificationsSection orgId={org?.org_id} isAdmin={isAdmin} />
         <ContentEngineSection orgId={org?.org_id} isAdmin={isAdmin} />
 
         <Section
@@ -370,6 +374,202 @@ function SchedulingSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boolea
               className="gap-1.5"
               onClick={() => save.mutate()}
               disabled={save.isPending || invalid}
+            >
+              {save.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}{" "}
+              Save
+            </Button>
+          ) : (
+            <p className="text-2xs text-muted-foreground">
+              Only workspace owners and admins can change this.
+            </p>
+          )}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+const SELECT_CLASS =
+  "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
+
+const WEEKDAY_OPTIONS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+const TOUCHPOINT_OPTIONS: Array<{
+  value: NotificationSettingsT["confirmTouchpoint"];
+  label: string;
+}> = [
+  { value: "night_before", label: "Night before — homework video" },
+  { value: "morning", label: "Morning of — goals message" },
+  { value: "one_hour", label: "1 hour before — link reminder" },
+  { value: "thirty_min", label: "30 minutes before" },
+  { value: "ten_min", label: "10 minutes before" },
+];
+
+function hourLabel(h: number) {
+  const suffix = h < 12 ? "AM" : "PM";
+  const hr = h % 12 === 0 ? 12 : h % 12;
+  return `${hr}:00 ${suffix}`;
+}
+
+/**
+ * What the scheduled Discord events mean for this workspace: which timezone
+ * "today" is in, which confirmation touchpoint counts as "confirmed", and when
+ * the sales reports send.
+ */
+function NotificationsSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boolean }) {
+  const { devBypass } = useAuth();
+  const qc = useQueryClient();
+  const getFn = useServerFn(getWorkspaceSettingsFn);
+  const updateFn = useServerFn(updateWorkspaceSettingsFn);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["workspace-settings", orgId, devBypass],
+    enabled: devBypass || !!orgId,
+    queryFn: () =>
+      devBypass ? Promise.resolve(DEFAULT_WORKSPACE_SETTINGS) : getFn({ data: { orgId: orgId! } }),
+  });
+
+  const [draft, setDraft] = useState<NotificationSettingsT | null>(null);
+  if (data && !draft) setDraft(data.notifications);
+  const browserZone = browserTimeZone();
+  const zoneOptions = Array.from(
+    new Set([
+      ...(draft?.timeZone ? [draft.timeZone] : []),
+      browserZone,
+      ...DISPLAY_TIMEZONES.map((z) => z.value),
+    ]),
+  );
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (devBypass || !draft) return data ?? DEFAULT_WORKSPACE_SETTINGS;
+      return updateFn({ data: { orgId: orgId!, notifications: draft } });
+    },
+    onSuccess: (saved) => {
+      toast.success("Notification settings saved");
+      qc.setQueryData(["workspace-settings", orgId, devBypass], saved);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const set = <K extends keyof NotificationSettingsT>(k: K, v: NotificationSettingsT[K]) =>
+    setDraft((d) => (d ? { ...d, [k]: v } : d));
+
+  return (
+    <Section
+      title="Notifications"
+      description="What the scheduled Discord events mean for this workspace. Each one only sends if an Event Bus subscription is listening for it."
+    >
+      {isLoading || !draft ? (
+        <div className="py-6 text-center text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 mx-auto animate-spin" />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <Label className="text-xs">Business timezone</Label>
+            <select
+              className={SELECT_CLASS}
+              disabled={!isAdmin}
+              value={draft.timeZone}
+              onChange={(e) => set("timeZone", e.target.value)}
+            >
+              <option value="">Not set</option>
+              {zoneOptions.map((z) => (
+                <option key={z} value={z}>
+                  {DISPLAY_TIMEZONES.find((d) => d.value === z)?.label ?? z}
+                  {z === browserZone ? " (this browser)" : ""}
+                </option>
+              ))}
+            </select>
+            <p className="text-3xs text-muted-foreground">
+              Defines “today” for the daily report and the times shown in Discord messages. Until it
+              is set the sales reports do not send, rather than counting a day that ends at 7 PM.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">A call counts as confirmed when this step is ticked</Label>
+            <select
+              className={SELECT_CLASS}
+              disabled={!isAdmin}
+              value={draft.confirmTouchpoint}
+              onChange={(e) =>
+                set(
+                  "confirmTouchpoint",
+                  e.target.value as NotificationSettingsT["confirmTouchpoint"],
+                )
+              }
+            >
+              {TOUCHPOINT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-3xs text-muted-foreground">
+              Ticking it fires <span className="font-mono">call.confirmed</span>. If it is still
+              unticked when that step’s window closes,{" "}
+              <span className="font-mono">call.unconfirmed</span> fires once so someone confirms the
+              call.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Sales reports send at</Label>
+              <select
+                className={SELECT_CLASS}
+                disabled={!isAdmin}
+                value={draft.dailyReportHour}
+                onChange={(e) => set("dailyReportHour", Number(e.target.value))}
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {hourLabel(h)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Weekly report day</Label>
+              <select
+                className={SELECT_CLASS}
+                disabled={!isAdmin}
+                value={draft.weeklyReportDay}
+                onChange={(e) => set("weeklyReportDay", Number(e.target.value))}
+              >
+                {WEEKDAY_OPTIONS.map((d, i) => (
+                  <option key={d} value={i}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="text-3xs text-muted-foreground">
+            The daily report covers that day; the weekly one covers the seven days ending on its
+            day.
+          </p>
+
+          {isAdmin ? (
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => save.mutate()}
+              disabled={save.isPending}
             >
               {save.isPending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

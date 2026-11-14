@@ -1,5 +1,18 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { webhookChannelFor } from "./event-catalog";
+import { formatDiscordMessage } from "./discord-format";
+
+/**
+ * Base URL for "Open in AscendOS" links. APP_URL wins when set; otherwise
+ * Vercel's own production domain, which it injects into every deployment.
+ * Neither -> no link, rather than a guessed address.
+ */
+function appUrl(): string | null {
+  const explicit = process.env.APP_URL?.trim();
+  if (explicit) return explicit;
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  return vercel ? `https://${vercel}` : null;
+}
 
 interface SubRow {
   id: string;
@@ -8,6 +21,7 @@ interface SubRow {
   event_types: string[] | null;
   category: string | null;
   active: boolean;
+  mention_role_ids: string[] | null;
 }
 
 /**
@@ -24,7 +38,7 @@ export async function dispatchEvent(
 ) {
   const { data: subs, error: subsError } = await supabaseAdmin
     .from("webhook_subscriptions")
-    .select("id, target_url, channel, event_types, category, active")
+    .select("id, target_url, channel, event_types, category, active, mention_role_ids")
     .eq("org_id", orgId)
     .eq("active", true);
 
@@ -81,13 +95,16 @@ export async function dispatchEvent(
         // created from the Event Bus page never set `channel`, so it defaulted
         // to 'slack' and every Discord delivery went out as raw JSON and 400'd.
         const isDiscord = webhookChannelFor(s.target_url, s.channel) === "discord";
+        // Labelled lines built from resolved fields. The old body was the
+        // payload as a JSON block, which spent its whole budget on raw
+        // answers and never reached a name. See discord-format.ts.
         const requestBody = isDiscord
-          ? JSON.stringify({
-              content:
-                `**${eventType}**` +
-                (category ? ` · \`${category}\`` : "") +
-                `\n\`\`\`json\n${JSON.stringify(payload, null, 2).slice(0, 1500)}\n\`\`\``,
-            })
+          ? JSON.stringify(
+              formatDiscordMessage(eventType, payload, {
+                appUrl: appUrl(),
+                mentionRoleIds: s.mention_role_ids ?? [],
+              }),
+            )
           : jsonBody;
 
         const res = await fetch(s.target_url, {

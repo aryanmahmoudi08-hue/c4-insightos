@@ -51,6 +51,7 @@ import { Route as ApiPublicCalendlyRouteImport } from './routes/api/public/calen
 import { Route as ApiPublicCloseRouteImport } from './routes/api/public/close'
 import { Route as ApiPublicFanbasisRouteImport } from './routes/api/public/fanbasis'
 import { Route as ApiPublicPaypalRouteImport } from './routes/api/public/paypal'
+import { Route as ApiPublicSchedulerTickRouteImport } from './routes/api/public/scheduler-tick'
 import { Route as ApiPublicStripeRouteImport } from './routes/api/public/stripe'
 import { Route as ApiPublicTypeformRouteImport } from './routes/api/public/typeform'
 import { Route as ApiPublicWebinarjamRouteImport } from './routes/api/public/webinarjam'
@@ -278,6 +279,11 @@ const ApiPublicPaypalRoute = ApiPublicPaypalRouteImport.update({
   path: '/api/public/paypal',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicSchedulerTickRoute = ApiPublicSchedulerTickRouteImport.update({
+  id: '/api/public/scheduler-tick',
+  path: '/api/public/scheduler-tick',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicStripeRoute = ApiPublicStripeRouteImport.update({
   id: '/api/public/stripe',
   path: '/api/public/stripe',
@@ -361,6 +367,7 @@ export interface FileRoutesByFullPath {
   '/api/public/close': typeof ApiPublicCloseRoute
   '/api/public/fanbasis': typeof ApiPublicFanbasisRoute
   '/api/public/paypal': typeof ApiPublicPaypalRoute
+  '/api/public/scheduler-tick': typeof ApiPublicSchedulerTickRoute
   '/api/public/stripe': typeof ApiPublicStripeRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/api/public/webinarjam': typeof ApiPublicWebinarjamRoute
@@ -412,6 +419,7 @@ export interface FileRoutesByTo {
   '/api/public/close': typeof ApiPublicCloseRoute
   '/api/public/fanbasis': typeof ApiPublicFanbasisRoute
   '/api/public/paypal': typeof ApiPublicPaypalRoute
+  '/api/public/scheduler-tick': typeof ApiPublicSchedulerTickRoute
   '/api/public/stripe': typeof ApiPublicStripeRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/api/public/webinarjam': typeof ApiPublicWebinarjamRoute
@@ -465,6 +473,7 @@ export interface FileRoutesById {
   '/api/public/close': typeof ApiPublicCloseRoute
   '/api/public/fanbasis': typeof ApiPublicFanbasisRoute
   '/api/public/paypal': typeof ApiPublicPaypalRoute
+  '/api/public/scheduler-tick': typeof ApiPublicSchedulerTickRoute
   '/api/public/stripe': typeof ApiPublicStripeRoute
   '/api/public/typeform': typeof ApiPublicTypeformRoute
   '/api/public/webinarjam': typeof ApiPublicWebinarjamRoute
@@ -518,6 +527,7 @@ export interface FileRouteTypes {
     | '/api/public/close'
     | '/api/public/fanbasis'
     | '/api/public/paypal'
+    | '/api/public/scheduler-tick'
     | '/api/public/stripe'
     | '/api/public/typeform'
     | '/api/public/webinarjam'
@@ -569,6 +579,7 @@ export interface FileRouteTypes {
     | '/api/public/close'
     | '/api/public/fanbasis'
     | '/api/public/paypal'
+    | '/api/public/scheduler-tick'
     | '/api/public/stripe'
     | '/api/public/typeform'
     | '/api/public/webinarjam'
@@ -621,6 +632,7 @@ export interface FileRouteTypes {
     | '/api/public/close'
     | '/api/public/fanbasis'
     | '/api/public/paypal'
+    | '/api/public/scheduler-tick'
     | '/api/public/stripe'
     | '/api/public/typeform'
     | '/api/public/webinarjam'
@@ -646,6 +658,7 @@ export interface RootRouteChildren {
   ApiPublicCloseRoute: typeof ApiPublicCloseRoute
   ApiPublicFanbasisRoute: typeof ApiPublicFanbasisRoute
   ApiPublicPaypalRoute: typeof ApiPublicPaypalRoute
+  ApiPublicSchedulerTickRoute: typeof ApiPublicSchedulerTickRoute
   ApiPublicStripeRoute: typeof ApiPublicStripeRoute
   ApiPublicTypeformRoute: typeof ApiPublicTypeformRoute
   ApiPublicWebinarjamRoute: typeof ApiPublicWebinarjamRoute
@@ -952,6 +965,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicPaypalRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/scheduler-tick': {
+      id: '/api/public/scheduler-tick'
+      path: '/api/public/scheduler-tick'
+      fullPath: '/api/public/scheduler-tick'
+      preLoaderRoute: typeof ApiPublicSchedulerTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/stripe': {
       id: '/api/public/stripe'
       path: '/api/public/stripe'
@@ -1092,6 +1112,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCloseRoute: ApiPublicCloseRoute,
   ApiPublicFanbasisRoute: ApiPublicFanbasisRoute,
   ApiPublicPaypalRoute: ApiPublicPaypalRoute,
+  ApiPublicSchedulerTickRoute: ApiPublicSchedulerTickRoute,
   ApiPublicStripeRoute: ApiPublicStripeRoute,
   ApiPublicTypeformRoute: ApiPublicTypeformRoute,
   ApiPublicWebinarjamRoute: ApiPublicWebinarjamRoute,
