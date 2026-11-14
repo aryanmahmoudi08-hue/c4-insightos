@@ -1,28 +1,29 @@
 /**
- * One scheduler tick: find what has become due since the last one and fire
- * it, once.
+ * One scheduler tick: retry deliveries that failed, then find what has become
+ * due since the last tick and fire it, once.
  *
  * Called every minute by pg_cron (20261113090000_event_scheduler.sql) through
- * /api/public/scheduler-tick. Every job is idempotent: a claim in
- * `scheduled_event_fires` is taken before anything is sent, so overlapping
- * or repeated ticks cannot double-ping a channel.
+ * /api/public/scheduler-tick. Every fire goes through `fireOnce`, which claims
+ * the item in `scheduled_event_fires` before sending — overlapping ticks
+ * cannot double-ping a channel — and records how delivery went, so a Discord
+ * 429 or 5xx is retried with backoff instead of losing the alert.
  *
  * A workspace is only examined for the event types it has an active
- * subscription to. Nobody listening means nothing to compute, and it also
- * means a workspace that has never wired a channel cannot be flooded the
- * moment it first does — the lookback bound in scheduler-rules.ts covers the
- * rest.
+ * subscription to. Nobody listening means nothing to compute, and a
+ * workspace that has never wired a channel cannot be flooded the moment it
+ * first does — the lookback bound in scheduler-rules.ts covers the rest.
  */
 import { TOUCHPOINT_LABELS } from "./call-confirmations";
 import { callPayload } from "./event-emitters.server";
 import { FOLLOWUP_LEAD_STATUSES } from "./eod-reports";
 import {
-  claimFire,
+  alreadyFired,
   db,
-  emitEvent,
+  fireOnce,
   leadSummary,
   loadNotificationSettings,
   memberName,
+  retryFailedFires,
 } from "./notify.server";
 import { buildLeaderboard } from "./sales-leaderboard";
 import {
@@ -40,6 +41,16 @@ import { zonedDayRangeUtc } from "./zoned-time";
 type Counts = Record<string, number>;
 
 export async function runSchedulerTick(now: Date = new Date()) {
+  // Retries first: they are older, and an alert that already missed its
+  // moment once should not queue behind new work.
+  let retried = 0;
+  const tickErrors: string[] = [];
+  try {
+    retried = await retryFailedFires(now);
+  } catch (err) {
+    tickErrors.push(`retries: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   const { data: subs, error } = await db
     .from("webhook_subscriptions")
     .select("org_id, event_types")
@@ -103,7 +114,8 @@ export async function runSchedulerTick(now: Date = new Date()) {
     if (errors.length) console.error(`scheduler org ${orgId}:`, errors.join("; "));
     results.push({ orgId, fired, skipped, errors });
   }
-  return { at: now.toISOString(), orgs: results };
+  if (tickErrors.length) console.error("scheduler:", tickErrors.join("; "));
+  return { at: now.toISOString(), retried, errors: tickErrors, orgs: results };
 }
 
 /* ------------------------------------------------------------------ */
@@ -124,28 +136,33 @@ async function fireUnconfirmed(orgId: string, settings: NotificationSettingsT, n
   ).filter((c) => !c.cancelled);
   if (!live.length) return 0;
 
+  const keyOf = (c: { id: string; scheduled_for: string }) => `${c.id}:${c.scheduled_for}`;
+  const done = await alreadyFired(orgId, "call.unconfirmed", live.map(keyOf));
+  const fresh = live.filter((c) => !done.has(keyOf(c)));
+  if (!fresh.length) return 0;
+
   const { data: confs } = await db
     .from("call_confirmations")
     .select(`call_id, overall_status, ${tp}_sent_at`)
     .in(
       "call_id",
-      live.map((c) => c.id),
+      fresh.map((c) => c.id),
     );
   const byCall = new Map<string, Record<string, unknown>>(
     ((confs ?? []) as Array<Record<string, unknown>>).map((c) => [String(c.call_id), c]),
   );
 
   let n = 0;
-  for (const c of live) {
+  for (const c of fresh) {
     const conf = byCall.get(c.id);
     if (conf?.[`${tp}_sent_at`]) continue;
     if (conf?.overall_status === "cancelled" || conf?.overall_status === "rescheduled") continue;
-    if (!(await claimFire(orgId, "call.unconfirmed", `${c.id}:${c.scheduled_for}`))) continue;
     const built = await callPayload(orgId, c.id);
     if (!built) continue;
-    await emitEvent(
+    const sent = await fireOnce(
       orgId,
       "call.unconfirmed",
+      keyOf(c),
       { type: "call", id: c.id },
       {
         ...built.payload,
@@ -154,7 +171,7 @@ async function fireUnconfirmed(orgId: string, settings: NotificationSettingsT, n
         time_zone: settings.timeZone || null,
       },
     );
-    n += 1;
+    if (sent) n += 1;
   }
   return n;
 }
@@ -170,23 +187,29 @@ async function fireCallbacksDue(orgId: string, settings: NotificationSettingsT, 
     .gte("due_at", new Date(now.getTime() - DUE_LOOKBACK_MS).toISOString());
   if (error) throw new Error(error.message);
 
-  let n = 0;
-  for (const it of (items ?? []) as Array<{
+  type Item = {
     id: string;
     entity_id: string | null;
     owner_id: string | null;
     due_at: string;
     next_action: string | null;
     payload: { lead_name?: string } | null;
-  }>) {
-    if (!(await claimFire(orgId, "callback.due", `${it.id}:${it.due_at}`))) continue;
+  };
+  const list = (items ?? []) as Item[];
+  const keyOf = (it: Item) => `${it.id}:${it.due_at}`;
+  const done = await alreadyFired(orgId, "callback.due", list.map(keyOf));
+
+  let n = 0;
+  for (const it of list) {
+    if (done.has(keyOf(it))) continue;
     const [lead, owner] = await Promise.all([
       leadSummary(orgId, { leadId: it.entity_id }),
       memberName(orgId, it.owner_id),
     ]);
-    await emitEvent(
+    const sent = await fireOnce(
       orgId,
       "callback.due",
+      keyOf(it),
       { type: "operational_work_item", id: it.id },
       {
         callback_id: it.id,
@@ -199,7 +222,7 @@ async function fireCallbacksDue(orgId: string, settings: NotificationSettingsT, 
         time_zone: settings.timeZone || null,
       },
     );
-    n += 1;
+    if (sent) n += 1;
   }
   return n;
 }
@@ -221,10 +244,32 @@ async function fireFollowUpsDue(
     .gte("requested_followup_at", new Date(now.getTime() - DUE_LOOKBACK_MS).toISOString());
   if (error) throw new Error(error.message);
 
-  let n = 0;
-  for (const c of (calls ?? []) as Array<Record<string, string | number | null>>) {
+  type Row = Record<string, string | number | null>;
+  type FollowUpType = "followup.short_term_due" | "followup.long_term_due";
+  const keyOf = (c: Row) => `${c.id}:${c.requested_followup_at}`;
+  const list: Array<{ c: Row; type: FollowUpType }> = [];
+  for (const c of (calls ?? []) as Row[]) {
     const type = followUpEventType(c.eod_lead_status as string | null);
-    if (!type || !types.has(type)) continue;
+    if (type && types.has(type)) list.push({ c, type });
+  }
+  if (!list.length) return 0;
+
+  const done: Record<FollowUpType, Set<string>> = {
+    "followup.short_term_due": await alreadyFired(
+      orgId,
+      "followup.short_term_due",
+      list.filter((x) => x.type === "followup.short_term_due").map((x) => keyOf(x.c)),
+    ),
+    "followup.long_term_due": await alreadyFired(
+      orgId,
+      "followup.long_term_due",
+      list.filter((x) => x.type === "followup.long_term_due").map((x) => keyOf(x.c)),
+    ),
+  };
+
+  let n = 0;
+  for (const { c, type } of list) {
+    if (done[type].has(keyOf(c))) continue;
 
     // A later call with this lead means someone already followed up — the
     // lead closed, no-showed again or was rescheduled. Pinging the closer
@@ -240,14 +285,14 @@ async function fireFollowUpsDue(
       if (later?.length) continue;
     }
 
-    if (!(await claimFire(orgId, type, `${c.id}:${c.requested_followup_at}`))) continue;
     const lead = await leadSummary(orgId, {
       leadId: c.lead_id as string | null,
       email: c.lead_email as string | null,
     });
-    await emitEvent(
+    const sent = await fireOnce(
       orgId,
       type,
+      keyOf(c),
       { type: "call", id: String(c.id) },
       {
         call_id: c.id,
@@ -263,7 +308,7 @@ async function fireFollowUpsDue(
         time_zone: settings.timeZone || null,
       },
     );
-    n += 1;
+    if (sent) n += 1;
   }
   return n;
 }
@@ -275,16 +320,9 @@ async function fireReport(
   settings: NotificationSettingsT,
 ) {
   // Checked first so the queries below do not run every minute between the
-  // send hour and midnight; claimed only after they succeed, so a failed
-  // query retries on the next tick instead of losing the day's report.
-  const { data: already } = await db
-    .from("scheduled_event_fires")
-    .select("id")
-    .eq("org_id", orgId)
-    .eq("event_type", eventType)
-    .eq("fire_key", w.key)
-    .maybeSingle();
-  if (already) return 0;
+  // send hour and midnight; claimed only once they have succeeded, so a
+  // failed query retries on the next tick instead of losing the day's report.
+  if ((await alreadyFired(orgId, eventType, [w.key])).size) return 0;
 
   const { startIso, endIso } = zonedDayRangeUtc(w.from, w.to, settings.timeZone);
   const [setters, closers] = await Promise.all([
@@ -313,10 +351,10 @@ async function fireReport(
   if (closers.error) throw new Error(closers.error.message);
 
   const board = buildLeaderboard(setters.data ?? [], closers.data ?? []);
-  if (!(await claimFire(orgId, eventType, w.key))) return 0;
-  await emitEvent(
+  const sent = await fireOnce(
     orgId,
     eventType,
+    w.key,
     { type: "report", id: null },
     {
       period_from: w.from,
@@ -326,5 +364,5 @@ async function fireReport(
       ...board,
     },
   );
-  return 1;
+  return sent ? 1 : 0;
 }

@@ -5,14 +5,7 @@
  * has already been saved.
  */
 import { TOUCHPOINT_LABELS, type Touchpoint } from "./call-confirmations";
-import {
-  claimFire,
-  db,
-  emitEvent,
-  leadSummary,
-  loadNotificationSettings,
-  memberName,
-} from "./notify.server";
+import { db, fireOnce, leadSummary, loadNotificationSettings, memberName } from "./notify.server";
 
 /** The fields every call-shaped event carries. */
 export async function callPayload(orgId: string, callId: string) {
@@ -61,10 +54,10 @@ export async function notifyTouchpointMarked(
     const built = await callPayload(orgId, callId);
     if (!built) return;
     const key = `${callId}:${built.call.scheduled_for ?? ""}`;
-    if (!(await claimFire(orgId, "call.confirmed", key))) return;
-    await emitEvent(
+    await fireOnce(
       orgId,
       "call.confirmed",
+      key,
       { type: "call", id: callId },
       {
         ...built.payload,
@@ -90,15 +83,15 @@ export async function notifyCloserPostCall(orgId: string, callId: string) {
       .eq("id", callId)
       .maybeSingle();
     if (!call) return;
-    if (!(await claimFire(orgId, "closer.post_call_submitted", callId))) return;
     const [{ data: objections }, lead, settings] = await Promise.all([
       db.from("call_objections").select("objection").eq("org_id", orgId).eq("call_id", callId),
       leadSummary(orgId, { leadId: call.lead_id, email: call.lead_email }),
       loadNotificationSettings(orgId),
     ]);
-    await emitEvent(
+    await fireOnce(
       orgId,
       "closer.post_call_submitted",
+      callId,
       { type: "call", id: callId },
       {
         call_id: call.id,
@@ -137,11 +130,11 @@ export async function notifySetterEod(orgId: string, activityId: string) {
       .eq("id", activityId)
       .maybeSingle();
     if (!row) return;
-    if (!(await claimFire(orgId, "setter.eod_submitted", activityId))) return;
     const { org_id: _org, user_id: _user, ...fields } = row as Record<string, unknown>;
-    await emitEvent(
+    await fireOnce(
       orgId,
       "setter.eod_submitted",
+      activityId,
       { type: "setter_activity", id: activityId },
       fields,
     );

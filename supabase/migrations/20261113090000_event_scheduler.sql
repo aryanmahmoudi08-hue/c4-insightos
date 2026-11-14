@@ -24,24 +24,46 @@ comment on column public.webhook_subscriptions.mention_role_ids is
   'Discord role IDs to @mention on every delivery. Ignored for non-Discord targets.';
 
 ------------------------------------------------------------------------------
--- 2. Fire once
+-- 2. Fire once, and know whether it landed
 ------------------------------------------------------------------------------
 -- The scheduler ticks every minute and re-reads what is due, so without a
 -- record of what it already sent it would ping the same unconfirmed call
 -- sixty times an hour. A claim is inserted before dispatch; the unique key
 -- makes the second attempt a no-op. fire_key carries the due time, so a
 -- callback moved to a new time fires again for the new time.
+--
+-- A claim alone would also make every failed send permanent: a Discord 429
+-- or 5xx at that moment would lose a "call this lead now" alert for good. So
+-- the claim records the payload and how delivery went, and the scheduler
+-- retries the subscriptions that failed for a reason that might pass, with
+-- backoff, up to five attempts (delivery-retry.ts).
+--
+--   pending  claimed, send in progress (or abandoned, if it stays here)
+--   sent     nothing left to do
+--   failed   retry later, to failed_subscription_ids (null = all of them)
+--   dead     out of attempts, or only permanent failures (404, 400)
 create table if not exists public.scheduled_event_fires (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
   event_type text not null,
   fire_key text not null,
   fired_at timestamptz not null default now(),
+  status text not null default 'pending'
+    check (status in ('pending', 'sent', 'failed', 'dead')),
+  attempts int not null default 1,
+  last_attempt_at timestamptz not null default now(),
+  payload jsonb,
+  failed_subscription_ids uuid[],
   unique (org_id, event_type, fire_key)
 );
 
 create index if not exists scheduled_event_fires_org_fired_idx
   on public.scheduled_event_fires (org_id, fired_at desc);
+
+-- The retry sweep reads only unfinished claims.
+create index if not exists scheduled_event_fires_retry_idx
+  on public.scheduled_event_fires (last_attempt_at)
+  where status in ('pending', 'failed');
 
 alter table public.scheduled_event_fires enable row level security;
 

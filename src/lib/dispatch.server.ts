@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { webhookChannelFor } from "./event-catalog";
 import { formatDiscordMessage } from "./discord-format";
+import type { DispatchOutcome, DeliveryResult } from "./delivery-retry";
 
 /**
  * Base URL for "Open in AscendOS" links. APP_URL wins when set; otherwise
@@ -35,7 +36,11 @@ export async function dispatchEvent(
   orgId: string,
   eventType: string,
   payload: Record<string, unknown> & { category?: string | null },
-) {
+  opts: {
+    /** Retry path: deliver only to these subscriptions, which failed before. */
+    onlySubscriptionIds?: string[] | null;
+  } = {},
+): Promise<DispatchOutcome> {
   const { data: subs, error: subsError } = await supabaseAdmin
     .from("webhook_subscriptions")
     .select("id, target_url, channel, event_types, category, active, mention_role_ids")
@@ -67,19 +72,20 @@ export async function dispatchEvent(
     console.error(
       `dispatchEvent: webhook_subscriptions lookup failed for org ${orgId} (event ${eventType}): ${subsError.message}`,
     );
-    return;
+    return { lookupFailed: true, deliveries: [] };
   }
 
-  if (!subs?.length) return;
+  if (!subs?.length) return { lookupFailed: false, deliveries: [] };
 
   const category = (payload.category ?? null) as string | null;
   const matching = (subs as unknown as SubRow[]).filter(
     (s) =>
       Array.isArray(s.event_types) &&
       s.event_types.includes(eventType) &&
-      (!s.category || s.category === category),
+      (!s.category || s.category === category) &&
+      (!opts.onlySubscriptionIds || opts.onlySubscriptionIds.includes(s.id)),
   );
-  if (!matching.length) return;
+  if (!matching.length) return { lookupFailed: false, deliveries: [] };
 
   const jsonBody = JSON.stringify({
     event_type: eventType,
@@ -88,8 +94,10 @@ export async function dispatchEvent(
     data: payload,
   });
 
-  await Promise.all(
-    matching.map(async (s) => {
+  // Each delivery reports how it went, so a caller that claimed the event
+  // once can retry the subscriptions that failed instead of losing them.
+  const deliveries: DeliveryResult[] = await Promise.all(
+    matching.map(async (s): Promise<DeliveryResult> => {
       try {
         // Read the target URL, not just the stored column: subscriptions
         // created from the Event Bus page never set `channel`, so it defaulted
@@ -127,6 +135,7 @@ export async function dispatchEvent(
             () => {},
             () => {},
           );
+        return { subscriptionId: s.id, ok: res.ok, status: res.status };
       } catch (err) {
         await supabaseAdmin
           .from("webhook_deliveries")
@@ -141,9 +150,12 @@ export async function dispatchEvent(
             () => {},
             () => {},
           );
+        // Status 0: the request never got a response (network, DNS, timeout).
+        return { subscriptionId: s.id, ok: false, status: 0 };
       }
     }),
   );
+  return { lookupFailed: false, deliveries };
 }
 
 /** Map a content_piece platform to a routing category. */
