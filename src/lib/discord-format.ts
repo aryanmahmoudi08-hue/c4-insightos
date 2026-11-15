@@ -522,6 +522,57 @@ function topSources(kind: "Daily" | "Weekly" | "Monthly", p: Record<string, unkn
   };
 }
 
+const PROCESSOR_LABELS: Record<string, string> = {
+  fanbasis: "Commas (Fanbasis)",
+  whop: "Whop",
+  stripe: "Stripe",
+  paypal: "PayPal",
+  wise: "Wise",
+};
+
+/** 1 → "1st", 2 → "2nd", 11 → "11th", 23 → "23rd". */
+export function ordinal(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
+function payment(failed: boolean, p: Record<string, unknown>): Body {
+  const lead = obj(p.lead);
+  const amount = money(p.amount_cents, p.currency) || "—";
+  const usd =
+    text(p.currency).toUpperCase() !== "USD" && Number(p.amount_usd_cents)
+      ? ` (${money(p.amount_usd_cents)})`
+      : "";
+  const prior = p.prior_successful_payments;
+  const n = typeof prior === "number" ? prior : null;
+  // Facts from AscendOS's own records, not a provider field: how many times
+  // this buyer paid before. On a failure that is what separates a missed
+  // plan installment from a card that never worked.
+  const history =
+    n == null
+      ? ""
+      : failed
+        ? n > 0
+          ? `${n} earlier successful payment${n === 1 ? "" : "s"} from this buyer`
+          : "No earlier successful payment from this buyer"
+        : `${ordinal(n + 1)} payment from this buyer`;
+  return {
+    title: failed ? `Payment FAILED — ${amount}` : `Payment collected — ${amount}`,
+    lines: [
+      ["Name", lead.full_name ?? p.client_name],
+      ["Email", p.email ?? lead.email],
+      ["Amount", amount === "—" ? "" : `${amount}${usd}`],
+      ["Processor", PROCESSOR_LABELS[text(p.processor).toLowerCase()] ?? p.processor],
+      ["Reason", failed ? p.failure_reason : ""],
+      ["Offer", p.offer_name],
+      ["Plan", p.plan_progress],
+      ["History", history],
+    ],
+    linkPath: leadLink(lead.id ?? p.lead_id),
+  };
+}
+
 /** Readable fallback for an event with no bespoke shape: top-level scalars. */
 function generic(eventType: string, p: Record<string, unknown>): Body {
   const SKIP = new Set(["answers", "raw_answers", "answers_by_title", "category", "org_id"]);
@@ -600,6 +651,12 @@ export function formatDiscordMessage(
       break;
     case "report.top_sources_monthly":
       body = topSources("Monthly", p);
+      break;
+    case "payment.collected":
+      body = payment(false, p);
+      break;
+    case "payment.failed":
+      body = payment(true, p);
       break;
     case "call.closed_won":
       body = {

@@ -31,7 +31,8 @@ describe("EVENT_CATALOG", () => {
 
   it("offers only dispatchable types for subscription", () => {
     expect(DISPATCHED_EVENT_TYPES).toContain("payment.collected");
-    expect(DISPATCHED_EVENT_TYPES).not.toContain("payment.failed");
+    expect(DISPATCHED_EVENT_TYPES).toContain("payment.failed");
+    expect(DISPATCHED_EVENT_TYPES).not.toContain("team_member.added");
   });
 
   it("does not resurrect the types the old hand-written lists invented", () => {
@@ -76,7 +77,7 @@ describe("undeliverableEventTypes", () => {
   });
 
   it("flags a stream-only type, which saves but never delivers", () => {
-    expect(undeliverableEventTypes(["payment.failed"])).toEqual(["payment.failed"]);
+    expect(undeliverableEventTypes(["team_member.added"])).toEqual(["team_member.added"]);
   });
 
   it("treats an empty or missing list as nothing to flag", () => {

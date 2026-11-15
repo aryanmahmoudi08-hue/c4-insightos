@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { dispatchEvent } from "@/lib/dispatch.server";
+import { announcePayment } from "@/lib/payment-events.server";
 import { normalizePaymentToUsd } from "@/lib/fx.server";
 
 /** Whop's Standard Webhooks-style scheme (docs.whop.com/developer/guides/
@@ -166,28 +166,10 @@ export const Route = createFileRoute("/api/public/whop")({
           return Response.json({ error: "Could not save payment" }, { status: 500 });
         }
 
-        await supabaseAdmin.from("events").insert({
-          org_id: connection.org_id,
-          event_type: succeeded ? "payment.collected" : "payment.failed",
-          subject_type: "payment",
-          subject_id: inserted?.id ?? null,
-          payload: {
-            amount_cents: originalAmountCents,
-            currency: originalCurrency,
-            email,
-            source: "whop",
-          },
-        });
-
-        if (succeeded) {
-          await dispatchEvent(connection.org_id, "payment.collected", {
-            amount_cents: originalAmountCents,
-            currency: originalCurrency,
-            email,
-            source: "whop",
-            client_id: clientId,
-          });
-        }
+        // Collected or failed, announced the same way for every processor —
+        // failures used to be logged but never dispatched, so no channel
+        // could subscribe to them. See payment-events.server.ts.
+        await announcePayment(connection.org_id, inserted?.id);
 
         return Response.json({ ok: true, payment_id: inserted?.id, matched_client: !!clientId });
       },

@@ -75,7 +75,13 @@ export const DISPATCHED_EVENTS: EventCatalogEntry[] = [
     type: "payment.collected",
     label: "Payment collected",
     dispatched: true,
-    emittedBy: "api/public/{stripe,paypal,wise,whop,fanbasis}.ts",
+    emittedBy: "payment-events.server.ts (stripe, paypal, wise, whop, fanbasis)",
+  },
+  {
+    type: "payment.failed",
+    label: "Payment failed",
+    dispatched: true,
+    emittedBy: "payment-events.server.ts (stripe, paypal, whop, fanbasis; Wise sends no failures)",
   },
   {
     type: "client.stage_changed",
@@ -196,12 +202,6 @@ export const DISPATCHED_EVENTS: EventCatalogEntry[] = [
  * subscribing to it does nothing.
  */
 export const STREAM_ONLY_EVENTS: EventCatalogEntry[] = [
-  {
-    type: "payment.failed",
-    label: "Payment failed",
-    dispatched: false,
-    emittedBy: "api/public/{stripe,paypal}.ts",
-  },
   {
     type: "team_member.added",
     label: "Team member added",

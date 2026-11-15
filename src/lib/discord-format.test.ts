@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DISCORD_CONTENT_LIMIT, findLinkedIn, formatDiscordMessage, money } from "./discord-format";
+import {
+  DISCORD_CONTENT_LIMIT,
+  findLinkedIn,
+  formatDiscordMessage,
+  money,
+  ordinal,
+} from "./discord-format";
 
 /** The application that landed as a truncated JSON blob on 2026-11-12. */
 const APPLICATION = {
@@ -212,12 +218,12 @@ describe("other event shapes", () => {
   });
 
   it("falls back to readable lines for an event with no bespoke shape", () => {
-    const msg = formatDiscordMessage("payment.collected", {
+    const msg = formatDiscordMessage("client.stage_changed", {
       amount_cents: 99900,
       customer_email: "a@b.c",
       raw: { nested: true },
     });
-    expect(msg.content).toContain("**Payment collected**");
+    expect(msg.content).toContain("**Client stage changed**");
     expect(msg.content).toContain("**Amount cents:** $999");
     expect(msg.content).toContain("**Customer email:** a@b.c");
     expect(msg.content).not.toContain("nested");
@@ -349,5 +355,92 @@ describe("application source", () => {
     });
     expect(msg.content).toContain("**Source:** instagram · bio · evergreen");
     expect(msg.content).toContain("**Content:** reel-1114-layoff");
+  });
+});
+
+describe("payment messages", () => {
+  const base = {
+    amount_cents: 150000,
+    currency: "USD",
+    amount_usd_cents: 150000,
+    processor: "fanbasis",
+    email: "erika.client@example.com",
+    lead_id: "L1",
+    lead: { id: "L1", full_name: "Jordan Ellis" },
+    offer_name: "Career AI Accelerator",
+    plan_progress: "2/5 paid",
+  };
+
+  it("names a failed installment as one, from the buyer's own history", () => {
+    const msg = formatDiscordMessage(
+      "payment.failed",
+      { ...base, failure_reason: "card_declined", prior_successful_payments: 2 },
+      { appUrl: "https://app" },
+    );
+    expect(msg.content).toContain("**Payment FAILED — $1,500**");
+    expect(msg.content).toContain("**Name:** Jordan Ellis");
+    expect(msg.content).toContain("**Processor:** Commas (Fanbasis)");
+    expect(msg.content).toContain("**Reason:** card_declined");
+    expect(msg.content).toContain("**Plan:** 2/5 paid");
+    expect(msg.content).toContain("**History:** 2 earlier successful payments from this buyer");
+    expect(msg.content).toContain("(<https://app/leads?leadId=L1>)");
+  });
+
+  it("says so when a failure is the buyer's first attempt", () => {
+    const msg = formatDiscordMessage("payment.failed", { ...base, prior_successful_payments: 0 });
+    expect(msg.content).toContain("No earlier successful payment from this buyer");
+  });
+
+  it("reads a collected payment with its place in the buyer's history", () => {
+    const msg = formatDiscordMessage("payment.collected", {
+      ...base,
+      processor: "whop",
+      prior_successful_payments: 2,
+    });
+    expect(msg.content).toContain("**Payment collected — $1,500**");
+    expect(msg.content).toContain("**Processor:** Whop");
+    expect(msg.content).toContain("**History:** 3rd payment from this buyer");
+    expect(msg.content).not.toContain("Reason");
+  });
+
+  it("shows the buyer's currency and the USD figure when they differ", () => {
+    const msg = formatDiscordMessage("payment.collected", {
+      ...base,
+      amount_cents: 200000,
+      currency: "CAD",
+      amount_usd_cents: 146000,
+    });
+    expect(msg.content).toContain("**Amount:** 2,000 CAD ($1,460)");
+  });
+
+  it("leaves out what it does not know rather than printing blanks", () => {
+    const msg = formatDiscordMessage("payment.collected", {
+      amount_cents: 5000,
+      currency: "USD",
+      processor: "wise",
+      prior_successful_payments: null,
+    });
+    expect(msg.content).not.toContain("History");
+    expect(msg.content).not.toContain("Offer");
+    expect(msg.content).toContain("**Processor:** Wise");
+  });
+});
+
+describe("ordinal", () => {
+  it("handles the teens", () => {
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal)).toEqual([
+      "1st",
+      "2nd",
+      "3rd",
+      "4th",
+      "11th",
+      "12th",
+      "13th",
+      "21st",
+      "22nd",
+      "23rd",
+      "101st",
+      "111th",
+    ]);
   });
 });

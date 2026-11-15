@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createVerify, constants } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { dispatchEvent } from "@/lib/dispatch.server";
+import { announcePayment } from "@/lib/payment-events.server";
 import { normalizePaymentToUsd } from "@/lib/fx.server";
 
 /** Wise signs webhooks with RSA-SHA256 (PKCS1 padding) against a KEY PAIR —
@@ -145,25 +145,10 @@ export const Route = createFileRoute("/api/public/wise")({
           return Response.json({ error: "Could not save payment" }, { status: 500 });
         }
 
-        await supabaseAdmin.from("events").insert({
-          org_id: connection.org_id,
-          event_type: "payment.collected",
-          subject_type: "payment",
-          subject_id: inserted?.id ?? null,
-          payload: {
-            amount_cents: originalAmountCents,
-            currency: originalCurrency,
-            source: "wise",
-            needs_manual_client_match: true,
-          },
-        });
-
-        await dispatchEvent(connection.org_id, "payment.collected", {
-          amount_cents: originalAmountCents,
-          currency: originalCurrency,
-          source: "wise",
-          client_id: null,
-        });
+        // Collected or failed, announced the same way for every processor —
+        // failures used to be logged but never dispatched, so no channel
+        // could subscribe to them. See payment-events.server.ts.
+        await announcePayment(connection.org_id, inserted?.id);
 
         return Response.json({ ok: true, payment_id: inserted?.id, matched_client: false });
       },
