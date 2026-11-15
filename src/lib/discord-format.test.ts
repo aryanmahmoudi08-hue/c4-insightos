@@ -112,7 +112,7 @@ describe("truncation", () => {
 });
 
 describe("link previews", () => {
-  it("suppresses the preview card for the AscendOS link only", () => {
+  it("suppresses the preview cards for the AscendOS and meeting links", () => {
     const msg = formatDiscordMessage(
       "call.confirmed",
       {
@@ -125,9 +125,8 @@ describe("link previews", () => {
     expect(msg.content).toContain(
       "[Open in AscendOS](<https://ascendos-app.vercel.app/leads?leadId=L>)",
     );
-    // The meeting link is useful as a preview, so it stays bare.
-    expect(msg.content).toContain("Meeting link: https://meet.google.com/abc-defg-hij");
-    expect(msg.content).not.toContain("<https://meet.google.com");
+    // No Meet card either: Aryan's layout ends at the AscendOS link.
+    expect(msg.content).toContain("Meeting link: <https://meet.google.com/abc-defg-hij>");
   });
 });
 

@@ -286,6 +286,10 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
 /* Per-event bodies                                                    */
 /* ------------------------------------------------------------------ */
 
+/** A URL in angle brackets: still a link, but Discord adds no preview card
+ *  (the Meet card doubled every call message's height). */
+const noPreview = (url: unknown) => (text(url) ? `<${text(url)}>` : "");
+
 const leadLink = (leadId: unknown) => (text(leadId) ? `/leads?leadId=${text(leadId)}` : null);
 
 /** Full Name / Email / Phone (/ LinkedIn) — the block every lead message opens with. */
@@ -364,7 +368,7 @@ function callBooked(title: string, p: Record<string, unknown>, tz: string | null
       gap,
       lines(...profileLines(lead, true)),
       gap,
-      lines(plain("Date of Call", when(p.scheduled_for, tz)), plain("Meeting link", p.meeting_link)),
+      lines(plain("Date of Call", when(p.scheduled_for, tz)), plain("Meeting link", noPreview(p.meeting_link))),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
@@ -382,7 +386,7 @@ function callUnconfirmed(p: Record<string, unknown>, tz: string | null): Body {
       lines(
         plain("Booked via", p.booked_via),
         plain("Date of Call", when(p.scheduled_for, tz)),
-        plain("Meeting link", p.meeting_link),
+        plain("Meeting link", noPreview(p.meeting_link)),
       ),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
