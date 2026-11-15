@@ -51,6 +51,8 @@ export type LeadRow = {
   source_medium?: string | null;
   /** utm_content as delivered. */
   source_content_tag?: string | null;
+  /** Started a Typeform application but has not submitted it. */
+  application_partial?: boolean | null;
   first_touch_at: string | null;
   first_touch_content_id: string | null;
   assigned_setter_id: string | null;
@@ -70,7 +72,7 @@ export type LeadRow = {
 
 /** Columns for a LeadRow, with the call join toLeadRow summarises. */
 export const LEAD_ROW_SELECT =
-  "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, source_platform, source_webinar_id, source_format, source_campaign, source_medium, source_content_tag, first_touch_at, first_touch_content_id, assigned_setter_id, qualification_notes, application_data, notes, created_at, tags, ticket_tier, calls(closer_id, closer_name, scheduled_for)";
+  "id, full_name, email, handle, phone, status, pipeline_stage, priority, precall_video_watched, intent_score, engagement_score, estimated_close_probability, source_connector, source_platform, source_webinar_id, source_format, source_campaign, source_medium, source_content_tag, application_partial, first_touch_at, first_touch_content_id, assigned_setter_id, qualification_notes, application_data, notes, created_at, tags, ticket_tier, calls(closer_id, closer_name, scheduled_for)";
 
 type LeadWithCalls = LeadRow & {
   calls?: Array<{

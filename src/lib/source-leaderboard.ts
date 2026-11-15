@@ -29,6 +29,8 @@ export type SourceLead = {
   source_content_id: string | null;
   first_touch_content_id: string | null;
   application_data: unknown;
+  /** A started-but-unsubmitted Typeform application. */
+  application_partial?: boolean | null;
   created_at: string;
 };
 
@@ -121,7 +123,8 @@ export function buildSourceBoard(
     const { source, content } = rowFor(l);
     source.leads += 1;
     if (content) content.leads += 1;
-    if (hasApplication(l.application_data)) {
+    // A partial is a lead, but not an application submitted.
+    if (!l.application_partial && hasApplication(l.application_data)) {
       source.applications += 1;
       if (content) content.applications += 1;
     }

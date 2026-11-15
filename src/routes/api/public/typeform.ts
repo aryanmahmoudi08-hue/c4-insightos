@@ -5,6 +5,7 @@ import { dispatchEvent } from "@/lib/dispatch.server";
 import { classifyLead, type ClassificationRule } from "@/lib/lead-classification";
 import { hiddenAttribution, indexTypeformAnswers, resolveSlot } from "@/lib/typeform-answers";
 import { contentIdForTag } from "@/lib/attribution.server";
+import { syncPartialStage, upsertApplicationLead } from "@/lib/typeform-ingest.server";
 
 function verifyTypeformSignature(body: string, secret: string, signature: string | null) {
   if (!signature || !signature.startsWith("sha256=")) return false;
@@ -51,6 +52,12 @@ export const Route = createFileRoute("/api/public/typeform")({
 
         const payload = JSON.parse(body);
         const formResponse = payload.form_response ?? {};
+        // Typeform marks a delivery from a Partial Submit Point as
+        // form_response_partial; a finished form is form_response. Every
+        // delivery used to be treated as a submitted application.
+        const isPartial = payload.event_type === "form_response_partial";
+        const responseToken: string | null =
+          typeof formResponse.token === "string" ? formResponse.token : null;
 
         // Indexing lives in src/lib/typeform-answers.ts so the matching rules
         // are unit-tested against the real payload that broke — a webhook route
@@ -144,41 +151,59 @@ export const Route = createFileRoute("/api/public/typeform")({
         let intakeId: string | null = null;
         let tierKey: string | null = null;
         if (isApplication) {
-          const { data: lead, error: leadErr } = await supabaseAdmin
-            .from("leads")
-            .insert({
-              org_id: connection.org_id,
+          // One lead per response across its partial and completed
+          // deliveries — see typeform-ingest.server.ts.
+          let outcome;
+          try {
+            outcome = await upsertApplicationLead(supabaseAdmin, {
+              orgId: connection.org_id,
+              token: responseToken,
+              isPartial,
               full_name,
               email,
               phone,
               handle,
-              status: "dm_received" as any,
-              source_connector: "typeform",
-              // Raw, not categorised: normalizeAcquisitionSource maps this to
-              // one of the standard sources at read time, and keeping the
-              // original means a value it does not recognise stays auditable
-              // rather than being flattened into "Other" on the way in.
-              source_platform: attribution.sourcePlatform,
-              source_campaign: attribution.sourceCampaign,
-              source_medium: attribution.sourceMedium,
-              source_content_tag: attribution.contentTag,
-              source_content_id: contentId,
               application_data,
-              qualification_notes: pick("candidate_fit"),
-            } as any)
-            .select("id")
-            .maybeSingle();
-          if (leadErr) {
-            console.error("[typeform] lead insert", leadErr);
+              qualification_notes: pick("candidate_fit") || null,
+              attribution: {
+                source_platform: attribution.sourcePlatform,
+                source_campaign: attribution.sourceCampaign,
+                source_medium: attribution.sourceMedium,
+                source_content_tag: attribution.contentTag,
+                source_content_id: contentId,
+              },
+            });
+          } catch (err) {
+            console.error("[typeform] lead write", err);
             return Response.json({ error: "Could not save application" }, { status: 500 });
           }
-          leadId = lead?.id ?? null;
+
+          await supabaseAdmin.from("raw_payloads").insert({
+            org_id: connection.org_id,
+            connector_id: "typeform",
+            connection_id: connection.id,
+            resource: isPartial ? "form_response_partial" : "form_response",
+            external_id: responseToken ?? formResponse.response_id ?? null,
+            payload,
+            processed_at: new Date().toISOString(),
+          });
+
+          // A late partial, or a completion Typeform retried: the lead is
+          // already right and the applicant already announced.
+          if (outcome.kind === "ignored") {
+            return Response.json({ ok: true, lead_id: outcome.leadId, ignored: outcome.reason });
+          }
+          leadId = outcome.leadId;
+          await syncPartialStage(supabaseAdmin, connection.org_id, leadId, isPartial);
+
+          // A partial is stored and filterable, and that is all: no
+          // application_submitted event, no tier, no applicant post.
+          if (isPartial) {
+            return Response.json({ ok: true, lead_id: leadId, partial: true });
+          }
+
           // Default status to opt_in (text) since enum may not include it yet
-          if (leadId)
-            await (supabaseAdmin as any)
-              .from("leads")
-              .update({ status: "opt_in" })
-              .eq("id", leadId);
+          await (supabaseAdmin as any).from("leads").update({ status: "opt_in" }).eq("id", leadId);
 
           // Ticket-tier classification (Client DNA source of truth). Never
           // guessed: if no active rule's field is present/parseable, the
@@ -214,6 +239,8 @@ export const Route = createFileRoute("/api/public/typeform")({
             }
           }
         } else {
+          // An onboarding intake is only meaningful once submitted.
+          if (isPartial) return Response.json({ ok: true, partial: true, ignored: "intake" });
           const { data: intake, error: intakeError } = await supabaseAdmin
             .from("onboarding_responses")
             .insert({
@@ -230,15 +257,18 @@ export const Route = createFileRoute("/api/public/typeform")({
           intakeId = intake?.id ?? null;
         }
 
-        await supabaseAdmin.from("raw_payloads").insert({
-          org_id: connection.org_id,
-          connector_id: "typeform",
-          connection_id: connection.id,
-          resource: "form_response",
-          external_id: formResponse.token ?? formResponse.response_id ?? null,
-          payload,
-          processed_at: new Date().toISOString(),
-        });
+        // Applications stored their payload above, before any early return.
+        if (!isApplication) {
+          await supabaseAdmin.from("raw_payloads").insert({
+            org_id: connection.org_id,
+            connector_id: "typeform",
+            connection_id: connection.id,
+            resource: "form_response",
+            external_id: responseToken ?? formResponse.response_id ?? null,
+            payload,
+            processed_at: new Date().toISOString(),
+          });
+        }
         const eventType = isApplication ? "lead.application_submitted" : "onboarding.submitted";
         await supabaseAdmin.from("events").insert({
           org_id: connection.org_id,

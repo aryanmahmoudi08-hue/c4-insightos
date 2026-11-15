@@ -81,6 +81,9 @@ export function HubMetrics() {
             "id, created_at, application_data, intent_score, priority, pipeline_stage, precall_video_watched",
           )
           .eq("org_id", orgId!)
+          // A started-but-unsubmitted Typeform application is not an
+          // application submitted (20261114150000).
+          .filter("application_partial", "eq", false)
           .gte("created_at", fromISO)
           .lte("created_at", toISO),
         supabase

@@ -472,7 +472,7 @@ async function fireTopSources(
   if ((await alreadyFired(orgId, eventType, [w.key])).size) return 0;
   const { startIso, endIso } = zonedDayRangeUtc(w.from, w.to, settings.timeZone);
   const leadCols =
-    "id, email, source_platform, source_content_id, first_touch_content_id, application_data, created_at";
+    "id, email, source_platform, source_content_id, first_touch_content_id, application_data, application_partial, created_at";
 
   const [leadsRes, callsRes] = await Promise.all([
     db

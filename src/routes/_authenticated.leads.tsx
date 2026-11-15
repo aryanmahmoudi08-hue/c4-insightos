@@ -1,10 +1,5 @@
 import { isDiamondLead } from "@/lib/lead-quality";
-import {
-  LEAD_ROW_SELECT,
-  LeadDetail,
-  toLeadRow,
-  type LeadRow,
-} from "@/components/lead-detail";
+import { LEAD_ROW_SELECT, LeadDetail, toLeadRow, type LeadRow } from "@/components/lead-detail";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -115,7 +110,6 @@ export const Route = createFileRoute("/_authenticated/leads")({
     leadId: typeof s.leadId === "string" ? s.leadId : undefined,
   }),
 });
-
 
 // Row tint (subtle, 5%) for the same tone family used by chips (15%) — one 4-accent
 // system for everything: success/warning/destructive/info + neutral default.
@@ -465,7 +459,9 @@ function Leads() {
   const qc = useQueryClient();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [bucket, setBucket] = useState<"all" | "active" | "booked" | "closed" | "lost">("all");
+  const [bucket, setBucket] = useState<"all" | "active" | "booked" | "closed" | "lost" | "partial">(
+    "all",
+  );
   const [selected, setSelected] = useState<LeadRow | null>(null);
   const [qualExpanded, setQualExpanded] = useState(false);
   const [selectedOptInDate, setSelectedOptInDate] = useState("");
@@ -624,7 +620,10 @@ function Leads() {
   // be reused against the prior comparable period for the donut's cap/working
   // derivations (an apples-to-apples comparison, not just a raw prior count).
   const matchesNonDateFilters = (l: LeadRow, q: string) => {
-    if (bucket !== "all" && !BUCKET_STATUSES[bucket].includes(l.status)) return false;
+    // Started a Typeform application but has not submitted it.
+    if (bucket === "partial") {
+      if (!l.application_partial) return false;
+    } else if (bucket !== "all" && !BUCKET_STATUSES[bucket].includes(l.status)) return false;
     if (statusFilter !== "all" && l.status !== statusFilter) return false;
     const offer = typeof l.application_data?.offer === "string" ? l.application_data.offer : null;
     if (setterFilter !== "all" && (l.assigned_setter_id ?? "unassigned") !== setterFilter)
@@ -974,6 +973,11 @@ function Leads() {
                   { key: "booked", label: "Booked" },
                   { key: "closed", label: "Closed" },
                   { key: "lost", label: "Lost" },
+                  {
+                    key: "partial",
+                    label: "Started application",
+                    count: (leads ?? []).filter((l) => l.application_partial).length,
+                  },
                 ]}
                 value={bucket}
                 onChange={setBucket}
@@ -1222,6 +1226,14 @@ function Leads() {
                       <div className="font-medium flex items-center gap-1.5">
                         {isDiamond && <Gem className="h-3.5 w-3.5 text-accent shrink-0" />}
                         {l.full_name || l.handle || l.email || "(no name)"}
+                        {l.application_partial && (
+                          <span
+                            className="rounded bg-[color:var(--color-warning)]/15 px-1.5 py-0.5 text-4xs font-normal text-[color:var(--color-warning)]"
+                            title="Got past the partial-submit point on the application but has not submitted it"
+                          >
+                            Started application
+                          </span>
+                        )}
                       </div>
                       {l.tags && l.tags.length > 0 && (
                         <div className="mt-0.5 flex flex-wrap gap-1">
