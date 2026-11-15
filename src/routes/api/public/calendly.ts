@@ -12,6 +12,7 @@ import {
 } from "@/lib/calendly";
 import { resolveBookingLead } from "@/lib/calendly-leads.server";
 import { syncLeadStageForBooking } from "@/lib/crm-board.server";
+import { announceCalendlyChange } from "@/lib/calendly-events.server";
 
 // calls.rescheduled_from_external_id is new and not in the generated Supabase
 // type snapshot yet — same cast the other new tables need.
@@ -134,9 +135,11 @@ export const Route = createFileRoute("/api/public/calendly")({
             rescheduledFrom: change.rescheduledFrom,
             leadId,
           });
-          const { error } = await admin
+          const { data: saved, error } = await admin
             .from("calls")
-            .upsert(row, { onConflict: "org_id,source_connector,external_id" });
+            .upsert(row, { onConflict: "org_id,source_connector,external_id" })
+            .select("id")
+            .maybeSingle();
           if (error) {
             console.error("[calendly] booking upsert", error);
             return Response.json({ error: "Could not record booking" }, { status: 500 });
@@ -147,6 +150,18 @@ export const Route = createFileRoute("/api/public/calendly")({
             await syncLeadStageForBooking(connection.org_id, leadId).catch((err) =>
               console.error("[calendly] board placement", err),
             );
+          }
+          // #calls-booked, or #calls-rescheduled when this replaced an earlier
+          // booking. Fired once per invitee, so Calendly's retries do not
+          // post twice; never fails the webhook.
+          if (saved?.id) {
+            await announceCalendlyChange(connection.org_id, {
+              kind: change.rescheduledFrom ? "rescheduled" : "booked",
+              callId: saved.id,
+              inviteeUri: invitee.uri,
+              rescheduledFrom: change.rescheduledFrom,
+              apiToken,
+            });
           }
           return Response.json({ ok: true, mapped: true, action: "booked" });
         }
@@ -191,7 +206,9 @@ export const Route = createFileRoute("/api/public/calendly")({
             org_id: connection.org_id,
             overall_status: change.kind === "superseded" ? "rescheduled" : "cancelled",
             cancelled_reason:
-              change.kind === "superseded" ? "Rescheduled by invitee via Calendly" : null,
+              change.kind === "superseded"
+                ? "Rescheduled by invitee via Calendly"
+                : invitee.cancellation?.reason?.trim() || null,
           },
           { onConflict: "call_id" },
         );
@@ -199,6 +216,17 @@ export const Route = createFileRoute("/api/public/calendly")({
           // The booking is already marked cancelled above; failing to record
           // the nuance shouldn't 500 a webhook Calendly will then retry.
           console.error("[calendly] confirmation status", confirmError);
+        }
+        // The old half of a reschedule posts nothing: the new booking's
+        // delivery posts the move to #calls-rescheduled.
+        if (change.kind === "cancelled") {
+          await announceCalendlyChange(connection.org_id, {
+            kind: "cancelled",
+            callId: existing.id,
+            inviteeUri: invitee.uri,
+            cancellationReason: invitee.cancellation?.reason ?? null,
+            apiToken,
+          });
         }
         return Response.json({ ok: true, mapped: true, action: change.kind });
       },

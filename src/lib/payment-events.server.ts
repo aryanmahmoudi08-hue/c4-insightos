@@ -80,6 +80,7 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
         : Promise.resolve([] as ScheduleItemRow[]),
       priorSuccessfulPayments(orgId, payment, email),
     ]);
+    const attempt = succeeded ? null : await failedAttemptNumber(orgId, payment, email);
     const c = client as {
       full_name: string | null;
       offer_name: string | null;
@@ -107,6 +108,8 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
         client_id: payment.client_id,
         client_name: c?.full_name ?? null,
         offer_name: c?.offer_name ?? null,
+        product: c?.offer_name ?? null,
+        failed_attempt_number: attempt,
         payment_plan: c?.payment_plan ?? null,
         plan_progress: progress?.label ?? null,
         prior_successful_payments: prior,
@@ -118,6 +121,45 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
   } catch (err) {
     console.error("announcePayment:", err);
   }
+}
+
+/** Which failed attempt this is: this failure plus the buyer's failures
+ *  since their last successful payment, from AscendOS's own payment rows.
+ *  Null when the buyer cannot be identified. */
+async function failedAttemptNumber(
+  orgId: string,
+  payment: PaymentRow,
+  email: string | null,
+): Promise<number | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const byBuyer = (q: any) =>
+    payment.client_id
+      ? q.eq("client_id", payment.client_id)
+      : q.ilike("raw->>email", escapeLike(email ?? ""));
+  if (!payment.client_id && !email) return null;
+  const { data: lastPaid } = await byBuyer(
+    db
+      .from("payments")
+      .select("collected_at")
+      .eq("org_id", orgId)
+      .eq("status", "paid")
+      .lt("collected_at", payment.collected_at),
+  )
+    .order("collected_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  let q = byBuyer(
+    db
+      .from("payments")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .neq("status", "paid")
+      .neq("id", payment.id)
+      .lte("collected_at", payment.collected_at),
+  );
+  if (lastPaid?.collected_at) q = q.gt("collected_at", lastPaid.collected_at);
+  const { count, error } = await q;
+  return error ? null : (count ?? 0) + 1;
 }
 
 /** Successful payments from the same buyer before this one — by client when

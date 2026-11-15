@@ -41,7 +41,6 @@ describe("EVENT_CATALOG", () => {
     const invented = [
       "lead.status_changed",
       "conversation.started",
-      "call.booked",
       "call.showed",
       "call.closed_lost",
       "content.posted",

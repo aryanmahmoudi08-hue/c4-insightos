@@ -4,7 +4,6 @@ import {
   followUpEventType,
   monthlyReportWindow,
   periodLabel,
-  unconfirmedCallWindow,
   weeklyReportWindow,
 } from "./scheduler-rules";
 
@@ -40,24 +39,6 @@ describe("weeklyReportWindow", () => {
 
   it("is not due on any other day", () => {
     expect(weeklyReportWindow(NY, 0, 23, new Date("2026-11-13T04:10:00Z")).due).toBe(false);
-  });
-});
-
-describe("unconfirmedCallWindow", () => {
-  const now = new Date("2026-11-13T15:00:00Z");
-
-  it("uses the touchpoint's own window close as the deadline", () => {
-    // Morning closes 60 minutes before the call.
-    expect(unconfirmedCallWindow("morning", now)).toEqual({
-      fromIso: "2026-11-13T14:50:00.000Z",
-      toIso: "2026-11-13T16:00:00.000Z",
-    });
-  });
-
-  it("still catches calls when the deadline is the call's own start", () => {
-    const w = unconfirmedCallWindow("ten_min", now);
-    expect(w.toIso).toBe("2026-11-13T15:00:00.000Z");
-    expect(w.fromIso < w.toIso).toBe(true);
   });
 });
 

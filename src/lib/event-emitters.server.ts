@@ -5,14 +5,23 @@
  * has already been saved.
  */
 import { TOUCHPOINT_LABELS, type Touchpoint } from "./call-confirmations";
-import { db, fireOnce, leadSummary, loadNotificationSettings, memberName } from "./notify.server";
+import {
+  db,
+  fireOnce,
+  leadSummary,
+  loadNotificationSettings,
+  memberName,
+  type LeadSummary,
+} from "./notify.server";
+import { followUpEventType, followUpLoggedType } from "./scheduler-rules";
+import { bookedVia } from "./lead-card";
 
 /** The fields every call-shaped event carries. */
 export async function callPayload(orgId: string, callId: string) {
   const { data: call } = await db
     .from("calls")
     .select(
-      "id, lead_id, lead_email, scheduled_for, closer_id, closer_name, setter_id, meeting_link, status, cancelled",
+      "id, lead_id, lead_email, scheduled_for, closer_id, closer_name, setter_id, meeting_link, status, cancelled, source_connector, created_at",
     )
     .eq("org_id", orgId)
     .eq("id", callId)
@@ -34,6 +43,7 @@ export async function callPayload(orgId: string, callId: string) {
       closer_name: call.closer_name ?? closerFromId,
       setter_name: setterName,
       meeting_link: call.meeting_link,
+      booked_via: bookedVia(call.source_connector, setterName, lead.source_platform),
     } as Record<string, unknown>,
   };
 }
@@ -115,9 +125,43 @@ export async function notifyCloserPostCall(orgId: string, callId: string) {
         time_zone: settings.timeZone || null,
       },
     );
+
+    // A follow-up posts to its closer channel when it is logged; the
+    // scheduler posts "FOLLOW UP ASAP" at its due time, linking this one.
+    const followUpType = followUpEventType(call.eod_lead_status);
+    if (followUpType && call.requested_followup_at) {
+      await fireOnce(
+        orgId,
+        followUpLoggedType(followUpType),
+        `${call.id}:${call.requested_followup_at}`,
+        { type: "call", id: callId },
+        followUpPayload(call, lead, settings.timeZone),
+      );
+    }
   } catch (err) {
     console.error("notifyCloserPostCall:", err);
   }
+}
+
+/** The fields both follow-up messages (logged, and due) carry. */
+export function followUpPayload(
+  c: Record<string, unknown>,
+  lead: LeadSummary,
+  timeZone: string | null | undefined,
+): Record<string, unknown> {
+  return {
+    call_id: c.id,
+    lead_id: lead.id,
+    lead,
+    lead_email: c.lead_email,
+    closer_name: c.closer_name,
+    requested_followup_at: c.requested_followup_at,
+    followup_amount_pitched_cents: c.followup_amount_pitched_cents,
+    followup_reason: c.followup_reason_other || c.followup_reason,
+    followup_notes: c.followup_notes,
+    currency: c.original_currency,
+    time_zone: timeZone || null,
+  };
 }
 
 /** A setter or dialer submitted their EOD. */

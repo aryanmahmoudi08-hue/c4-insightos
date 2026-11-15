@@ -520,10 +520,10 @@ function NotificationsSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boo
               ))}
             </select>
             <p className="text-3xs text-muted-foreground">
-              Ticking it fires <span className="font-mono">call.confirmed</span>. If it is still
-              unticked when that step’s window closes,{" "}
-              <span className="font-mono">call.unconfirmed</span> fires once so someone confirms the
-              call.
+              Ticking it fires <span className="font-mono">call.confirmed</span>. Until it is
+              ticked, <span className="font-mono">call.unconfirmed</span> alerts at 10 PM the night
+              before and 3 h, 2 h, 1 h and 30 min before the call, skipping any that had already
+              passed when the call was booked.
             </p>
           </div>
 
@@ -583,6 +583,34 @@ function NotificationsSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boo
               with the sales reports, and the monthly one on the last day of the month.
             </p>
           </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Discord Setter role ID</Label>
+              <Input
+                inputMode="numeric"
+                disabled={!isAdmin}
+                value={draft.discordSetterRoleId}
+                placeholder="e.g. 1570643974073487430"
+                onChange={(e) => set("discordSetterRoleId", e.target.value.replace(/\D/g, ""))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Discord Closer role ID</Label>
+              <Input
+                inputMode="numeric"
+                disabled={!isAdmin}
+                value={draft.discordCloserRoleId}
+                placeholder="e.g. 1570644095586664649"
+                onChange={(e) => set("discordCloserRoleId", e.target.value.replace(/\D/g, ""))}
+              />
+            </div>
+          </div>
+          <p className="text-3xs text-muted-foreground">
+            Who the unconfirmed-call alerts and the “CALL THEM ASAP” / “FOLLOW UP ASAP” messages
+            ping. Leave a channel’s own role pings empty on the Event Bus for those channels, or
+            every message there pings both.
+          </p>
 
           {isAdmin ? (
             <Button

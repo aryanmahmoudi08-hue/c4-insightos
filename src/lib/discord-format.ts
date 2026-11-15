@@ -16,6 +16,9 @@
  *   - A cut message says it was cut.
  *   - Role mentions are listed in `allowed_mentions`; without that Discord
  *     renders `<@&id>` as text and notifies nobody.
+ *   - Each channel posts under its own bot name (event-catalog.ts), which
+ *     says what the message is — so there is no title line when it has one.
+ *   - Every message about a lead ends with a divider and its AscendOS link.
  */
 
 import { eventCatalogEntry } from "./event-catalog";
@@ -28,13 +31,23 @@ const TRUNCATION_MARKER = "\n… (message truncated)";
 export type DiscordMessage = {
   content: string;
   allowed_mentions: { parse: never[]; roles: string[] };
+  /** The bot name the message posts under (overrides the webhook's). */
+  username?: string;
+  avatar_url?: string;
 };
 
 export type FormatOptions = {
   /** Base URL of the app, for "Open in AscendOS" links. Omitted → no link. */
   appUrl?: string | null;
-  /** Discord role IDs to ping. Non-numeric entries are ignored. */
+  /** The channel's own role pings. Non-numeric entries are ignored. */
   mentionRoleIds?: readonly string[] | null;
+  /** Pings this message adds itself (an unconfirmed alert's @Closer). */
+  extraRoleIds?: readonly string[] | null;
+  /** Bot name and icon. With a name, the title line is left out. */
+  username?: string | null;
+  avatarUrl?: string | null;
+  /** Discord link to the message this one follows up on. */
+  replyToUrl?: string | null;
 };
 
 type Line = [label: string, value: unknown];
@@ -111,34 +124,76 @@ export function findLinkedIn(...sources: unknown[]): string {
 /* Assembly                                                            */
 /* ------------------------------------------------------------------ */
 
-function renderLines(lines: Line[]): string[] {
-  const out: string[] = [];
-  for (const [label, value] of lines) {
-    const v = text(value);
-    if (v) out.push(`**${label}:** ${v}`);
-  }
-  return out;
-}
+/** The rule between a message's sections and above its AscendOS link. */
+export const DIVIDER = "—————————————————————————————————";
+
+type Block =
+  | { kind: "lines"; lines: Line[] }
+  | { kind: "divider" }
+  /** Free text, its own paragraph. The only part cut when space runs out. */
+  | { kind: "long"; label: string; value: unknown }
+  /** A preformatted line, e.g. a link to an earlier message. */
+  | { kind: "raw"; text: string };
 
 type Body = {
+  /** Shown only when the message posts without a bot name — the bot name
+   *  ("CALL BOOKED") already says what the message is. */
   title: string;
-  lines: Line[];
-  /** Free text rendered after the lines, each as its own paragraph. */
-  long?: Line[];
+  /** Bold first line shown whatever the identity, e.g. "CALL THEM ASAP". */
+  headline?: string;
+  blocks: Block[];
   /** Path under the app, e.g. `/leads?leadId=…`. */
   linkPath?: string | null;
 };
 
-function assemble(body: Body, opts: FormatOptions): DiscordMessage {
-  const roles = (opts.mentionRoleIds ?? [])
-    .map((r) => String(r).trim())
-    .filter((r) => /^\d+$/.test(r));
-  const head = [
-    roles.length ? roles.map((r) => `<@&${r}>`).join(" ") : "",
-    `**${body.title}**`,
-  ].filter(Boolean);
+const lines = (...l: Line[]): Block => ({ kind: "lines", lines: l });
+const divider: Block = { kind: "divider" };
+const long = (label: string, value: unknown): Block => ({ kind: "long", label, value });
 
-  const structured = renderLines(body.lines);
+function renderLines(ls: Line[]): string {
+  return ls
+    .map(([label, value]) => {
+      const v = text(value);
+      return v ? `**${label}:** ${v}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function cleanRoleIds(...lists: Array<readonly unknown[] | null | undefined>): string[] {
+  const out: string[] = [];
+  for (const list of lists)
+    for (const r of list ?? []) {
+      const id = String(r ?? "").trim();
+      if (/^\d+$/.test(id) && !out.includes(id)) out.push(id);
+    }
+  return out;
+}
+
+function assemble(body: Body, opts: FormatOptions): DiscordMessage {
+  const roles = cleanRoleIds(opts.mentionRoleIds, opts.extraRoleIds);
+  const heading = body.headline ? `**${body.headline}**` : opts.username ? "" : `**${body.title}**`;
+  const head = [roles.map((r) => `<@&${r}>`).join(" "), heading].filter(Boolean).join(" ");
+
+  // Render each block; drop empty ones, then dividers that would sit at the
+  // top, next to another divider, or at the bottom (the link adds its own).
+  type Part = { text: string; flex?: { label: string; value: string } };
+  const parts: Part[] = [];
+  for (const b of body.blocks) {
+    if (b.kind === "divider") {
+      if (parts.length && parts[parts.length - 1].text !== DIVIDER) parts.push({ text: DIVIDER });
+    } else if (b.kind === "lines") {
+      const t = renderLines(b.lines);
+      if (t) parts.push({ text: t });
+    } else if (b.kind === "raw") {
+      if (b.text.trim()) parts.push({ text: b.text.trim() });
+    } else {
+      const v = text(b.value);
+      if (v) parts.push({ text: "", flex: { label: b.label, value: v } });
+    }
+  }
+  while (parts.length && parts[parts.length - 1].text === DIVIDER) parts.pop();
+
   const link =
     body.linkPath && opts.appUrl
       ? // Angle brackets stop Discord unfurling this one URL into a preview
@@ -146,32 +201,40 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
         // Only this link: Meet, LinkedIn and content URLs still preview.
         `[Open in AscendOS](<${opts.appUrl.replace(/\/+$/, "")}${body.linkPath}>)`
       : "";
-  const longParts = (body.long ?? [])
-    .map(([label, value]) => {
-      const v = text(value);
-      return v ? `**${label}:**\n${v}` : "";
-    })
-    .filter(Boolean);
+  if (link) parts.push({ text: DIVIDER }, { text: link });
+  if (head) parts.unshift({ text: head });
 
-  // Order: mentions + title, labelled lines, long free text, link. Only the
-  // long free text gives way when space runs out; the contact details and the
-  // link are what someone needs to act, so they are never the part cut.
-  const top = [...head, ...structured].join("\n");
-  const tail = longParts.join("\n\n");
-  const linkPart = link ? `\n\n${link}` : "";
-  const room = DISCORD_CONTENT_LIMIT - top.length - linkPart.length - 2;
-
-  let content: string;
-  if (!tail) {
-    content = top + linkPart;
-  } else if (tail.length <= room) {
-    content = `${top}\n\n${tail}${linkPart}`;
-  } else if (room > TRUNCATION_MARKER.length + 40) {
-    const cut = tail.slice(0, room - TRUNCATION_MARKER.length).trimEnd();
-    content = `${top}\n\n${cut}${TRUNCATION_MARKER}${linkPart}`;
-  } else {
-    content = `${top}${TRUNCATION_MARKER}${linkPart}`;
+  // Only free text gives way when space runs out; the contact details and
+  // the link are what someone needs to act, so they are never the part cut.
+  const flexHeader = (f: { label: string }) => `\n**${f.label}:**\n`;
+  const fixedLen = parts.reduce(
+    (n, p, i) => n + (i ? 1 : 0) + (p.flex ? flexHeader(p.flex).length : p.text.length),
+    0,
+  );
+  let room = DISCORD_CONTENT_LIMIT - fixedLen;
+  let cut = false;
+  const rendered: string[] = [];
+  for (const p of parts) {
+    if (!p.flex) {
+      rendered.push(p.text);
+      continue;
+    }
+    const v = p.flex.value;
+    if (v.length <= room) {
+      room -= v.length;
+      rendered.push(`${flexHeader(p.flex)}${v}`);
+    } else if (!cut && room > TRUNCATION_MARKER.length + 40) {
+      rendered.push(
+        `${flexHeader(p.flex)}${v.slice(0, room - TRUNCATION_MARKER.length).trimEnd()}${TRUNCATION_MARKER}`,
+      );
+      room = 0;
+      cut = true;
+    } else if (!cut) {
+      rendered.push(TRUNCATION_MARKER.trim());
+      cut = true;
+    }
   }
+  let content = rendered.join("\n").replace(/^\n+/, "");
   // Last resort for a pathological fixed part (a leaderboard with dozens of
   // reps): cut anything, but still say so.
   if (content.length > DISCORD_CONTENT_LIMIT) {
@@ -180,7 +243,10 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
       TRUNCATION_MARKER;
   }
 
-  return { content, allowed_mentions: { parse: [], roles } };
+  const msg: DiscordMessage = { content, allowed_mentions: { parse: [], roles } };
+  if (opts.username) msg.username = opts.username;
+  if (opts.avatarUrl) msg.avatar_url = opts.avatarUrl;
+  return msg;
 }
 
 /* ------------------------------------------------------------------ */
@@ -189,87 +255,168 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
 
 const leadLink = (leadId: unknown) => (text(leadId) ? `/leads?leadId=${text(leadId)}` : null);
 
+/** Full Name / Email / Phone (/ LinkedIn) — the block every lead message opens with. */
+function leadLines(
+  lead: Record<string, unknown>,
+  p: Record<string, unknown>,
+  withLinkedIn = true,
+): Line[] {
+  const l: Line[] = [
+    ["Full Name", lead.full_name ?? p.lead_name ?? p.client_name],
+    ["Email", lead.email ?? p.lead_email ?? p.email],
+    ["Phone", lead.phone],
+  ];
+  if (withLinkedIn) l.push(["LinkedIn", lead.linkedin]);
+  return l;
+}
+
+/** The application answers a rep sizes a lead up by. */
+function profileLines(lead: Record<string, unknown>, withTarget: boolean): Line[] {
+  const l: Line[] = [["Current Salary", lead.current_salary]];
+  if (withTarget) l.push(["Target Salary", lead.target_salary]);
+  l.push(["Budget", lead.budget], ["Credit", lead.credit]);
+  return l;
+}
+
+const sourceOf = (lead: Record<string, unknown>) =>
+  [lead.source_platform, lead.source_medium, lead.source_campaign]
+    .map(text)
+    .filter(Boolean)
+    .join(" · ");
+
 function application(p: Record<string, unknown>): Body {
   const lead = obj(p.lead);
   const app = obj(p.application_data);
   return {
     title: `New application${text(p.form_title) ? ` — ${text(p.form_title)}` : ""}`,
-    lines: [
-      ["Name", lead.full_name],
-      ["Email", lead.email],
-      ["Phone", lead.phone],
-      ["Ticket tier", lead.ticket_tier_label ?? lead.ticket_tier],
-      ["Role & company", app.work_school],
-      ["Current salary", app.income],
-      ["Target salary", app.goal],
-      ["Budget", app.capital],
-      ["Credit", app.credit],
-      ["Experience", app.experience],
-      ["Focus", app.focus],
-      ["Situation", app.candidate_fit],
-      ["Time available", app.time],
-      ["Committed", app.commitment],
-      ["LinkedIn", findLinkedIn(app.answers_by_title, app.raw_answers)],
-      // Platform · placement · campaign, as tagged on the link.
-      [
-        "Source",
-        [lead.source_platform, lead.source_medium, lead.source_campaign]
-          .map(text)
-          .filter(Boolean)
-          .join(" · "),
-      ],
-      ["Content", lead.source_content_tag],
+    blocks: [
+      lines(
+        ["Full Name", lead.full_name],
+        ["Email", lead.email],
+        ["Phone", lead.phone],
+        ["LinkedIn", lead.linkedin ?? findLinkedIn(app.answers_by_title, app.raw_answers)],
+      ),
+      divider,
+      lines(
+        ["Qualifies", lead.ticket_tier_label ?? lead.ticket_tier],
+        ["Role & company", app.work_school],
+        ["Current Salary", app.income],
+        ["Target Salary", app.goal],
+        ["Budget", app.capital],
+        ["Credit", app.credit],
+        ["Experience (years)", app.experience],
+        ["Focus", app.focus],
+        ["Situation", app.candidate_fit],
+      ),
+      long("Why you, why now", app.serious_status),
     ],
-    long: [["Why you, why now", app.serious_status]],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
 }
 
-function callBody(title: string, p: Record<string, unknown>, tz: string | null): Body {
+/** #calls-booked and #calls-confirmed share a body. */
+function callBooked(title: string, p: Record<string, unknown>, tz: string | null): Body {
   const lead = obj(p.lead);
   return {
     title,
-    lines: [
-      ["Lead", lead.full_name ?? p.lead_name],
-      ["Email", lead.email ?? p.lead_email],
-      ["Phone", lead.phone],
-      ["Call", when(p.scheduled_for, tz)],
-      ["Closer", p.closer_name],
-      ["Setter", p.setter_name],
-      ["Confirmation step", p.touchpoint_label],
-      ["Meeting link", p.meeting_link],
+    blocks: [
+      lines(
+        ...leadLines(lead, p),
+        ["Source", sourceOf(lead)],
+        ...profileLines(lead, true),
+        ["Date of Call", when(p.scheduled_for, tz)],
+        ["Meeting link", p.meeting_link],
+      ),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
+}
+
+function callUnconfirmed(p: Record<string, unknown>, tz: string | null): Body {
+  const lead = obj(p.lead);
+  return {
+    title: "Call NOT confirmed — someone confirm it now",
+    blocks: [
+      lines(
+        ...leadLines(lead, p),
+        ...profileLines(lead, false),
+        ["Booked via", p.booked_via],
+        ["Date of Call", when(p.scheduled_for, tz)],
+        ["Meeting link", p.meeting_link],
+      ),
+    ],
+    linkPath: leadLink(lead.id ?? p.lead_id),
+  };
+}
+
+function callCancelled(p: Record<string, unknown>, tz: string | null): Body {
+  const lead = obj(p.lead);
+  return {
+    title: "Call cancelled",
+    blocks: [
+      lines(
+        ...leadLines(lead, p),
+        ...profileLines(lead, false),
+        ["Date of Call", when(p.scheduled_for, tz)],
+        ["Cancellation Reason", p.cancellation_reason],
+      ),
+    ],
+    linkPath: leadLink(lead.id ?? p.lead_id),
+  };
+}
+
+function callRescheduled(p: Record<string, unknown>, tz: string | null): Body {
+  const lead = obj(p.lead);
+  return {
+    title: "Call rescheduled",
+    blocks: [
+      lines(
+        ...leadLines(lead, p),
+        ...profileLines(lead, false),
+        ["New date of call", when(p.scheduled_for, tz)],
+        ["Previous date", when(p.previous_scheduled_for, tz)],
+        ["Reason", p.reschedule_reason],
+      ),
+    ],
+    linkPath: leadLink(lead.id ?? p.lead_id),
+  };
+}
+
+/** Where to find the message this one follows up on, or nothing. */
+function replyBlock(opts: FormatOptions, label: string): Block {
+  return opts.replyToUrl
+    ? { kind: "raw", text: `↪ [${label}](<${opts.replyToUrl}>)` }
+    : { kind: "raw", text: "" };
 }
 
 function postCall(p: Record<string, unknown>, tz: string | null): Body {
   const lead = obj(p.lead);
   return {
     title: "Post-call notes",
-    lines: [
-      ["Closer", p.closer_name],
-      ["Lead", lead.full_name ?? p.lead_email],
-      ["Email", p.lead_email],
-      ["Lead status", p.lead_status],
-      ["Offer made", p.offer_made],
-      ["Cash collected", money(p.cash_collected_cents, p.currency)],
-      ["Total revenue", money(p.contract_value_cents, p.currency)],
-      ["Payment plan", p.payment_plan],
-      [
-        "Objections",
-        Array.isArray(p.objections)
-          ? p.objections.map(text).filter(Boolean).join(", ")
-          : p.objections,
-      ],
-      ["Follow up", when(p.requested_followup_at, tz)],
-      ["Amount pitched", money(p.followup_amount_pitched_cents, p.currency)],
-      ["Follow-up reason", p.followup_reason],
-      ["Recording", p.recording_url],
-    ],
-    long: [
-      ["Call summary", p.call_summary],
-      ["Follow-up notes", p.followup_notes],
+    blocks: [
+      lines(
+        ["Closer", p.closer_name],
+        ["Full Name", lead.full_name],
+        ["Email", p.lead_email ?? lead.email],
+        ["Phone", lead.phone],
+        ["Lead status", p.lead_status],
+        ["Offer made", p.offer_made],
+        ["Cash collected", money(p.cash_collected_cents, p.currency)],
+        ["Total revenue", money(p.contract_value_cents, p.currency)],
+        ["Payment plan", p.payment_plan],
+        [
+          "Objections",
+          Array.isArray(p.objections)
+            ? p.objections.map(text).filter(Boolean).join(", ")
+            : p.objections,
+        ],
+        ["Follow up", when(p.requested_followup_at, tz)],
+        ["Amount pitched", money(p.followup_amount_pitched_cents, p.currency)],
+        ["Follow-up reason", p.followup_reason],
+        ["Recording", p.recording_url],
+      ),
+      long("Call summary", p.call_summary),
+      long("Follow-up notes", p.followup_notes),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
@@ -294,57 +441,101 @@ const EOD_LABELS: Array<[string, string]> = [
 
 function setterEod(p: Record<string, unknown>): Body {
   const role = text(p.role) === "inbound_dialer" ? "Inbound dialer" : "DM setter";
-  const lines: Line[] = [
+  const ls: Line[] = [
     ["Rep", p.team_member_name],
     ["Role", role],
-    ["Date", p.activity_date],
+    ["Date", dateLabel(p.activity_date)],
   ];
   for (const [key, label] of EOD_LABELS) {
     const n = Number(p[key]);
-    if (Number.isFinite(n) && n !== 0) lines.push([label, n]);
+    if (Number.isFinite(n) && n !== 0) ls.push([label, n]);
   }
-  lines.push(["Cash collected", money(p.cash_collected_cents, p.original_currency)]);
-  lines.push(["Rating", text(p.rate_today) ? `${text(p.rate_today)}/10` : ""]);
+  ls.push(["Cash collected", money(p.cash_collected_cents, p.original_currency)]);
+  ls.push(["Rating", text(p.rate_today) ? `${text(p.rate_today)}/10` : ""]);
   return {
     title: "Setter EOD report",
-    lines,
-    long: [
-      ["Objections", p.objections],
-      ["Notes", p.notes],
-    ],
+    blocks: [lines(...ls), long("Objections", p.objections), long("Notes", p.notes)],
   };
 }
 
-function callback(p: Record<string, unknown>, tz: string | null): Body {
+/** Posted when the callback is logged. */
+function callbackLogged(p: Record<string, unknown>, tz: string | null): Body {
   const lead = obj(p.lead);
   return {
-    title: "Callback due now",
-    lines: [
-      ["Lead", lead.full_name ?? p.lead_name],
-      ["Phone", lead.phone],
-      ["Email", lead.email],
-      ["Due", when(p.due_at, tz)],
-      ["Logged by", p.owner_name],
+    title: "Callback logged",
+    blocks: [
+      lines(...leadLines(lead, p, false), ...profileLines(lead, false), [
+        "Call Back (Date/Time)",
+        when(p.due_at, tz),
+      ]),
     ],
-    long: [["Next action", p.next_action]],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
 }
 
-function followUp(term: "Short" | "Long", p: Record<string, unknown>, tz: string | null): Body {
+/** Posted at the due time, pointing back at the logged message. */
+function callbackDue(p: Record<string, unknown>, tz: string | null, opts: FormatOptions): Body {
   const lead = obj(p.lead);
   return {
-    title: `${term}-term follow-up due`,
-    lines: [
-      ["Lead", lead.full_name ?? p.lead_email],
-      ["Email", p.lead_email ?? lead.email],
-      ["Phone", lead.phone],
+    title: "Callback due now",
+    headline: "CALL THEM ASAP",
+    blocks: [
+      lines(["Full Name", lead.full_name ?? p.lead_name], ["Phone", lead.phone]),
+      replyBlock(opts, "Original callback"),
+      // No earlier message to point at (logged before this existed, or its
+      // post failed): carry the details here instead.
+      ...(opts.replyToUrl
+        ? []
+        : [
+            lines(["Email", lead.email], ...profileLines(lead, false), [
+              "Call Back (Date/Time)",
+              when(p.due_at, tz),
+            ]),
+          ]),
+    ],
+    linkPath: leadLink(lead.id ?? p.lead_id),
+  };
+}
+
+function followUpLines(p: Record<string, unknown>, tz: string | null): Block[] {
+  const lead = obj(p.lead);
+  return [
+    lines(
+      ...leadLines(lead, p, false),
       ["Closer", p.closer_name],
       ["Due", when(p.requested_followup_at, tz)],
       ["Amount pitched", money(p.followup_amount_pitched_cents, p.currency)],
       ["Reason", p.followup_reason],
+    ),
+    long("Notes", p.followup_notes),
+  ];
+}
+
+/** Posted when the closer logs the follow-up. */
+function followUpLogged(term: "Short" | "Long", p: Record<string, unknown>, tz: string | null) {
+  return {
+    title: `${term}-term follow-up logged`,
+    blocks: followUpLines(p, tz),
+    linkPath: leadLink(obj(p.lead).id ?? p.lead_id),
+  } satisfies Body;
+}
+
+/** Posted at the due time, pointing back at the logged message. */
+function followUpDue(
+  term: "Short" | "Long",
+  p: Record<string, unknown>,
+  tz: string | null,
+  opts: FormatOptions,
+): Body {
+  const lead = obj(p.lead);
+  return {
+    title: `${term}-term follow-up due`,
+    headline: "FOLLOW UP ASAP",
+    blocks: [
+      lines(["Full Name", lead.full_name ?? p.lead_email], ["Phone", lead.phone]),
+      replyBlock(opts, "Original follow-up"),
+      ...(opts.replyToUrl ? [] : followUpLines(p, tz)),
     ],
-    long: [["Notes", p.followup_notes]],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
 }
@@ -396,35 +587,42 @@ function leaderboard(kind: "Daily" | "Weekly", p: Record<string, unknown>): Body
   ]
     .filter(Boolean)
     .join("\n");
+  const excluded = Number(p.non_usd_rows_excluded) || 0;
   return {
     title: `${kind} sales team report — ${text(p.period_label)}`,
-    lines: [
-      [
-        "Note",
-        Number(p.non_usd_rows_excluded) > 0
-          ? `${Number(p.non_usd_rows_excluded)} entr${Number(p.non_usd_rows_excluded) === 1 ? "y" : "ies"} in another currency not included in cash`
-          : "",
-      ],
-    ],
-    long: [
-      ["Totals", totals],
-      ["Setters", setters.map(rowLine).join("\n")],
-      ["Closers", closers.map(rowLine).join("\n")],
+    blocks: [
+      lines(
+        ["Period", p.period_label],
+        [
+          "Note",
+          excluded > 0
+            ? `${excluded} entr${excluded === 1 ? "y" : "ies"} in another currency not included in cash`
+            : "",
+        ],
+      ),
+      long("Totals", totals),
+      long("Setters", setters.map(rowLine).join("\n")),
+      long("Closers", closers.map(rowLine).join("\n")),
     ],
   };
 }
 
-function scheduledLabel(date: unknown, time: unknown) {
-  const d = text(date);
-  if (!d) return "";
+/** "2026-11-14" → "Sat, Nov 14" — a calendar date, no timezone involved. */
+function dateLabel(date: unknown): string {
+  const d = text(date).slice(0, 10);
   const [y, m, day] = d.split("-").map(Number);
-  if (!y || !m || !day) return d;
-  const label = new Date(Date.UTC(y, m - 1, day)).toLocaleDateString("en-US", {
+  if (!y || !m || !day) return text(date);
+  return new Date(Date.UTC(y, m - 1, day)).toLocaleDateString("en-US", {
     timeZone: "UTC",
     weekday: "short",
     month: "short",
     day: "numeric",
   });
+}
+
+function scheduledLabel(date: unknown, time: unknown) {
+  const label = text(date) ? dateLabel(date) : "";
+  if (!label) return "";
   const t = timeOfDayLabel(text(time));
   return t ? `${label}, ${t}` : label;
 }
@@ -432,14 +630,16 @@ function scheduledLabel(date: unknown, time: unknown) {
 function contentReady(kind: "Short-form" | "Long-form" | null, p: Record<string, unknown>): Body {
   return {
     title: `${kind ? `${kind} ready to post` : "Ready to post"} — ${platformLabel(text(p.platform))}`,
-    lines: [
-      ["Title", p.title],
-      ["Platform", platformLabel(text(p.platform))],
-      ["Hook", p.hook],
-      ["Scheduled", scheduledLabel(p.scheduled_date, p.scheduled_time)],
-      ["Link", p.url],
-      ["Angle", text(p.angle).replace(/_/g, " ")],
-      ["Funnel stage", text(p.funnel_stage).replace(/_/g, " ")],
+    blocks: [
+      lines(
+        ["Title", p.title],
+        ["Platform", platformLabel(text(p.platform))],
+        ["Hook", p.hook],
+        ["Scheduled", scheduledLabel(p.scheduled_date, p.scheduled_time)],
+        ["Link", p.url],
+        ["Angle", text(p.angle).replace(/_/g, " ")],
+        ["Funnel stage", text(p.funnel_stage).replace(/_/g, " ")],
+      ),
     ],
     linkPath: "/content-calendar",
   };
@@ -472,8 +672,7 @@ function contentSchedule(p: Record<string, unknown>): Body {
       "Nothing scheduled today.";
   return {
     title: `Content schedule — ${text(p.period_label)}`,
-    lines: [],
-    long: [["Today", list]],
+    blocks: [lines(["Date", p.period_label]), long("Today", list)],
     linkPath: "/content-calendar",
   };
 }
@@ -510,14 +709,14 @@ function topSources(kind: "Daily" | "Weekly" | "Monthly", p: Record<string, unkn
   const excluded = Number(p.non_usd_rows_excluded) || 0;
   return {
     title: `${kind} top content sources — ${text(p.period_label)}`,
-    lines: [],
-    long: [
-      ["By source", [ranked, unknownLine].filter(Boolean).join("\n")],
-      ["Top content", content.map((r, i) => sourceLine(r, i + 1)).join("\n")],
-      [
+    blocks: [
+      lines(["Report", kind], ["Period", p.period_label]),
+      long("By source", [ranked, unknownLine].filter(Boolean).join("\n")),
+      long("Top content", content.map((r, i) => sourceLine(r, i + 1)).join("\n")),
+      long(
         "How this is counted",
         `Leads created in the period by where they came from; booked calls and closer-logged cash by their lead's source. Anything not tied to a lead is Unattributed.${excluded ? ` ${excluded} cash entr${excluded === 1 ? "y" : "ies"} in another currency not included.` : ""}`,
-      ],
+      ),
     ],
   };
 }
@@ -539,35 +738,27 @@ export function ordinal(n: number): string {
 
 function payment(failed: boolean, p: Record<string, unknown>): Body {
   const lead = obj(p.lead);
-  const amount = money(p.amount_cents, p.currency) || "—";
+  const amount = money(p.amount_cents, p.currency);
   const usd =
-    text(p.currency).toUpperCase() !== "USD" && Number(p.amount_usd_cents)
+    amount && text(p.currency).toUpperCase() !== "USD" && Number(p.amount_usd_cents)
       ? ` (${money(p.amount_usd_cents)})`
       : "";
-  const prior = p.prior_successful_payments;
-  const n = typeof prior === "number" ? prior : null;
-  // Facts from AscendOS's own records, not a provider field: how many times
-  // this buyer paid before. On a failure that is what separates a missed
-  // plan installment from a card that never worked.
-  const history =
-    n == null
-      ? ""
-      : failed
-        ? n > 0
-          ? `${n} earlier successful payment${n === 1 ? "" : "s"} from this buyer`
-          : "No earlier successful payment from this buyer"
-        : `${ordinal(n + 1)} payment from this buyer`;
+  // Counted from AscendOS's own payment rows for this buyer: this failure
+  // plus the failures since their last successful payment.
+  const attempt = Number(p.failed_attempt_number);
   return {
-    title: failed ? `Payment FAILED — ${amount}` : `Payment collected — ${amount}`,
-    lines: [
-      ["Name", lead.full_name ?? p.client_name],
-      ["Email", p.email ?? lead.email],
-      ["Amount", amount === "—" ? "" : `${amount}${usd}`],
-      ["Processor", PROCESSOR_LABELS[text(p.processor).toLowerCase()] ?? p.processor],
-      ["Reason", failed ? p.failure_reason : ""],
-      ["Offer", p.offer_name],
-      ["Plan", p.plan_progress],
-      ["History", history],
+    title: failed ? `Payment FAILED — ${amount || "—"}` : `Payment collected — ${amount || "—"}`,
+    blocks: [
+      lines(
+        ["Name", lead.full_name ?? p.client_name],
+        ["Email", p.email ?? lead.email],
+        ["Phone", lead.phone],
+        ["Processor", PROCESSOR_LABELS[text(p.processor).toLowerCase()] ?? p.processor],
+        ["Amount", amount ? `${amount}${usd}` : ""],
+        ["Product", p.product ?? p.offer_name],
+        ["Reason", failed ? p.failure_reason : ""],
+        ["Attempt #", failed && Number.isFinite(attempt) && attempt > 0 ? attempt : ""],
+      ),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
@@ -576,14 +767,14 @@ function payment(failed: boolean, p: Record<string, unknown>): Body {
 /** Readable fallback for an event with no bespoke shape: top-level scalars. */
 function generic(eventType: string, p: Record<string, unknown>): Body {
   const SKIP = new Set(["answers", "raw_answers", "answers_by_title", "category", "org_id"]);
-  const lines: Line[] = [];
+  const ls: Line[] = [];
   for (const [k, v] of Object.entries(p)) {
     if (SKIP.has(k) || v == null || typeof v === "object") continue;
-    lines.push([humanize(k), k.endsWith("_cents") ? money(v) : v]);
+    ls.push([humanize(k), k.endsWith("_cents") ? money(v) : v]);
   }
   return {
     title: eventCatalogEntry(eventType)?.label ?? eventType,
-    lines: lines.slice(0, 20),
+    blocks: [lines(...ls.slice(0, 20))],
     linkPath: leadLink(p.lead_id),
   };
 }
@@ -604,11 +795,20 @@ export function formatDiscordMessage(
     case "lead.application_submitted":
       body = application(p);
       break;
+    case "call.booked":
+      body = callBooked("Call booked", p, tz);
+      break;
     case "call.confirmed":
-      body = callBody("Call confirmed", p, tz);
+      body = callBooked("Call confirmed", p, tz);
       break;
     case "call.unconfirmed":
-      body = callBody("Call NOT confirmed — someone confirm it now", p, tz);
+      body = callUnconfirmed(p, tz);
+      break;
+    case "call.cancelled":
+      body = callCancelled(p, tz);
+      break;
+    case "call.rescheduled":
+      body = callRescheduled(p, tz);
       break;
     case "closer.post_call_submitted":
       body = postCall(p, tz);
@@ -616,14 +816,23 @@ export function formatDiscordMessage(
     case "setter.eod_submitted":
       body = setterEod(p);
       break;
+    case "callback.logged":
+      body = callbackLogged(p, tz);
+      break;
     case "callback.due":
-      body = callback(p, tz);
+      body = callbackDue(p, tz, opts);
+      break;
+    case "followup.short_term_logged":
+      body = followUpLogged("Short", p, tz);
+      break;
+    case "followup.long_term_logged":
+      body = followUpLogged("Long", p, tz);
       break;
     case "followup.short_term_due":
-      body = followUp("Short", p, tz);
+      body = followUpDue("Short", p, tz, opts);
       break;
     case "followup.long_term_due":
-      body = followUp("Long", p, tz);
+      body = followUpDue("Long", p, tz, opts);
       break;
     case "report.daily_sales":
       body = leaderboard("Daily", p);
@@ -661,11 +870,13 @@ export function formatDiscordMessage(
     case "call.closed_won":
       body = {
         title: "Closed won",
-        lines: [
-          ["Closer", p.closer],
-          ["Lead", p.lead_email],
-          ["Cash collected", money(p.cash_cents)],
-          ["Contract value", money(p.contract_cents)],
+        blocks: [
+          lines(
+            ["Closer", p.closer],
+            ["Lead", p.lead_email],
+            ["Cash collected", money(p.cash_cents)],
+            ["Contract value", money(p.contract_cents)],
+          ),
         ],
       };
       break;

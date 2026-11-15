@@ -103,6 +103,9 @@ export function useDialerCallbacks(orgId: string, devBypass: boolean) {
           next_action: "Call back",
           next_action_at: dueIso,
           payload: { lead_name: leadName },
+          // Re-logging updates the same row (one callback per lead); the
+          // scheduler reads updated_at to post the new time to Discord.
+          updated_at: new Date().toISOString(),
         },
         { onConflict: "org_id,entity_type,entity_id" },
       );

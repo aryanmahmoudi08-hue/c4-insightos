@@ -2,13 +2,13 @@
  * Pure "is it due?" decisions for the minute-by-minute scheduler, kept apart
  * from the database so the timing rules can be tested directly.
  */
-import { TOUCHPOINT_WINDOWS, type Touchpoint } from "./call-confirmations";
 import {
   addCalendarDays,
   isValidTimeZone,
   localDateIn,
   localHourIn,
   localWeekdayIn,
+  zonedTimeUtc,
 } from "./zoned-time";
 
 /**
@@ -24,6 +24,7 @@ export const DUE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 /** Event types the scheduler produces, i.e. the ones worth ticking for. */
 export const SCHEDULED_EVENT_TYPES = [
   "call.unconfirmed",
+  "callback.logged",
   "callback.due",
   "followup.short_term_due",
   "followup.long_term_due",
@@ -36,25 +37,89 @@ export const SCHEDULED_EVENT_TYPES = [
 ] as const;
 
 /**
- * The `scheduled_for` range of calls whose confirmation deadline has passed
- * but which have not started yet (with a ten-minute grace so a missed tick,
- * or a deadline at the call's own start, still catches them).
- *
- * The deadline is the configured touchpoint's own window close — the same
- * point the calendar already marks that touchpoint "not sent". No new number.
+ * The #calls-unconfirmed schedule: while a call is still unconfirmed, alert
+ * at 10 PM (business time) the night before, then 3 h, 2 h, 1 h and 30 min
+ * before it. The first three ping setters; from an hour out closers too.
  */
-export function unconfirmedCallWindow(touchpoint: Touchpoint, now: Date) {
-  const closes = TOUCHPOINT_WINDOWS[touchpoint].closesMinutesBefore;
-  return {
-    fromIso: new Date(now.getTime() - 10 * 60_000).toISOString(),
-    toIso: new Date(now.getTime() + closes * 60_000).toISOString(),
-  };
+export const UNCONFIRMED_ALERTS = [
+  { n: 1, nightBeforeHour: 22, pings: ["setter"] },
+  { n: 2, minutesBefore: 180, pings: ["setter"] },
+  { n: 3, minutesBefore: 120, pings: ["setter"] },
+  { n: 4, minutesBefore: 60, pings: ["setter", "closer"] },
+  { n: 5, minutesBefore: 30, pings: ["setter", "closer"] },
+] as const;
+
+/** No alert fires this soon after the booking: someone who books for two
+ *  hours from now should not be chased minutes later. */
+export const MIN_MINUTES_AFTER_BOOKING = 15;
+/** An alert this late (the scheduler was down) is skipped, not sent stale. */
+export const ALERT_STALE_MINUTES = 15;
+/** How far ahead a call can be and still have an alert due: the night-before
+ *  alert for a call just before midnight is ~26 h out. */
+export const UNCONFIRMED_LOOKAHEAD_MS = 27 * 60 * 60 * 1000;
+
+export type UnconfirmedAlert = { n: number; at: Date; pings: ReadonlyArray<"setter" | "closer"> };
+
+/**
+ * The alerts a call gets, in time order. Any whose time had already passed
+ * when the call was booked — or would land within MIN_MINUTES_AFTER_BOOKING
+ * of it — are dropped, so a same-day booking only gets the ones still ahead.
+ * Without a business timezone "10 PM the night before" means nothing, so
+ * that alert is dropped rather than guessed in UTC.
+ */
+export function unconfirmedAlertSchedule(
+  scheduledFor: Date,
+  bookedAt: Date | null,
+  timeZone: string | null | undefined,
+): UnconfirmedAlert[] {
+  const out: UnconfirmedAlert[] = [];
+  for (const a of UNCONFIRMED_ALERTS) {
+    let at: Date | null = null;
+    if ("minutesBefore" in a) at = new Date(scheduledFor.getTime() - a.minutesBefore * 60_000);
+    else if (isValidTimeZone(timeZone)) {
+      const callDay = localDateIn(timeZone, scheduledFor);
+      at = zonedTimeUtc(addCalendarDays(callDay, -1), a.nightBeforeHour, 0, timeZone);
+    }
+    if (at) out.push({ n: a.n, at, pings: a.pings });
+  }
+  out.sort((x, y) => x.at.getTime() - y.at.getTime());
+  // A call just after midnight puts "10 PM the night before" after the 3 h
+  // alert; it then says nothing the next alert does not.
+  const ordered = out.filter((a, i) => !(a.n === 1 && i > 0));
+  const earliest = bookedAt ? bookedAt.getTime() + MIN_MINUTES_AFTER_BOOKING * 60_000 : -Infinity;
+  return ordered.filter((a) => a.at.getTime() >= earliest);
+}
+
+/** The alert due for this call right now, if any — the latest whose time has
+ *  come, provided it is not stale and the call has not started. */
+export function unconfirmedAlertDue(
+  scheduledFor: Date,
+  bookedAt: Date | null,
+  timeZone: string | null | undefined,
+  now: Date,
+): UnconfirmedAlert | null {
+  if (now.getTime() >= scheduledFor.getTime()) return null;
+  const due = unconfirmedAlertSchedule(scheduledFor, bookedAt, timeZone).filter(
+    (a) => a.at.getTime() <= now.getTime(),
+  );
+  const latest = due[due.length - 1];
+  if (!latest) return null;
+  return now.getTime() - latest.at.getTime() <= ALERT_STALE_MINUTES * 60_000 ? latest : null;
 }
 
 export function followUpEventType(eodLeadStatus: string | null | undefined) {
   if (eodLeadStatus === "Follow Up (short term)") return "followup.short_term_due" as const;
   if (eodLeadStatus === "Follow Up (long term)") return "followup.long_term_due" as const;
   return null;
+}
+
+/** The "logged" event that pairs with a follow-up's "due" event. */
+export function followUpLoggedType(
+  due: "followup.short_term_due" | "followup.long_term_due",
+): "followup.short_term_logged" | "followup.long_term_logged" {
+  return due === "followup.short_term_due"
+    ? "followup.short_term_logged"
+    : "followup.long_term_logged";
 }
 
 export type ReportWindow =

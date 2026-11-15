@@ -47,13 +47,13 @@ describe("formatDiscordMessage — application", () => {
   });
 
   it("leads with the things a closer decides on", () => {
-    expect(msg.content).toContain("**Name:** Tier Verify");
+    expect(msg.content).toContain("**Full Name:** Tier Verify");
     expect(msg.content).toContain("**Email:** tier.verify@careeraiaccelerator.com");
     expect(msg.content).toContain("**Phone:** +12015550204");
-    expect(msg.content).toContain("**Ticket tier:** Mid Ticket");
+    expect(msg.content).toContain("**Qualifies:** Mid Ticket");
     expect(msg.content).toContain("**Budget:** $1,500-$3,000");
-    expect(msg.content).toContain("**Current salary:** $95-120K");
-    expect(msg.content).toContain("**Target salary:** $130-160K");
+    expect(msg.content).toContain("**Current Salary:** $95-120K");
+    expect(msg.content).toContain("**Target Salary:** $130-160K");
   });
 
   it("finds LinkedIn by its URL, not by the question's wording", () => {
@@ -175,8 +175,8 @@ describe("other event shapes", () => {
       { timeZone: "America/New_York" },
     );
     expect(msg.content).toContain("**Call confirmed**");
-    expect(msg.content).toContain("**Lead:** Ada Lovelace");
-    expect(msg.content).toMatch(/\*\*Call:\*\* Fri, Nov 13, 3:00 PM EST/);
+    expect(msg.content).toContain("**Full Name:** Ada Lovelace");
+    expect(msg.content).toMatch(/\*\*Date of Call:\*\* Fri, Nov 13, 3:00 PM EST/);
   });
 
   it("renders post-call money as currency, not cents", () => {
@@ -341,20 +341,17 @@ describe("sales report call numbers", () => {
   });
 });
 
-describe("application source", () => {
-  it("shows platform, placement and campaign, and the post when tagged", () => {
-    const msg = formatDiscordMessage("lead.application_submitted", {
+describe("call source", () => {
+  it("shows platform, placement and campaign on a booked call", () => {
+    const msg = formatDiscordMessage("call.booked", {
       lead: {
         full_name: "UTM Verify",
         source_platform: "instagram",
         source_medium: "bio",
         source_campaign: "evergreen",
-        source_content_tag: "reel-1114-layoff",
       },
-      application_data: {},
     });
     expect(msg.content).toContain("**Source:** instagram · bio · evergreen");
-    expect(msg.content).toContain("**Content:** reel-1114-layoff");
   });
 });
 
@@ -371,36 +368,45 @@ describe("payment messages", () => {
     plan_progress: "2/5 paid",
   };
 
-  it("names a failed installment as one, from the buyer's own history", () => {
+  it("reads a failure in the spec's order, with the attempt number", () => {
     const msg = formatDiscordMessage(
       "payment.failed",
-      { ...base, failure_reason: "card_declined", prior_successful_payments: 2 },
+      {
+        ...base,
+        lead: { ...base.lead, phone: "+15550001111" },
+        failure_reason: "card_declined",
+        failed_attempt_number: 2,
+      },
       { appUrl: "https://app" },
     );
-    expect(msg.content).toContain("**Payment FAILED — $1,500**");
-    expect(msg.content).toContain("**Name:** Jordan Ellis");
+    const order = [
+      "Name",
+      "Email",
+      "Phone",
+      "Processor",
+      "Amount",
+      "Product",
+      "Reason",
+      "Attempt #",
+    ].map((l) => msg.content.indexOf(`**${l}:**`));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((x, y) => x - y)).toEqual(order);
     expect(msg.content).toContain("**Processor:** Commas (Fanbasis)");
-    expect(msg.content).toContain("**Reason:** card_declined");
-    expect(msg.content).toContain("**Plan:** 2/5 paid");
-    expect(msg.content).toContain("**History:** 2 earlier successful payments from this buyer");
+    expect(msg.content).toContain("**Product:** Career AI Accelerator");
+    expect(msg.content).toContain("**Attempt #:** 2");
     expect(msg.content).toContain("(<https://app/leads?leadId=L1>)");
   });
 
-  it("says so when a failure is the buyer's first attempt", () => {
-    const msg = formatDiscordMessage("payment.failed", { ...base, prior_successful_payments: 0 });
-    expect(msg.content).toContain("No earlier successful payment from this buyer");
-  });
-
-  it("reads a collected payment with its place in the buyer's history", () => {
+  it("never shows a failure's reason or attempt on a collected payment", () => {
     const msg = formatDiscordMessage("payment.collected", {
       ...base,
       processor: "whop",
-      prior_successful_payments: 2,
+      failure_reason: "x",
+      failed_attempt_number: 3,
     });
-    expect(msg.content).toContain("**Payment collected — $1,500**");
     expect(msg.content).toContain("**Processor:** Whop");
-    expect(msg.content).toContain("**History:** 3rd payment from this buyer");
     expect(msg.content).not.toContain("Reason");
+    expect(msg.content).not.toContain("Attempt");
   });
 
   it("shows the buyer's currency and the USD figure when they differ", () => {
@@ -420,8 +426,8 @@ describe("payment messages", () => {
       processor: "wise",
       prior_successful_payments: null,
     });
-    expect(msg.content).not.toContain("History");
-    expect(msg.content).not.toContain("Offer");
+    expect(msg.content).not.toContain("Product");
+    expect(msg.content).not.toContain("Phone");
     expect(msg.content).toContain("**Processor:** Wise");
   });
 });

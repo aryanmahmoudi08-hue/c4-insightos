@@ -92,6 +92,20 @@ const NotificationSettings = z.object({
   /** Local hour (0–23) the day's content schedule posts. Morning, so it is
    * read before the day's posting starts. */
   contentScheduleHour: z.number().int().min(0).max(23).default(8),
+  /** Discord role IDs for the pings a message decides itself, rather than
+   * the channel's: the unconfirmed-call alerts (@Setter, then @Setter
+   * @Closer from an hour out) and the "CALL THEM ASAP" / "FOLLOW UP ASAP"
+   * messages. Empty = those messages post without a ping. */
+  discordSetterRoleId: z
+    .string()
+    .trim()
+    .regex(/^\d*$/, "A Discord role ID is digits only")
+    .default(""),
+  discordCloserRoleId: z
+    .string()
+    .trim()
+    .regex(/^\d*$/, "A Discord role ID is digits only")
+    .default(""),
 });
 
 export const WorkspaceSettingsSchema = z.object({

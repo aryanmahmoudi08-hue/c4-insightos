@@ -88,8 +88,14 @@ export function localWeekdayIn(timeZone: string, instant: Date = new Date()): nu
  * directions.
  */
 export function zonedMidnightUtc(date: string, timeZone: string): Date {
+  return zonedTimeUtc(date, 0, 0, timeZone);
+}
+
+/** The UTC instant of local `hour:minute` on `date` in `timeZone` — same
+ *  two-pass offset correction, so 10 PM stays 10 PM across a DST change. */
+export function zonedTimeUtc(date: string, hour: number, minute: number, timeZone: string): Date {
   const [y, m, d] = date.split("-").map(Number);
-  const naiveUtc = Date.UTC(y, m - 1, d);
+  const naiveUtc = Date.UTC(y, m - 1, d, hour, minute);
   const first = naiveUtc - zoneOffsetMs(timeZone, new Date(naiveUtc));
   const second = naiveUtc - zoneOffsetMs(timeZone, new Date(first));
   return new Date(second);

@@ -14,7 +14,7 @@
  * first does — the lookback bound in scheduler-rules.ts covers the rest.
  */
 import { TOUCHPOINT_LABELS } from "./call-confirmations";
-import { callPayload } from "./event-emitters.server";
+import { callPayload, followUpPayload } from "./event-emitters.server";
 import { FOLLOWUP_LEAD_STATUSES } from "./eod-reports";
 import {
   alreadyFired,
@@ -22,7 +22,7 @@ import {
   fireOnce,
   leadSummary,
   loadNotificationSettings,
-  memberName,
+  pingRoleIds,
   retryFailedFires,
 } from "./notify.server";
 import { buildLeaderboard } from "./sales-leaderboard";
@@ -38,10 +38,12 @@ import {
   DUE_LOOKBACK_MS,
   SCHEDULED_EVENT_TYPES,
   dailyReportWindow,
+  UNCONFIRMED_LOOKAHEAD_MS,
   followUpEventType,
+  followUpLoggedType,
   monthlyReportWindow,
   periodLabel,
-  unconfirmedCallWindow,
+  unconfirmedAlertDue,
   weeklyReportWindow,
 } from "./scheduler-rules";
 import type { NotificationSettingsT } from "./workspace-settings.functions";
@@ -94,6 +96,10 @@ export async function runSchedulerTick(now: Date = new Date()) {
 
     if (types.has("call.unconfirmed"))
       await run("call.unconfirmed", () => fireUnconfirmed(orgId, settings, now));
+    // Logged before due, so a callback saved already overdue still posts
+    // its details first and the "CALL THEM ASAP" can link to them.
+    if (types.has("callback.logged"))
+      await run("callback.logged", () => fireCallbacksLogged(orgId, settings, now));
     if (types.has("callback.due"))
       await run("callback.due", () => fireCallbacksDue(orgId, settings, now));
     if (types.has("followup.short_term_due") || types.has("followup.long_term_due"))
@@ -160,25 +166,47 @@ export async function runSchedulerTick(now: Date = new Date()) {
 
 /* ------------------------------------------------------------------ */
 
+/**
+ * The #calls-unconfirmed schedule (scheduler-rules.ts): each still-unconfirmed
+ * call gets up to five alerts, each fired once.
+ */
 async function fireUnconfirmed(orgId: string, settings: NotificationSettingsT, now: Date) {
   const tp = settings.confirmTouchpoint;
-  const { fromIso, toIso } = unconfirmedCallWindow(tp, now);
   const { data: calls, error } = await db
     .from("calls")
-    .select("id, scheduled_for, cancelled, status")
+    .select("id, scheduled_for, created_at, cancelled, status")
     .eq("org_id", orgId)
     .eq("status", "booked")
-    .gte("scheduled_for", fromIso)
-    .lte("scheduled_for", toIso);
+    .gt("scheduled_for", now.toISOString())
+    .lte("scheduled_for", new Date(now.getTime() + UNCONFIRMED_LOOKAHEAD_MS).toISOString());
   if (error) throw new Error(error.message);
-  const live = (
-    (calls ?? []) as Array<{ id: string; scheduled_for: string; cancelled: boolean | null }>
-  ).filter((c) => !c.cancelled);
-  if (!live.length) return 0;
 
-  const keyOf = (c: { id: string; scheduled_for: string }) => `${c.id}:${c.scheduled_for}`;
-  const done = await alreadyFired(orgId, "call.unconfirmed", live.map(keyOf));
-  const fresh = live.filter((c) => !done.has(keyOf(c)));
+  type Due = {
+    id: string;
+    scheduled_for: string;
+    alert: NonNullable<ReturnType<typeof unconfirmedAlertDue>>;
+  };
+  const due: Due[] = [];
+  for (const c of (calls ?? []) as Array<{
+    id: string;
+    scheduled_for: string;
+    created_at: string | null;
+    cancelled: boolean | null;
+  }>) {
+    if (c.cancelled) continue;
+    const alert = unconfirmedAlertDue(
+      new Date(c.scheduled_for),
+      c.created_at ? new Date(c.created_at) : null,
+      settings.timeZone,
+      now,
+    );
+    if (alert) due.push({ id: c.id, scheduled_for: c.scheduled_for, alert });
+  }
+  if (!due.length) return 0;
+
+  const keyOf = (c: Due) => `${c.id}:${c.scheduled_for}:${c.alert.n}`;
+  const done = await alreadyFired(orgId, "call.unconfirmed", due.map(keyOf));
+  const fresh = due.filter((c) => !done.has(keyOf(c)));
   if (!fresh.length) return 0;
 
   const { data: confs } = await db
@@ -195,6 +223,7 @@ async function fireUnconfirmed(orgId: string, settings: NotificationSettingsT, n
   let n = 0;
   for (const c of fresh) {
     const conf = byCall.get(c.id);
+    // Confirmed: the schedule stops.
     if (conf?.[`${tp}_sent_at`]) continue;
     if (conf?.overall_status === "cancelled" || conf?.overall_status === "rescheduled") continue;
     const built = await callPayload(orgId, c.id);
@@ -206,6 +235,8 @@ async function fireUnconfirmed(orgId: string, settings: NotificationSettingsT, n
       { type: "call", id: c.id },
       {
         ...built.payload,
+        alert_number: c.alert.n,
+        ping_role_ids: pingRoleIds(settings, c.alert.pings),
         touchpoint: tp,
         touchpoint_label: TOUCHPOINT_LABELS[tp],
         time_zone: settings.timeZone || null,
@@ -216,10 +247,70 @@ async function fireUnconfirmed(orgId: string, settings: NotificationSettingsT, n
   return n;
 }
 
+type CallbackItem = {
+  id: string;
+  entity_id: string | null;
+  owner_id: string | null;
+  due_at: string;
+  next_action: string | null;
+  payload: { lead_name?: string } | null;
+};
+const CALLBACK_COLS = "id, entity_id, owner_id, due_at, next_action, payload, state";
+/** One logged/due pair per callback per due time: re-logging a callback for
+ *  a new time posts again, and its "CALL THEM ASAP" links the new post. */
+const callbackKey = (it: CallbackItem) => `${it.id}:${it.due_at}`;
+
+async function callbackPayload(orgId: string, it: CallbackItem, settings: NotificationSettingsT) {
+  const lead = await leadSummary(orgId, { leadId: it.entity_id });
+  return {
+    callback_id: it.id,
+    lead_id: lead.id,
+    lead: { ...lead, full_name: lead.full_name ?? it.payload?.lead_name ?? null },
+    lead_name: it.payload?.lead_name ?? null,
+    due_at: it.due_at,
+    next_action: it.next_action,
+    time_zone: settings.timeZone || null,
+  };
+}
+
+/**
+ * Callbacks saved since the last ticks: posted to #setter-logged-call-backs
+ * when logged, not when due. Bounded to a day of saves so the first run does
+ * not replay every callback ever logged.
+ */
+async function fireCallbacksLogged(orgId: string, settings: NotificationSettingsT, now: Date) {
+  const since = new Date(now.getTime() - DUE_LOOKBACK_MS).toISOString();
+  const { data: items, error } = await db
+    .from("operational_work_items")
+    .select(CALLBACK_COLS)
+    .eq("org_id", orgId)
+    .eq("entity_type", "dialer_callback")
+    .neq("state", "completed")
+    .not("due_at", "is", null)
+    .or(`created_at.gte.${since},updated_at.gte.${since}`);
+  if (error) throw new Error(error.message);
+  const list = (items ?? []) as CallbackItem[];
+  const done = await alreadyFired(orgId, "callback.logged", list.map(callbackKey));
+  let n = 0;
+  for (const it of list) {
+    if (done.has(callbackKey(it))) continue;
+    const sent = await fireOnce(
+      orgId,
+      "callback.logged",
+      callbackKey(it),
+      { type: "operational_work_item", id: it.id },
+      await callbackPayload(orgId, it, settings),
+    );
+    if (sent) n += 1;
+  }
+  return n;
+}
+
+/** At the due time: "CALL THEM ASAP @Setter", linking the logged message. */
 async function fireCallbacksDue(orgId: string, settings: NotificationSettingsT, now: Date) {
   const { data: items, error } = await db
     .from("operational_work_items")
-    .select("id, entity_id, owner_id, due_at, next_action, payload, state")
+    .select(CALLBACK_COLS)
     .eq("org_id", orgId)
     .eq("entity_type", "dialer_callback")
     .neq("state", "completed")
@@ -227,39 +318,21 @@ async function fireCallbacksDue(orgId: string, settings: NotificationSettingsT, 
     .gte("due_at", new Date(now.getTime() - DUE_LOOKBACK_MS).toISOString());
   if (error) throw new Error(error.message);
 
-  type Item = {
-    id: string;
-    entity_id: string | null;
-    owner_id: string | null;
-    due_at: string;
-    next_action: string | null;
-    payload: { lead_name?: string } | null;
-  };
-  const list = (items ?? []) as Item[];
-  const keyOf = (it: Item) => `${it.id}:${it.due_at}`;
-  const done = await alreadyFired(orgId, "callback.due", list.map(keyOf));
+  const list = (items ?? []) as CallbackItem[];
+  const done = await alreadyFired(orgId, "callback.due", list.map(callbackKey));
 
   let n = 0;
   for (const it of list) {
-    if (done.has(keyOf(it))) continue;
-    const [lead, owner] = await Promise.all([
-      leadSummary(orgId, { leadId: it.entity_id }),
-      memberName(orgId, it.owner_id),
-    ]);
+    if (done.has(callbackKey(it))) continue;
     const sent = await fireOnce(
       orgId,
       "callback.due",
-      keyOf(it),
+      callbackKey(it),
       { type: "operational_work_item", id: it.id },
       {
-        callback_id: it.id,
-        lead_id: lead.id,
-        lead: { ...lead, full_name: lead.full_name ?? it.payload?.lead_name ?? null },
-        lead_name: it.payload?.lead_name ?? null,
-        due_at: it.due_at,
-        next_action: it.next_action,
-        owner_name: owner,
-        time_zone: settings.timeZone || null,
+        ...(await callbackPayload(orgId, it, settings)),
+        ping_role_ids: pingRoleIds(settings, ["setter"]),
+        reply_to: { event_type: "callback.logged", fire_key: callbackKey(it) },
       },
     );
     if (sent) n += 1;
@@ -329,23 +402,17 @@ async function fireFollowUpsDue(
       leadId: c.lead_id as string | null,
       email: c.lead_email as string | null,
     });
+    // "FOLLOW UP ASAP @Closer", linking the message posted when the closer
+    // logged it (event-emitters.server.ts).
     const sent = await fireOnce(
       orgId,
       type,
       keyOf(c),
       { type: "call", id: String(c.id) },
       {
-        call_id: c.id,
-        lead_id: lead.id,
-        lead,
-        lead_email: c.lead_email,
-        closer_name: c.closer_name,
-        requested_followup_at: c.requested_followup_at,
-        followup_amount_pitched_cents: c.followup_amount_pitched_cents,
-        followup_reason: c.followup_reason_other || c.followup_reason,
-        followup_notes: c.followup_notes,
-        currency: c.original_currency,
-        time_zone: settings.timeZone || null,
+        ...followUpPayload(c, lead, settings.timeZone),
+        ping_role_ids: pingRoleIds(settings, ["closer"]),
+        reply_to: { event_type: followUpLoggedType(type), fire_key: keyOf(c) },
       },
     );
     if (sent) n += 1;

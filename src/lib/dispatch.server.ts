@@ -1,7 +1,12 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { webhookChannelFor } from "./event-catalog";
+import { discordIdentityFor, webhookChannelFor, withWait } from "./event-catalog";
 import { formatDiscordMessage } from "./discord-format";
 import type { DispatchOutcome, DeliveryResult } from "./delivery-retry";
+
+// scheduled_event_fires.delivered_messages and the bot_* columns are ahead of
+// the generated types.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const untyped = supabaseAdmin as any;
 
 /**
  * Base URL for "Open in AscendOS" links. APP_URL wins when set; otherwise
@@ -23,6 +28,70 @@ interface SubRow {
   category: string | null;
   active: boolean;
   mention_role_ids: string[] | null;
+  bot_name: string | null;
+  bot_avatar_url: string | null;
+}
+
+type PostedMessage = { message_id: string; channel_id: string | null; guild_id?: string | null };
+
+/**
+ * The Discord link to the message an earlier fire posted, for the
+ * subscription about to post now — its own message when it posted one,
+ * otherwise any message that fire left. Webhooks cannot send a native reply,
+ * so the follow-up links the original instead.
+ *
+ * The webhook's execute response has no guild id, and a message link needs
+ * one, so it is read from the webhook itself (GET on the webhook URL, which
+ * returns its guild and channel) and only when a link is actually built.
+ */
+async function replyLinkResolver(orgId: string, replyTo: unknown) {
+  const ref = (replyTo ?? null) as { event_type?: string; fire_key?: string } | null;
+  if (!ref?.event_type || !ref.fire_key) return async () => null;
+  const { data } = await untyped
+    .from("scheduled_event_fires")
+    .select("delivered_messages")
+    .eq("org_id", orgId)
+    .eq("event_type", ref.event_type)
+    .eq("fire_key", ref.fire_key)
+    .maybeSingle();
+  const posted = (data?.delivered_messages ?? {}) as Record<string, PostedMessage>;
+  const entries = Object.entries(posted).filter(([, m]) => m?.message_id);
+  if (!entries.length) return async () => null;
+
+  const { data: subs } = await supabaseAdmin
+    .from("webhook_subscriptions")
+    .select("id, target_url")
+    .in(
+      "id",
+      entries.map(([id]) => id),
+    );
+  const urlOf = new Map(
+    ((subs ?? []) as Array<{ id: string; target_url: string }>).map((r) => [r.id, r.target_url]),
+  );
+  const guildCache = new Map<string, Promise<string | null>>();
+  const guildOf = (subId: string, known?: string | null) => {
+    if (known) return Promise.resolve(known);
+    const url = urlOf.get(subId);
+    if (!url) return Promise.resolve(null);
+    if (!guildCache.has(url))
+      guildCache.set(
+        url,
+        fetch(url)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((w: { guild_id?: string } | null) => w?.guild_id ?? null)
+          .catch(() => null),
+      );
+    return guildCache.get(url)!;
+  };
+
+  return async (subscriptionId: string): Promise<string | null> => {
+    const [subId, msg] = entries.find(([id]) => id === subscriptionId) ?? entries[0];
+    if (!msg.channel_id) return null;
+    const guild = await guildOf(subId, msg.guild_id);
+    return guild
+      ? `https://discord.com/channels/${guild}/${msg.channel_id}/${msg.message_id}`
+      : null;
+  };
 }
 
 /**
@@ -41,9 +110,11 @@ export async function dispatchEvent(
     onlySubscriptionIds?: string[] | null;
   } = {},
 ): Promise<DispatchOutcome> {
-  const { data: subs, error: subsError } = await supabaseAdmin
+  const { data: subs, error: subsError } = await untyped
     .from("webhook_subscriptions")
-    .select("id, target_url, channel, event_types, category, active, mention_role_ids")
+    .select(
+      "id, target_url, channel, event_types, category, active, mention_role_ids, bot_name, bot_avatar_url",
+    )
     .eq("org_id", orgId)
     .eq("active", true);
 
@@ -87,6 +158,15 @@ export async function dispatchEvent(
   );
   if (!matching.length) return { lookupFailed: false, deliveries: [] };
 
+  // Pings the message decides itself (resolved from the workspace's role
+  // settings when it was fired), and the earlier message it follows up on.
+  const extraRoleIds = Array.isArray(payload.ping_role_ids)
+    ? (payload.ping_role_ids as unknown[]).map(String)
+    : [];
+  const replyLinkFor = await replyLinkResolver(orgId, payload.reply_to).catch(
+    () => async () => null,
+  );
+
   const jsonBody = JSON.stringify({
     event_type: eventType,
     timestamp: new Date().toISOString(),
@@ -106,21 +186,35 @@ export async function dispatchEvent(
         // Labelled lines built from resolved fields. The old body was the
         // payload as a JSON block, which spent its whole budget on raw
         // answers and never reached a name. See discord-format.ts.
+        const identity = isDiscord ? discordIdentityFor(eventType, s) : null;
         const requestBody = isDiscord
           ? JSON.stringify(
               formatDiscordMessage(eventType, payload, {
                 appUrl: appUrl(),
                 mentionRoleIds: s.mention_role_ids ?? [],
+                extraRoleIds,
+                username: identity?.username ?? null,
+                avatarUrl: identity?.avatar_url || null,
+                replyToUrl: await replyLinkFor(s.id),
               }),
             )
           : jsonBody;
 
-        const res = await fetch(s.target_url, {
+        const res = await fetch(isDiscord ? withWait(s.target_url) : s.target_url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: requestBody,
         });
         const respText = await res.text().catch(() => "");
+        let posted: { messageId: string; channelId: string | null } | null = null;
+        if (isDiscord && res.ok) {
+          try {
+            const m = JSON.parse(respText) as { id?: string; channel_id?: string };
+            if (m.id) posted = { messageId: m.id, channelId: m.channel_id ?? null };
+          } catch {
+            posted = null;
+          }
+        }
         await supabaseAdmin
           .from("webhook_deliveries")
           .insert({
@@ -135,7 +229,12 @@ export async function dispatchEvent(
             () => {},
             () => {},
           );
-        return { subscriptionId: s.id, ok: res.ok, status: res.status };
+        return {
+          subscriptionId: s.id,
+          ok: res.ok,
+          status: res.status,
+          ...(posted ?? {}),
+        };
       } catch (err) {
         await supabaseAdmin
           .from("webhook_deliveries")

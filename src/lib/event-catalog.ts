@@ -102,6 +102,24 @@ export const DISPATCHED_EVENTS: EventCatalogEntry[] = [
     emittedBy: "weekly-report.server.ts",
   },
   {
+    type: "call.booked",
+    label: "Call booked",
+    dispatched: true,
+    emittedBy: "api/public/calendly.ts (invitee.created, not a reschedule)",
+  },
+  {
+    type: "call.cancelled",
+    label: "Call cancelled",
+    dispatched: true,
+    emittedBy: "api/public/calendly.ts (invitee.canceled, not a reschedule)",
+  },
+  {
+    type: "call.rescheduled",
+    label: "Call rescheduled",
+    dispatched: true,
+    emittedBy: "api/public/calendly.ts (invitee.created replacing an earlier booking)",
+  },
+  {
     type: "call.confirmed",
     label: "Call confirmed",
     dispatched: true,
@@ -124,6 +142,24 @@ export const DISPATCHED_EVENTS: EventCatalogEntry[] = [
     label: "Setter EOD report submitted",
     dispatched: true,
     emittedBy: "event-emitters.server.ts",
+  },
+  {
+    type: "callback.logged",
+    label: "Dialer callback logged",
+    dispatched: true,
+    emittedBy: "scheduler.server.ts (within a minute of the callback being saved)",
+  },
+  {
+    type: "followup.short_term_logged",
+    label: "Short-term follow-up logged",
+    dispatched: true,
+    emittedBy: "event-emitters.server.ts (closer post-call form)",
+  },
+  {
+    type: "followup.long_term_logged",
+    label: "Long-term follow-up logged",
+    dispatched: true,
+    emittedBy: "event-emitters.server.ts (closer post-call form)",
   },
   {
     type: "callback.due",
@@ -255,6 +291,65 @@ export function undeliverableEventTypes(types: readonly string[] | null | undefi
 }
 
 /* ------------------------------------------------------------------ */
+/* Who a Discord message posts as                                      */
+/* ------------------------------------------------------------------ */
+
+/** Twemoji 15.1 PNG for a codepoint, e.g. "1f4dd" → 📝. */
+export const twemojiUrl = (code: string) =>
+  `https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/${code}.png`;
+
+/**
+ * The bot name and icon each event posts under in Discord, per the channel
+ * spec (CareerAiAccelerator/06-ops/discord-rework-spec.md). The name says
+ * what the message is, which is why the messages carry no title line.
+ *
+ * A subscription's own bot_name / bot_avatar_url override these.
+ */
+export const DISCORD_BOT_IDENTITIES: Record<string, { name: string; emoji: string }> = {
+  "lead.application_submitted": { name: "NEW APPLICANT", emoji: "1f4dd" },
+  "call.booked": { name: "CALL BOOKED", emoji: "1f4c5" },
+  "call.confirmed": { name: "CALL CONFIRMED", emoji: "2705" },
+  "call.unconfirmed": { name: "UNCONFIRMED CALL", emoji: "26a0" },
+  "call.cancelled": { name: "CALL CANCELLED", emoji: "274c" },
+  "call.rescheduled": { name: "CALL RESCHEDULED", emoji: "1f504" },
+  "callback.logged": { name: "CALL BACK", emoji: "1f4de" },
+  "callback.due": { name: "CALL BACK", emoji: "1f4de" },
+  "followup.long_term_logged": { name: "LONG-TERM FOLLOW-UP", emoji: "1f5d3" },
+  "followup.long_term_due": { name: "LONG-TERM FOLLOW-UP", emoji: "1f5d3" },
+  "followup.short_term_logged": { name: "SHORT-TERM FOLLOW-UP", emoji: "23f0" },
+  "followup.short_term_due": { name: "SHORT-TERM FOLLOW-UP", emoji: "23f0" },
+  "payment.collected": { name: "NEW PAYMENT", emoji: "1f4b0" },
+  "payment.failed": { name: "PAYMENT FAILED", emoji: "1f6a8" },
+  "closer.post_call_submitted": { name: "POST-CALL NOTES", emoji: "1f5d2" },
+  "setter.eod_submitted": { name: "SETTER EOD", emoji: "1f4cb" },
+  "report.daily_sales": { name: "DAILY REPORT", emoji: "1f4ca" },
+  "report.weekly_sales": { name: "WEEKLY REPORT", emoji: "1f4c8" },
+  "content.schedule_daily": { name: "CONTENT SCHEDULE", emoji: "1f4c6" },
+  "content.ready_to_post.short_form": { name: "SHORT-FORM READY", emoji: "1f3ac" },
+  "content.ready_to_post.long_form": { name: "LONG-FORM READY", emoji: "1f3a5" },
+  "report.top_sources_daily": { name: "TOP SOURCES", emoji: "1f3c6" },
+  "report.top_sources_weekly": { name: "TOP SOURCES", emoji: "1f3c6" },
+  "report.top_sources_monthly": { name: "TOP SOURCES", emoji: "1f3c6" },
+};
+
+/**
+ * The name and icon to post `eventType` under: the subscription's own when
+ * set, otherwise the event's default, otherwise none (Discord then uses the
+ * webhook's configured name, and the message keeps its title line).
+ */
+export function discordIdentityFor(
+  eventType: string,
+  override?: { bot_name?: string | null; bot_avatar_url?: string | null } | null,
+): { username: string; avatar_url: string } | null {
+  const def = DISCORD_BOT_IDENTITIES[eventType];
+  // Discord rejects usernames over 80 characters or containing "discord".
+  const name = (override?.bot_name ?? "").trim().slice(0, 80) || def?.name || "";
+  if (!name || /discord/i.test(name)) return null;
+  const avatar = (override?.bot_avatar_url ?? "").trim() || (def ? twemojiUrl(def.emoji) : "");
+  return { username: name, avatar_url: avatar };
+}
+
+/* ------------------------------------------------------------------ */
 /* Showing a webhook target without leaking it                         */
 /* ------------------------------------------------------------------ */
 
@@ -335,4 +430,17 @@ export function webhookChannelFor(
     if (host === "hooks.slack.com") return "slack";
   }
   return (storedChannel ?? "").trim() || "slack";
+}
+
+/** A Discord webhook URL with `wait=true`, so Discord answers with the
+ *  message it created (its id is what a later "reply" links to) instead of
+ *  an empty 204. Keeps any query already there, e.g. `thread_id`. */
+export function withWait(targetUrl: string): string {
+  try {
+    const u = new URL(targetUrl);
+    u.searchParams.set("wait", "true");
+    return u.toString();
+  } catch {
+    return targetUrl;
+  }
 }

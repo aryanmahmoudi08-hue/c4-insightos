@@ -43,6 +43,7 @@ import { getOrCreateIngestToken, rotateIngestToken } from "@/lib/ingest.function
 import {
   DISPATCHED_EVENTS,
   STREAM_ONLY_EVENTS,
+  discordIdentityFor,
   maskWebhookUrl,
   undeliverableEventTypes,
   webhookChannelFor,
@@ -212,6 +213,10 @@ function EventsBus() {
       if (!event_types.length) throw new Error("Pick at least one event type");
       const target_url = String(f.get("target_url") || "");
       const mention_role_ids = parseRoleIds(String(f.get("mention_role_ids") || ""));
+      const bot_name = String(f.get("bot_name") || "").trim() || null;
+      const bot_avatar_url = String(f.get("bot_avatar_url") || "").trim() || null;
+      if (bot_avatar_url && !/^https:\/\//i.test(bot_avatar_url))
+        throw new Error("The bot icon must be an https:// image URL");
       // mention_role_ids is ahead of the generated types (20261113090000).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase as any).from("webhook_subscriptions").insert({
@@ -225,6 +230,8 @@ function EventsBus() {
         signing_secret: String(f.get("secret") || "") || null,
         event_types,
         mention_role_ids,
+        bot_name,
+        bot_avatar_url,
         active: true,
       });
       if (error) throw error;
@@ -453,6 +460,27 @@ function EventsBus() {
                           right-click a role → Copy Role ID (needs Developer Mode). Each message
                           mentions them and they get notified.
                         </div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label>Bot name (optional)</Label>
+                          <Input
+                            name="bot_name"
+                            maxLength={80}
+                            placeholder={
+                              discordIdentityFor(draftTypes[0] ?? "")?.username ??
+                              "e.g. CALL BOOKED"
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Bot icon URL (optional)</Label>
+                          <Input name="bot_avatar_url" type="url" placeholder="https://…png" />
+                        </div>
+                      </div>
+                      <div className="text-3xs text-muted-foreground">
+                        Discord only. Left empty, each event posts under its own name and icon (e.g.
+                        CALL BOOKED with 📅), so you rarely need these.
                       </div>
                       <div className="space-y-1.5">
                         <Label>Events to send</Label>

@@ -70,6 +70,12 @@ export type CalendlyInvitee = {
   old_invitee?: string | null;
   new_invitee?: string | null;
   no_show?: unknown;
+  /** Set on a canceled invitee: who cancelled, and the reason they typed. */
+  cancellation?: {
+    canceled_by?: string | null;
+    reason?: string | null;
+    canceler_type?: string | null;
+  } | null;
   tracking?: {
     utm_source?: string | null;
     utm_medium?: string | null;

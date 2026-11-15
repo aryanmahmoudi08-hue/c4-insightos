@@ -16,7 +16,29 @@
 
 export const MAX_DELIVERY_ATTEMPTS = 5;
 
-export type DeliveryResult = { subscriptionId: string; ok: boolean; status: number };
+export type DeliveryResult = {
+  subscriptionId: string;
+  ok: boolean;
+  status: number;
+  /** The Discord message the delivery created, when the target said. */
+  messageId?: string;
+  channelId?: string | null;
+};
+
+/** The messages an attempt posted, merged over what earlier attempts posted,
+ *  keyed by subscription — what a later follow-up links back to. */
+export function mergePostedMessages(
+  existing: Record<string, unknown> | null | undefined,
+  outcome: DispatchOutcome,
+): Record<string, { message_id: string; channel_id: string | null }> {
+  const out = {
+    ...((existing ?? {}) as Record<string, { message_id: string; channel_id: string | null }>),
+  };
+  for (const d of outcome.deliveries)
+    if (d.ok && d.messageId)
+      out[d.subscriptionId] = { message_id: d.messageId, channel_id: d.channelId ?? null };
+  return out;
+}
 
 export type DispatchOutcome = {
   /** The subscription lookup itself failed, so nothing was attempted. */

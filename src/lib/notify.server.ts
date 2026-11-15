@@ -7,8 +7,10 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { dispatchEvent } from "./dispatch.server";
 import { escapeLike } from "./sql-like";
+import { LEAD_CARD_COLUMNS, leadCardFrom, type LeadCard } from "./lead-card";
 import {
   MAX_DELIVERY_ATTEMPTS,
+  mergePostedMessages,
   retryDelayMs,
   settleAttempt,
   type DispatchOutcome,
@@ -67,11 +69,21 @@ export async function emitEvent(
   }
 }
 
-async function settle(id: string, outcome: DispatchOutcome, attempts: number) {
+async function settle(
+  id: string,
+  outcome: DispatchOutcome,
+  attempts: number,
+  postedBefore: Record<string, unknown> | null = null,
+) {
   const { status, retrySubscriptionIds } = settleAttempt(outcome, attempts);
+  const delivered = mergePostedMessages(postedBefore, outcome);
   await db
     .from("scheduled_event_fires")
-    .update({ status, failed_subscription_ids: retrySubscriptionIds })
+    .update({
+      status,
+      failed_subscription_ids: retrySubscriptionIds,
+      ...(Object.keys(delivered).length ? { delivered_messages: delivered } : {}),
+    })
     .eq("id", id)
     .then(
       () => {},
@@ -128,7 +140,7 @@ export async function retryFailedFires(now: Date = new Date()) {
   const { data, error } = await db
     .from("scheduled_event_fires")
     .select(
-      "id, org_id, event_type, attempts, last_attempt_at, payload, failed_subscription_ids, status",
+      "id, org_id, event_type, attempts, last_attempt_at, payload, failed_subscription_ids, status, delivered_messages",
     )
     .in("status", ["failed", "pending"])
     .lt("attempts", MAX_DELIVERY_ATTEMPTS + 1)
@@ -146,6 +158,7 @@ export async function retryFailedFires(now: Date = new Date()) {
     payload: Record<string, unknown> | null;
     failed_subscription_ids: string[] | null;
     status: "failed" | "pending";
+    delivered_messages: Record<string, unknown> | null;
   }>) {
     const last = new Date(row.last_attempt_at).getTime();
     // A pending claim is normally a send in progress; only a stale one is
@@ -176,7 +189,7 @@ export async function retryFailedFires(now: Date = new Date()) {
       // which deliveries landed. Resending to all is the only safe reading.
       onlySubscriptionIds: row.status === "pending" ? null : row.failed_subscription_ids,
     }).catch(() => ({ lookupFailed: true, deliveries: [] }) as DispatchOutcome);
-    await settle(row.id, outcome, nextAttempts);
+    await settle(row.id, outcome, nextAttempts, row.delivered_messages);
     retried += 1;
   }
   return retried;
@@ -190,40 +203,46 @@ export async function loadNotificationSettings(orgId: string): Promise<Notificat
   return parseStoredSettings((data?.settings ?? {}) as Record<string, unknown>).notifications;
 }
 
-export type LeadSummary = {
-  id: string | null;
-  full_name: string | null;
-  email: string | null;
-  phone: string | null;
-};
+export type LeadSummary = LeadCard;
 
-/** The lead behind an event, by id or failing that by email. */
+/** The lead behind an event, by id or failing that by email — with the
+ *  application answers its Discord message shows (lead-card.ts). */
 export async function leadSummary(
   orgId: string,
   ref: { leadId?: string | null; email?: string | null },
 ): Promise<LeadSummary> {
-  const cols = "id, full_name, email, phone";
   if (ref.leadId) {
     const { data } = await db
       .from("leads")
-      .select(cols)
+      .select(LEAD_CARD_COLUMNS)
       .eq("org_id", orgId)
       .eq("id", ref.leadId)
       .maybeSingle();
-    if (data) return data;
+    if (data) return leadCardFrom(data);
   }
   if (ref.email) {
     const { data } = await db
       .from("leads")
-      .select(cols)
+      .select(LEAD_CARD_COLUMNS)
       .eq("org_id", orgId)
       .ilike("email", escapeLike(ref.email.trim()))
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (data) return data;
+    if (data) return leadCardFrom(data);
   }
-  return { id: ref.leadId ?? null, full_name: null, email: ref.email ?? null, phone: null };
+  return { ...leadCardFrom(null), id: ref.leadId ?? null, email: ref.email ?? null };
+}
+
+/** The workspace's Discord role IDs for the given roles, for a message that
+ *  decides its own pings. Unset roles are skipped. */
+export function pingRoleIds(
+  settings: NotificationSettingsT,
+  roles: ReadonlyArray<"setter" | "closer">,
+): string[] {
+  return roles
+    .map((r) => (r === "setter" ? settings.discordSetterRoleId : settings.discordCloserRoleId))
+    .filter((id): id is string => !!id && /^\d+$/.test(id));
 }
 
 /** A team member's display name from their auth user id. */
