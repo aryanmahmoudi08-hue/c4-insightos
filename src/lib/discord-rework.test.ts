@@ -39,7 +39,9 @@ const LEAD = {
 };
 
 /** The labels in a message, in the order they appear. */
-const labels = (content: string) => [...content.matchAll(/\*\*([^*]+):\*\*/g)].map((m) => m[1]);
+/** The labels in a message, bold or plain, in the order they appear. */
+const labels = (content: string) =>
+  [...content.matchAll(/^(?:\*\*)?([A-Z][^:*\n]*):(?:\*\*)?(?: |$)/gm)].map((m) => m[1]);
 
 describe("bot identity", () => {
   it("defaults every spec channel's event to its bot name and Twemoji icon", () => {
@@ -108,7 +110,7 @@ describe("every lead message ends with a divider and its AscendOS link", () => {
   for (const type of types) {
     it(type, () => {
       const msg = formatDiscordMessage(type, { lead: LEAD, lead_id: "L1" }, { appUrl: APP });
-      expect(msg.content.endsWith(`${DIVIDER}\n[Open in AscendOS](<${APP}/leads?leadId=L1>)`)).toBe(
+      expect(msg.content.endsWith(`\n\n${DIVIDER}\n\n[Open in AscendOS](<${APP}/leads?leadId=L1>)`)).toBe(
         true,
       );
     });
@@ -138,17 +140,17 @@ describe("channel formats, in the spec's order", () => {
       opts,
     );
     expect(labels(msg.content)).toEqual([
-      "Full Name",
+      "Name",
       "Email",
       "Phone",
       "LinkedIn",
       "Qualifies",
       "Role & company",
-      "Current Salary",
-      "Target Salary",
+      "Current salary",
+      "Target salary",
       "Budget",
       "Credit",
-      "Experience (years)",
+      "Experience (Years)",
       "Focus",
       "Situation",
       "Why you, why now",
@@ -171,14 +173,14 @@ describe("channel formats, in the spec's order", () => {
       "Phone",
       "LinkedIn",
       "Source",
-      "Current Salary",
-      "Target Salary",
+      "Current salary",
+      "Target salary",
       "Budget",
       "Credit",
       "Date of Call",
       "Meeting link",
     ]);
-    expect(booked.content).toContain("**Date of Call:** Mon, Nov 16, 3:30 PM EST");
+    expect(booked.content).toContain("Date of Call: Mon, Nov 16, 3:30 PM EST");
     expect(booked.content).toContain("**Source:** instagram · bio · evergreen");
     expect(formatDiscordMessage("call.confirmed", p, opts).content).toBe(booked.content);
   });
@@ -199,7 +201,7 @@ describe("channel formats, in the spec's order", () => {
       "Email",
       "Phone",
       "LinkedIn",
-      "Current Salary",
+      "Current salary",
       "Budget",
       "Credit",
       "Booked via",
@@ -217,7 +219,7 @@ describe("channel formats, in the spec's order", () => {
       opts,
     );
     expect(labels(msg.content).slice(-2)).toEqual(["Date of Call", "Cancellation Reason"]);
-    expect(msg.content).toContain("**Cancellation Reason:** Got a job");
+    expect(msg.content).toContain("Cancellation Reason: Got a job");
   });
 
   it("#calls-rescheduled shows both dates, and the reason only when given", () => {
@@ -230,8 +232,8 @@ describe("channel formats, in the spec's order", () => {
       },
       opts,
     );
-    expect(msg.content).toContain("**New date of call:** Wed, Nov 18, 10:00 AM EST");
-    expect(msg.content).toContain("**Previous date:** Mon, Nov 16, 3:30 PM EST");
+    expect(msg.content).toContain("Date of Call: Wed, Nov 18, 10:00 AM EST");
+    expect(msg.content).toContain("Previous Date of Call: Mon, Nov 16, 3:30 PM EST");
     expect(msg.content).not.toContain("Reason");
   });
 
@@ -245,7 +247,7 @@ describe("channel formats, in the spec's order", () => {
       "Full Name",
       "Email",
       "Phone",
-      "Current Salary",
+      "Current salary",
       "Budget",
       "Credit",
       "Call Back (Date/Time)",
@@ -259,7 +261,7 @@ describe("channel formats, in the spec's order", () => {
       { lead: LEAD, due_at: "2026-11-16T20:30:00Z" },
       { ...opts, extraRoleIds: ["111"], replyToUrl: link },
     );
-    expect(msg.content.startsWith("<@&111> **CALL THEM ASAP**")).toBe(true);
+    expect(msg.content.startsWith("CALL THEM ASAP <@&111>\n")).toBe(true);
     expect(msg.content).toContain(`↪ [Original callback](<${link}>)`);
     // The original carries the details; this one only says who to call.
     expect(msg.content).not.toContain("Budget");
@@ -271,7 +273,7 @@ describe("channel formats, in the spec's order", () => {
       { lead: LEAD, due_at: "2026-11-16T20:30:00Z" },
       opts,
     );
-    expect(msg.content).toContain("**CALL THEM ASAP**");
+    expect(msg.content.startsWith("CALL THEM ASAP\n")).toBe(true);
     expect(msg.content).toContain("**Call Back (Date/Time):** Mon, Nov 16, 3:30 PM EST");
     expect(msg.content).not.toContain("↪");
   });
@@ -296,12 +298,12 @@ describe("channel formats, in the spec's order", () => {
       "Reason",
       "Notes",
     ]);
-    expect(logged.content).toContain("**Due:** Fri, Nov 20, 12:00 PM EST");
+    expect(logged.content).toContain("Due: Fri, Nov 20, 12:00 PM EST");
     const due = formatDiscordMessage("followup.short_term_due", p, {
       ...opts,
       replyToUrl: "https://discord.com/channels/1/2/3",
     });
-    expect(due.content).toContain("**FOLLOW UP ASAP**");
+    expect(due.content.startsWith("FOLLOW UP ASAP")).toBe(true);
     expect(due.content).toContain("Original follow-up");
   });
 

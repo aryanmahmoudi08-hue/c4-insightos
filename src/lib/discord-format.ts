@@ -50,7 +50,11 @@ export type FormatOptions = {
   replyToUrl?: string | null;
 };
 
-type Line = [label: string, value: unknown];
+/** A label and value. `plain` leaves the label unbolded (Aryan's layouts
+ *  bold some labels and not others). */
+type Line = [label: string, value: unknown, plain?: boolean];
+/** A line whose label is not bold. */
+const plain = (label: string, value: unknown): Line => [label, value, true];
 
 /* ------------------------------------------------------------------ */
 /* Small value helpers                                                 */
@@ -131,7 +135,9 @@ type Block =
   | { kind: "lines"; lines: Line[] }
   | { kind: "divider" }
   /** Free text, its own paragraph. The only part cut when space runs out. */
-  | { kind: "long"; label: string; value: unknown }
+  | { kind: "long"; label: string; value: unknown; plain?: boolean }
+  /** A blank line between groups of fields. */
+  | { kind: "gap" }
   /** A preformatted line, e.g. a link to an earlier message. */
   | { kind: "raw"; text: string };
 
@@ -148,13 +154,20 @@ type Body = {
 
 const lines = (...l: Line[]): Block => ({ kind: "lines", lines: l });
 const divider: Block = { kind: "divider" };
-const long = (label: string, value: unknown): Block => ({ kind: "long", label, value });
+const long = (label: string, value: unknown, plainLabel = false): Block => ({
+  kind: "long",
+  label,
+  value,
+  plain: plainLabel,
+});
+const gap: Block = { kind: "gap" };
 
 function renderLines(ls: Line[]): string {
   return ls
-    .map(([label, value]) => {
+    .map(([label, value, isPlain]) => {
       const v = text(value);
-      return v ? `**${label}:** ${v}` : "";
+      if (!v) return "";
+      return isPlain ? `${label}: ${v}` : `**${label}:** ${v}`;
     })
     .filter(Boolean)
     .join("\n");
@@ -172,16 +185,31 @@ export function cleanRoleIds(...lists: Array<readonly unknown[] | null | undefin
 
 function assemble(body: Body, opts: FormatOptions): DiscordMessage {
   const roles = cleanRoleIds(opts.mentionRoleIds, opts.extraRoleIds);
-  const heading = body.headline ? `**${body.headline}**` : opts.username ? "" : `**${body.title}**`;
-  const head = [roles.map((r) => `<@&${r}>`).join(" "), heading].filter(Boolean).join(" ");
+  const pings = roles.map((r) => `<@&${r}>`).join(" ");
+  // A headline reads first and the pings follow it ("CALL THEM ASAP @Setter");
+  // otherwise the pings lead.
+  const head = body.headline
+    ? [body.headline, pings].filter(Boolean).join(" ")
+    : [pings, opts.username ? "" : `**${body.title}**`].filter(Boolean).join(" ");
 
   // Render each block; drop empty ones, then dividers that would sit at the
   // top, next to another divider, or at the bottom (the link adds its own).
-  type Part = { text: string; flex?: { label: string; value: string } };
+  // Parts join with "\n", so an empty part is a blank line. Blank lines
+  // separate groups and sit above and below every divider.
+  type Part = { text: string; flex?: { label: string; value: string; plain?: boolean } };
   const parts: Part[] = [];
+  const last = () => parts[parts.length - 1];
+  const blank = () => {
+    if (parts.length && !(last().text === "" && !last().flex)) parts.push({ text: "" });
+  };
   for (const b of body.blocks) {
     if (b.kind === "divider") {
-      if (parts.length && parts[parts.length - 1].text !== DIVIDER) parts.push({ text: DIVIDER });
+      if (parts.length && last().text !== DIVIDER) {
+        blank();
+        parts.push({ text: DIVIDER }, { text: "" });
+      }
+    } else if (b.kind === "gap") {
+      blank();
     } else if (b.kind === "lines") {
       const t = renderLines(b.lines);
       if (t) parts.push({ text: t });
@@ -189,10 +217,14 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
       if (b.text.trim()) parts.push({ text: b.text.trim() });
     } else {
       const v = text(b.value);
-      if (v) parts.push({ text: "", flex: { label: b.label, value: v } });
+      if (v) {
+        blank();
+        parts.push({ text: "", flex: { label: b.label, value: v, plain: b.plain } });
+      }
     }
   }
-  while (parts.length && parts[parts.length - 1].text === DIVIDER) parts.pop();
+  const isBlank = (p: Part) => p.text === "" && !p.flex;
+  while (parts.length && (last().text === DIVIDER || isBlank(last()))) parts.pop();
 
   const link =
     body.linkPath && opts.appUrl
@@ -201,12 +233,13 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
         // Only this link: Meet, LinkedIn and content URLs still preview.
         `[Open in AscendOS](<${opts.appUrl.replace(/\/+$/, "")}${body.linkPath}>)`
       : "";
-  if (link) parts.push({ text: DIVIDER }, { text: link });
+  if (link) parts.push({ text: "" }, { text: DIVIDER }, { text: "" }, { text: link });
   if (head) parts.unshift({ text: head });
 
   // Only free text gives way when space runs out; the contact details and
   // the link are what someone needs to act, so they are never the part cut.
-  const flexHeader = (f: { label: string }) => `\n**${f.label}:**\n`;
+  const flexHeader = (f: { label: string; plain?: boolean }) =>
+    f.plain ? `${f.label}:\n` : `**${f.label}:**\n`;
   const fixedLen = parts.reduce(
     (n, p, i) => n + (i ? 1 : 0) + (p.flex ? flexHeader(p.flex).length : p.text.length),
     0,
@@ -272,8 +305,8 @@ function leadLines(
 
 /** The application answers a rep sizes a lead up by. */
 function profileLines(lead: Record<string, unknown>, withTarget: boolean): Line[] {
-  const l: Line[] = [["Current Salary", lead.current_salary]];
-  if (withTarget) l.push(["Target Salary", lead.target_salary]);
+  const l: Line[] = [["Current salary", lead.current_salary]];
+  if (withTarget) l.push(["Target salary", lead.target_salary]);
   l.push(["Budget", lead.budget], ["Credit", lead.credit]);
   return l;
 }
@@ -291,20 +324,25 @@ function application(p: Record<string, unknown>): Body {
     title: `New application${text(p.form_title) ? ` — ${text(p.form_title)}` : ""}`,
     blocks: [
       lines(
-        ["Full Name", lead.full_name],
+        ["Name", lead.full_name],
         ["Email", lead.email],
         ["Phone", lead.phone],
         ["LinkedIn", lead.linkedin ?? findLinkedIn(app.answers_by_title, app.raw_answers)],
       ),
       divider,
+      lines(["Qualifies", lead.ticket_tier_label ?? lead.ticket_tier]),
+      gap,
+      lines(["Role & company", app.work_school]),
+      gap,
       lines(
-        ["Qualifies", lead.ticket_tier_label ?? lead.ticket_tier],
-        ["Role & company", app.work_school],
-        ["Current Salary", app.income],
-        ["Target Salary", app.goal],
+        ["Current salary", app.income],
+        ["Target salary", app.goal],
         ["Budget", app.capital],
         ["Credit", app.credit],
-        ["Experience (years)", app.experience],
+      ),
+      gap,
+      lines(
+        ["Experience (Years)", app.experience],
         ["Focus", app.focus],
         ["Situation", app.candidate_fit],
       ),
@@ -320,13 +358,13 @@ function callBooked(title: string, p: Record<string, unknown>, tz: string | null
   return {
     title,
     blocks: [
-      lines(
-        ...leadLines(lead, p),
-        ["Source", sourceOf(lead)],
-        ...profileLines(lead, true),
-        ["Date of Call", when(p.scheduled_for, tz)],
-        ["Meeting link", p.meeting_link],
-      ),
+      lines(...leadLines(lead, p)),
+      gap,
+      lines(["Source", sourceOf(lead)]),
+      gap,
+      lines(...profileLines(lead, true)),
+      gap,
+      lines(plain("Date of Call", when(p.scheduled_for, tz)), plain("Meeting link", p.meeting_link)),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
@@ -337,12 +375,14 @@ function callUnconfirmed(p: Record<string, unknown>, tz: string | null): Body {
   return {
     title: "Call NOT confirmed — someone confirm it now",
     blocks: [
+      lines(...leadLines(lead, p)),
+      gap,
+      lines(...profileLines(lead, false)),
+      gap,
       lines(
-        ...leadLines(lead, p),
-        ...profileLines(lead, false),
-        ["Booked via", p.booked_via],
-        ["Date of Call", when(p.scheduled_for, tz)],
-        ["Meeting link", p.meeting_link],
+        plain("Booked via", p.booked_via),
+        plain("Date of Call", when(p.scheduled_for, tz)),
+        plain("Meeting link", p.meeting_link),
       ),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
@@ -354,11 +394,13 @@ function callCancelled(p: Record<string, unknown>, tz: string | null): Body {
   return {
     title: "Call cancelled",
     blocks: [
+      lines(...leadLines(lead, p)),
+      gap,
+      lines(...profileLines(lead, false)),
+      gap,
       lines(
-        ...leadLines(lead, p),
-        ...profileLines(lead, false),
-        ["Date of Call", when(p.scheduled_for, tz)],
-        ["Cancellation Reason", p.cancellation_reason],
+        plain("Date of Call", when(p.scheduled_for, tz)),
+        plain("Cancellation Reason", p.cancellation_reason),
       ),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
@@ -370,12 +412,14 @@ function callRescheduled(p: Record<string, unknown>, tz: string | null): Body {
   return {
     title: "Call rescheduled",
     blocks: [
+      lines(...leadLines(lead, p)),
+      gap,
+      lines(...profileLines(lead, false)),
+      gap,
       lines(
-        ...leadLines(lead, p),
-        ...profileLines(lead, false),
-        ["New date of call", when(p.scheduled_for, tz)],
-        ["Previous date", when(p.previous_scheduled_for, tz)],
-        ["Reason", p.reschedule_reason],
+        plain("Date of Call", when(p.scheduled_for, tz)),
+        plain("Previous Date of Call", when(p.previous_scheduled_for, tz)),
+        plain("Reschedule Reason", p.reschedule_reason),
       ),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
@@ -464,10 +508,11 @@ function callbackLogged(p: Record<string, unknown>, tz: string | null): Body {
   return {
     title: "Callback logged",
     blocks: [
-      lines(...leadLines(lead, p, false), ...profileLines(lead, false), [
-        "Call Back (Date/Time)",
-        when(p.due_at, tz),
-      ]),
+      lines(...leadLines(lead, p, false)),
+      gap,
+      lines(...profileLines(lead, false)),
+      gap,
+      lines(["Call Back (Date/Time)", when(p.due_at, tz)]),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
@@ -479,20 +524,16 @@ function callbackDue(p: Record<string, unknown>, tz: string | null, opts: Format
   return {
     title: "Callback due now",
     headline: "CALL THEM ASAP",
-    blocks: [
-      lines(["Full Name", lead.full_name ?? p.lead_name], ["Phone", lead.phone]),
-      replyBlock(opts, "Original callback"),
-      // No earlier message to point at (logged before this existed, or its
-      // post failed): carry the details here instead.
-      ...(opts.replyToUrl
-        ? []
-        : [
-            lines(["Email", lead.email], ...profileLines(lead, false), [
-              "Call Back (Date/Time)",
-              when(p.due_at, tz),
-            ]),
-          ]),
-    ],
+    // With an original to point at, just who to call and the link back.
+    // Without one (logged before this existed, or its post failed), carry
+    // the logged message's details here instead.
+    blocks: opts.replyToUrl
+      ? [
+          gap,
+          lines(["Full Name", lead.full_name ?? p.lead_name], ["Phone", lead.phone]),
+          replyBlock(opts, "Original callback"),
+        ]
+      : [gap, ...callbackLogged(p, tz).blocks],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
 }
@@ -501,13 +542,18 @@ function followUpLines(p: Record<string, unknown>, tz: string | null): Block[] {
   const lead = obj(p.lead);
   return [
     lines(
-      ...leadLines(lead, p, false),
-      ["Closer", p.closer_name],
-      ["Due", when(p.requested_followup_at, tz)],
-      ["Amount pitched", money(p.followup_amount_pitched_cents, p.currency)],
-      ["Reason", p.followup_reason],
+      plain("Full Name", lead.full_name ?? p.lead_name ?? p.client_name),
+      plain("Email", lead.email ?? p.lead_email ?? p.email),
+      ["Phone", lead.phone],
     ),
-    long("Notes", p.followup_notes),
+    gap,
+    lines(
+      plain("Closer", p.closer_name),
+      plain("Due", when(p.requested_followup_at, tz)),
+      plain("Amount pitched", money(p.followup_amount_pitched_cents, p.currency)),
+      plain("Reason", p.followup_reason),
+    ),
+    long("Notes", p.followup_notes, true),
   ];
 }
 
@@ -531,11 +577,13 @@ function followUpDue(
   return {
     title: `${term}-term follow-up due`,
     headline: "FOLLOW UP ASAP",
-    blocks: [
-      lines(["Full Name", lead.full_name ?? p.lead_email], ["Phone", lead.phone]),
-      replyBlock(opts, "Original follow-up"),
-      ...(opts.replyToUrl ? [] : followUpLines(p, tz)),
-    ],
+    blocks: opts.replyToUrl
+      ? [
+          gap,
+          lines(plain("Full Name", lead.full_name ?? p.lead_email), ["Phone", lead.phone]),
+          replyBlock(opts, "Original follow-up"),
+        ]
+      : [gap, ...followUpLines(p, tz)],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
 }
@@ -750,14 +798,20 @@ function payment(failed: boolean, p: Record<string, unknown>): Body {
     title: failed ? `Payment FAILED — ${amount || "—"}` : `Payment collected — ${amount || "—"}`,
     blocks: [
       lines(
-        ["Name", lead.full_name ?? p.client_name],
-        ["Email", p.email ?? lead.email],
-        ["Phone", lead.phone],
-        ["Processor", PROCESSOR_LABELS[text(p.processor).toLowerCase()] ?? p.processor],
-        ["Amount", amount ? `${amount}${usd}` : ""],
-        ["Product", p.product ?? p.offer_name],
-        ["Reason", failed ? p.failure_reason : ""],
-        ["Attempt #", failed && Number.isFinite(attempt) && attempt > 0 ? attempt : ""],
+        plain("Name", lead.full_name ?? p.client_name),
+        plain("Email", p.email ?? lead.email),
+        plain("Phone", lead.phone),
+      ),
+      gap,
+      lines(
+        plain("Processor", PROCESSOR_LABELS[text(p.processor).toLowerCase()] ?? p.processor),
+        plain("Amount", amount ? `${amount}${usd}` : ""),
+        plain("Product", p.product ?? p.offer_name),
+      ),
+      gap,
+      lines(
+        plain("Reason", failed ? p.failure_reason : ""),
+        plain("Attempt #", failed && Number.isFinite(attempt) && attempt > 0 ? attempt : ""),
       ),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),

@@ -47,13 +47,13 @@ describe("formatDiscordMessage — application", () => {
   });
 
   it("leads with the things a closer decides on", () => {
-    expect(msg.content).toContain("**Full Name:** Tier Verify");
+    expect(msg.content).toContain("**Name:** Tier Verify");
     expect(msg.content).toContain("**Email:** tier.verify@careeraiaccelerator.com");
     expect(msg.content).toContain("**Phone:** +12015550204");
     expect(msg.content).toContain("**Qualifies:** Mid Ticket");
     expect(msg.content).toContain("**Budget:** $1,500-$3,000");
-    expect(msg.content).toContain("**Current Salary:** $95-120K");
-    expect(msg.content).toContain("**Target Salary:** $130-160K");
+    expect(msg.content).toContain("**Current salary:** $95-120K");
+    expect(msg.content).toContain("**Target salary:** $130-160K");
   });
 
   it("finds LinkedIn by its URL, not by the question's wording", () => {
@@ -126,7 +126,7 @@ describe("link previews", () => {
       "[Open in AscendOS](<https://ascendos-app.vercel.app/leads?leadId=L>)",
     );
     // The meeting link is useful as a preview, so it stays bare.
-    expect(msg.content).toContain("**Meeting link:** https://meet.google.com/abc-defg-hij");
+    expect(msg.content).toContain("Meeting link: https://meet.google.com/abc-defg-hij");
     expect(msg.content).not.toContain("<https://meet.google.com");
   });
 });
@@ -176,7 +176,7 @@ describe("other event shapes", () => {
     );
     expect(msg.content).toContain("**Call confirmed**");
     expect(msg.content).toContain("**Full Name:** Ada Lovelace");
-    expect(msg.content).toMatch(/\*\*Date of Call:\*\* Fri, Nov 13, 3:00 PM EST/);
+    expect(msg.content).toMatch(/Date of Call: Fri, Nov 13, 3:00 PM EST/);
   });
 
   it("renders post-call money as currency, not cents", () => {
@@ -388,12 +388,12 @@ describe("payment messages", () => {
       "Product",
       "Reason",
       "Attempt #",
-    ].map((l) => msg.content.indexOf(`**${l}:**`));
+    ].map((l) => msg.content.indexOf(`\n${l}:`));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((x, y) => x - y)).toEqual(order);
-    expect(msg.content).toContain("**Processor:** Commas (Fanbasis)");
-    expect(msg.content).toContain("**Product:** Career AI Accelerator");
-    expect(msg.content).toContain("**Attempt #:** 2");
+    expect(msg.content).toContain("Processor: Commas (Fanbasis)");
+    expect(msg.content).toContain("Product: Career AI Accelerator");
+    expect(msg.content).toContain("Attempt #: 2");
     expect(msg.content).toContain("(<https://app/leads?leadId=L1>)");
   });
 
@@ -404,7 +404,7 @@ describe("payment messages", () => {
       failure_reason: "x",
       failed_attempt_number: 3,
     });
-    expect(msg.content).toContain("**Processor:** Whop");
+    expect(msg.content).toContain("Processor: Whop");
     expect(msg.content).not.toContain("Reason");
     expect(msg.content).not.toContain("Attempt");
   });
@@ -416,7 +416,7 @@ describe("payment messages", () => {
       currency: "CAD",
       amount_usd_cents: 146000,
     });
-    expect(msg.content).toContain("**Amount:** 2,000 CAD ($1,460)");
+    expect(msg.content).toContain("Amount: 2,000 CAD ($1,460)");
   });
 
   it("leaves out what it does not know rather than printing blanks", () => {
@@ -428,7 +428,7 @@ describe("payment messages", () => {
     });
     expect(msg.content).not.toContain("Product");
     expect(msg.content).not.toContain("Phone");
-    expect(msg.content).toContain("**Processor:** Wise");
+    expect(msg.content).toContain("Processor: Wise");
   });
 });
 
