@@ -25,14 +25,28 @@ import {
   pingRoleIds,
   retryFailedFires,
 } from "./notify.server";
-import { buildLeaderboard } from "./sales-leaderboard";
+import {
+  attachPrevious,
+  buildSalesReport,
+  previousWindow,
+  type CloserCall,
+  type EodRow,
+  type ReportKind,
+  type RosterMember,
+  type SalesReport,
+} from "./sales-report";
 import {
   BOOKING_COLUMNS,
   callsBookedTotal,
   isBooking,
   type BookingRow,
 } from "./call-booking-metrics";
-import { buildSourceBoard, type SourceCall, type SourceLead } from "./source-leaderboard";
+import {
+  buildSourceBoard,
+  type SourceBoard,
+  type SourceCall,
+  type SourceLead,
+} from "./source-leaderboard";
 import { escapeLike } from "./sql-like";
 import {
   DUE_LOOKBACK_MS,
@@ -430,48 +444,61 @@ async function fireFollowUpsDue(
   return n;
 }
 
-async function fireReport(
-  orgId: string,
-  eventType: "report.daily_sales" | "report.weekly_sales" | "report.monthly_sales",
-  w: { from: string; to: string; key: string },
-  settings: NotificationSettingsT,
-) {
-  // Checked first so the queries below do not run every minute between the
-  // send hour and midnight; claimed only once they have succeeded, so a
-  // failed query retries on the next tick instead of losing the day's report.
-  if ((await alreadyFired(orgId, eventType, [w.key])).size) return 0;
+const REPORT_KIND = {
+  "report.daily_sales": "Daily",
+  "report.weekly_sales": "Weekly",
+  "report.monthly_sales": "Monthly",
+} as const;
 
-  const { startIso, endIso } = zonedDayRangeUtc(w.from, w.to, settings.timeZone);
-  const [setters, closers] = await Promise.all([
+/** Everything one sales report window needs, built (sales-report.ts). */
+async function loadSalesWindow(
+  orgId: string,
+  kind: ReportKind,
+  from: string,
+  to: string,
+  timeZone: NotificationSettingsT["timeZone"],
+): Promise<SalesReport> {
+  const { startIso, endIso } = zonedDayRangeUtc(from, to, timeZone);
+  const [eods, closers, roster] = await Promise.all([
     // activity_date is the rep's own local date, so it is compared as a date.
     db
       .from("setter_activity")
       .select(
-        "team_member_name, dials, sets, calls_on_calendar, live_calls, closes, cash_collected_cents, original_currency",
+        "user_id, team_member_name, role, dials, connections, sets, replies, qualified_convos, outbound_dms_sent, calls_on_calendar, closes, cash_collected_cents, total_revenue_cents, original_currency",
       )
       .eq("org_id", orgId)
-      .gte("activity_date", w.from)
-      .lte("activity_date", w.to),
+      .gte("activity_date", from)
+      .lte("activity_date", to),
     // A closer's call row is created when they submit the post-call form, so
-    // creation time inside the local day is "calls they took that day".
+    // creation time inside the window is "calls they took in it".
     db
       .from("calls")
       .select(
-        "closer_name, showed, closed, status, eod_lead_status, cash_collected_cents, original_currency",
+        "closer_name, setter_id, showed, closed, status, eod_lead_status, cash_collected_cents, contract_value_cents, original_currency",
       )
       .eq("org_id", orgId)
       .not("closer_name", "is", null)
       .gte("created_at", startIso)
       .lt("created_at", endIso),
+    db.from("team_members").select("name, role, active").eq("org_id", orgId),
   ]);
-  if (setters.error) throw new Error(setters.error.message);
+  if (eods.error) throw new Error(eods.error.message);
   if (closers.error) throw new Error(closers.error.message);
+  const closerRows = (closers.data ?? []) as CloserCall[];
 
-  const board = buildLeaderboard(setters.data ?? [], closers.data ?? []);
+  // Setter names for calls whose setter filed no EOD in the window.
+  const setterIds = [
+    ...new Set(closerRows.map((c) => c.setter_id).filter((x): x is string => !!x)),
+  ];
+  const setterNames = new Map<string, string>();
+  if (setterIds.length) {
+    const { data } = await db.from("profiles").select("id, display_name").in("id", setterIds);
+    for (const p of (data ?? []) as Array<{ id: string; display_name: string | null }>)
+      if (p.display_name) setterNames.set(p.id, p.display_name);
+  }
 
-  // The team line carries both call numbers (call-booking-metrics.ts):
-  // bookings made in the period — synced bookings, or what setters reported
-  // where larger — and calls on the calendar in it.
+  // Bookings made in the window (call-booking-metrics.ts) and calls on the
+  // calendar in it.
   const [madeRes, scheduledRes] = await Promise.all([
     db
       .from("calls")
@@ -489,9 +516,58 @@ async function fireReport(
   ]);
   if (madeRes.error) throw new Error(madeRes.error.message);
   if (scheduledRes.error) throw new Error(scheduledRes.error.message);
+  const eodRows = (eods.data ?? []) as EodRow[];
   const synced = ((madeRes.data ?? []) as BookingRow[]).filter(isBooking).length;
-  board.team.booked = callsBookedTotal(synced, board.setter_totals.booked ?? 0);
-  board.team.onCalendar = scheduledRes.count ?? 0;
+  const setterBooked = eodRows.reduce((t, r) => t + (Number(r.calls_on_calendar) || 0), 0);
+
+  return buildSalesReport({
+    kind,
+    eodRows,
+    closerCalls: closerRows,
+    setterNames,
+    roster: (roster.data ?? []) as RosterMember[],
+    booked: callsBookedTotal(synced, setterBooked),
+    onCalendar: scheduledRes.count ?? 0,
+  });
+}
+
+async function fireReport(
+  orgId: string,
+  eventType: "report.daily_sales" | "report.weekly_sales" | "report.monthly_sales",
+  w: { from: string; to: string; key: string },
+  settings: NotificationSettingsT,
+) {
+  // Checked first so the queries below do not run every minute between the
+  // send hour and midnight; claimed only once they have succeeded, so a
+  // failed query retries on the next tick instead of losing the report.
+  if ((await alreadyFired(orgId, eventType, [w.key])).size) return 0;
+
+  const kind = REPORT_KIND[eventType];
+  let report = await loadSalesWindow(orgId, kind, w.from, w.to, settings.timeZone);
+
+  if (kind !== "Daily") {
+    const p = previousWindow(kind, w.from);
+    const previous = await loadSalesWindow(orgId, kind, p.from, p.to, settings.timeZone);
+    report = attachPrevious(report, previous);
+    const sources = await loadSourceBoard(orgId, w.from, w.to, settings.timeZone);
+    const top = sources.sources[0];
+    report.top_source = top ? { name: top.name, leads: top.leads, booked: top.booked } : null;
+  }
+  if (kind === "Monthly") {
+    const { data } = await db
+      .from("rep_kpi_targets")
+      .select("target_value")
+      .eq("org_id", orgId)
+      .eq("role", "closer")
+      .eq("period", "monthly")
+      .eq("metric_key", "cash_collected_cents")
+      .eq("is_active", true);
+    const total = ((data ?? []) as Array<{ target_value: number }>).reduce(
+      (t, r) => t + (Number(r.target_value) || 0),
+      0,
+    );
+    report.cash_target_cents = total || null;
+  }
 
   const sent = await fireOnce(
     orgId,
@@ -502,11 +578,32 @@ async function fireReport(
       period_from: w.from,
       period_to: w.to,
       period_label: periodLabel(w.from, w.to),
+      month_label: monthLabel(w.from),
       time_zone: settings.timeZone,
-      ...board,
+      ...report,
     },
   );
   return sent ? 1 : 0;
+}
+
+/** "2026-11-01" → "November 2026". */
+function monthLabel(date: string) {
+  const [y, m] = date.split("-").map(Number);
+  const names = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  return y && m ? `${names[m - 1]} ${y}` : "";
 }
 
 async function fireContentSchedule(
@@ -539,17 +636,16 @@ async function fireContentSchedule(
   return sent ? 1 : 0;
 }
 
-async function fireTopSources(
+/** The top-sources board for one window (source-leaderboard.ts). */
+async function loadSourceBoard(
   orgId: string,
-  eventType:
-    "report.top_sources_daily" | "report.top_sources_weekly" | "report.top_sources_monthly",
-  w: { from: string; to: string; key: string },
-  settings: NotificationSettingsT,
-) {
-  if ((await alreadyFired(orgId, eventType, [w.key])).size) return 0;
-  const { startIso, endIso } = zonedDayRangeUtc(w.from, w.to, settings.timeZone);
+  from: string,
+  to: string,
+  timeZone: NotificationSettingsT["timeZone"],
+): Promise<SourceBoard> {
+  const { startIso, endIso } = zonedDayRangeUtc(from, to, timeZone);
   const leadCols =
-    "id, email, source_platform, source_content_id, first_touch_content_id, application_data, application_partial, created_at";
+    "id, email, source_platform, source_medium, source_content_tag, source_content_id, first_touch_content_id, application_data, application_partial, created_at";
 
   const [leadsRes, callsRes] = await Promise.all([
     db
@@ -561,7 +657,7 @@ async function fireTopSources(
     db
       .from("calls")
       .select(
-        "lead_id, lead_email, created_at, source_connector, cancelled, cash_collected_cents, original_currency",
+        "lead_id, lead_email, created_at, source_connector, cancelled, closed, cash_collected_cents, contract_value_cents, original_currency",
       )
       .eq("org_id", orgId)
       .gte("created_at", startIso)
@@ -629,18 +725,45 @@ async function fireTopSources(
       titles.set(c.id, c.title || "Untitled piece");
   }
 
-  const board = buildSourceBoard(windowLeads, windowCalls, knownLeads, titles);
+  return buildSourceBoard(windowLeads, windowCalls, knownLeads, titles);
+}
+
+const SOURCE_KIND = {
+  "report.top_sources_daily": "Daily",
+  "report.top_sources_weekly": "Weekly",
+  "report.top_sources_monthly": "Monthly",
+} as const;
+
+async function fireTopSources(
+  orgId: string,
+  eventType:
+    "report.top_sources_daily" | "report.top_sources_weekly" | "report.top_sources_monthly",
+  w: { from: string; to: string; key: string },
+  settings: NotificationSettingsT,
+) {
+  if ((await alreadyFired(orgId, eventType, [w.key])).size) return 0;
+  const kind = SOURCE_KIND[eventType];
+  const board = await loadSourceBoard(orgId, w.from, w.to, settings.timeZone);
+  let prev: SourceBoard | null = null;
+  if (kind !== "Daily") {
+    const p = previousWindow(kind, w.from);
+    prev = await loadSourceBoard(orgId, p.from, p.to, settings.timeZone);
+  }
   const sent = await fireOnce(
     orgId,
     eventType,
     w.key,
     { type: "report", id: null },
     {
+      kind,
       period_from: w.from,
       period_to: w.to,
       period_label: periodLabel(w.from, w.to),
+      month_label: monthLabel(w.from),
       time_zone: settings.timeZone,
       ...board,
+      prev_totals: prev?.totals ?? null,
+      prev_sources: prev ? prev.sources.map((r) => ({ name: r.name, leads: r.leads })) : null,
     },
   );
   return sent ? 1 : 0;

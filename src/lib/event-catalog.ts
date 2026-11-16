@@ -334,9 +334,9 @@ export const DISCORD_BOT_IDENTITIES: Record<string, { name: string; emoji: strin
   "content.schedule_daily": { name: "CONTENT SCHEDULE", emoji: "1f4c6" },
   "content.ready_to_post.short_form": { name: "SHORT-FORM READY", emoji: "1f3ac" },
   "content.ready_to_post.long_form": { name: "LONG-FORM READY", emoji: "1f3a5" },
-  "report.top_sources_daily": { name: "TOP SOURCES", emoji: "1f3c6" },
-  "report.top_sources_weekly": { name: "TOP SOURCES", emoji: "1f3c6" },
-  "report.top_sources_monthly": { name: "TOP SOURCES", emoji: "1f3c6" },
+  "report.top_sources_daily": { name: "DAILY TOP SOURCES", emoji: "1f3c6" },
+  "report.top_sources_weekly": { name: "WEEKLY TOP SOURCES", emoji: "1f3c6" },
+  "report.top_sources_monthly": { name: "MONTHLY TOP SOURCES", emoji: "1f3c6" },
 };
 
 /**

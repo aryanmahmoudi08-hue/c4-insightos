@@ -843,6 +843,433 @@ function topSources(kind: "Daily" | "Weekly" | "Monthly", p: Record<string, unkn
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* Sales team reports and top sources (remodel, 2026-11-15)             */
+/* ------------------------------------------------------------------ */
+
+type Rep = {
+  name: string;
+  taken?: number;
+  showed?: number;
+  noShows?: number;
+  closed?: number;
+  cashCents?: number;
+  revenueCents?: number;
+  sets?: number;
+  dials?: number;
+  connections?: number;
+  replies?: number;
+  qualified?: number;
+  prev?: number;
+};
+
+type Totals = {
+  cashCents?: number;
+  revenueCents?: number;
+  closes?: number;
+  booked?: number;
+  onCalendar?: number;
+  showed?: number;
+  noShows?: number;
+};
+
+/** A rate is only shown once there is enough behind it. */
+const MIN_RATE_SAMPLE = 5;
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+const medal = (i: number) => ["🥇", "🥈", "🥉"][i] ?? `${i + 1}.`;
+const plural = (k: number, word: string) => `${k} ${word}${k === 1 ? "" : "s"}`;
+const sampleRate = (a: number, b: number) => (b >= MIN_RATE_SAMPLE ? pct(a, b) : "");
+const moneyOr0 = (c: number) => money(c) || "$0";
+
+/** "(▲ 2)", "(▼ $1,500)", "(▲ 6 pts)", "(▬)" — or nothing without a previous period. */
+function delta(cur: number, prev: number | null | undefined, unit: "count" | "money" | "pts") {
+  if (prev == null) return "";
+  const d = cur - prev;
+  if (d === 0) return " (▬)";
+  const arrow = d > 0 ? "▲" : "▼";
+  const abs = Math.abs(d);
+  const v = unit === "money" ? money(abs) : unit === "pts" ? `${Math.round(abs)} pts` : String(abs);
+  return ` (${arrow} ${v})`;
+}
+
+const periodLine = (kind: string, p: Record<string, unknown>): Line =>
+  kind === "Monthly"
+    ? ["Month", p.month_label || p.period_label]
+    : [kind === "Weekly" ? "Week" : "Date", p.period_label];
+
+function closerLine(r: Rep, i: number, withDelta: boolean) {
+  const bits = [
+    `${moneyOr0(num(r.cashCents))} cash`,
+    num(r.revenueCents) ? `${money(r.revenueCents)} revenue` : "",
+    plural(num(r.closed), "close"),
+    plural(num(r.taken), "call"),
+    sampleRate(num(r.closed), num(r.showed)) && `${sampleRate(num(r.closed), num(r.showed))} close`,
+  ].filter(Boolean);
+  const d = withDelta ? delta(num(r.cashCents), r.prev ?? 0, "money") : "";
+  return `${medal(i)} **${r.name}:** ${bits.join(" · ")}${d}`;
+}
+
+function setterLine(r: Rep, i: number, dialer: boolean, withDelta: boolean) {
+  const bits = dialer
+    ? [
+        plural(num(r.sets), "set"),
+        plural(num(r.dials), "dial"),
+        sampleRate(num(r.connections), num(r.dials)) &&
+          `${sampleRate(num(r.connections), num(r.dials))} pickup`,
+        sampleRate(num(r.sets), num(r.connections)) &&
+          `${sampleRate(num(r.sets), num(r.connections))} set rate`,
+      ]
+    : [
+        plural(num(r.sets), "set"),
+        num(r.qualified) ? `${num(r.qualified)} qualified` : "",
+        num(r.replies) ? plural(num(r.replies), "reply").replace("replys", "replies") : "",
+        sampleRate(num(r.sets), num(r.qualified)) &&
+          `${sampleRate(num(r.sets), num(r.qualified))} set rate`,
+      ];
+  // The money on their sets: what closed, the cash taken, the deal value.
+  if (num(r.showed)) bits.push(`${num(r.showed)} showed`);
+  if (num(r.closed)) bits.push(`${num(r.closed)} closed`);
+  if (num(r.cashCents)) bits.push(`${money(r.cashCents)} cash`);
+  if (num(r.revenueCents)) bits.push(`${money(r.revenueCents)} revenue`);
+  const d = withDelta ? delta(num(r.sets), r.prev ?? 0, "count") : "";
+  return `${medal(i)} **${r.name}:** ${bits.filter(Boolean).join(" · ")}${d}`;
+}
+
+/** The weakest of show rate and close rate, against simple benchmarks. */
+function weakestStep(t: Totals, monthly: boolean): string {
+  const showDen = num(t.showed) + num(t.noShows);
+  const showRate = showDen ? num(t.showed) / showDen : null;
+  const closeRate = num(t.showed) ? num(t.closes) / num(t.showed) : null;
+  const showGap = showRate != null && showDen >= MIN_RATE_SAMPLE ? 0.7 - showRate : -1;
+  const closeGap = closeRate != null && num(t.showed) >= MIN_RATE_SAMPLE ? 0.3 - closeRate : -1;
+  if (showGap <= 0 && closeGap <= 0) return "";
+  if (showGap >= closeGap)
+    return monthly
+      ? `No-shows: ${plural(num(t.noShows), "booked call")} never showed`
+      : `Show rate ${pct(num(t.showed), showDen)}, the weakest step`;
+  return monthly
+    ? `Showed but didn't buy: ${plural(num(t.showed) - num(t.closes), "call")}`
+    : `Close rate ${pct(num(t.closes), num(t.showed))}, the weakest step`;
+}
+
+function salesReport(p: Record<string, unknown>): Body {
+  const kind = text(p.kind) || "Daily";
+  const monthly = kind === "Monthly";
+  const compare = kind !== "Daily";
+  const t = obj(p.team) as Totals;
+  const pt = (compare ? obj(p.prev_team) : {}) as Totals;
+  const hasPrev = compare && p.prev_team != null;
+  const prev = (k: keyof Totals) => (hasPrev ? num(pt[k]) : null);
+  const closers = (Array.isArray(p.closers) ? p.closers : []) as Rep[];
+  const dms = (Array.isArray(p.dm_setters) ? p.dm_setters : []) as Rep[];
+  const dialers = (Array.isArray(p.dialers) ? p.dialers : []) as Rep[];
+  const target = num(p.cash_target_cents);
+
+  const cash = num(t.cashCents);
+  const cashText =
+    (monthly && target
+      ? `${moneyOr0(cash)} of ${money(target)} target (${pct(cash, target)})`
+      : moneyOr0(cash)) + delta(cash, prev("cashCents"), "money");
+  const showDen = num(t.showed) + num(t.noShows);
+  const prevShowDen = num(pt.showed) + num(pt.noShows);
+  const showPts = (s: number, d: number) => (d ? (s / d) * 100 : 0);
+
+  const boards: string[] = [];
+  if (closers.length)
+    boards.push(
+      [
+        "**🏆 CLOSERS** · ranked by cash collected",
+        ...closers.map((r, i) => closerLine(r, i, hasPrev)),
+      ].join("\n"),
+    );
+  if (dms.length)
+    boards.push(
+      [
+        "**💬 DM SETTERS** · ranked by sets",
+        ...dms.map((r, i) => setterLine(r, i, false, hasPrev)),
+      ].join("\n"),
+    );
+  if (dialers.length)
+    boards.push(
+      [
+        "**📞 DIALERS** · ranked by sets",
+        ...dialers.map((r, i) => setterLine(r, i, true, hasPrev)),
+      ].join("\n"),
+    );
+  if (num(p.unassigned_closes))
+    boards.push(`Closed calls with no setter on them: ${num(p.unassigned_closes)}`);
+
+  const topCloser = closers[0];
+  const allSetters = [...dms, ...dialers].sort((a, b) => num(b.sets) - num(a.sets));
+  const topSetter = allSetters[0];
+  const improved = hasPrev
+    ? [...allSetters]
+        .map((r) => ({ r, d: num(r.sets) - num(r.prev) }))
+        .filter((x) => x.d > 0)
+        .sort((a, b) => b.d - a.d)[0]
+    : undefined;
+  const improvedCloser =
+    hasPrev && !improved
+      ? [...closers]
+          .map((r) => ({ r, d: num(r.cashCents) - num(r.prev) }))
+          .filter((x) => x.d > 0)
+          .sort((a, b) => b.d - a.d)[0]
+      : undefined;
+  const src = obj(p.top_source);
+  const missing = (Array.isArray(p.missing_eods) ? p.missing_eods : []).map(text).filter(Boolean);
+  const idle = (Array.isArray(p.no_activity) ? p.no_activity : []).map(text).filter(Boolean);
+  const excluded = num(p.non_usd_rows_excluded);
+
+  return {
+    title: `${kind} sales team report — ${text(p.period_label)}`,
+    blocks: [
+      lines(periodLine(kind, p)),
+      gap,
+      lines(
+        ["Cash collected", cashText],
+        [
+          "Revenue",
+          moneyOr0(num(t.revenueCents)) + delta(num(t.revenueCents), prev("revenueCents"), "money"),
+        ],
+        ["Closes", String(num(t.closes)) + delta(num(t.closes), prev("closes"), "count")],
+      ),
+      gap,
+      lines(
+        ["Calls booked", String(num(t.booked)) + delta(num(t.booked), prev("booked"), "count")],
+        ["Calls on calendar", String(num(t.onCalendar))],
+        ["Showed", String(num(t.showed))],
+        ["No-shows", String(num(t.noShows))],
+      ),
+      gap,
+      lines(
+        plain(
+          "Show rate",
+          showDen
+            ? pct(num(t.showed), showDen) +
+                (hasPrev && prevShowDen
+                  ? delta(
+                      showPts(num(t.showed), showDen),
+                      showPts(num(pt.showed), prevShowDen),
+                      "pts",
+                    )
+                  : "")
+            : "",
+        ),
+        plain("Close rate", num(t.showed) ? pct(num(t.closes), num(t.showed)) : ""),
+      ),
+      divider,
+      { kind: "raw", text: boards.join("\n\n") || "No activity logged." },
+      divider,
+      lines(
+        [
+          monthly ? "Closer of the month" : "Top closer",
+          topCloser && num(topCloser.cashCents)
+            ? `${topCloser.name} (${money(topCloser.cashCents)} · ${plural(num(topCloser.closed), "close")})`
+            : "",
+        ],
+        [
+          monthly ? "Setter of the month" : "Top setter",
+          topSetter && num(topSetter.sets)
+            ? `${topSetter.name} (${plural(num(topSetter.sets), "set")})`
+            : "",
+        ],
+        [
+          "Most improved",
+          improved
+            ? `${improved.r.name} (▲ ${plural(improved.d, "set")})`
+            : improvedCloser
+              ? `${improvedCloser.r.name} (▲ ${money(improvedCloser.d)})`
+              : "",
+        ],
+        [monthly ? "Biggest leak" : "Bottleneck", compare ? weakestStep(t, monthly) : ""],
+        [
+          monthly ? "Best source" : "Top source",
+          text(src.name)
+            ? `${text(src.name)} (${plural(num(src.leads), "lead")}, ${num(src.booked)} booked)`
+            : "",
+        ],
+        ["Missing EODs", missing.join(", ")],
+        ["No activity", compare ? idle.join(", ") : ""],
+        plain(
+          "Note",
+          excluded
+            ? `${excluded} entr${excluded === 1 ? "y" : "ies"} in another currency not included in cash`
+            : "",
+        ),
+      ),
+    ],
+    linkPath: "/dashboard",
+  };
+}
+
+type Src = {
+  name: string;
+  leads?: number;
+  applications?: number;
+  booked?: number;
+  closed?: number;
+  cashCents?: number;
+  revenueCents?: number;
+};
+
+/** "(▲ 3 leads)", "(▼ 1 lead)", "(▬)". */
+function leadDelta(cur: number, prev: number) {
+  const d = cur - prev;
+  if (!d) return " (▬)";
+  return ` (${d > 0 ? "▲" : "▼"} ${plural(Math.abs(d), "lead")})`;
+}
+
+function srcLine(r: Src, i: number, extra = "") {
+  const bits = [
+    plural(num(r.leads), "lead"),
+    num(r.applications) ? plural(num(r.applications), "application") : "",
+    num(r.booked) ? `${num(r.booked)} booked` : "",
+    num(r.closed) ? `${num(r.closed)} closed` : "",
+    money(num(r.revenueCents) || num(r.cashCents)),
+  ].filter(Boolean);
+  return `${medal(i)} **${r.name}:** ${bits.join(" · ")}${extra}`;
+}
+
+function topSourcesReport(p: Record<string, unknown>): Body {
+  const kind = text(p.kind) || "Daily";
+  const monthly = kind === "Monthly";
+  const weekly = kind === "Weekly";
+  const t = obj(p.totals) as Src;
+  const pt = p.prev_totals ? (obj(p.prev_totals) as Src) : null;
+  const prevLeads = new Map(
+    ((Array.isArray(p.prev_sources) ? p.prev_sources : []) as Src[]).map((r) => [
+      r.name,
+      num(r.leads),
+    ]),
+  );
+  const sources = (Array.isArray(p.sources) ? p.sources : []) as Src[];
+  const placements = (Array.isArray(p.placements) ? p.placements : []) as Src[];
+  const content = (Array.isArray(p.content) ? p.content : []) as Src[];
+  const un = obj(p.unattributed) as Src;
+  const d = (k: keyof Src, unit: "count" | "money" = "count") =>
+    pt ? delta(num(t[k]), num(pt[k]), unit) : "";
+
+  if (kind === "Daily" && !num(t.leads) && !num(t.booked) && !num(t.closed)) {
+    return {
+      title: `Daily top content sources — ${text(p.period_label)}`,
+      blocks: [lines(periodLine(kind, p)), gap, lines(plain("Result", "No new leads today."))],
+      linkPath: "/traffic",
+    };
+  }
+
+  const top5 = (rows: Src[], withDelta = false) =>
+    rows
+      .slice(0, 5)
+      .map((r, i) =>
+        srcLine(
+          r,
+          i,
+          withDelta && p.prev_sources ? leadDelta(num(r.leads), prevLeads.get(r.name) ?? 0) : "",
+        ),
+      );
+
+  const boards: string[] = [];
+  if (monthly) {
+    const byRevenue = [...sources]
+      .filter((r) => num(r.revenueCents) || num(r.closed))
+      .sort((a, b) => num(b.revenueCents) - num(a.revenueCents) || num(b.closed) - num(a.closed));
+    if (byRevenue.length)
+      boards.push(
+        [
+          "**💰 REVENUE BY PLATFORM**",
+          ...byRevenue
+            .slice(0, 5)
+            .map(
+              (r, i) =>
+                `${medal(i)} **${r.name}:** ${moneyOr0(num(r.revenueCents))} · ${plural(num(r.closed), "close")} · ${plural(num(r.leads), "lead")}`,
+            ),
+        ].join("\n"),
+      );
+  }
+  if (sources.length)
+    boards.push(["**📱 BY PLATFORM**", ...top5(sources, weekly || monthly)].join("\n"));
+  if (placements.length) boards.push(["**📍 BY PLACEMENT**", ...top5(placements)].join("\n"));
+  if (content.length) boards.push(["**🎬 TOP POSTS**", ...top5(content)].join("\n"));
+
+  // Callouts. Rate callouts need at least 2 leads behind them.
+  const pool = placements.length ? placements : sources;
+  const bestPost = [...content].sort(
+    (a, b) => num(b.closed) - num(a.closed) || num(b.leads) - num(a.leads),
+  )[0];
+  const bestRate = [...pool]
+    .filter((r) => num(r.leads) >= 2 && num(r.booked) > 0)
+    .sort((a, b) => num(b.booked) / num(b.leads) - num(a.booked) / num(a.leads))[0];
+  const dead = [...pool]
+    .filter((r) => num(r.leads) >= 3 && !num(r.booked))
+    .sort((a, b) => num(b.leads) - num(a.leads))[0];
+  const valuePerLead = [...sources]
+    .filter((r) => num(r.revenueCents) > 0 && num(r.leads) > 0)
+    .sort((a, b) => num(b.revenueCents) / num(b.leads) - num(a.revenueCents) / num(a.leads))[0];
+  const leastMoney = [...sources]
+    .filter((r) => num(r.leads) >= 3 && !num(r.revenueCents))
+    .sort((a, b) => num(b.leads) - num(a.leads))[0];
+  const totalLeads = num(t.leads);
+  const untagged = num(un.leads);
+
+  return {
+    title: `${kind} top content sources — ${text(p.period_label)}`,
+    blocks: [
+      lines(periodLine(kind, p)),
+      gap,
+      lines(
+        ["Leads", String(num(t.leads)) + d("leads")],
+        ["Applications", String(num(t.applications)) + d("applications")],
+        ["Booked", String(num(t.booked)) + d("booked")],
+        ["Closed", String(num(t.closed)) + d("closed")],
+        ["Cash collected", money(t.cashCents)],
+        ["Revenue", money(t.revenueCents)],
+      ),
+      divider,
+      { kind: "raw", text: boards.join("\n\n") || "No attributed leads yet." },
+      divider,
+      lines(
+        [
+          monthly ? "Content of the month" : "Best post",
+          bestPost && kind !== "Daily"
+            ? `${bestPost.name}: ${plural(num(bestPost.leads), "lead")}${num(bestPost.closed) ? ` → ${plural(num(bestPost.closed), "close")}` : ""}${monthly && num(bestPost.revenueCents) ? ` · ${money(bestPost.revenueCents)}` : ""}`
+            : "",
+        ],
+        [
+          "Best lead-to-booked rate",
+          weekly && bestRate
+            ? `${bestRate.name} (${pct(num(bestRate.booked), num(bestRate.leads))}, ${num(bestRate.booked)} of ${num(bestRate.leads)})`
+            : "",
+        ],
+        [
+          "Dead weight",
+          weekly && dead ? `${dead.name} (${plural(num(dead.leads), "lead")}, 0 booked)` : "",
+        ],
+        [
+          "Highest value per lead",
+          monthly && valuePerLead
+            ? `${valuePerLead.name} (${money(Math.round(num(valuePerLead.revenueCents) / num(valuePerLead.leads)))} revenue per lead)`
+            : "",
+        ],
+        [
+          "Most leads, least money",
+          monthly && leastMoney
+            ? `${leastMoney.name} (${plural(num(leastMoney.leads), "lead")}, $0)`
+            : "",
+        ],
+      ),
+      lines(
+        plain(
+          "Untagged",
+          untagged && totalLeads
+            ? `${untagged} of ${plural(totalLeads, "lead")} (${pct(untagged, totalLeads)}) had no source. Use the tagged links.`
+            : "",
+        ),
+      ),
+    ],
+    linkPath: "/traffic",
+  };
+}
+
 const PROCESSOR_LABELS: Record<string, string> = {
   fanbasis: "Commas (Fanbasis)",
   whop: "Whop",
@@ -963,13 +1390,19 @@ export function formatDiscordMessage(
       body = followUpDue("Long", p, tz, opts);
       break;
     case "report.daily_sales":
-      body = leaderboard("Daily", p);
+      body = Array.isArray(p.dm_setters)
+        ? salesReport({ kind: "Daily", ...p })
+        : leaderboard("Daily", p);
       break;
     case "report.weekly_sales":
-      body = leaderboard("Weekly", p);
+      body = Array.isArray(p.dm_setters)
+        ? salesReport({ kind: "Weekly", ...p })
+        : leaderboard("Weekly", p);
       break;
     case "report.monthly_sales":
-      body = leaderboard("Monthly", p);
+      body = Array.isArray(p.dm_setters)
+        ? salesReport({ kind: "Monthly", ...p })
+        : leaderboard("Monthly", p);
       break;
     case "content.ready_to_post":
       body = contentReady(null, p);
@@ -984,13 +1417,13 @@ export function formatDiscordMessage(
       body = contentSchedule(p);
       break;
     case "report.top_sources_daily":
-      body = topSources("Daily", p);
+      body = p.totals ? topSourcesReport({ kind: "Daily", ...p }) : topSources("Daily", p);
       break;
     case "report.top_sources_weekly":
-      body = topSources("Weekly", p);
+      body = p.totals ? topSourcesReport({ kind: "Weekly", ...p }) : topSources("Weekly", p);
       break;
     case "report.top_sources_monthly":
-      body = topSources("Monthly", p);
+      body = p.totals ? topSourcesReport({ kind: "Monthly", ...p }) : topSources("Monthly", p);
       break;
     case "payment.collected":
       body = payment(false, p);
