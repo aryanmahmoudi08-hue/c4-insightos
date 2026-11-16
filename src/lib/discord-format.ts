@@ -237,18 +237,16 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
         // Only this link: Meet, LinkedIn and content URLs still preview.
         `[Open in AscendOS](<${opts.appUrl.replace(/\/+$/, "")}${body.linkPath}>)`
       : "";
-  // Every lead message can jump to the lead's full application answers.
-  const app =
-    body.linkPath && opts.applicationUrl
-      ? `[📝 View 1on1 application](<${opts.applicationUrl}>)`
-      : "";
-  if (link)
-    parts.push(
-      { text: "" },
-      { text: DIVIDER },
-      { text: "" },
-      { text: [link, app].filter(Boolean).join("\n") },
-    );
+  if (link) parts.push({ text: "" }, { text: DIVIDER }, { text: "" }, { text: link });
+
+  // Every lead message can jump to the lead's full application answers: the
+  // link sits right after their name (the first "Name:" / "Full Name:" line).
+  if (body.linkPath && opts.applicationUrl) {
+    const appLink = ` · [📝 View 1on1 application](<${opts.applicationUrl}>)`;
+    const nameLine = /^(\*\*)?(Full Name|Name):(\*\*)? .+$/m;
+    const i = parts.findIndex((p) => !p.flex && nameLine.test(p.text));
+    if (i >= 0) parts[i] = { text: parts[i].text.replace(nameLine, (m) => m + appLink) };
+  }
   if (head) parts.unshift({ text: head });
 
   // Only free text gives way when space runs out; the contact details and

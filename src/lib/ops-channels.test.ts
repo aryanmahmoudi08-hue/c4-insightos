@@ -134,7 +134,9 @@ describe("lead links and payment detail", () => {
 
   it("lead messages link to the lead's application post", () => {
     const m = formatDiscordMessage("call.booked", { lead: withApp }, o2);
-    expect(m.content).toContain("[📝 View 1on1 application](<https://discord.com/channels/1/2/3>)");
+    expect(m.content).toContain(
+      "**Full Name:** Jane Doe · [📝 View 1on1 application](<https://discord.com/channels/1/2/3>)",
+    );
   });
 
   it("the application post doesn't link to itself", () => {
