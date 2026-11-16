@@ -5,7 +5,7 @@
  * follow-ups that link back to the message posted when the item was logged.
  */
 import { describe, expect, it } from "vitest";
-import { DIVIDER, formatDiscordMessage } from "./discord-format";
+import { DIVIDER, formatDiscordMessage, unframe } from "./discord-format";
 import {
   DISCORD_BOT_IDENTITIES,
   DISPATCHED_EVENT_TYPES,
@@ -20,6 +20,12 @@ import {
   unconfirmedAlertDue,
   unconfirmedAlertSchedule,
 } from "./scheduler-rules";
+
+/** formatDiscordMessage, with the top/bottom frame removed so tests check the body. */
+const fmtBody = (...a: Parameters<typeof formatDiscordMessage>) => {
+  const m = formatDiscordMessage(...a);
+  return { ...m, content: unframe(m.content) };
+};
 
 const APP = "https://ascendos-app.vercel.app";
 const TZ = "America/New_York";
@@ -72,7 +78,7 @@ describe("bot identity", () => {
   });
 
   it("drops the title line when the bot name says what the message is", () => {
-    const withName = formatDiscordMessage(
+    const withName = fmtBody(
       "call.confirmed",
       { lead: LEAD },
       {
@@ -85,7 +91,7 @@ describe("bot identity", () => {
     expect(withName.username).toBe("CALL CONFIRMED");
     expect(withName.avatar_url).toBe(twemojiUrl("2705"));
 
-    const without = formatDiscordMessage("call.confirmed", { lead: LEAD });
+    const without = fmtBody("call.confirmed", { lead: LEAD });
     expect(without.content).toContain("**Call confirmed**");
     expect(without.username).toBeUndefined();
   });
@@ -109,9 +115,11 @@ describe("every lead message ends with a divider and its AscendOS link", () => {
   ];
   for (const type of types) {
     it(type, () => {
-      const msg = formatDiscordMessage(type, { lead: LEAD, lead_id: "L1" }, { appUrl: APP });
+      const msg = fmtBody(type, { lead: LEAD, lead_id: "L1" }, { appUrl: APP });
       expect(
-        msg.content.replace(/\n\u200b$/, "").endsWith(`\n\n${DIVIDER}\n\n[Open in AscendOS](<${APP}/leads?leadId=L1>)`),
+        msg.content
+          .replace(/\n\u200b$/, "")
+          .endsWith(`\n\n${DIVIDER}\n\n[Open in AscendOS](<${APP}/leads?leadId=L1>)`),
       ).toBe(true);
     });
   }
@@ -121,7 +129,7 @@ describe("channel formats, in the spec's order", () => {
   const opts = { appUrl: APP, timeZone: TZ, username: "X" };
 
   it("#new-1on1-applicants", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "lead.application_submitted",
       {
         lead: { ...LEAD, ticket_tier_label: "Mid Ticket" },
@@ -166,7 +174,7 @@ describe("channel formats, in the spec's order", () => {
       scheduled_for: "2026-11-16T20:30:00Z",
       meeting_link: "https://meet.google.com/abc",
     };
-    const booked = formatDiscordMessage("call.booked", p, opts);
+    const booked = fmtBody("call.booked", p, opts);
     expect(labels(booked.content)).toEqual([
       "Full Name",
       "Email",
@@ -182,11 +190,11 @@ describe("channel formats, in the spec's order", () => {
     ]);
     expect(booked.content).toContain("Date of Call: Mon, Nov 16, 3:30 PM EST");
     expect(booked.content).toContain("**Source:** instagram · bio · evergreen");
-    expect(formatDiscordMessage("call.confirmed", p, opts).content).toBe(booked.content);
+    expect(fmtBody("call.confirmed", p, opts).content).toBe(booked.content);
   });
 
   it("#calls-unconfirmed, with the alert's own pings", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "call.unconfirmed",
       {
         lead: LEAD,
@@ -213,7 +221,7 @@ describe("channel formats, in the spec's order", () => {
   });
 
   it("#calls-cancelled", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "call.cancelled",
       { lead: LEAD, scheduled_for: "2026-11-16T20:30:00Z", cancellation_reason: "Got a job" },
       opts,
@@ -223,7 +231,7 @@ describe("channel formats, in the spec's order", () => {
   });
 
   it("#calls-rescheduled shows both dates, and the reason only when given", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "call.rescheduled",
       {
         lead: LEAD,
@@ -238,11 +246,7 @@ describe("channel formats, in the spec's order", () => {
   });
 
   it("#setter-logged-call-backs when logged: no LinkedIn", () => {
-    const msg = formatDiscordMessage(
-      "callback.logged",
-      { lead: LEAD, due_at: "2026-11-16T20:30:00Z" },
-      opts,
-    );
+    const msg = fmtBody("callback.logged", { lead: LEAD, due_at: "2026-11-16T20:30:00Z" }, opts);
     expect(labels(msg.content)).toEqual([
       "Full Name",
       "Email",
@@ -256,7 +260,7 @@ describe("channel formats, in the spec's order", () => {
 
   it("#setter-logged-call-backs at the due time links the original", () => {
     const link = "https://discord.com/channels/1/2/3";
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "callback.due",
       { lead: LEAD, due_at: "2026-11-16T20:30:00Z" },
       { ...opts, extraRoleIds: ["111"], replyToUrl: link },
@@ -268,11 +272,7 @@ describe("channel formats, in the spec's order", () => {
   });
 
   it("carries the details itself when there is no original to link", () => {
-    const msg = formatDiscordMessage(
-      "callback.due",
-      { lead: LEAD, due_at: "2026-11-16T20:30:00Z" },
-      opts,
-    );
+    const msg = fmtBody("callback.due", { lead: LEAD, due_at: "2026-11-16T20:30:00Z" }, opts);
     expect(msg.content.startsWith("CALL THEM ASAP\n")).toBe(true);
     expect(msg.content).toContain("**Call Back (Date/Time):** Mon, Nov 16, 3:30 PM EST");
     expect(msg.content).not.toContain("↪");
@@ -287,7 +287,7 @@ describe("channel formats, in the spec's order", () => {
       followup_reason: "Talk to spouse",
       followup_notes: "Call after 5",
     };
-    const logged = formatDiscordMessage("followup.short_term_logged", p, opts);
+    const logged = fmtBody("followup.short_term_logged", p, opts);
     expect(labels(logged.content)).toEqual([
       "Full Name",
       "Email",
@@ -299,7 +299,7 @@ describe("channel formats, in the spec's order", () => {
       "Notes",
     ]);
     expect(logged.content).toContain("Due: Fri, Nov 20, 12:00 PM EST");
-    const due = formatDiscordMessage("followup.short_term_due", p, {
+    const due = fmtBody("followup.short_term_due", p, {
       ...opts,
       replyToUrl: "https://discord.com/channels/1/2/3",
     });
@@ -308,17 +308,13 @@ describe("channel formats, in the spec's order", () => {
   });
 
   it("puts the period on a report, since the title line is gone", () => {
-    const msg = formatDiscordMessage(
-      "report.daily_sales",
-      { period_label: "Sat, Nov 14", setters: [] },
-      opts,
-    );
+    const msg = fmtBody("report.daily_sales", { period_label: "Sat, Nov 14", setters: [] }, opts);
     expect(msg.content).toContain("**Period:** Sat, Nov 14");
     expect(msg.content).not.toContain("Daily sales team report");
   });
 
   it("shows an EOD's date as a date, not ISO", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "setter.eod_submitted",
       { team_member_name: "Kai", activity_date: "2026-11-14", dials: 40 },
       opts,
@@ -449,7 +445,7 @@ describe("reports remodel", () => {
   const opts = { appUrl: APP, timeZone: TZ, username: "X" };
 
   it("#closer-post-call-notes: lead, call, money, story, follow-up", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "closer.post_call_submitted",
       {
         lead: LEAD,
@@ -481,7 +477,7 @@ describe("reports remodel", () => {
   });
 
   it("#setter-eod-reports: DM setter funnel with rates", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "setter.eod_submitted",
       {
         role: "dm_setter",
@@ -502,7 +498,7 @@ describe("reports remodel", () => {
   });
 
   it("#setter-eod-reports: dialer gets pickup rate", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "setter.eod_submitted",
       { role: "inbound_dialer", team_member_name: "Alex", dials: 120, connections: 30, sets: 4 },
       opts,

@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { formatDiscordMessage, MESSAGE_SPACER } from "./discord-format";
+import { formatDiscordMessage, unframe } from "./discord-format";
 import { discordIdentityFor, DISPATCHED_EVENT_TYPES } from "./event-catalog";
 import { rsvpFor } from "./google-calendar";
 import { needsPaymentFollowUp } from "./eod-reports";
+
+/** formatDiscordMessage, with the top/bottom frame removed so tests check the body. */
+const fmtBody = (...a: Parameters<typeof formatDiscordMessage>) => {
+  const m = formatDiscordMessage(...a);
+  return { ...m, content: unframe(m.content) };
+};
 
 const o = { appUrl: "https://app", timeZone: "America/New_York", username: "X" };
 const lead = { id: "L1", full_name: "Jane Doe", email: "jane@x.com", phone: "+1555" };
@@ -22,13 +28,15 @@ describe("ops channels", () => {
     }
   });
 
-  it("every message ends with a spacer line", () => {
+  it("every message is framed top and bottom: blank line, divider, blank line", () => {
     const m = formatDiscordMessage("call.booked", { lead }, o);
-    expect(m.content.endsWith(MESSAGE_SPACER)).toBe(true);
+    expect(m.content.startsWith("\u200b\n—————————————————————————————————\n\n")).toBe(true);
+    expect(m.content.endsWith("\n\n—————————————————————————————————\n\u200b")).toBe(true);
+    expect(m.content.length).toBeLessThanOrEqual(2000);
   });
 
   it("#todays-calls tags reps and allows exactly those user mentions", () => {
-    const m = formatDiscordMessage(
+    const m = fmtBody(
       "calls.today",
       {
         date_label: "Mon, Nov 16",
@@ -51,7 +59,7 @@ describe("ops channels", () => {
   });
 
   it("#pre-call-assets shows a tick per opened asset", () => {
-    const m = formatDiscordMessage(
+    const m = fmtBody(
       "precall.progress",
       {
         lead,
@@ -67,7 +75,7 @@ describe("ops channels", () => {
   });
 
   it("COLLECT PAYMENT ASAP leads the due message", () => {
-    const m = formatDiscordMessage(
+    const m = fmtBody(
       "payment.followup_due",
       { lead, payment_followup_amount_cents: 450000 },
       { ...o, extraRoleIds: ["222"], replyToUrl: "https://discord.com/channels/1/2/3" },
@@ -77,7 +85,7 @@ describe("ops channels", () => {
   });
 
   it("a collected payment says which payment it is", () => {
-    const m = formatDiscordMessage(
+    const m = fmtBody(
       "payment.collected",
       {
         lead,
@@ -133,19 +141,19 @@ describe("lead links and payment detail", () => {
   const withApp = { ...lead, application_message_url: "https://discord.com/channels/1/2/3" };
 
   it("lead messages link to the lead's application post", () => {
-    const m = formatDiscordMessage("call.booked", { lead: withApp }, o2);
+    const m = fmtBody("call.booked", { lead: withApp }, o2);
     expect(m.content).toContain(
       "**Full Name:** Jane Doe · [📝 View 1on1 application](<https://discord.com/channels/1/2/3>)",
     );
   });
 
   it("the application post doesn't link to itself", () => {
-    const m = formatDiscordMessage("lead.application_submitted", { lead: withApp }, o2);
+    const m = fmtBody("lead.application_submitted", { lead: withApp }, o2);
     expect(m.content).not.toContain("View 1on1 application");
   });
 
   it("a payment shows cash, revenue, what's collected so far, closer and setter", () => {
-    const m = formatDiscordMessage(
+    const m = fmtBody(
       "payment.collected",
       {
         lead,

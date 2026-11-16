@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { formatDiscordMessage } from "./discord-format";
+import { formatDiscordMessage, unframe } from "./discord-format";
 import { discordIdentityFor } from "./event-catalog";
 import { attachPrevious, buildSalesReport, previousWindow } from "./sales-report";
 import { buildSourceBoard, type SourceCall, type SourceLead } from "./source-leaderboard";
+
+/** formatDiscordMessage, with the top/bottom frame removed so tests check the body. */
+const fmtBody = (...a: Parameters<typeof formatDiscordMessage>) => {
+  const m = formatDiscordMessage(...a);
+  return { ...m, content: unframe(m.content) };
+};
 
 const eod = [
   {
@@ -119,7 +125,7 @@ describe("sales report message", () => {
   });
 
   it("has a board per role with medals and ▲▼ vs last period", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "report.weekly_sales",
       { period_label: "Nov 8 – Nov 14", ...attachPrevious(cur, prev) },
       opts,
@@ -133,7 +139,7 @@ describe("sales report message", () => {
   });
 
   it("monthly shows cash against the target", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "report.monthly_sales",
       {
         month_label: "November 2026",
@@ -149,7 +155,7 @@ describe("sales report message", () => {
   });
 
   it("hides a rate until there is enough behind it", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "report.daily_sales",
       {
         ...buildSalesReport({
@@ -213,7 +219,7 @@ describe("top sources", () => {
 
   it("formats with its own bot, boards and the untagged line", () => {
     expect(discordIdentityFor("report.top_sources_weekly")?.username).toBe("WEEKLY TOP SOURCES");
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "report.top_sources_daily",
       { period_label: "Sat, Nov 14", ...board },
       { appUrl: "https://app", username: "X" },
@@ -226,7 +232,7 @@ describe("top sources", () => {
   });
 
   it("an empty day is one line", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "report.top_sources_daily",
       { period_label: "Sun, Nov 15", ...buildSourceBoard([], [], [], new Map()) },
       { appUrl: "https://app", username: "X" },

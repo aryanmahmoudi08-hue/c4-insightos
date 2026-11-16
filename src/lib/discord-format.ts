@@ -27,8 +27,20 @@ import { platformLabel, statusLabel, timeOfDayLabel } from "./content-events";
 /** Discord's hard limit for `content`. */
 export const DISCORD_CONTENT_LIMIT = 2000;
 const TRUNCATION_MARKER = "\n… (message truncated)";
-/** Ends every message: a blank line Discord keeps (see assemble). */
-export const MESSAGE_SPACER = "\n\u200b";
+/** Discord trims blank lines at the very start and end of a message; a line
+ *  holding only a zero-width space survives, so it reads as a blank line. */
+const BLANK = "\u200b";
+/** Opens every message: blank line, divider, blank line (see assemble). */
+export const MESSAGE_TOP = `${BLANK}\n—————————————————————————————————\n\n`;
+/** Closes every message: blank line, divider, blank line. */
+export const MESSAGE_BOTTOM = `\n\n—————————————————————————————————\n${BLANK}`;
+/** @deprecated kept for older imports; every message now ends with MESSAGE_BOTTOM. */
+export const MESSAGE_SPACER = MESSAGE_BOTTOM;
+/** A message's content without the top/bottom frame (tests and previews). */
+export const unframe = (content: string) =>
+  content.startsWith(MESSAGE_TOP) && content.endsWith(MESSAGE_BOTTOM)
+    ? content.slice(MESSAGE_TOP.length, content.length - MESSAGE_BOTTOM.length)
+    : content;
 
 export type DiscordMessage = {
   content: string;
@@ -289,9 +301,10 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
       TRUNCATION_MARKER;
   }
 
-  // A blank trailing line, so back-to-back posts from the same bot don't run
-  // together. Discord trims trailing whitespace, so it's a zero-width space.
-  if (content.length + MESSAGE_SPACER.length <= DISCORD_CONTENT_LIMIT) content += MESSAGE_SPACER;
+  // Frame every message top and bottom (blank line, divider, blank line), so
+  // posts sent in the same minute read as separate messages, not one block.
+  if (content.length + MESSAGE_TOP.length + MESSAGE_BOTTOM.length <= DISCORD_CONTENT_LIMIT)
+    content = MESSAGE_TOP + content + MESSAGE_BOTTOM;
   const msg: DiscordMessage = { content, allowed_mentions: { parse: [], roles } };
   if (opts.username) msg.username = opts.username;
   if (opts.avatarUrl) msg.avatar_url = opts.avatarUrl;

@@ -5,7 +5,14 @@ import {
   formatDiscordMessage,
   money,
   ordinal,
+  unframe,
 } from "./discord-format";
+
+/** formatDiscordMessage, with the top/bottom frame removed so tests check the body. */
+const fmtBody = (...a: Parameters<typeof formatDiscordMessage>) => {
+  const m = formatDiscordMessage(...a);
+  return { ...m, content: unframe(m.content) };
+};
 
 /** The application that landed as a truncated JSON blob on 2026-11-12. */
 const APPLICATION = {
@@ -42,7 +49,7 @@ const APPLICATION = {
 };
 
 describe("formatDiscordMessage — application", () => {
-  const msg = formatDiscordMessage("lead.application_submitted", APPLICATION, {
+  const msg = fmtBody("lead.application_submitted", APPLICATION, {
     appUrl: "https://ascendos-app.vercel.app",
   });
 
@@ -74,12 +81,14 @@ describe("formatDiscordMessage — application", () => {
     const why = msg.content.indexOf("Why you, why now");
     expect(why).toBeGreaterThan(msg.content.indexOf("**Budget:**"));
     expect(
-      msg.content.replace(/\n\u200b$/, "").endsWith("(<https://ascendos-app.vercel.app/leads?leadId=lead-1>)"),
+      msg.content
+        .replace(/\n\u200b$/, "")
+        .endsWith("(<https://ascendos-app.vercel.app/leads?leadId=lead-1>)"),
     ).toBe(true);
   });
 
   it("omits the link when no app URL is known, rather than inventing one", () => {
-    const noUrl = formatDiscordMessage("lead.application_submitted", APPLICATION, {});
+    const noUrl = fmtBody("lead.application_submitted", APPLICATION, {});
     expect(noUrl.content).not.toContain("Open in AscendOS");
   });
 });
@@ -90,7 +99,7 @@ describe("truncation", () => {
       ...APPLICATION,
       application_data: { ...APPLICATION.application_data, serious_status: "word ".repeat(1000) },
     };
-    const msg = formatDiscordMessage("lead.application_submitted", huge, {
+    const msg = fmtBody("lead.application_submitted", huge, {
       appUrl: "https://ascendos-app.vercel.app",
     });
     expect(msg.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
@@ -105,7 +114,7 @@ describe("truncation", () => {
       dials: 100,
       sets: 5,
     }));
-    const msg = formatDiscordMessage("report.daily_sales", { period_label: "Nov 13", setters });
+    const msg = fmtBody("report.daily_sales", { period_label: "Nov 13", setters });
     expect(msg.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
     expect(msg.content).toContain("… (message truncated)");
   });
@@ -113,7 +122,7 @@ describe("truncation", () => {
 
 describe("link previews", () => {
   it("suppresses the preview cards for the AscendOS and meeting links", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "call.confirmed",
       {
         lead_id: "L",
@@ -132,7 +141,7 @@ describe("link previews", () => {
 
 describe("mentions", () => {
   it("pings the roles and whitelists them so Discord actually notifies", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "call.unconfirmed",
       { lead_name: "Ada" },
       {
@@ -145,17 +154,13 @@ describe("mentions", () => {
   });
 
   it("drops anything that is not a role ID, so @everyone cannot be smuggled in", () => {
-    const msg = formatDiscordMessage(
-      "callback.due",
-      {},
-      { mentionRoleIds: ["everyone", "@here", " 123 "] },
-    );
+    const msg = fmtBody("callback.due", {}, { mentionRoleIds: ["everyone", "@here", " 123 "] });
     expect(msg.allowed_mentions.roles).toEqual(["123"]);
     expect(msg.content).not.toContain("everyone");
   });
 
   it("pings nobody by default", () => {
-    const msg = formatDiscordMessage("callback.due", {});
+    const msg = fmtBody("callback.due", {});
     expect(msg.allowed_mentions.roles).toEqual([]);
     expect(msg.content).not.toContain("<@&");
   });
@@ -163,7 +168,7 @@ describe("mentions", () => {
 
 describe("other event shapes", () => {
   it("renders a call with its time in the workspace timezone", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "call.confirmed",
       {
         lead: { full_name: "Ada Lovelace", phone: "+15550001111" },
@@ -179,7 +184,7 @@ describe("other event shapes", () => {
   });
 
   it("renders post-call money as currency, not cents", () => {
-    const msg = formatDiscordMessage("closer.post_call_submitted", {
+    const msg = fmtBody("closer.post_call_submitted", {
       closer_name: "Sam",
       lead_status: "Deposit",
       cash_collected_cents: 150000,
@@ -191,7 +196,7 @@ describe("other event shapes", () => {
   });
 
   it("lists only the EOD numbers a rep actually logged", () => {
-    const msg = formatDiscordMessage("setter.eod_submitted", {
+    const msg = fmtBody("setter.eod_submitted", {
       team_member_name: "Jo",
       role: "inbound_dialer",
       activity_date: "2026-11-13",
@@ -205,7 +210,7 @@ describe("other event shapes", () => {
   });
 
   it("renders a leaderboard with rates", () => {
-    const msg = formatDiscordMessage("report.daily_sales", {
+    const msg = fmtBody("report.daily_sales", {
       period_label: "Thu, Nov 13",
       closers: [{ name: "Sam", taken: 4, showed: 3, noShows: 1, closed: 1, cashCents: 300000 }],
       team: { name: "Team", showed: 3, noShows: 1, closed: 1, cashCents: 300000 },
@@ -217,7 +222,7 @@ describe("other event shapes", () => {
   });
 
   it("falls back to readable lines for an event with no bespoke shape", () => {
-    const msg = formatDiscordMessage("client.stage_changed", {
+    const msg = fmtBody("client.stage_changed", {
       amount_cents: 99900,
       customer_email: "a@b.c",
       raw: { nested: true },
@@ -260,7 +265,7 @@ describe("content messages", () => {
   };
 
   it("labels a short-form piece with its schedule, link and angle — not its script", () => {
-    const msg = formatDiscordMessage("content.ready_to_post.short_form", piece, {
+    const msg = fmtBody("content.ready_to_post.short_form", piece, {
       appUrl: "https://app",
     });
     expect(msg.content).toContain("**Short-form ready to post — Instagram reel**");
@@ -273,7 +278,7 @@ describe("content messages", () => {
   });
 
   it("lists the day's schedule in order, and says so when nothing is scheduled", () => {
-    const msg = formatDiscordMessage("content.schedule_daily", {
+    const msg = fmtBody("content.schedule_daily", {
       period_label: "Mon, Nov 16",
       pieces: [
         {
@@ -294,7 +299,7 @@ describe("content messages", () => {
     expect(msg.content).toContain("• 9:00 AM · Instagram reel · **Morning reel** · Ready to post");
     expect(msg.content.indexOf("Morning reel")).toBeLessThan(msg.content.indexOf("Evening Short"));
 
-    const empty = formatDiscordMessage("content.schedule_daily", {
+    const empty = fmtBody("content.schedule_daily", {
       period_label: "Tue, Nov 17",
       pieces: [],
     });
@@ -302,7 +307,7 @@ describe("content messages", () => {
   });
 
   it("ranks sources and keeps Unknown on its own unranked line", () => {
-    const msg = formatDiscordMessage("report.top_sources_weekly", {
+    const msg = fmtBody("report.top_sources_weekly", {
       period_label: "Nov 10 – Nov 16",
       sources: [
         { name: "Instagram", leads: 4, applications: 3, booked: 2, cashCents: 150000 },
@@ -332,7 +337,7 @@ describe("content messages", () => {
 
 describe("sales report call numbers", () => {
   it("shows bookings made and calls on calendar on the team line, as separate numbers", () => {
-    const msg = formatDiscordMessage("report.daily_sales", {
+    const msg = fmtBody("report.daily_sales", {
       period_label: "Sat, Nov 14",
       team: { name: "Team", booked: 4, onCalendar: 1 },
     });
@@ -342,7 +347,7 @@ describe("sales report call numbers", () => {
 
 describe("call source", () => {
   it("shows platform, placement and campaign on a booked call", () => {
-    const msg = formatDiscordMessage("call.booked", {
+    const msg = fmtBody("call.booked", {
       lead: {
         full_name: "UTM Verify",
         source_platform: "instagram",
@@ -368,7 +373,7 @@ describe("payment messages", () => {
   };
 
   it("reads a failure in the spec's order, with the attempt number", () => {
-    const msg = formatDiscordMessage(
+    const msg = fmtBody(
       "payment.failed",
       {
         ...base,
@@ -397,7 +402,7 @@ describe("payment messages", () => {
   });
 
   it("never shows a failure's reason or attempt on a collected payment", () => {
-    const msg = formatDiscordMessage("payment.collected", {
+    const msg = fmtBody("payment.collected", {
       ...base,
       processor: "whop",
       failure_reason: "x",
@@ -409,7 +414,7 @@ describe("payment messages", () => {
   });
 
   it("shows the buyer's currency and the USD figure when they differ", () => {
-    const msg = formatDiscordMessage("payment.collected", {
+    const msg = fmtBody("payment.collected", {
       ...base,
       amount_cents: 200000,
       currency: "CAD",
@@ -419,7 +424,7 @@ describe("payment messages", () => {
   });
 
   it("leaves out what it does not know rather than printing blanks", () => {
-    const msg = formatDiscordMessage("payment.collected", {
+    const msg = fmtBody("payment.collected", {
       amount_cents: 5000,
       currency: "USD",
       processor: "wise",
