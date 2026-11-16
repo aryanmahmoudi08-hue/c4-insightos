@@ -50,6 +50,8 @@ export type FormatOptions = {
   avatarUrl?: string | null;
   /** Discord link to the message this one follows up on. */
   replyToUrl?: string | null;
+  /** Discord link to the lead's #new-1on1-applicants post ("View application"). */
+  applicationUrl?: string | null;
 };
 
 /** A label and value. `plain` leaves the label unbolded (Aryan's layouts
@@ -235,7 +237,18 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
         // Only this link: Meet, LinkedIn and content URLs still preview.
         `[Open in AscendOS](<${opts.appUrl.replace(/\/+$/, "")}${body.linkPath}>)`
       : "";
-  if (link) parts.push({ text: "" }, { text: DIVIDER }, { text: "" }, { text: link });
+  // Every lead message can jump to the lead's full application answers.
+  const app =
+    body.linkPath && opts.applicationUrl
+      ? `[📝 View 1on1 application](<${opts.applicationUrl}>)`
+      : "";
+  if (link)
+    parts.push(
+      { text: "" },
+      { text: DIVIDER },
+      { text: "" },
+      { text: [link, app].filter(Boolean).join("\n") },
+    );
   if (head) parts.unshift({ text: head });
 
   // Only free text gives way when space runs out; the contact details and
@@ -1479,12 +1492,22 @@ function payment(failed: boolean, p: Record<string, unknown>): Body {
   const lead = obj(p.lead);
   const amount = money(p.amount_cents, p.currency);
   const usd =
-    amount && text(p.currency).toUpperCase() !== "USD" && Number(p.amount_usd_cents)
+    amount && (text(p.currency).toUpperCase() || "USD") !== "USD" && Number(p.amount_usd_cents)
       ? ` (${money(p.amount_usd_cents)})`
       : "";
   // Counted from AscendOS's own payment rows for this buyer: this failure
   // plus the failures since their last successful payment.
   const attempt = Number(p.failed_attempt_number);
+  const revenue = Number(p.revenue_cents) || 0;
+  const toDate = Number(p.collected_to_date_cents) || 0;
+  // "$2,500 of $5,000" once there's more than this payment, or more to come.
+  const soFar =
+    !failed &&
+    toDate &&
+    revenue &&
+    (toDate !== Number(p.amount_usd_cents ?? p.amount_cents) || toDate < revenue)
+      ? `${money(toDate)} of ${money(revenue)}`
+      : "";
   return {
     title: failed ? `Payment FAILED — ${amount || "—"}` : `Payment collected — ${amount || "—"}`,
     blocks: [
@@ -1496,12 +1519,21 @@ function payment(failed: boolean, p: Record<string, unknown>): Body {
       gap,
       lines(
         plain("Processor", PROCESSOR_LABELS[text(p.processor).toLowerCase()] ?? p.processor),
-        plain("Amount", amount ? `${amount}${usd}` : ""),
         plain("Product", p.product ?? p.offer_name),
+        plain("Payment #", failed ? "" : paymentNumber(p)),
       ),
       gap,
       lines(
-        plain("Payment #", failed ? "" : paymentNumber(p)),
+        failed
+          ? plain("Amount", amount ? `${amount}${usd}` : "")
+          : plain("Cash collected", amount ? `${amount}${usd}` : ""),
+        plain("Revenue", money(revenue)),
+        plain("Collected to date", soFar),
+      ),
+      gap,
+      lines(plain("Closer", p.closer_name), plain("Setter", p.setter_name)),
+      gap,
+      lines(
         plain("Reason", failed ? p.failure_reason : ""),
         plain("Attempt #", failed && Number.isFinite(attempt) && attempt > 0 ? attempt : ""),
       ),
@@ -1656,7 +1688,12 @@ export function formatDiscordMessage(
     default:
       body = generic(eventType, p);
   }
-  const msg = assemble(body, opts);
+  const appUrl = text(obj(p.lead).application_message_url);
+  const msg = assemble(body, {
+    ...opts,
+    applicationUrl:
+      eventType === "lead.application_submitted" ? null : (opts.applicationUrl ?? (appUrl || null)),
+  });
   // Rep mentions a message decides itself (#todays-calls, #eod-no-show).
   const users = (Array.isArray(p.mention_user_ids) ? p.mention_user_ids : [])
     .map((u) => String(u))

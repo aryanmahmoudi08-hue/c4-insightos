@@ -383,8 +383,8 @@ describe("payment messages", () => {
       "Email",
       "Phone",
       "Processor",
-      "Amount",
       "Product",
+      "Amount",
       "Reason",
       "Attempt #",
     ].map((l) => msg.content.indexOf(`\n${l}:`));
@@ -415,7 +415,7 @@ describe("payment messages", () => {
       currency: "CAD",
       amount_usd_cents: 146000,
     });
-    expect(msg.content).toContain("Amount: 2,000 CAD ($1,460)");
+    expect(msg.content).toContain("Cash collected: 2,000 CAD ($1,460)");
   });
 
   it("leaves out what it does not know rather than printing blanks", () => {

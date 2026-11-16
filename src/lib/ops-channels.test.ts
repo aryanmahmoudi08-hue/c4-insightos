@@ -127,3 +127,40 @@ describe("google calendar rsvp", () => {
     ).toBeNull();
   });
 });
+
+describe("lead links and payment detail", () => {
+  const o2 = { appUrl: "https://app", timeZone: "America/New_York", username: "X" };
+  const withApp = { ...lead, application_message_url: "https://discord.com/channels/1/2/3" };
+
+  it("lead messages link to the lead's application post", () => {
+    const m = formatDiscordMessage("call.booked", { lead: withApp }, o2);
+    expect(m.content).toContain("[📝 View 1on1 application](<https://discord.com/channels/1/2/3>)");
+  });
+
+  it("the application post doesn't link to itself", () => {
+    const m = formatDiscordMessage("lead.application_submitted", { lead: withApp }, o2);
+    expect(m.content).not.toContain("View 1on1 application");
+  });
+
+  it("a payment shows cash, revenue, what's collected so far, closer and setter", () => {
+    const m = formatDiscordMessage(
+      "payment.collected",
+      {
+        lead,
+        amount_cents: 250000,
+        amount_usd_cents: 250000,
+        product: "Inner Circle / VIP Career Mentorship",
+        revenue_cents: 500000,
+        collected_to_date_cents: 250000,
+        closer_name: "Sam",
+        setter_name: "Jordan",
+        prior_successful_payments: 0,
+      },
+      o2,
+    );
+    expect(m.content).toContain(
+      "Cash collected: $2,500\nRevenue: $5,000\nCollected to date: $2,500 of $5,000",
+    );
+    expect(m.content).toContain("Closer: Sam\nSetter: Jordan");
+  });
+});

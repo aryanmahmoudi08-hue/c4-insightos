@@ -23,10 +23,12 @@ export type LeadCard = {
   source_platform: string | null;
   source_medium: string | null;
   source_campaign: string | null;
+  /** Discord link to the lead's #new-1on1-applicants post, when it has one. */
+  application_message_url: string | null;
 };
 
 export const LEAD_CARD_COLUMNS =
-  "id, full_name, email, phone, application_data, source_platform, source_medium, source_campaign";
+  "id, full_name, email, phone, application_data, source_platform, source_medium, source_campaign, application_message_url";
 
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 
@@ -48,6 +50,7 @@ export function leadCardFrom(row: Record<string, unknown> | null | undefined): L
     source_platform: str(r.source_platform),
     source_medium: str(r.source_medium),
     source_campaign: str(r.source_campaign),
+    application_message_url: str(r.application_message_url),
   };
 }
 

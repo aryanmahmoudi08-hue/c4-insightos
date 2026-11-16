@@ -87,6 +87,9 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
       payment_plan: boolean | null;
     } | null;
     const progress = schedule.length ? paymentProgress(schedule) : null;
+    // Who sold it and what the deal is worth: the buyer's most recent call
+    // with a closer on it (the post-call report), and the setter on it.
+    const sale = await saleFor(orgId, lead?.email ?? email);
     // No client record (most processor payments, and Stan): name the product
     // by matching the amount to an offer's price or one of its plans.
     const product =
@@ -120,6 +123,11 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
         payment_plan: c?.payment_plan ?? null,
         plan_progress: progress?.label ?? null,
         prior_successful_payments: prior,
+        closer_name: sale?.closerName ?? null,
+        setter_name: sale?.setterName ?? null,
+        // Revenue: the deal value the closer logged, else the offer's price.
+        revenue_cents: sale?.contractValueCents || (await offerPriceByName(orgId, product)) || null,
+        collected_to_date_cents: succeeded ? await collectedToDate(orgId, payment, email) : null,
         collected_at: payment.collected_at,
         // Kept for anyone already reading the old JSON shape.
         source: payment.source_connector,
@@ -128,6 +136,86 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
   } catch (err) {
     console.error("announcePayment:", err);
   }
+}
+
+/** The buyer's latest call with a closer on it: closer, setter, deal value. */
+async function saleFor(orgId: string, email: string | null) {
+  if (!email) return null;
+  const { data: call } = await db
+    .from("calls")
+    .select("closer_name, closer_id, setter_id, contract_value_cents, closed")
+    .eq("org_id", orgId)
+    .ilike("lead_email", escapeLike(email))
+    .not("closer_name", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!call) return null;
+  const c = call as {
+    closer_name: string | null;
+    setter_id: string | null;
+    contract_value_cents: number | null;
+  };
+  let setterName: string | null = null;
+  if (c.setter_id) {
+    const { data: tm } = await db
+      .from("team_members")
+      .select("name")
+      .eq("org_id", orgId)
+      .eq("user_id", c.setter_id)
+      .limit(1)
+      .maybeSingle();
+    setterName = (tm?.name as string | undefined) ?? null;
+    if (!setterName) {
+      const { data: prof } = await db
+        .from("profiles")
+        .select("display_name")
+        .eq("id", c.setter_id)
+        .maybeSingle();
+      setterName = (prof?.display_name as string | undefined) ?? null;
+    }
+  }
+  return {
+    closerName: c.closer_name,
+    setterName,
+    contractValueCents: Number(c.contract_value_cents) || 0,
+  };
+}
+
+/** An active offer's price by its name (the product on the payment). */
+async function offerPriceByName(orgId: string, name: string | null): Promise<number | null> {
+  if (!name) return null;
+  const { data } = await db
+    .from("offers")
+    .select("price_cents")
+    .eq("org_id", orgId)
+    .eq("name", name)
+    .limit(1)
+    .maybeSingle();
+  return (data?.price_cents as number | undefined) ?? null;
+}
+
+/** Everything this buyer has paid, this payment included (USD cents). */
+async function collectedToDate(
+  orgId: string,
+  payment: PaymentRow,
+  email: string | null,
+): Promise<number | null> {
+  let q = db
+    .from("payments")
+    .select("amount_cents")
+    .eq("org_id", orgId)
+    .eq("status", "paid")
+    .lte("collected_at", payment.collected_at);
+  if (payment.client_id) q = q.eq("client_id", payment.client_id);
+  else if (email) q = q.ilike("raw->>email", escapeLike(email));
+  else return null;
+  const { data, error } = await q;
+  if (error) return null;
+  return ((data ?? []) as Array<{ amount_cents: number }>).reduce(
+    (t, r) => t + (Number(r.amount_cents) || 0),
+    0,
+  );
 }
 
 /** The active offer whose price, or one of whose plans' total, deposit or

@@ -94,6 +94,33 @@ async function replyLinkResolver(orgId: string, replyTo: unknown) {
   };
 }
 
+/** Saves the Discord link of a lead's application post on the lead. The
+ *  webhook's execute response has no guild id, so it is read from the
+ *  webhook itself (GET on its URL), as replyLinkResolver does. */
+async function saveApplicationMessageUrl(
+  payload: Record<string, unknown>,
+  subs: SubRow[],
+  deliveries: DeliveryResult[],
+) {
+  const lead = (payload.lead ?? {}) as { id?: string | null };
+  const leadId = lead.id ?? (payload.lead_id as string | undefined) ?? null;
+  if (!leadId) return;
+  const posted = deliveries.find((d) => d.ok && d.messageId && d.channelId);
+  if (!posted) return;
+  const sub = subs.find((s) => s.id === posted.subscriptionId);
+  if (!sub) return;
+  const hook = (await fetch(sub.target_url.split("?")[0])
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)) as { guild_id?: string } | null;
+  if (!hook?.guild_id) return;
+  await untyped
+    .from("leads")
+    .update({
+      application_message_url: `https://discord.com/channels/${hook.guild_id}/${posted.channelId}/${posted.messageId}`,
+    })
+    .eq("id", leadId);
+}
+
 /** The message id an earlier fire posted for each subscription, for an
  *  edit-in-place update. Null for a subscription that has no such message
  *  (it was added later, or that post failed) — that one posts fresh. */
@@ -285,6 +312,13 @@ export async function dispatchEvent(
       }
     }),
   );
+  // Remember where the application posted, so every later message about this
+  // lead can link back to it ("View application").
+  if (eventType === "lead.application_submitted") {
+    await saveApplicationMessageUrl(payload, matching, deliveries).catch((err) =>
+      console.error("saveApplicationMessageUrl:", err),
+    );
+  }
   return { lookupFailed: false, deliveries };
 }
 
