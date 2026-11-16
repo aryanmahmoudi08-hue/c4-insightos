@@ -368,7 +368,10 @@ function callBooked(title: string, p: Record<string, unknown>, tz: string | null
       gap,
       lines(...profileLines(lead, true)),
       gap,
-      lines(plain("Date of Call", when(p.scheduled_for, tz)), plain("Meeting link", noPreview(p.meeting_link))),
+      lines(
+        plain("Date of Call", when(p.scheduled_for, tz)),
+        plain("Meeting link", noPreview(p.meeting_link)),
+      ),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
@@ -437,72 +440,139 @@ function replyBlock(opts: FormatOptions, label: string): Block {
     : { kind: "raw", text: "" };
 }
 
+/** The channel a follow-up is also posted to, by the closer's outcome. */
+function followUpChannel(status: unknown): string {
+  const st = text(status);
+  if (st === "Follow Up (short term)") return "#closer-short-term";
+  if (st === "Follow Up (long term)") return "#closer-long-term";
+  return "";
+}
+
+/** Lead first, then the call and its outcome, the money, then the story. */
 function postCall(p: Record<string, unknown>, tz: string | null): Body {
   const lead = obj(p.lead);
+  const also = followUpChannel(p.lead_status);
   return {
     title: "Post-call notes",
     blocks: [
       lines(
-        ["Closer", p.closer_name],
         ["Full Name", lead.full_name],
         ["Email", p.lead_email ?? lead.email],
         ["Phone", lead.phone],
-        ["Lead status", p.lead_status],
+      ),
+      gap,
+      lines(["Closer", p.closer_name], plain("Date of Call", when(p.scheduled_for, tz)), [
+        "Outcome",
+        p.lead_status,
+      ]),
+      gap,
+      lines(
         ["Offer made", p.offer_made],
         ["Cash collected", money(p.cash_collected_cents, p.currency)],
         ["Total revenue", money(p.contract_value_cents, p.currency)],
         ["Payment plan", p.payment_plan],
-        [
-          "Objections",
-          Array.isArray(p.objections)
-            ? p.objections.map(text).filter(Boolean).join(", ")
-            : p.objections,
-        ],
-        ["Follow up", when(p.requested_followup_at, tz)],
-        ["Amount pitched", money(p.followup_amount_pitched_cents, p.currency)],
-        ["Follow-up reason", p.followup_reason],
-        ["Recording", p.recording_url],
       ),
+      gap,
+      lines([
+        "Objections",
+        Array.isArray(p.objections)
+          ? p.objections.map(text).filter(Boolean).join(", ")
+          : p.objections,
+      ]),
       long("Call summary", p.call_summary),
-      long("Follow-up notes", p.followup_notes),
+      gap,
+      lines(plain("Recording", noPreview(p.recording_url))),
+      gap,
+      lines(
+        plain("Follow up", when(p.requested_followup_at, tz)),
+        plain("Amount pitched", money(p.followup_amount_pitched_cents, p.currency)),
+        plain("Reason", p.followup_reason),
+        plain("Also posted in", also),
+      ),
+      long("Follow-up notes", p.followup_notes, true),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
 }
 
-const EOD_LABELS: Array<[string, string]> = [
-  ["dials", "Dials"],
-  ["connections", "Connections"],
-  ["leads_contacted", "Leads contacted"],
-  ["outbound_dms_sent", "Outbound DMs"],
-  ["inbound_dms_sent", "Inbound DMs"],
-  ["replies", "Replies"],
-  ["followups_sent", "Follow-ups sent"],
-  ["qualified_convos", "Qualified conversations"],
-  ["links_sent", "Links sent"],
-  ["sets", "Sets"],
-  ["calls_on_calendar", "Calls on calendar"],
-  ["live_calls", "Live calls"],
-  ["closes", "Closes"],
-  ["downsells", "Downsells"],
-];
+/** "37%", or nothing when there is nothing to divide by. */
+function rate(n: unknown, d: unknown): string {
+  const num = Number(n) || 0;
+  const den = Number(d) || 0;
+  return den > 0 ? `${Math.round((num / den) * 100)}%` : "";
+}
 
+/** A count, or nothing when it is zero, so empty fields are left out. */
+const count = (v: unknown) => (Number(v) ? Number(v) : "");
+
+/**
+ * Grouped as the rep's funnel: activity, then conversations, then the
+ * outcome, then the rates the rep pages track.
+ */
 function setterEod(p: Record<string, unknown>): Body {
-  const role = text(p.role) === "inbound_dialer" ? "Inbound dialer" : "DM setter";
-  const ls: Line[] = [
-    ["Rep", p.team_member_name],
-    ["Role", role],
+  const dialer = text(p.role) === "inbound_dialer";
+  const who: Line[] = [
+    [
+      "Rep",
+      text(p.team_member_name)
+        ? `${text(p.team_member_name)} (${dialer ? "Dialer" : "DM Setter"})`
+        : "",
+    ],
     ["Date", dateLabel(p.activity_date)],
   ];
-  for (const [key, label] of EOD_LABELS) {
-    const n = Number(p[key]);
-    if (Number.isFinite(n) && n !== 0) ls.push([label, n]);
-  }
-  ls.push(["Cash collected", money(p.cash_collected_cents, p.original_currency)]);
-  ls.push(["Rating", text(p.rate_today) ? `${text(p.rate_today)}/10` : ""]);
+  const outbound = Number(p.outbound_dms_sent) || 0;
+  const blocks: Block[] = dialer
+    ? [
+        lines(...who),
+        gap,
+        lines(
+          ["Dials", count(p.dials)],
+          ["Connections", count(p.connections)],
+          ["Leads contacted", count(p.leads_contacted)],
+        ),
+        gap,
+        lines(
+          ["Sets", count(p.sets)],
+          ["Calls on calendar", count(p.calls_on_calendar)],
+          ["Live calls", count(p.live_calls)],
+          ["Closes", count(p.closes)],
+          ["Cash collected", money(p.cash_collected_cents, p.original_currency)],
+        ),
+        gap,
+        lines(
+          plain("Pickup rate", rate(p.connections, p.dials)),
+          plain("Set rate", rate(p.sets, p.connections)),
+          plain("Rating", text(p.rate_today) ? `${text(p.rate_today)}/10` : ""),
+        ),
+      ]
+    : [
+        lines(...who),
+        gap,
+        lines(
+          ["Leads contacted", count(p.leads_contacted)],
+          ["Outbound DMs", count(p.outbound_dms_sent)],
+          ["Inbound DMs", count(p.inbound_dms_sent)],
+          ["Follow-ups sent", count(p.followups_sent)],
+        ),
+        gap,
+        lines(
+          ["Replies", count(p.replies)],
+          ["Qualified conversations", count(p.qualified_convos)],
+          ["Links sent", count(p.links_sent)],
+          ["Sets", count(p.sets)],
+          ["Cash collected", money(p.cash_collected_cents, p.original_currency)],
+        ),
+        gap,
+        lines(
+          plain("Reply rate", outbound ? rate(p.replies, outbound) : ""),
+          plain("Set rate", rate(p.sets, p.qualified_convos)),
+          plain("Rating", text(p.rate_today) ? `${text(p.rate_today)}/10` : ""),
+        ),
+      ];
   return {
     title: "Setter EOD report",
-    blocks: [lines(...ls), long("Objections", p.objections), long("Notes", p.notes)],
+    blocks: [...blocks, long("Objections", p.objections), long("Notes", p.notes)],
+    linkPath: dialer ? "/inbound-dialer" : "/dm-setter",
   };
 }
 
@@ -626,7 +696,7 @@ function rowLine(r: LeaderboardRow): string {
   return `• **${r.name}** — ${bits.length ? bits.join(" · ") : "no activity logged"}`;
 }
 
-function leaderboard(kind: "Daily" | "Weekly", p: Record<string, unknown>): Body {
+function leaderboard(kind: "Daily" | "Weekly" | "Monthly", p: Record<string, unknown>): Body {
   const setters = (Array.isArray(p.setters) ? p.setters : []) as LeaderboardRow[];
   const closers = (Array.isArray(p.closers) ? p.closers : []) as LeaderboardRow[];
   const team = obj(p.team) as LeaderboardRow;
@@ -897,6 +967,9 @@ export function formatDiscordMessage(
       break;
     case "report.weekly_sales":
       body = leaderboard("Weekly", p);
+      break;
+    case "report.monthly_sales":
+      body = leaderboard("Monthly", p);
       break;
     case "content.ready_to_post":
       body = contentReady(null, p);

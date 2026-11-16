@@ -125,6 +125,16 @@ export async function runSchedulerTick(now: Date = new Date()) {
       else if (w.reason === "no workspace timezone set")
         skipped.push(`report.weekly_sales: ${w.reason}`);
     }
+    if (types.has("report.monthly_sales")) {
+      // The month's last local day, at the sales-report hour.
+      const w = monthlyReportWindow(settings.timeZone, settings.dailyReportHour, now);
+      if (w.due)
+        await run("report.monthly_sales", () =>
+          fireReport(orgId, "report.monthly_sales", w, settings),
+        );
+      else if (w.reason === "no workspace timezone set")
+        skipped.push(`report.monthly_sales: ${w.reason}`);
+    }
 
     if (types.has("content.schedule_daily")) {
       const w = dailyReportWindow(settings.timeZone, settings.contentScheduleHour, now);
@@ -422,7 +432,7 @@ async function fireFollowUpsDue(
 
 async function fireReport(
   orgId: string,
-  eventType: "report.daily_sales" | "report.weekly_sales",
+  eventType: "report.daily_sales" | "report.weekly_sales" | "report.monthly_sales",
   w: { from: string; to: string; key: string },
   settings: NotificationSettingsT,
 ) {

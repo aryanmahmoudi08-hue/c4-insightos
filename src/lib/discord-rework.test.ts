@@ -110,9 +110,9 @@ describe("every lead message ends with a divider and its AscendOS link", () => {
   for (const type of types) {
     it(type, () => {
       const msg = formatDiscordMessage(type, { lead: LEAD, lead_id: "L1" }, { appUrl: APP });
-      expect(msg.content.endsWith(`\n\n${DIVIDER}\n\n[Open in AscendOS](<${APP}/leads?leadId=L1>)`)).toBe(
-        true,
-      );
+      expect(
+        msg.content.endsWith(`\n\n${DIVIDER}\n\n[Open in AscendOS](<${APP}/leads?leadId=L1>)`),
+      ).toBe(true);
     });
   }
 });
@@ -442,5 +442,77 @@ describe("remembering what was posted", () => {
       a: { message_id: "m1", channel_id: "c1" },
       b: { message_id: "m2", channel_id: "c2" },
     });
+  });
+});
+
+describe("reports remodel", () => {
+  const opts = { appUrl: APP, timeZone: TZ, username: "X" };
+
+  it("#closer-post-call-notes: lead, call, money, story, follow-up", () => {
+    const msg = formatDiscordMessage(
+      "closer.post_call_submitted",
+      {
+        lead: LEAD,
+        closer_name: "Sam",
+        scheduled_for: "2026-11-16T20:30:00Z",
+        lead_status: "Follow Up (short term)",
+        offer_made: true,
+        cash_collected_cents: 150000,
+        call_summary: "Needs spouse.",
+        requested_followup_at: "2026-11-20T17:00:00Z",
+      },
+      opts,
+    );
+    expect(labels(msg.content)).toEqual([
+      "Full Name",
+      "Email",
+      "Phone",
+      "Closer",
+      "Date of Call",
+      "Outcome",
+      "Offer made",
+      "Cash collected",
+      "Call summary",
+      "Follow up",
+      "Also posted in",
+    ]);
+    expect(msg.content).toContain("Date of Call: Mon, Nov 16, 3:30 PM EST");
+    expect(msg.content).toContain("Also posted in: #closer-short-term");
+  });
+
+  it("#setter-eod-reports: DM setter funnel with rates", () => {
+    const msg = formatDiscordMessage(
+      "setter.eod_submitted",
+      {
+        role: "dm_setter",
+        team_member_name: "Jordan",
+        activity_date: "2026-11-14",
+        outbound_dms_sent: 60,
+        replies: 22,
+        qualified_convos: 9,
+        sets: 3,
+      },
+      opts,
+    );
+    expect(msg.content.startsWith("**Rep:** Jordan (DM Setter)\n**Date:** Sat, Nov 14\n\n")).toBe(
+      true,
+    );
+    expect(msg.content).toContain("Reply rate: 37%\nSet rate: 33%");
+    expect(msg.content).toContain("(<https://ascendos-app.vercel.app/dm-setter>)");
+  });
+
+  it("#setter-eod-reports: dialer gets pickup rate", () => {
+    const msg = formatDiscordMessage(
+      "setter.eod_submitted",
+      { role: "inbound_dialer", team_member_name: "Alex", dials: 120, connections: 30, sets: 4 },
+      opts,
+    );
+    expect(msg.content).toContain("**Rep:** Alex (Dialer)");
+    expect(msg.content).toContain("Pickup rate: 25%\nSet rate: 13%");
+  });
+
+  it("monthly sales report is a dispatched, scheduled event with its own bot", () => {
+    expect(DISPATCHED_EVENT_TYPES).toContain("report.monthly_sales");
+    expect(discordIdentityFor("report.monthly_sales")?.username).toBe("MONTHLY REPORT");
   });
 });

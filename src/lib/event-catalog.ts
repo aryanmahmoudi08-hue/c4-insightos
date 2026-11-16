@@ -192,6 +192,12 @@ export const DISPATCHED_EVENTS: EventCatalogEntry[] = [
     emittedBy: "scheduler.server.ts",
   },
   {
+    type: "report.monthly_sales",
+    label: "Monthly sales team report",
+    dispatched: true,
+    emittedBy: "scheduler.server.ts",
+  },
+  {
     type: "content.ready_to_post.short_form",
     label: "Short-form ready to post",
     dispatched: true,
@@ -324,6 +330,7 @@ export const DISCORD_BOT_IDENTITIES: Record<string, { name: string; emoji: strin
   "setter.eod_submitted": { name: "SETTER EOD", emoji: "1f4cb" },
   "report.daily_sales": { name: "DAILY REPORT", emoji: "1f4ca" },
   "report.weekly_sales": { name: "WEEKLY REPORT", emoji: "1f4c8" },
+  "report.monthly_sales": { name: "MONTHLY REPORT", emoji: "1f5c2" },
   "content.schedule_daily": { name: "CONTENT SCHEDULE", emoji: "1f4c6" },
   "content.ready_to_post.short_form": { name: "SHORT-FORM READY", emoji: "1f3ac" },
   "content.ready_to_post.long_form": { name: "LONG-FORM READY", emoji: "1f3a5" },

@@ -30,6 +30,7 @@ export const SCHEDULED_EVENT_TYPES = [
   "followup.long_term_due",
   "report.daily_sales",
   "report.weekly_sales",
+  "report.monthly_sales",
   "content.schedule_daily",
   "report.top_sources_daily",
   "report.top_sources_weekly",

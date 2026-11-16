@@ -87,7 +87,7 @@ export async function notifyCloserPostCall(orgId: string, callId: string) {
     const { data: call } = await db
       .from("calls")
       .select(
-        "id, lead_id, lead_email, closer_name, eod_lead_status, offer_made, cash_collected_cents, contract_value_cents, original_currency, payment_plan, call_summary, recording_url, requested_followup_at, followup_amount_pitched_cents, followup_reason, followup_reason_other, followup_notes",
+        "id, lead_id, lead_email, closer_name, scheduled_for, eod_lead_status, offer_made, cash_collected_cents, contract_value_cents, original_currency, payment_plan, call_summary, recording_url, requested_followup_at, followup_amount_pitched_cents, followup_reason, followup_reason_other, followup_notes",
       )
       .eq("org_id", orgId)
       .eq("id", callId)
@@ -109,6 +109,7 @@ export async function notifyCloserPostCall(orgId: string, callId: string) {
         lead,
         lead_email: call.lead_email,
         closer_name: call.closer_name,
+        scheduled_for: call.scheduled_for,
         lead_status: call.eod_lead_status,
         offer_made: call.offer_made,
         cash_collected_cents: call.cash_collected_cents,
