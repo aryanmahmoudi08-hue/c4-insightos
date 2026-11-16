@@ -31,6 +31,7 @@ import {
   PlugZap,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { googleCalendarStatus, startGoogleCalendarOAuth } from "@/lib/google-calendar.functions";
 import { ROLE_LABELS, ROLE_BLURBS, type ManagedRole } from "@/lib/permissions";
 import {
   getWorkspaceSettingsFn,
@@ -612,6 +613,104 @@ function NotificationsSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boo
             every message there pings both.
           </p>
 
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Today’s calls posts at</Label>
+              <select
+                className={SELECT_CLASS}
+                disabled={!isAdmin}
+                value={draft.todaysCallsHour}
+                onChange={(e) => set("todaysCallsHour", Number(e.target.value))}
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {hourLabel(h)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">EOD no-shows post at</Label>
+              <select
+                className={SELECT_CLASS}
+                disabled={!isAdmin}
+                value={draft.eodNoShowHour}
+                onChange={(e) => set("eodNoShowHour", Number(e.target.value))}
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {hourLabel(h)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Applied but not booked after</Label>
+              <select
+                className={SELECT_CLASS}
+                disabled={!isAdmin}
+                value={draft.appliedNotBookedMinutes}
+                onChange={(e) => set("appliedNotBookedMinutes", Number(e.target.value))}
+              >
+                {[15, 30, 60, 120, 240, 1440].map((m) => (
+                  <option key={m} value={m}>
+                    {m < 60
+                      ? `${m} minutes`
+                      : m === 1440
+                        ? "24 hours"
+                        : `${m / 60} hour${m === 60 ? "" : "s"}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="text-3xs text-muted-foreground">
+            #todays-calls lists the day’s booked calls. #eod-no-show flags each rep who didn’t file
+            the previous day’s EOD or post-call notes. #applied-not-booked flags a full application
+            with no call booked after this long.
+          </p>
+
+          <div className="space-y-2">
+            <Label className="text-xs">Pre-call assets (up to 5)</Label>
+            {Array.from({ length: 5 }, (_, i) => {
+              const a = draft.precallAssets[i] ?? { label: "", url: "" };
+              const update = (patch: Partial<{ label: string; url: string }>) => {
+                const next = Array.from(
+                  { length: 5 },
+                  (_, j) => draft.precallAssets[j] ?? { label: "", url: "" },
+                );
+                next[i] = { ...next[i], ...patch };
+                set(
+                  "precallAssets",
+                  next.filter((x) => x.label.trim() || x.url.trim()),
+                );
+              };
+              return (
+                <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <Input
+                    disabled={!isAdmin}
+                    value={a.label}
+                    placeholder={`Asset ${i + 1} name (e.g. Watch the pre-call video)`}
+                    onChange={(e) => update({ label: e.target.value })}
+                  />
+                  <Input
+                    className="sm:col-span-2"
+                    disabled={!isAdmin}
+                    value={a.url}
+                    placeholder="https://"
+                    onChange={(e) => update({ url: e.target.value })}
+                  />
+                </div>
+              );
+            })}
+            <p className="text-3xs text-muted-foreground">
+              Shown on each lead’s pre-call page. Opening one ticks it off on the lead’s message in
+              #pre-call-assets (✅❌❌❌❌).
+            </p>
+          </div>
+
+          <GoogleCalendarConnect isAdmin={isAdmin} />
+
           {isAdmin ? (
             <Button
               size="sm"
@@ -634,6 +733,39 @@ function NotificationsSection({ orgId, isAdmin }: { orgId?: string; isAdmin: boo
         </div>
       )}
     </Section>
+  );
+}
+
+function GoogleCalendarConnect({ isAdmin }: { isAdmin: boolean }) {
+  const start = useServerFn(startGoogleCalendarOAuth);
+  const status = useServerFn(googleCalendarStatus);
+  const { data } = useQuery({ queryKey: ["google-calendar-status"], queryFn: () => status() });
+  const connect = useMutation({
+    mutationFn: () => start(),
+    onSuccess: (r) => {
+      window.location.href = r.authorizeUrl;
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <div className="space-y-1 rounded-md border border-border/70 p-3">
+      <Label className="text-xs">Google Calendar (confirmed = invite accepted)</Label>
+      <p className="text-3xs text-muted-foreground">
+        {data?.connected
+          ? `Connected${data.account ? ` as ${data.account}` : ""}. A call is confirmed when the lead accepts the calendar invite.`
+          : "Not connected. Sign in with the Google account Calendly adds calls to. Until then, a call is confirmed when the confirm step is ticked."}
+      </p>
+      {isAdmin && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => connect.mutate()}
+          disabled={connect.isPending}
+        >
+          {data?.connected ? "Reconnect Google Calendar" : "Connect Google Calendar"}
+        </Button>
+      )}
+    </div>
   );
 }
 

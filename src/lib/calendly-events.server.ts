@@ -10,6 +10,7 @@
  * Each is fired once per Calendly invitee, so a retried delivery does not
  * post twice. Never throws: the booking itself is already recorded.
  */
+import { findLinkedIn } from "./discord-format";
 import { callPayload } from "./event-emitters.server";
 import { db, fireOnce, loadNotificationSettings } from "./notify.server";
 
@@ -20,6 +21,8 @@ type Change =
       inviteeUri: string;
       rescheduledFrom?: string | null;
       apiToken: string;
+      /** The Calendly booking form's answers — LinkedIn when the lead never applied. */
+      bookingAnswers?: Array<{ question?: string; answer?: string }>;
     }
   | {
       kind: "cancelled";
@@ -46,6 +49,17 @@ export async function announceCalendlyChange(orgId: string, change: Change) {
       ...built.payload,
       time_zone: settings.timeZone || null,
     };
+    // A lead who booked without applying has no LinkedIn from Typeform; the
+    // Calendly booking form may have asked for it.
+    if (change.kind !== "cancelled" && change.bookingAnswers?.length) {
+      const lead = (payload.lead ?? {}) as Record<string, unknown>;
+      if (!lead.linkedin) {
+        const linkedin = findLinkedIn(
+          Object.fromEntries(change.bookingAnswers.map((a, i) => [i, a.answer ?? ""])),
+        );
+        if (linkedin) payload.lead = { ...lead, linkedin };
+      }
+    }
     if (change.kind === "cancelled") {
       payload.cancellation_reason = change.cancellationReason?.trim() || null;
     }

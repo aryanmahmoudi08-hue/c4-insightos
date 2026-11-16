@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { CHIP_TONE_CLASSES } from "@/components/ui/badge";
 
 type RoleKey = "dm_setter" | "inbound_dialer" | "closer";
-type Member = { id: string; name: string; role: RoleKey; active: boolean; created_at: string };
+type Member = { id: string; name: string; role: RoleKey; active: boolean; created_at: string; discord_user_id?: string | null };
 
 const ROLES: { value: RoleKey; label: string; accent: string }[] = [
   { value: "dm_setter", label: "DM Setter", accent: CHIP_TONE_CLASSES.default },
@@ -26,6 +26,7 @@ export function TeamRosterPanel() {
   const [role, setRole] = useState<RoleKey>("dm_setter");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [editDiscord, setEditDiscord] = useState("");
   const [dragOver, setDragOver] = useState<RoleKey | null>(null);
 
   const { data: members } = useQuery({
@@ -34,7 +35,7 @@ export function TeamRosterPanel() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("team_members" as never)
-        .select("id, name, role, active, created_at")
+        .select("id, name, role, active, created_at, discord_user_id")
         .eq("org_id", orgId!)
         .order("role").order("name");
       if (error) throw error;
@@ -92,7 +93,7 @@ export function TeamRosterPanel() {
   });
 
   const updateMember = useMutation({
-    mutationFn: async (vars: { id: string; patch: { name?: string; role?: RoleKey } }) => {
+    mutationFn: async (vars: { id: string; patch: { name?: string; role?: RoleKey; discord_user_id?: string | null } }) => {
       const { error } = await supabase.from("team_members" as never).update(vars.patch as never).eq("id", vars.id);
       if (error) throw error;
       if (vars.patch.role) {
@@ -175,12 +176,19 @@ export function TeamRosterPanel() {
                           className="h-7 text-sm flex-1"
                           autoFocus
                           onKeyDown={(e) => {
-                            if (e.key === "Enter" && editName.trim()) updateMember.mutate({ id: m.id, patch: { name: editName.trim() } });
+                            if (e.key === "Enter" && editName.trim()) updateMember.mutate({ id: m.id, patch: { name: editName.trim(), discord_user_id: editDiscord.trim() || null } });
                             if (e.key === "Escape") setEditingId(null);
                           }}
                         />
+                        <Input
+                          value={editDiscord}
+                          onChange={(e) => setEditDiscord(e.target.value.replace(/\D/g, ""))}
+                          placeholder="Discord user ID"
+                          title="Right-click the rep in Discord → Copy User ID (Developer Mode on). Used to @ them in #todays-calls and #eod-no-show."
+                          className="h-7 text-xs w-36"
+                        />
                         <button type="button" className="text-[color:var(--color-success)]" title="Save"
-                          onClick={() => editName.trim() && updateMember.mutate({ id: m.id, patch: { name: editName.trim() } })}>
+                          onClick={() => editName.trim() && updateMember.mutate({ id: m.id, patch: { name: editName.trim(), discord_user_id: editDiscord.trim() || null } })}>
                           <Check className="h-3.5 w-3.5" />
                         </button>
                         <button type="button" className="text-muted-foreground" title="Cancel" onClick={() => setEditingId(null)}>
@@ -190,8 +198,11 @@ export function TeamRosterPanel() {
                     ) : (
                       <>
                         <span className="flex-1 truncate font-medium">{m.name}</span>
+                        {m.discord_user_id ? (
+                          <span className="text-3xs text-muted-foreground" title={`Discord user ${m.discord_user_id}`}>@discord</span>
+                        ) : null}
                         <button type="button" className="text-muted-foreground hover:text-foreground" title="Edit name"
-                          onClick={() => { setEditName(m.name); setEditingId(m.id); }}>
+                          onClick={() => { setEditName(m.name); setEditDiscord(m.discord_user_id ?? ""); setEditingId(m.id); }}>
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button type="button" className="text-muted-foreground hover:text-foreground" title={m.active ? "Deactivate" : "Activate"} onClick={() => toggle.mutate(m)}>

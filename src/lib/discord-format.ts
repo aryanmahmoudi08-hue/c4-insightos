@@ -27,10 +27,12 @@ import { platformLabel, statusLabel, timeOfDayLabel } from "./content-events";
 /** Discord's hard limit for `content`. */
 export const DISCORD_CONTENT_LIMIT = 2000;
 const TRUNCATION_MARKER = "\n… (message truncated)";
+/** Ends every message: a blank line Discord keeps (see assemble). */
+export const MESSAGE_SPACER = "\n\u200b";
 
 export type DiscordMessage = {
   content: string;
-  allowed_mentions: { parse: never[]; roles: string[] };
+  allowed_mentions: { parse: never[]; roles: string[]; users?: string[] };
   /** The bot name the message posts under (overrides the webhook's). */
   username?: string;
   avatar_url?: string;
@@ -276,6 +278,9 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
       TRUNCATION_MARKER;
   }
 
+  // A blank trailing line, so back-to-back posts from the same bot don't run
+  // together. Discord trims trailing whitespace, so it's a zero-width space.
+  if (content.length + MESSAGE_SPACER.length <= DISCORD_CONTENT_LIMIT) content += MESSAGE_SPACER;
   const msg: DiscordMessage = { content, allowed_mentions: { parse: [], roles } };
   if (opts.username) msg.username = opts.username;
   if (opts.avatarUrl) msg.avatar_url = opts.avatarUrl;
@@ -1270,6 +1275,182 @@ function topSourcesReport(p: Record<string, unknown>): Body {
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* Ops channels (2026-11-15)                                            */
+/* ------------------------------------------------------------------ */
+
+/** #applied-not-booked: the application, plus when they applied. */
+function appliedNotBooked(p: Record<string, unknown>, tz: string | null): Body {
+  const app = application(p);
+  return {
+    ...app,
+    title: "Applied but didn't book",
+    blocks: [
+      ...app.blocks,
+      gap,
+      lines(plain("Applied", when(p.applied_at, tz)), plain("Call booked", "Not yet")),
+    ],
+  };
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  dm_setter: "DM Setter",
+  inbound_dialer: "Dialer",
+  closer: "Closer",
+};
+
+/** #eod-no-show: one rep who didn't file the previous day. */
+function eodMissing(p: Record<string, unknown>, tz: string | null, appUrl?: string | null): Body {
+  const calls = (Array.isArray(p.calls) ? p.calls : []) as Array<{ lead?: string; time?: string }>;
+  const formUrl =
+    appUrl && text(p.form_path) ? `${appUrl.replace(/\/+$/, "")}${text(p.form_path)}` : "";
+  return {
+    title: "EOD not filed",
+    blocks: [
+      lines(
+        ["Rep", text(p.rep) ? `${text(p.rep)} (${ROLE_LABEL[text(p.role)] ?? text(p.role)})` : ""],
+        ["Date", p.date_label],
+        ["Missing", p.missing],
+      ),
+      gap,
+      {
+        kind: "raw",
+        text: calls
+          .map((c) => `• ${text(c.lead)}${c.time ? `: ${when(c.time, tz)}` : ""}`)
+          .join("\n"),
+      },
+      gap,
+      lines(plain("File it now", formUrl ? `[Open form](<${formUrl}>)` : "")),
+    ],
+  };
+}
+
+/** #todays-calls: every call on the calendar today, earliest first. */
+function callsToday(p: Record<string, unknown>, tz: string | null, appUrl?: string | null): Body {
+  const calls = (Array.isArray(p.calls) ? p.calls : []) as Array<Record<string, unknown>>;
+  const base = (appUrl ?? "").replace(/\/+$/, "");
+  const timeOnly = (iso: unknown) => {
+    const full = when(iso, tz);
+    return full.includes(", ") ? full.split(", ").slice(2).join(", ") || full : full;
+  };
+  const blocks = calls.map((c) => {
+    const status = c.confirmed ? "✅ Confirmed" : "⚠️ Not confirmed";
+    const who = [
+      text(c.setter) ? `Setter: ${text(c.setter)}` : "",
+      text(c.closer) ? `Closer: ${text(c.closer)}` : "Closer: unassigned",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const linksLine = [
+      text(c.meeting_link) ? `[Meeting link](<${text(c.meeting_link)}>)` : "",
+      base && text(c.lead_id)
+        ? `[Open in AscendOS](<${base}/leads?leadId=${text(c.lead_id)}>)`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return [
+      `**${timeOnly(c.time)} · ${text(c.lead_name)}** ${status}`,
+      text(c.phone) ? `Phone: ${text(c.phone)}` : "",
+      who,
+      linksLine,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  });
+  return {
+    title: "Today's calls",
+    blocks: [
+      lines(["Date", p.date_label], ["Calls today", String(calls.length)]),
+      divider,
+      { kind: "raw", text: blocks.join("\n\n") || "No calls booked today." },
+    ],
+  };
+}
+
+/** The lead and money lines both payment follow-up messages share. */
+function paymentFollowUpBlocks(p: Record<string, unknown>, tz: string | null): Block[] {
+  const lead = obj(p.lead);
+  const collected = num(p.cash_collected_cents);
+  const deal = num(p.contract_value_cents);
+  return [
+    lines(...leadLines(lead, p, false)),
+    gap,
+    lines(["Closer", p.closer_name], plain("Status", p.lead_status)),
+    gap,
+    lines(
+      plain("Collected so far", money(collected, p.currency)),
+      plain("Deal value", money(deal, p.currency)),
+      plain("Still owed", deal > collected ? money(deal - collected, p.currency) : ""),
+    ),
+    gap,
+    lines(
+      ["Next payment due", when(p.payment_followup_at, tz)],
+      ["Amount due", money(p.payment_followup_amount_cents, p.currency)],
+      ["How they're paying", p.payment_followup_method],
+    ),
+    long("Payment notes", p.payment_followup_notes, true),
+  ];
+}
+
+function paymentFollowUpLogged(p: Record<string, unknown>, tz: string | null): Body {
+  return {
+    title: "Payment follow-up logged",
+    blocks: paymentFollowUpBlocks(p, tz),
+    linkPath: leadLink(obj(p.lead).id ?? p.lead_id),
+  };
+}
+
+function paymentFollowUpDue(
+  p: Record<string, unknown>,
+  tz: string | null,
+  opts: FormatOptions,
+): Body {
+  const lead = obj(p.lead);
+  return {
+    title: "Payment due now",
+    headline: "COLLECT PAYMENT ASAP",
+    blocks: opts.replyToUrl
+      ? [
+          lines(
+            ["Full Name", lead.full_name],
+            ["Phone", lead.phone],
+            ["Amount due", money(p.payment_followup_amount_cents, p.currency)],
+            ["How they're paying", p.payment_followup_method],
+          ),
+          replyBlock(opts, "Original payment follow-up"),
+        ]
+      : paymentFollowUpBlocks(p, tz),
+    linkPath: leadLink(lead.id ?? p.lead_id),
+  };
+}
+
+/** #pre-call-assets: ✅ per asset the lead opened. Edited in place. */
+function precallProgress(p: Record<string, unknown>, tz: string | null): Body {
+  const lead = obj(p.lead);
+  const assets = (Array.isArray(p.assets) ? p.assets : []) as Array<{
+    label?: string;
+    done?: boolean;
+  }>;
+  const row = assets.map((a) => (a.done ? "✅" : "❌")).join("");
+  const done = assets.filter((a) => a.done).length;
+  return {
+    title: "Pre-call assets",
+    blocks: [
+      lines(...leadLines(lead, p, false)),
+      gap,
+      lines(plain("Date of Call", when(p.scheduled_for, tz))),
+      gap,
+      lines(["Progress", `${row} (${done}/${assets.length})`]),
+      {
+        kind: "raw",
+        text: assets.map((a) => `${a.done ? "✅" : "❌"} ${text(a.label)}`).join("\n"),
+      },
+    ],
+    linkPath: leadLink(lead.id ?? p.lead_id),
+  };
+}
+
 const PROCESSOR_LABELS: Record<string, string> = {
   fanbasis: "Commas (Fanbasis)",
   whop: "Whop",
@@ -1283,6 +1464,15 @@ export function ordinal(n: number): string {
   const v = n % 100;
   if (v >= 11 && v <= 13) return `${n}th`;
   return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
+/** "2", or "2 of 5" when the client's plan progress is known ("2/5 paid"). */
+function paymentNumber(p: Record<string, unknown>): string {
+  const prior = Number(p.prior_successful_payments);
+  if (!Number.isFinite(prior) || prior < 0) return "";
+  const nth = prior + 1;
+  const m = /\/(\d+)/.exec(text(p.plan_progress));
+  return m ? `${nth} of ${m[1]}` : String(nth);
 }
 
 function payment(failed: boolean, p: Record<string, unknown>): Body {
@@ -1311,6 +1501,7 @@ function payment(failed: boolean, p: Record<string, unknown>): Body {
       ),
       gap,
       lines(
+        plain("Payment #", failed ? "" : paymentNumber(p)),
         plain("Reason", failed ? p.failure_reason : ""),
         plain("Attempt #", failed && Number.isFinite(attempt) && attempt > 0 ? attempt : ""),
       ),
@@ -1425,6 +1616,24 @@ export function formatDiscordMessage(
     case "report.top_sources_monthly":
       body = p.totals ? topSourcesReport({ kind: "Monthly", ...p }) : topSources("Monthly", p);
       break;
+    case "lead.applied_not_booked":
+      body = appliedNotBooked(p, tz);
+      break;
+    case "eod.missing":
+      body = eodMissing(p, tz, opts.appUrl);
+      break;
+    case "calls.today":
+      body = callsToday(p, tz, opts.appUrl);
+      break;
+    case "payment.followup_logged":
+      body = paymentFollowUpLogged(p, tz);
+      break;
+    case "payment.followup_due":
+      body = paymentFollowUpDue(p, tz, opts);
+      break;
+    case "precall.progress":
+      body = precallProgress(p, tz);
+      break;
     case "payment.collected":
       body = payment(false, p);
       break;
@@ -1447,5 +1656,11 @@ export function formatDiscordMessage(
     default:
       body = generic(eventType, p);
   }
-  return assemble(body, opts);
+  const msg = assemble(body, opts);
+  // Rep mentions a message decides itself (#todays-calls, #eod-no-show).
+  const users = (Array.isArray(p.mention_user_ids) ? p.mention_user_ids : [])
+    .map((u) => String(u))
+    .filter((u) => /^\d+$/.test(u));
+  if (users.length) msg.allowed_mentions.users = users;
+  return msg;
 }

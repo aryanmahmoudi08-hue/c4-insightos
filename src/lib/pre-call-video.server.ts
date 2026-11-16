@@ -34,7 +34,9 @@ export async function getOrCreateLink(sb: Sb, orgId: string, leadId: string): Pr
   if (existing?.token) return existing.token as string;
 
   const token = generateToken();
-  const { error: insErr } = await sb.from("lead_video_links").insert({ org_id: orgId, lead_id: leadId, token, vsl_kind: "post_booking" });
+  const { error: insErr } = await sb
+    .from("lead_video_links")
+    .insert({ org_id: orgId, lead_id: leadId, token, vsl_kind: "post_booking" });
   if (insErr) throw new Error(`Lead video link creation failed: ${insErr.message}`);
   return token;
 }
@@ -42,7 +44,30 @@ export async function getOrCreateLink(sb: Sb, orgId: string, leadId: string): Pr
 export type ResolvedPreCallVideo = {
   found: boolean;
   vsl: { name: string; wistia_video_id: string | null } | null;
+  /** The workspace's pre-call assets (Settings → Notifications), each opened
+   *  through /api/public/precall-asset so it ticks off in #pre-call-assets. */
+  assets?: Array<{ index: number; label: string; opened: boolean }>;
 };
+
+/** The workspace's configured pre-call assets, http(s) only. */
+export async function precallAssetsFor(
+  sb: Sb,
+  orgId: string,
+): Promise<Array<{ index: number; label: string; url: string }>> {
+  const { data } = await sb.from("organizations").select("settings").eq("id", orgId).maybeSingle();
+  const list = (data?.settings?.notifications?.precallAssets ?? []) as Array<{
+    label?: string;
+    url?: string;
+  }>;
+  return list
+    .slice(0, 5)
+    .map((a, index) => ({
+      index,
+      label: String(a.label ?? "").trim(),
+      url: String(a.url ?? "").trim(),
+    }))
+    .filter((a) => a.label && /^https?:\/\//i.test(a.url));
+}
 
 /**
  * Public path (no auth, no lead session — this is the one deliberately
@@ -65,7 +90,7 @@ export async function resolvePreCallVideo(sb: Sb, token: string): Promise<Resolv
     .eq("token", token)
     .maybeSingle();
   if (linkErr) throw new Error(`Lead video link lookup failed: ${linkErr.message}`);
-  if (!link) return { found: false, vsl: null };
+  if (!link) return { found: false, vsl: null, assets: [] };
 
   const isFirstOpen = !link.opened_at;
   await Promise.all([
@@ -77,7 +102,10 @@ export async function resolvePreCallVideo(sb: Sb, token: string): Promise<Resolv
       payload: { token, first_open: isFirstOpen },
     }),
     isFirstOpen
-      ? sb.from("lead_video_links").update({ opened_at: new Date().toISOString() }).eq("id", link.id)
+      ? sb
+          .from("lead_video_links")
+          .update({ opened_at: new Date().toISOString() })
+          .eq("id", link.id)
       : Promise.resolve(),
   ]);
 
@@ -91,5 +119,16 @@ export async function resolvePreCallVideo(sb: Sb, token: string): Promise<Resolv
     .maybeSingle();
   if (vslErr) throw new Error(`VSL lookup failed: ${vslErr.message}`);
 
-  return { found: true, vsl: vsl ?? null };
+  const [assets, { data: clicks }] = await Promise.all([
+    precallAssetsFor(sb, link.org_id),
+    sb.from("precall_asset_clicks").select("asset_index").eq("lead_id", link.lead_id),
+  ]);
+  const opened = new Set(
+    ((clicks ?? []) as Array<{ asset_index: number }>).map((c) => c.asset_index),
+  );
+  return {
+    found: true,
+    vsl: vsl ?? null,
+    assets: assets.map((a) => ({ index: a.index, label: a.label, opened: opened.has(a.index) })),
+  };
 }

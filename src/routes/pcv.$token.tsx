@@ -46,7 +46,45 @@ function PreCallVideoPage() {
         <div className="max-w-md text-center space-y-2">
           <CircleAlert className="h-10 w-10 mx-auto text-muted-foreground" />
           <h1 className="display-serif text-2xl">This link isn't valid</h1>
-          <p className="text-sm text-muted-foreground">Ask your setter or closer to send you a fresh link.</p>
+          <p className="text-sm text-muted-foreground">
+            Ask your setter or closer to send you a fresh link.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  const assets = data.assets ?? [];
+  const assetList = assets.length ? (
+    <section className="space-y-2">
+      <h2 className="text-sm font-semibold">Before your call</h2>
+      <ul className="space-y-2">
+        {assets.map((a) => (
+          <li key={a.index}>
+            <a
+              href={`/api/public/precall-asset/${token}/${a.index}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between rounded-lg border border-border px-4 py-3 text-sm hover:bg-muted"
+            >
+              <span>{a.label}</span>
+              <span aria-hidden>{a.opened ? "✅" : "→"}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  ) : null;
+
+  if (!data.vsl && assetList) {
+    return (
+      <main className="min-h-screen bg-background py-10 px-4">
+        <div className="mx-auto w-full max-w-2xl space-y-6">
+          <header className="text-center space-y-2">
+            <h1 className="display-serif text-2xl">Get ready for your call</h1>
+            <p className="text-sm text-muted-foreground">Go through these before your call.</p>
+          </header>
+          {assetList}
         </div>
       </main>
     );
@@ -58,7 +96,9 @@ function PreCallVideoPage() {
         <div className="max-w-md text-center space-y-2">
           <Video className="h-10 w-10 mx-auto text-muted-foreground" />
           <h1 className="display-serif text-2xl">Nothing to watch yet</h1>
-          <p className="text-sm text-muted-foreground">Your team hasn't uploaded a pre-call video for this yet — go ahead and get to your call.</p>
+          <p className="text-sm text-muted-foreground">
+            Your team hasn't uploaded a pre-call video for this yet — go ahead and get to your call.
+          </p>
         </div>
       </main>
     );
@@ -69,9 +109,12 @@ function PreCallVideoPage() {
       <div className="mx-auto w-full max-w-2xl space-y-6">
         <header className="text-center space-y-2">
           <h1 className="display-serif text-2xl">{data.vsl.name}</h1>
-          <p className="text-sm text-muted-foreground">Watch this before your call — it'll only take a few minutes.</p>
+          <p className="text-sm text-muted-foreground">
+            Watch this before your call — it'll only take a few minutes.
+          </p>
         </header>
         <VideoEmbed wistiaId={data.vsl.wistia_video_id} title={data.vsl.name} className="mx-auto" />
+        {assetList}
       </div>
     </main>
   );

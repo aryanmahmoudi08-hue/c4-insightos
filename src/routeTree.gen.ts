@@ -58,8 +58,10 @@ import { Route as ApiPublicWebinarjamRouteImport } from './routes/api/public/web
 import { Route as ApiPublicWhopRouteImport } from './routes/api/public/whop'
 import { Route as ApiPublicWiseRouteImport } from './routes/api/public/wise'
 import { Route as ApiPublicIngestTokenRouteImport } from './routes/api/public/ingest.$token'
+import { Route as ApiPublicOauthGoogleCalendarRouteImport } from './routes/api/public/oauth.google-calendar'
 import { Route as ApiPublicOauthMetaRouteImport } from './routes/api/public/oauth.meta'
 import { Route as ApiPublicTwilioEventRouteImport } from './routes/api/public/twilio.$event'
+import { Route as ApiPublicPrecallAssetTokenIndexRouteImport } from './routes/api/public/precall-asset.$token.$index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -314,6 +316,12 @@ const ApiPublicIngestTokenRoute = ApiPublicIngestTokenRouteImport.update({
   path: '/api/public/ingest/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicOauthGoogleCalendarRoute =
+  ApiPublicOauthGoogleCalendarRouteImport.update({
+    id: '/api/public/oauth/google-calendar',
+    path: '/api/public/oauth/google-calendar',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicOauthMetaRoute = ApiPublicOauthMetaRouteImport.update({
   id: '/api/public/oauth/meta',
   path: '/api/public/oauth/meta',
@@ -324,6 +332,12 @@ const ApiPublicTwilioEventRoute = ApiPublicTwilioEventRouteImport.update({
   path: '/api/public/twilio/$event',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicPrecallAssetTokenIndexRoute =
+  ApiPublicPrecallAssetTokenIndexRouteImport.update({
+    id: '/api/public/precall-asset/$token/$index',
+    path: '/api/public/precall-asset/$token/$index',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -374,8 +388,10 @@ export interface FileRoutesByFullPath {
   '/api/public/whop': typeof ApiPublicWhopRoute
   '/api/public/wise': typeof ApiPublicWiseRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
+  '/api/public/oauth/google-calendar': typeof ApiPublicOauthGoogleCalendarRoute
   '/api/public/oauth/meta': typeof ApiPublicOauthMetaRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
+  '/api/public/precall-asset/$token/$index': typeof ApiPublicPrecallAssetTokenIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -426,8 +442,10 @@ export interface FileRoutesByTo {
   '/api/public/whop': typeof ApiPublicWhopRoute
   '/api/public/wise': typeof ApiPublicWiseRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
+  '/api/public/oauth/google-calendar': typeof ApiPublicOauthGoogleCalendarRoute
   '/api/public/oauth/meta': typeof ApiPublicOauthMetaRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
+  '/api/public/precall-asset/$token/$index': typeof ApiPublicPrecallAssetTokenIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -480,8 +498,10 @@ export interface FileRoutesById {
   '/api/public/whop': typeof ApiPublicWhopRoute
   '/api/public/wise': typeof ApiPublicWiseRoute
   '/api/public/ingest/$token': typeof ApiPublicIngestTokenRoute
+  '/api/public/oauth/google-calendar': typeof ApiPublicOauthGoogleCalendarRoute
   '/api/public/oauth/meta': typeof ApiPublicOauthMetaRoute
   '/api/public/twilio/$event': typeof ApiPublicTwilioEventRoute
+  '/api/public/precall-asset/$token/$index': typeof ApiPublicPrecallAssetTokenIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -534,8 +554,10 @@ export interface FileRouteTypes {
     | '/api/public/whop'
     | '/api/public/wise'
     | '/api/public/ingest/$token'
+    | '/api/public/oauth/google-calendar'
     | '/api/public/oauth/meta'
     | '/api/public/twilio/$event'
+    | '/api/public/precall-asset/$token/$index'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -586,8 +608,10 @@ export interface FileRouteTypes {
     | '/api/public/whop'
     | '/api/public/wise'
     | '/api/public/ingest/$token'
+    | '/api/public/oauth/google-calendar'
     | '/api/public/oauth/meta'
     | '/api/public/twilio/$event'
+    | '/api/public/precall-asset/$token/$index'
   id:
     | '__root__'
     | '/'
@@ -639,8 +663,10 @@ export interface FileRouteTypes {
     | '/api/public/whop'
     | '/api/public/wise'
     | '/api/public/ingest/$token'
+    | '/api/public/oauth/google-calendar'
     | '/api/public/oauth/meta'
     | '/api/public/twilio/$event'
+    | '/api/public/precall-asset/$token/$index'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -665,8 +691,10 @@ export interface RootRouteChildren {
   ApiPublicWhopRoute: typeof ApiPublicWhopRoute
   ApiPublicWiseRoute: typeof ApiPublicWiseRoute
   ApiPublicIngestTokenRoute: typeof ApiPublicIngestTokenRoute
+  ApiPublicOauthGoogleCalendarRoute: typeof ApiPublicOauthGoogleCalendarRoute
   ApiPublicOauthMetaRoute: typeof ApiPublicOauthMetaRoute
   ApiPublicTwilioEventRoute: typeof ApiPublicTwilioEventRoute
+  ApiPublicPrecallAssetTokenIndexRoute: typeof ApiPublicPrecallAssetTokenIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1014,6 +1042,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicIngestTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/oauth/google-calendar': {
+      id: '/api/public/oauth/google-calendar'
+      path: '/api/public/oauth/google-calendar'
+      fullPath: '/api/public/oauth/google-calendar'
+      preLoaderRoute: typeof ApiPublicOauthGoogleCalendarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/oauth/meta': {
       id: '/api/public/oauth/meta'
       path: '/api/public/oauth/meta'
@@ -1026,6 +1061,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/twilio/$event'
       fullPath: '/api/public/twilio/$event'
       preLoaderRoute: typeof ApiPublicTwilioEventRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/precall-asset/$token/$index': {
+      id: '/api/public/precall-asset/$token/$index'
+      path: '/api/public/precall-asset/$token/$index'
+      fullPath: '/api/public/precall-asset/$token/$index'
+      preLoaderRoute: typeof ApiPublicPrecallAssetTokenIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -1119,8 +1161,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicWhopRoute: ApiPublicWhopRoute,
   ApiPublicWiseRoute: ApiPublicWiseRoute,
   ApiPublicIngestTokenRoute: ApiPublicIngestTokenRoute,
+  ApiPublicOauthGoogleCalendarRoute: ApiPublicOauthGoogleCalendarRoute,
   ApiPublicOauthMetaRoute: ApiPublicOauthMetaRoute,
   ApiPublicTwilioEventRoute: ApiPublicTwilioEventRoute,
+  ApiPublicPrecallAssetTokenIndexRoute: ApiPublicPrecallAssetTokenIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

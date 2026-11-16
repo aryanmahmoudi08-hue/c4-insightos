@@ -74,7 +74,7 @@ describe("formatDiscordMessage — application", () => {
     const why = msg.content.indexOf("Why you, why now");
     expect(why).toBeGreaterThan(msg.content.indexOf("**Budget:**"));
     expect(
-      msg.content.trimEnd().endsWith("(<https://ascendos-app.vercel.app/leads?leadId=lead-1>)"),
+      msg.content.replace(/\n\u200b$/, "").endsWith("(<https://ascendos-app.vercel.app/leads?leadId=lead-1>)"),
     ).toBe(true);
   });
 

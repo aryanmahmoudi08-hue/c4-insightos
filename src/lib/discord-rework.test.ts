@@ -111,7 +111,7 @@ describe("every lead message ends with a divider and its AscendOS link", () => {
     it(type, () => {
       const msg = formatDiscordMessage(type, { lead: LEAD, lead_id: "L1" }, { appUrl: APP });
       expect(
-        msg.content.endsWith(`\n\n${DIVIDER}\n\n[Open in AscendOS](<${APP}/leads?leadId=L1>)`),
+        msg.content.replace(/\n\u200b$/, "").endsWith(`\n\n${DIVIDER}\n\n[Open in AscendOS](<${APP}/leads?leadId=L1>)`),
       ).toBe(true);
     });
   }

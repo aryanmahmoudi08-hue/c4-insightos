@@ -87,7 +87,7 @@ export async function notifyCloserPostCall(orgId: string, callId: string) {
     const { data: call } = await db
       .from("calls")
       .select(
-        "id, lead_id, lead_email, closer_name, scheduled_for, eod_lead_status, offer_made, cash_collected_cents, contract_value_cents, original_currency, payment_plan, call_summary, recording_url, requested_followup_at, followup_amount_pitched_cents, followup_reason, followup_reason_other, followup_notes",
+        "id, lead_id, lead_email, closer_name, scheduled_for, eod_lead_status, offer_made, cash_collected_cents, contract_value_cents, original_currency, payment_plan, call_summary, recording_url, requested_followup_at, followup_amount_pitched_cents, followup_reason, followup_reason_other, followup_notes, payment_followup_at, payment_followup_amount_cents, payment_followup_method, payment_followup_notes",
       )
       .eq("org_id", orgId)
       .eq("id", callId)
@@ -139,6 +139,18 @@ export async function notifyCloserPostCall(orgId: string, callId: string) {
         followUpPayload(call, lead, settings.timeZone),
       );
     }
+
+    // Money still owed: post it to #payment-follow-ups now; the scheduler
+    // posts "COLLECT PAYMENT ASAP" at the due time, linking this one.
+    if (call.payment_followup_at) {
+      await fireOnce(
+        orgId,
+        "payment.followup_logged",
+        `${call.id}:${call.payment_followup_at}`,
+        { type: "call", id: callId },
+        paymentFollowUpPayload(call, lead, settings.timeZone),
+      );
+    }
   } catch (err) {
     console.error("notifyCloserPostCall:", err);
   }
@@ -160,6 +172,30 @@ export function followUpPayload(
     followup_amount_pitched_cents: c.followup_amount_pitched_cents,
     followup_reason: c.followup_reason_other || c.followup_reason,
     followup_notes: c.followup_notes,
+    currency: c.original_currency,
+    time_zone: timeZone || null,
+  };
+}
+
+/** The fields both payment follow-up messages (logged, and due) carry. */
+export function paymentFollowUpPayload(
+  c: Record<string, unknown>,
+  lead: LeadSummary,
+  timeZone: string | null | undefined,
+): Record<string, unknown> {
+  return {
+    call_id: c.id,
+    lead_id: lead.id,
+    lead,
+    lead_email: c.lead_email,
+    closer_name: c.closer_name,
+    lead_status: c.eod_lead_status,
+    cash_collected_cents: c.cash_collected_cents,
+    contract_value_cents: c.contract_value_cents,
+    payment_followup_at: c.payment_followup_at,
+    payment_followup_amount_cents: c.payment_followup_amount_cents,
+    payment_followup_method: c.payment_followup_method,
+    payment_followup_notes: c.payment_followup_notes,
     currency: c.original_currency,
     time_zone: timeZone || null,
   };

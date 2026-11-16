@@ -106,6 +106,26 @@ const NotificationSettings = z.object({
     .trim()
     .regex(/^\d*$/, "A Discord role ID is digits only")
     .default(""),
+  /** Local hour (0–23) #todays-calls lists the day's calls. Early, so the
+   * list is waiting when the team starts. */
+  todaysCallsHour: z.number().int().min(0).max(23).default(6),
+  /** Local hour (0–23) #eod-no-show flags reps who did not file the
+   * previous day. Midnight: the day is over. */
+  eodNoShowHour: z.number().int().min(0).max(23).default(0),
+  /** Minutes after a full application with no call booked before
+   * #applied-not-booked flags the lead. */
+  appliedNotBookedMinutes: z.number().int().min(10).max(1440).default(60),
+  /** Up to five pre-call assets shown on the lead's pre-call page. Opening
+   * one ticks it off in #pre-call-assets. */
+  precallAssets: z
+    .array(
+      z.object({
+        label: z.string().trim().max(80),
+        url: z.string().trim().max(500),
+      }),
+    )
+    .max(5)
+    .default([]),
 });
 
 export const WorkspaceSettingsSchema = z.object({

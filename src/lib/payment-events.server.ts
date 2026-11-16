@@ -87,6 +87,13 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
       payment_plan: boolean | null;
     } | null;
     const progress = schedule.length ? paymentProgress(schedule) : null;
+    // No client record (most processor payments, and Stan): name the product
+    // by matching the amount to an offer's price or one of its plans.
+    const product =
+      c?.offer_name ??
+      (await offerByAmount(orgId, payment.amount_cents)) ??
+      (payment.raw as { product?: string | null } | null)?.product ??
+      null;
 
     await fireOnce(
       orgId,
@@ -107,8 +114,8 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
         lead: lead && { ...lead, full_name: lead.full_name ?? c?.full_name ?? null },
         client_id: payment.client_id,
         client_name: c?.full_name ?? null,
-        offer_name: c?.offer_name ?? null,
-        product: c?.offer_name ?? null,
+        offer_name: c?.offer_name ?? product,
+        product,
         failed_attempt_number: attempt,
         payment_plan: c?.payment_plan ?? null,
         plan_progress: progress?.label ?? null,
@@ -121,6 +128,37 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
   } catch (err) {
     console.error("announcePayment:", err);
   }
+}
+
+/** The active offer whose price, or one of whose plans' total, deposit or
+ *  installment, equals this amount (USD cents). Null when none or several
+ *  different offers match. */
+async function offerByAmount(orgId: string, cents: number): Promise<string | null> {
+  if (!cents) return null;
+  const { data } = await db
+    .from("offers")
+    .select(
+      "name, price_cents, offer_payment_plans(total_contracted_value_cents, deposit_cents, installment_amount_cents)",
+    )
+    .eq("org_id", orgId)
+    .eq("is_active", true);
+  const names = new Set<string>();
+  for (const o of (data ?? []) as Array<{
+    name: string;
+    price_cents: number | null;
+    offer_payment_plans: Array<Record<string, number | null>> | null;
+  }>) {
+    const amounts = [
+      o.price_cents,
+      ...(o.offer_payment_plans ?? []).flatMap((p) => [
+        p.total_contracted_value_cents,
+        p.deposit_cents,
+        p.installment_amount_cents,
+      ]),
+    ];
+    if (amounts.includes(cents)) names.add(o.name);
+  }
+  return names.size === 1 ? [...names][0] : null;
 }
 
 /** Which failed attempt this is: this failure plus the buyer's failures

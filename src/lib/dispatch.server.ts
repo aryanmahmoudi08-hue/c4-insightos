@@ -94,6 +94,23 @@ async function replyLinkResolver(orgId: string, replyTo: unknown) {
   };
 }
 
+/** The message id an earlier fire posted for each subscription, for an
+ *  edit-in-place update. Null for a subscription that has no such message
+ *  (it was added later, or that post failed) — that one posts fresh. */
+async function editTargetResolver(orgId: string, editOf: unknown) {
+  const ref = (editOf ?? null) as { event_type?: string; fire_key?: string } | null;
+  if (!ref?.event_type || !ref.fire_key) return (_: string) => null;
+  const { data } = await untyped
+    .from("scheduled_event_fires")
+    .select("delivered_messages")
+    .eq("org_id", orgId)
+    .eq("event_type", ref.event_type)
+    .eq("fire_key", ref.fire_key)
+    .maybeSingle();
+  const posted = (data?.delivered_messages ?? {}) as Record<string, PostedMessage>;
+  return (subscriptionId: string) => posted[subscriptionId]?.message_id ?? null;
+}
+
 /**
  * Dispatch an event to every active webhook_subscription whose:
  *   - event_types includes the event, AND
@@ -166,6 +183,11 @@ export async function dispatchEvent(
   const replyLinkFor = await replyLinkResolver(orgId, payload.reply_to).catch(
     () => async () => null,
   );
+  // An update to a message posted earlier (#pre-call-assets ticking off):
+  // edit that message in place rather than posting a new one.
+  const editTargetFor = await editTargetResolver(orgId, payload.edit_of).catch(
+    () => (_: string) => null,
+  );
 
   const jsonBody = JSON.stringify({
     event_type: eventType,
@@ -200,11 +222,20 @@ export async function dispatchEvent(
             )
           : jsonBody;
 
-        const res = await fetch(isDiscord ? withWait(s.target_url) : s.target_url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: requestBody,
-        });
+        const editId = isDiscord ? editTargetFor(s.id) : null;
+        const base = s.target_url.split("?")[0];
+        const res = await fetch(
+          editId
+            ? withWait(`${base}/messages/${editId}`)
+            : isDiscord
+              ? withWait(s.target_url)
+              : s.target_url,
+          {
+            method: editId ? "PATCH" : "POST",
+            headers: { "Content-Type": "application/json" },
+            body: requestBody,
+          },
+        );
         const respText = await res.text().catch(() => "");
         let posted: { messageId: string; channelId: string | null } | null = null;
         if (isDiscord && res.ok) {

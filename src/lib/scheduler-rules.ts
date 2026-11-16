@@ -35,6 +35,15 @@ export const SCHEDULED_EVENT_TYPES = [
   "report.top_sources_daily",
   "report.top_sources_weekly",
   "report.top_sources_monthly",
+  "lead.applied_not_booked",
+  "eod.missing",
+  "calls.today",
+  "payment.followup_logged",
+  "payment.followup_due",
+  "precall.progress",
+  // Not produced by the scheduler itself, but an org listening for it gets
+  // the Google Calendar invite check, which confirms calls.
+  "call.confirmed",
 ] as const;
 
 /**

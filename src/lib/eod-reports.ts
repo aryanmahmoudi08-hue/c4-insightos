@@ -125,6 +125,22 @@ export const CLOSER_LEAD_STATUS_OPTIONS: EodSelectOption[] = [
 // step shows, and for which follow-up type (short vs long term) a
 // follow-up-pipeline record carries. Never inferred from a date or any
 // other field.
+/** Money is still owed after this call: a deposit was taken, or the deal is
+ *  on a payment plan. Shows the payment follow-up questions. */
+export function needsPaymentFollowUp(values: EodValues): boolean {
+  return values.status === "Deposit" || values.payment_plan === true;
+}
+
+export const PAYMENT_FOLLOWUP_METHODS: EodSelectOption[] = [
+  { value: "Card on file (auto-charge)", label: "Card on file (auto-charge)" },
+  { value: "Send payment link", label: "Send payment link" },
+  { value: "Klarna", label: "Klarna" },
+  { value: "Affirm", label: "Affirm" },
+  { value: "Clarity Pay", label: "Clarity Pay" },
+  { value: "Bank transfer / Zelle", label: "Bank transfer / Zelle" },
+  { value: "Other", label: "Other" },
+];
+
 export const FOLLOWUP_LEAD_STATUSES = ["Follow Up (short term)", "Follow Up (long term)"] as const;
 export function isFollowUpLeadStatus(status: unknown): boolean {
   return (FOLLOWUP_LEAD_STATUSES as readonly string[]).includes(String(status ?? ""));
@@ -422,6 +438,44 @@ export const CLOSER_EOD_SCHEMA: EodQuestion[] = [
     required: false,
     defaultValue: false,
   },
+  // Payment follow-up (Aryan, 2026-11-15): when money is still owed — a
+  // deposit, or a payment plan — what's next, so #payment-follow-ups can
+  // remind the closer to collect it at the due time.
+  {
+    key: "payment_followup_at",
+    label: "Next Payment Due",
+    helper: "When is the next payment due? You'll get a COLLECT PAYMENT ASAP reminder then.",
+    type: "datetime",
+    required: true,
+    showIf: (values) => needsPaymentFollowUp(values),
+  },
+  {
+    key: "payment_followup_amount",
+    label: "Amount Due",
+    helper: "How much is due on that date?",
+    type: "number",
+    required: true,
+    min: 0,
+    step: 0.01,
+    money: true,
+    showIf: (values) => needsPaymentFollowUp(values),
+  },
+  {
+    key: "payment_followup_method",
+    label: "How They're Paying",
+    type: "select",
+    required: true,
+    options: PAYMENT_FOLLOWUP_METHODS,
+    showIf: (values) => needsPaymentFollowUp(values),
+  },
+  {
+    key: "payment_followup_notes",
+    label: "Payment Notes",
+    helper: "Anything the next person collecting this should know.",
+    type: "textarea",
+    required: false,
+    showIf: (values) => needsPaymentFollowUp(values),
+  },
   {
     key: "recording_url",
     label: "Call Recording",
@@ -634,6 +688,20 @@ export function buildClosureCallPayload(
     // intent from the Payment Plan question above — never inferred from
     // deposit_cents/contract_value_cents.
     payment_plan: values.payment_plan === true,
+    payment_followup_at:
+      needsPaymentFollowUp(values) && values.payment_followup_at
+        ? new Date(STR(values.payment_followup_at)).toISOString()
+        : null,
+    payment_followup_amount_cents:
+      needsPaymentFollowUp(values) && values.payment_followup_amount !== undefined
+        ? Math.round(NUM(values.payment_followup_amount) * 100)
+        : null,
+    payment_followup_method: needsPaymentFollowUp(values)
+      ? STR(values.payment_followup_method) || null
+      : null,
+    payment_followup_notes: needsPaymentFollowUp(values)
+      ? STR(values.payment_followup_notes) || null
+      : null,
   };
 }
 

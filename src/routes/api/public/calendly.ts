@@ -161,6 +161,7 @@ export const Route = createFileRoute("/api/public/calendly")({
               inviteeUri: invitee.uri,
               rescheduledFrom: change.rescheduledFrom,
               apiToken,
+              bookingAnswers: invitee.questions_and_answers ?? [],
             });
           }
           return Response.json({ ok: true, mapped: true, action: "booked" });

@@ -47,6 +47,14 @@ import {
   type SourceCall,
   type SourceLead,
 } from "./source-leaderboard";
+import {
+  fireAppliedNotBooked,
+  fireEodNoShows,
+  firePaymentFollowUpsDue,
+  firePrecallProgress,
+  fireTodaysCalls,
+  syncGoogleRsvps,
+} from "./scheduler-ops.server";
 import { escapeLike } from "./sql-like";
 import {
   DUE_LOOKBACK_MS,
@@ -180,6 +188,20 @@ export async function runSchedulerTick(now: Date = new Date()) {
       if (w.due) await run(type, () => fireTopSources(orgId, type, w, settings));
       else if (w.reason === "no workspace timezone set") skipped.push(`${type}: ${w.reason}`);
     }
+
+    // Ops channels (scheduler-ops.server.ts).
+    if (types.has("lead.applied_not_booked"))
+      await run("lead.applied_not_booked", () => fireAppliedNotBooked(orgId, settings, now));
+    if (types.has("eod.missing"))
+      await run("eod.missing", () => fireEodNoShows(orgId, settings, now));
+    if (types.has("calls.today"))
+      await run("calls.today", () => fireTodaysCalls(orgId, settings, now));
+    if (types.has("payment.followup_due"))
+      await run("payment.followup_due", () => firePaymentFollowUpsDue(orgId, settings, now));
+    if (types.has("precall.progress"))
+      await run("precall.progress", () => firePrecallProgress(orgId, settings, now));
+    if (types.has("call.confirmed"))
+      await run("google.rsvp", () => syncGoogleRsvps(orgId, settings, now));
 
     if (errors.length) console.error(`scheduler org ${orgId}:`, errors.join("; "));
     results.push({ orgId, fired, skipped, errors });
