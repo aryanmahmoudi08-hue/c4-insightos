@@ -28,11 +28,28 @@ describe("ops channels", () => {
     }
   });
 
-  it("every message is framed top and bottom: blank line, divider, blank line", () => {
+  it("every message opens with one blank line and closes with blank line, divider, blank line", () => {
     const m = formatDiscordMessage("call.booked", { lead }, o);
-    expect(m.content.startsWith("\u200b\n—————————————————————————————————\n\n")).toBe(true);
+    expect(m.content.startsWith("\u200b\n")).toBe(true);
+    expect(m.content.startsWith("\u200b\n\n")).toBe(false);
+    expect(m.content.match(/—+/g)?.length).toBe(1);
     expect(m.content.endsWith("\n\n—————————————————————————————————\n\u200b")).toBe(true);
     expect(m.content.length).toBeLessThanOrEqual(2000);
+  });
+
+  it("unconfirmed alerts are numbered per booking; later ones link the first", () => {
+    const first = formatDiscordMessage("call.unconfirmed", { lead, alert_sequence: 1 }, o);
+    expect(first.content).toContain("**Alert #1**");
+    expect(first.content).not.toContain("↪");
+    const third = formatDiscordMessage(
+      "call.unconfirmed",
+      { lead, alert_sequence: 3 },
+      { ...o, replyToUrl: "https://discord.com/channels/1/2/3" },
+    );
+    expect(third.content).toContain("**Alert #3**");
+    expect(third.content).toContain("↪ [Alert #1](<https://discord.com/channels/1/2/3>)");
+    expect(third.content).toContain(String(lead.full_name));
+    expect(third.content).toContain(String(lead.phone));
   });
 
   it("#todays-calls tags reps and allows exactly those user mentions", () => {

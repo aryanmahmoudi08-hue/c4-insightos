@@ -18,7 +18,9 @@
  *     renders `<@&id>` as text and notifies nobody.
  *   - Each channel posts under its own bot name (event-catalog.ts), which
  *     says what the message is — so there is no title line when it has one.
- *   - Every message about a lead ends with a divider and its AscendOS link.
+ *   - Every message about a lead ends with its AscendOS link.
+ *   - One divider per message, at the very bottom (MESSAGE_BOTTOM). Sections
+ *     inside a message are split by blank lines only.
  */
 
 import { eventCatalogEntry } from "./event-catalog";
@@ -30,8 +32,9 @@ const TRUNCATION_MARKER = "\n… (message truncated)";
 /** Discord trims blank lines at the very start and end of a message; a line
  *  holding only a zero-width space survives, so it reads as a blank line. */
 const BLANK = "\u200b";
-/** Opens every message: blank line, divider, blank line (see assemble). */
-export const MESSAGE_TOP = `${BLANK}\n—————————————————————————————————\n\n`;
+/** Opens every message: one blank line (the message above already ends
+ *  with the divider, so a second one here only doubled it). */
+export const MESSAGE_TOP = `${BLANK}\n`;
 /** Closes every message: blank line, divider, blank line. */
 export const MESSAGE_BOTTOM = `\n\n—————————————————————————————————\n${BLANK}`;
 /** @deprecated kept for older imports; every message now ends with MESSAGE_BOTTOM. */
@@ -219,12 +222,7 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
     if (parts.length && !(last().text === "" && !last().flex)) parts.push({ text: "" });
   };
   for (const b of body.blocks) {
-    if (b.kind === "divider") {
-      if (parts.length && last().text !== DIVIDER) {
-        blank();
-        parts.push({ text: DIVIDER }, { text: "" });
-      }
-    } else if (b.kind === "gap") {
+    if (b.kind === "divider" || b.kind === "gap") {
       blank();
     } else if (b.kind === "lines") {
       const t = renderLines(b.lines);
@@ -240,7 +238,7 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
     }
   }
   const isBlank = (p: Part) => p.text === "" && !p.flex;
-  while (parts.length && (last().text === DIVIDER || isBlank(last()))) parts.pop();
+  while (parts.length && isBlank(last())) parts.pop();
 
   const link =
     body.linkPath && opts.appUrl
@@ -249,7 +247,7 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
         // Only this link: Meet, LinkedIn and content URLs still preview.
         `[Open in AscendOS](<${opts.appUrl.replace(/\/+$/, "")}${body.linkPath}>)`
       : "";
-  if (link) parts.push({ text: "" }, { text: DIVIDER }, { text: "" }, { text: link });
+  if (link) parts.push({ text: "" }, { text: link });
 
   // Every lead message can jump to the lead's full application answers: the
   // link sits right after their name (the first "Name:" / "Full Name:" line).
@@ -301,7 +299,8 @@ function assemble(body: Body, opts: FormatOptions): DiscordMessage {
       TRUNCATION_MARKER;
   }
 
-  // Frame every message top and bottom (blank line, divider, blank line), so
+  // Frame every message: a blank line on top; blank line, divider, blank
+  // line at the bottom. So
   // posts sent in the same minute read as separate messages, not one block.
   if (content.length + MESSAGE_TOP.length + MESSAGE_BOTTOM.length <= DISCORD_CONTENT_LIMIT)
     content = MESSAGE_TOP + content + MESSAGE_BOTTOM;
@@ -406,11 +405,22 @@ function callBooked(title: string, p: Record<string, unknown>, tz: string | null
   };
 }
 
-function callUnconfirmed(p: Record<string, unknown>, tz: string | null): Body {
+function callUnconfirmed(
+  p: Record<string, unknown>,
+  tz: string | null,
+  opts: FormatOptions,
+): Body {
   const lead = obj(p.lead);
+  // Numbered per booking, from 1; every alert after the first links back to
+  // it (webhooks cannot post a native reply). Each keeps the full contact
+  // details, so a rep can act on any alert without scrolling up.
+  const n = Number(p.alert_sequence);
+  const numbered = Number.isInteger(n) && n > 0;
   return {
     title: "Call NOT confirmed — someone confirm it now",
+    headline: numbered ? `**Alert #${n}**` : undefined,
     blocks: [
+      ...(numbered && n > 1 ? [replyBlock(opts, "Alert #1"), gap] : []),
       lines(...leadLines(lead, p)),
       gap,
       lines(...profileLines(lead, false)),
@@ -1591,7 +1601,7 @@ export function formatDiscordMessage(
       body = callBooked("Call confirmed", p, tz);
       break;
     case "call.unconfirmed":
-      body = callUnconfirmed(p, tz);
+      body = callUnconfirmed(p, tz, opts);
       break;
     case "call.cancelled":
       body = callCancelled(p, tz);

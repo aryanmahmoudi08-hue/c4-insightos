@@ -16,12 +16,29 @@ import {
 import { followUpEventType, followUpLoggedType } from "./scheduler-rules";
 import { bookedVia } from "./lead-card";
 
+/** Name and phone from the Calendly delivery that created a booking. */
+async function calendlyInvitee(orgId: string, inviteeUri: string) {
+  const { data } = await db
+    .from("raw_payloads")
+    .select("payload")
+    .eq("org_id", orgId)
+    .eq("connector_id", "calendly")
+    .eq("external_id", inviteeUri)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const inv = ((data?.payload as { payload?: Record<string, unknown> } | null)?.payload ??
+    {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  return { name: str(inv.name), phone: str(inv.text_reminder_number) };
+}
+
 /** The fields every call-shaped event carries. */
 export async function callPayload(orgId: string, callId: string) {
   const { data: call } = await db
     .from("calls")
     .select(
-      "id, lead_id, lead_email, scheduled_for, closer_id, closer_name, setter_id, meeting_link, status, cancelled, source_connector, created_at",
+      "id, lead_id, lead_email, scheduled_for, closer_id, closer_name, setter_id, meeting_link, status, cancelled, source_connector, created_at, external_id",
     )
     .eq("org_id", orgId)
     .eq("id", callId)
@@ -32,12 +49,22 @@ export async function callPayload(orgId: string, callId: string) {
     memberName(orgId, call.setter_id),
     call.closer_name ? Promise.resolve(null) : memberName(orgId, call.closer_id),
   ]);
+  // A booking with no lead record (Calendly delivered it before lead linking
+  // existed, or linking failed) still has the invitee's name and phone on
+  // the delivery Calendly sent, so every call message can name the person.
+  const shown: Record<string, unknown> = { ...lead };
+  if ((!shown.full_name || !shown.phone) && call.source_connector === "calendly" && call.external_id) {
+    const invitee = await calendlyInvitee(orgId, call.external_id as string);
+    if (!shown.full_name && invitee.name) shown.full_name = invitee.name;
+    if (!shown.phone && invitee.phone) shown.phone = invitee.phone;
+    if (!shown.email && call.lead_email) shown.email = call.lead_email;
+  }
   return {
     call,
     payload: {
       call_id: call.id,
       lead_id: lead.id,
-      lead,
+      lead: shown,
       lead_email: call.lead_email ?? lead.email,
       scheduled_for: call.scheduled_for,
       closer_name: call.closer_name ?? closerFromId,

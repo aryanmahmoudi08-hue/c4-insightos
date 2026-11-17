@@ -119,8 +119,10 @@ describe("every lead message ends with a divider and its AscendOS link", () => {
       expect(
         msg.content
           .replace(/\n\u200b$/, "")
-          .endsWith(`\n\n${DIVIDER}\n\n[Open in AscendOS](<${APP}/leads?leadId=L1>)`),
+          .endsWith(`\n\n[Open in AscendOS](<${APP}/leads?leadId=L1>)`),
       ).toBe(true);
+      // The only divider is the frame's, at the bottom.
+      expect(msg.content.includes(DIVIDER)).toBe(false);
     });
   }
 });
@@ -163,9 +165,9 @@ describe("channel formats, in the spec's order", () => {
       "Situation",
       "Why you, why now",
     ]);
-    // Divider between the lead block and the application.
-    expect(msg.content.indexOf(DIVIDER)).toBeGreaterThan(msg.content.indexOf("**LinkedIn:**"));
-    expect(msg.content.indexOf(DIVIDER)).toBeLessThan(msg.content.indexOf("**Qualifies:**"));
+    // A blank line, not a divider, between the lead block and the application.
+    expect(msg.content.includes(DIVIDER)).toBe(false);
+    expect(msg.content).toMatch(/\*\*LinkedIn:\*\* [^\n]+\n\n\*\*Qualifies:\*\*/);
   });
 
   it("#calls-booked and #calls-confirmed share a body", () => {

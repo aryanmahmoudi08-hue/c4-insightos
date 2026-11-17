@@ -274,6 +274,16 @@ async function fireUnconfirmed(orgId: string, settings: NotificationSettingsT, n
     if (conf?.overall_status === "cancelled" || conf?.overall_status === "rescheduled") continue;
     const built = await callPayload(orgId, c.id);
     if (!built) continue;
+    // Alerts already sent for this booking: the count numbers this one, and
+    // the earliest is the one it links back to.
+    const { data: earlier } = await db
+      .from("scheduled_event_fires")
+      .select("fire_key")
+      .eq("org_id", orgId)
+      .eq("event_type", "call.unconfirmed")
+      .like("fire_key", `${c.id}:${c.scheduled_for}:%`)
+      .order("fired_at", { ascending: true });
+    const prior = ((earlier ?? []) as Array<{ fire_key: string }>).map((r) => r.fire_key);
     const sent = await fireOnce(
       orgId,
       "call.unconfirmed",
@@ -282,6 +292,10 @@ async function fireUnconfirmed(orgId: string, settings: NotificationSettingsT, n
       {
         ...built.payload,
         alert_number: c.alert.n,
+        alert_sequence: prior.length + 1,
+        reply_to: prior.length
+          ? { event_type: "call.unconfirmed", fire_key: prior[0] }
+          : undefined,
         ping_role_ids: pingRoleIds(settings, c.alert.pings),
         touchpoint: tp,
         touchpoint_label: TOUCHPOINT_LABELS[tp],
