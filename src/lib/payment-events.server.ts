@@ -130,7 +130,12 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
         amount_cents: payment.original_amount_cents ?? payment.amount_cents,
         currency: payment.original_currency ?? payment.currency,
         amount_usd_cents: payment.amount_cents,
-        processor: payment.processor ?? payment.source_connector,
+        // "other" is a placeholder for a processor without its own handler
+        // (Stan); its real name is in source_connector.
+        processor:
+          (payment.processor && payment.processor !== "other"
+            ? payment.processor
+            : payment.source_connector) ?? payment.processor,
         failure_reason: succeeded ? null : payment.failure_reason,
         email,
         lead_id: lead?.id ?? null,

@@ -313,6 +313,11 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
           } else if (event_type === "payment") {
             const v = paymentSchema.parse(data);
             const processor = v.processor.trim().toLowerCase();
+            // payments.processor only allows the processors AscendOS has
+            // handlers for; anything else (Stan) is saved as "other" with its
+            // real name in source_connector, which the message reads first.
+            const KNOWN = ["wise", "paypal", "fanbasis", "whop", "stripe", "bank_transfer"];
+            const dbProcessor = KNOWN.includes(processor) ? processor : "other";
             const amountCents = Math.round(v.amount * 100);
             const email = v.email?.trim().toLowerCase() || null;
             const parsedAt = v.collected_at ? new Date(v.collected_at) : null;
@@ -329,7 +334,7 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
                 .from("payments")
                 .select("id")
                 .eq("org_id", orgId)
-                .eq("processor", processor)
+                .eq("source_connector", processor)
                 .eq("external_id", v.external_id)
                 .maybeSingle();
               dupe = hit;
@@ -338,7 +343,7 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
                 .from("payments")
                 .select("id")
                 .eq("org_id", orgId)
-                .eq("processor", processor)
+                .eq("source_connector", processor)
                 .eq("amount_cents", amountCents)
                 .filter("raw->>email", "eq", email)
                 .gte("collected_at", new Date(Date.now() - 10 * 60_000).toISOString())
@@ -386,7 +391,7 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
                 status: v.status,
                 collected_at: collectedAt,
                 source_connector: processor,
-                processor,
+                processor: dbProcessor,
                 external_id: v.external_id ?? null,
                 failure_reason:
                   v.status === "failed" ? (v.failure_reason ?? "Unknown failure") : null,
