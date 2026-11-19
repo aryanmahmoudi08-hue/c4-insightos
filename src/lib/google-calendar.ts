@@ -1,5 +1,6 @@
 /**
- * Google Calendar, read-only: "is the lead's invite accepted?"
+ * Google Calendar: "is the lead's invite accepted?", and colouring each
+ * call's event by its confirmation status.
  *
  * Calendly writes each booking to the host's Google Calendar and invites the
  * lead. Google records the lead's answer on that event as the attendee's
@@ -13,11 +14,71 @@
  * google-calendar.server.ts.
  */
 
+/** Read-write on events (not calendars or settings): AscendOS reads RSVPs
+ *  and colours each call's event by its confirmation status. A workspace
+ *  connected before colours shipped holds only the read-only scope until
+ *  it reconnects; colouring is skipped for it (see canColourEvents). */
+import { deriveOverallStatus } from "./call-confirmations";
+
 export const GOOGLE_CALENDAR_SCOPES = [
-  "https://www.googleapis.com/auth/calendar.events.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
   "openid",
   "email",
 ];
+
+/**
+ * A call's status as the Calls on Calendar view shows it: cancelled or
+ * rescheduled first, then a confirmation (ticked in AscendOS, or the lead
+ * accepting the invite), otherwise awaiting → overdue → at risk as the call
+ * gets closer, from the workspace's confirmation policy.
+ */
+export function callEventStatus(
+  call: {
+    scheduled_for: string;
+    cancelled?: boolean | null;
+    status?: string | null;
+    overall_status?: string | null;
+    google_rsvp_status?: string | null;
+  },
+  policy: { overdueAfterHours: number; atRiskAfterHours: number },
+  now: Date,
+): keyof typeof STATUS_EVENT_COLOR {
+  if (call.cancelled || call.status === "cancelled" || call.overall_status === "cancelled")
+    return "cancelled";
+  if (call.status === "rescheduled" || call.overall_status === "rescheduled") return "rescheduled";
+  if (call.overall_status === "confirmed" || call.google_rsvp_status === "accepted")
+    return "confirmed";
+  return deriveOverallStatus("awaiting", call.scheduled_for, policy, now);
+}
+
+/** True when the granted scope string allows editing events. */
+export function canColourEvents(grantedScope: string | null | undefined): boolean {
+  return (grantedScope ?? "")
+    .split(/\s+/)
+    .some(
+      (s) =>
+        s === "https://www.googleapis.com/auth/calendar.events" ||
+        s === "https://www.googleapis.com/auth/calendar",
+    );
+}
+
+/**
+ * Google's event colour ids, chosen to match the Calls on Calendar legend:
+ * confirmed green (Basil), overdue red (Tomato), at risk orange
+ * (Tangerine), rescheduled blue (Blueberry), awaiting and cancelled grey
+ * (Graphite).
+ */
+export const STATUS_EVENT_COLOR: Record<
+  "awaiting" | "confirmed" | "overdue" | "at_risk" | "cancelled" | "rescheduled",
+  string
+> = {
+  confirmed: "10",
+  awaiting: "8",
+  overdue: "11",
+  at_risk: "6",
+  cancelled: "8",
+  rescheduled: "9",
+};
 
 export function googleCalendarRedirectUri(origin: string): string {
   return `${origin.replace(/\/$/, "")}/api/public/oauth/google-calendar`;
@@ -45,6 +106,7 @@ export function buildGoogleAuthorizeUrl(params: {
 export type GoogleEvent = {
   id?: string;
   status?: string;
+  colorId?: string;
   start?: { dateTime?: string; date?: string };
   attendees?: Array<{ email?: string; responseStatus?: string; self?: boolean }>;
 };

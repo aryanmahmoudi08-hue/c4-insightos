@@ -39,7 +39,15 @@ type PaymentRow = {
   failure_reason: string | null;
   client_id: string | null;
   collected_at: string;
-  raw: { email?: string | null } | null;
+  // Processors with no lead behind them (Stan through Zapier) send the
+  // buyer's name and phone with the payment, so the message can still say
+  // who paid.
+  raw: {
+    email?: string | null;
+    name?: string | null;
+    phone?: string | null;
+    product?: string | null;
+  } | null;
 };
 
 export async function announcePayment(orgId: string, paymentId: string | null | undefined) {
@@ -90,6 +98,18 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
     // Who sold it and what the deal is worth: the buyer's most recent call
     // with a closer on it (the post-call report), and the setter on it.
     const sale = await saleFor(orgId, lead?.email ?? email);
+    // Tag the closer and setter on the deal in Discord when their roster
+    // entry has a Discord user; otherwise the message names them.
+    const mentions = new Set<string>();
+    const closerTag = sale ? await repTag(orgId, { name: sale.closerName }, mentions) : null;
+    const setterTag = sale?.setterId
+      ? await repTag(orgId, { userId: sale.setterId, name: sale.setterName }, mentions)
+      : null;
+    const buyer = {
+      full_name: payment.raw?.name?.trim() || null,
+      phone: payment.raw?.phone?.trim() || null,
+      email,
+    };
     // No client record (most processor payments, and Stan): name the product
     // by matching the amount to an offer's price or one of its plans.
     const product =
@@ -114,7 +134,15 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
         failure_reason: succeeded ? null : payment.failure_reason,
         email,
         lead_id: lead?.id ?? null,
-        lead: lead && { ...lead, full_name: lead.full_name ?? c?.full_name ?? null },
+        lead: lead
+          ? {
+              ...lead,
+              full_name: lead.full_name ?? c?.full_name ?? buyer.full_name,
+              phone: lead.phone ?? buyer.phone,
+            }
+          : buyer.full_name || buyer.phone
+            ? { ...buyer, full_name: buyer.full_name ?? c?.full_name ?? null }
+            : null,
         client_id: payment.client_id,
         client_name: c?.full_name ?? null,
         offer_name: c?.offer_name ?? product,
@@ -125,6 +153,9 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
         prior_successful_payments: prior,
         closer_name: sale?.closerName ?? null,
         setter_name: sale?.setterName ?? null,
+        closer_tag: closerTag || null,
+        setter_tag: setterTag || null,
+        mention_user_ids: [...mentions],
         // Revenue: the deal value the closer logged, else the offer's price.
         revenue_cents: sale?.contractValueCents || (await offerPriceByName(orgId, product)) || null,
         collected_to_date_cents: succeeded ? await collectedToDate(orgId, payment, email) : null,
@@ -177,9 +208,41 @@ async function saleFor(orgId: string, email: string | null) {
   }
   return {
     closerName: c.closer_name,
+    setterId: c.setter_id,
     setterName,
     contractValueCents: Number(c.contract_value_cents) || 0,
   };
+}
+
+/** "<@123>" for a rep whose roster entry has a Discord user (added to
+ *  `mentions` so the message is allowed to ping them), else their name. */
+async function repTag(
+  orgId: string,
+  ref: { userId?: string | null; name?: string | null },
+  mentions: Set<string>,
+): Promise<string> {
+  const name = ref.name?.trim() || "";
+  const { data } = await db
+    .from("team_members")
+    .select("name, user_id, discord_user_id, active")
+    .eq("org_id", orgId);
+  const rows = (
+    (data ?? []) as Array<{
+      name: string | null;
+      user_id: string | null;
+      discord_user_id: string | null;
+      active: boolean | null;
+    }>
+  ).filter((m) => m.active !== false);
+  const m =
+    (ref.userId ? rows.find((r) => r.user_id === ref.userId) : undefined) ??
+    (name ? rows.find((r) => r.name?.trim().toLowerCase() === name.toLowerCase()) : undefined);
+  const id = m?.discord_user_id?.trim();
+  if (id && /^\d+$/.test(id)) {
+    mentions.add(id);
+    return `<@${id}>`;
+  }
+  return m?.name ?? name;
 }
 
 /** An active offer's price by its name (the product on the payment). */

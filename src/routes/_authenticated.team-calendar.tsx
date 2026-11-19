@@ -417,6 +417,28 @@ function TeamCalendarPage() {
               </div>
             </div>
           )}
+          {combinedEmbed && (
+            // Sales calls on the connected Google Calendar are coloured by
+            // status every 5 minutes (syncGoogleEventColours), using the
+            // same meanings as Calls on Calendar above.
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-muted/10 px-4 py-1.5 text-3xs text-muted-foreground">
+              <span className="uppercase tracking-wider">Sales calls</span>
+              {(
+                [
+                  ["Confirmed", "#0B8043"],
+                  ["Confirmation overdue", "#D50000"],
+                  ["At risk", "#F4511E"],
+                  ["Rescheduled", "#3F51B5"],
+                  ["Awaiting / cancelled", "#616161"],
+                ] as const
+              ).map(([label, hex]) => (
+                <span key={label} className="flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full" style={{ background: hex }} />
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
           {combinedEmbed ? (
             <iframe
               title="Team calendar"

@@ -1491,6 +1491,7 @@ const PROCESSOR_LABELS: Record<string, string> = {
   stripe: "Stripe",
   paypal: "PayPal",
   wise: "Wise",
+  stan: "Stan",
 };
 
 /** 1 → "1st", 2 → "2nd", 11 → "11th", 23 → "23rd". */
@@ -1552,7 +1553,12 @@ function payment(failed: boolean, p: Record<string, unknown>): Body {
         plain("Collected to date", soFar),
       ),
       gap,
-      lines(plain("Closer", p.closer_name), plain("Setter", p.setter_name)),
+      // A rep with a Discord user is tagged (`<@id>`, allowed through
+      // mention_user_ids); anyone else is named.
+      lines(
+        plain("Closer", p.closer_tag || p.closer_name),
+        plain("Setter", p.setter_tag || p.setter_name),
+      ),
       gap,
       lines(
         plain("Reason", failed ? p.failure_reason : ""),

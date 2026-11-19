@@ -423,6 +423,22 @@ describe("payment messages", () => {
     expect(msg.content).toContain("Cash collected: 2,000 CAD ($1,460)");
   });
 
+  it("tags the closer and setter who have a Discord user, and names the rest", () => {
+    const msg = fmtBody("payment.collected", {
+      ...base,
+      processor: "stan",
+      closer_name: "Jordan Lee",
+      closer_tag: "<@111>",
+      setter_name: "Sam Ray",
+      setter_tag: "Sam Ray",
+      mention_user_ids: ["111"],
+    });
+    expect(msg.content).toContain("Processor: Stan");
+    expect(msg.content).toContain("Closer: <@111>");
+    expect(msg.content).toContain("Setter: Sam Ray");
+    expect(msg.allowed_mentions.users).toEqual(["111"]);
+  });
+
   it("leaves out what it does not know rather than printing blanks", () => {
     const msg = fmtBody("payment.collected", {
       amount_cents: 5000,

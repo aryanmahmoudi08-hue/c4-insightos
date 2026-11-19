@@ -132,6 +132,36 @@ export async function googleConnection(
   return { connected: !!data, account: (data?.external_account_id as string | null) ?? null };
 }
 
+/** The scope the workspace's Google sign-in actually granted. */
+export async function googleGrantedScope(orgId: string): Promise<string | null> {
+  const { data } = await admin
+    .from("connector_oauth_tokens")
+    .select("scope")
+    .eq("org_id", orgId)
+    .eq("connector_id", "google_calendar")
+    .maybeSingle();
+  return (data?.scope as string | null) ?? null;
+}
+
+/** Set one event's colour on the primary calendar. Only the colour is sent,
+ *  and attendees are not notified. */
+export async function setGoogleEventColor(
+  accessToken: string,
+  eventId: string,
+  colorId: string,
+): Promise<void> {
+  const url = new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`,
+  );
+  url.searchParams.set("sendUpdates", "none");
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ colorId }),
+  });
+  if (!res.ok) throw new Error(`Google Calendar colour ${res.status}`);
+}
+
 /** The primary calendar's events between two instants, recurring ones
  *  expanded. Paged until done (a few days of calls is one page). */
 export async function listGoogleEvents(

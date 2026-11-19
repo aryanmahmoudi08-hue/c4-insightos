@@ -24,6 +24,7 @@ const eventSchema = z.object({
     "vsl_metric_snapshot",
     "hiring_application",
     "daily_win",
+    "payment",
   ]),
   data: z.record(z.string(), z.unknown()).default({}),
 });
@@ -209,6 +210,34 @@ const vslMetricSnapshotSchema = z.object({
   captured_at: z.string().datetime().optional(),
 });
 
+/**
+ * A payment from a processor AscendOS has no direct webhook for — Stan,
+ * sent by Zapier. Saved like any other processor's payment, then announced
+ * through announcePayment so it reaches #new-payments with the closer and
+ * setter on the deal, exactly like a Stripe payment.
+ *
+ * Zapier sends everything as text, so the amount is coerced and may carry a
+ * "$" or commas. `external_id` (the processor's order/payment id) is what
+ * stops a re-sent Zap from posting twice; without one, the same email and
+ * amount within ten minutes counts as the same payment.
+ */
+const paymentSchema = z.object({
+  processor: z.string().min(1).max(40).default("stan"),
+  external_id: z.string().max(255).optional(),
+  email: z.string().email().max(255).optional(),
+  name: z.string().max(255).optional(),
+  phone: z.string().max(60).optional(),
+  amount: z.preprocess(
+    (v) => (typeof v === "string" ? Number(v.replace(/[$,\s]/g, "")) : v),
+    z.number().positive(),
+  ),
+  currency: z.string().length(3).default("USD"),
+  product: z.string().max(255).optional(),
+  status: z.enum(["paid", "failed"]).default("paid"),
+  failure_reason: z.string().max(500).optional(),
+  collected_at: z.string().max(60).optional(),
+});
+
 export const Route = createFileRoute("/api/public/ingest/$token")({
   server: {
     handlers: {
@@ -281,6 +310,85 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
             if (aiAngle) insertRow.angle = aiAngle;
             const { error } = await supabaseAdmin.from("content_pieces").insert(insertRow as never);
             if (error) throw error;
+          } else if (event_type === "payment") {
+            const v = paymentSchema.parse(data);
+            const processor = v.processor.trim().toLowerCase();
+            const amountCents = Math.round(v.amount * 100);
+            const email = v.email?.trim().toLowerCase() || null;
+            const parsedAt = v.collected_at ? new Date(v.collected_at) : null;
+            const collectedAt =
+              parsedAt && !Number.isNaN(parsedAt.getTime())
+                ? parsedAt.toISOString()
+                : new Date().toISOString();
+
+            // Already saved? By the processor's id, else same buyer and
+            // amount in the last ten minutes (a re-run Zap).
+            let dupe = null as { id: string } | null;
+            if (v.external_id) {
+              const { data: hit } = await supabaseAdmin
+                .from("payments")
+                .select("id")
+                .eq("org_id", orgId)
+                .eq("processor", processor)
+                .eq("external_id", v.external_id)
+                .maybeSingle();
+              dupe = hit;
+            } else if (email) {
+              const { data: hit } = await supabaseAdmin
+                .from("payments")
+                .select("id")
+                .eq("org_id", orgId)
+                .eq("processor", processor)
+                .eq("amount_cents", amountCents)
+                .filter("raw->>email", "eq", email)
+                .gte("collected_at", new Date(Date.now() - 10 * 60_000).toISOString())
+                .limit(1)
+                .maybeSingle();
+              dupe = hit;
+            }
+            if (dupe) return jsonRes({ ok: true, event_type, duplicate: true });
+
+            // A client matched by email, never invented — same rule as Stripe.
+            let clientId: string | null = null;
+            if (email) {
+              const { data: client } = await supabaseAdmin
+                .from("clients")
+                .select("id")
+                .eq("org_id", orgId)
+                .ilike("email", email)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              clientId = client?.id ?? null;
+            }
+
+            const { data: saved, error } = await supabaseAdmin
+              .from("payments")
+              .insert({
+                org_id: orgId,
+                client_id: clientId,
+                amount_cents: amountCents,
+                currency: v.currency.toUpperCase(),
+                status: v.status,
+                collected_at: collectedAt,
+                source_connector: processor,
+                processor,
+                external_id: v.external_id ?? null,
+                failure_reason:
+                  v.status === "failed" ? (v.failure_reason ?? "Unknown failure") : null,
+                raw: {
+                  email,
+                  name: v.name ?? null,
+                  phone: v.phone ?? null,
+                  product: v.product ?? null,
+                  via: "ingest",
+                },
+              } as never)
+              .select("id")
+              .maybeSingle();
+            if (error) throw error;
+            const { announcePayment } = await import("@/lib/payment-events.server");
+            await announcePayment(orgId, (saved as { id: string } | null)?.id);
           } else if (event_type === "onboarding_response") {
             const v = onboardingSchema.parse(data);
             const { error } = await supabaseAdmin.from("onboarding_responses").insert({

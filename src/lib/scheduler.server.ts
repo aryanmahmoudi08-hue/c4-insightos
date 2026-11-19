@@ -53,6 +53,7 @@ import {
   firePaymentFollowUpsDue,
   firePrecallProgress,
   fireTodaysCalls,
+  syncGoogleEventColours,
   syncGoogleRsvps,
 } from "./scheduler-ops.server";
 import { escapeLike } from "./sql-like";
@@ -202,6 +203,9 @@ export async function runSchedulerTick(now: Date = new Date()) {
       await run("precall.progress", () => firePrecallProgress(orgId, settings, now));
     if (types.has("call.confirmed"))
       await run("google.rsvp", () => syncGoogleRsvps(orgId, settings, now));
+    // Not tied to a Discord channel: colours the calls on the connected
+    // Google Calendar by status, for any workspace that granted edit access.
+    await run("google.colours", () => syncGoogleEventColours(orgId, now));
 
     if (errors.length) console.error(`scheduler org ${orgId}:`, errors.join("; "));
     results.push({ orgId, fired, skipped, errors });

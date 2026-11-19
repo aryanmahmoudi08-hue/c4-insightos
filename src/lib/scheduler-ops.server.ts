@@ -11,8 +11,14 @@
  * Everything goes through fireOnce, so a retried tick never posts twice.
  */
 import { notifyTouchpointMarked, paymentFollowUpPayload } from "./event-emitters.server";
-import { rsvpFor } from "./google-calendar";
-import { googleAccessToken, listGoogleEvents } from "./google-calendar.server";
+import { getConfirmationPolicy } from "./call-confirmations.server";
+import { callEventStatus, canColourEvents, rsvpFor, STATUS_EVENT_COLOR } from "./google-calendar";
+import {
+  googleAccessToken,
+  googleGrantedScope,
+  listGoogleEvents,
+  setGoogleEventColor,
+} from "./google-calendar.server";
 import { alreadyFired, db, fireOnce, leadSummary, pingRoleIds } from "./notify.server";
 import { DUE_LOOKBACK_MS, dailyReportWindow, periodLabel } from "./scheduler-rules";
 import { escapeLike } from "./sql-like";
@@ -497,6 +503,86 @@ export async function syncGoogleRsvps(orgId: string, settings: NotificationSetti
     );
     if (upErr) throw new Error(upErr.message);
     await notifyTouchpointMarked(orgId, s(c.id), tp);
+    n += 1;
+  }
+  return n;
+}
+
+/* ------------------------------------------------------------------ */
+
+const COLOUR_LOOKBACK_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Every 5 minutes: colour each call's Google Calendar event by its status,
+ * so the team's calendar reads like Calls on Calendar — green confirmed,
+ * red overdue, orange at risk, blue rescheduled, grey awaiting/cancelled.
+ *
+ * Only events whose colour is wrong are patched, so a quiet calendar costs
+ * one read. Needs the read-write events scope; a workspace still on the old
+ * read-only sign-in is skipped until it reconnects Google Calendar.
+ */
+export async function syncGoogleEventColours(orgId: string, now: Date) {
+  if (now.getUTCMinutes() % 5 !== 0) return 0;
+  if (!canColourEvents(await googleGrantedScope(orgId).catch(() => null))) return 0;
+  const token = await googleAccessToken(orgId).catch(() => null);
+  if (!token) return 0;
+  const from = new Date(now.getTime() - COLOUR_LOOKBACK_MS);
+  const to = new Date(now.getTime() + RSVP_LOOKAHEAD_MS);
+  const { data, error } = await db
+    .from("calls")
+    .select("id, lead_email, scheduled_for, cancelled, status, google_rsvp_status, google_event_id")
+    .eq("org_id", orgId)
+    .not("lead_email", "is", null)
+    .gte("scheduled_for", from.toISOString())
+    .lte("scheduled_for", to.toISOString());
+  if (error) throw new Error(error.message);
+  const calls = (data ?? []) as Row[];
+  if (!calls.length) return 0;
+
+  type Confirmation = { call_id: string; overall_status: string };
+  const [events, policy, confirmationsRes] = await Promise.all([
+    listGoogleEvents(token, from.toISOString(), to.toISOString()),
+    getConfirmationPolicy(orgId),
+    db
+      .from("call_confirmations")
+      .select("call_id, overall_status")
+      .in(
+        "call_id",
+        calls.map((c) => s(c.id)),
+      ),
+  ]);
+  const confirmations = ((confirmationsRes as { data: unknown }).data ?? []) as Confirmation[];
+  const overall = new Map<string, string>(
+    confirmations.map((c: Confirmation) => [c.call_id, c.overall_status]),
+  );
+  const byId = new Map(events.filter((e) => e.id).map((e) => [e.id!, e]));
+
+  let n = 0;
+  for (const c of calls) {
+    const eventId =
+      s(c.google_event_id) ||
+      rsvpFor(events, { scheduled_for: s(c.scheduled_for), lead_email: s(c.lead_email) })
+        ?.eventId ||
+      "";
+    const event = eventId ? byId.get(eventId) : undefined;
+    if (!event || event.status === "cancelled") continue;
+    const status = callEventStatus(
+      {
+        scheduled_for: s(c.scheduled_for),
+        cancelled: c.cancelled as boolean | null,
+        status: s(c.status) || null,
+        overall_status: overall.get(s(c.id)) ?? null,
+        google_rsvp_status: s(c.google_rsvp_status) || null,
+      },
+      {
+        overdueAfterHours: policy.overdue_after_hours,
+        atRiskAfterHours: policy.at_risk_after_hours,
+      },
+      now,
+    );
+    const colour = STATUS_EVENT_COLOR[status];
+    if (event.colorId === colour) continue;
+    await setGoogleEventColor(token, eventId, colour);
     n += 1;
   }
   return n;
