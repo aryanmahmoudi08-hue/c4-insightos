@@ -362,13 +362,27 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
               clientId = client?.id ?? null;
             }
 
+            // Same conversion as every processor handler: amount_cents is
+            // USD, the original figures are kept as provenance.
+            const { normalizePaymentToUsd } = await import("@/lib/fx.server");
+            const originalCurrency = v.currency.toUpperCase();
+            const normalized = await normalizePaymentToUsd(
+              amountCents,
+              originalCurrency,
+              collectedAt,
+            );
             const { data: saved, error } = await supabaseAdmin
               .from("payments")
               .insert({
                 org_id: orgId,
                 client_id: clientId,
-                amount_cents: amountCents,
-                currency: v.currency.toUpperCase(),
+                amount_cents: normalized.amountCents,
+                currency: normalized.currency,
+                original_amount_cents: amountCents,
+                original_currency: originalCurrency,
+                fx_rate: normalized.fxRate,
+                fx_rate_date: normalized.fxRateDate,
+                fx_source: normalized.fxSource,
                 status: v.status,
                 collected_at: collectedAt,
                 source_connector: processor,
