@@ -192,6 +192,20 @@ async function saleFor(orgId: string, email: string | null) {
     setter_id: string | null;
     contract_value_cents: number | null;
   };
+  // Calls rarely carry a setter; the lead's assigned setter in the CRM is
+  // the next best record of who set it.
+  if (!c.setter_id) {
+    const { data: lead } = await db
+      .from("leads")
+      .select("assigned_setter_id")
+      .eq("org_id", orgId)
+      .ilike("email", escapeLike(email))
+      .not("assigned_setter_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    c.setter_id = (lead?.assigned_setter_id as string | undefined) ?? null;
+  }
   let setterName: string | null = null;
   if (c.setter_id) {
     const { data: tm } = await db
