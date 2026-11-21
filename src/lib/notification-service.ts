@@ -1,11 +1,7 @@
 export type NotificationChannel = "discord" | "webhook" | "in_app";
 
 export type NotificationDeliveryState =
-  | "unavailable"
-  | "queued"
-  | "sent"
-  | "failed"
-  | "already-notified";
+  "unavailable" | "queued" | "sent" | "failed" | "already-notified";
 
 export type NotificationCapability = {
   channel: NotificationChannel;

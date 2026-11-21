@@ -1,22 +1,9 @@
 export type SetterLifecycleStage =
-  | "dm"
-  | "qualification"
-  | "set"
-  | "booking"
-  | "call"
-  | "close"
-  | "cash";
+  "dm" | "qualification" | "set" | "booking" | "call" | "close" | "cash";
 
 export type CallbackStatus = "requested" | "due" | "completed" | "booked" | "closed" | "cash";
 export type PaymentRecoveryStatus =
-  | "due"
-  | "paid"
-  | "missed"
-  | "overdue"
-  | "failed"
-  | "retry"
-  | "recovered"
-  | "refunded";
+  "due" | "paid" | "missed" | "overdue" | "failed" | "retry" | "recovered" | "refunded";
 export type RenewalStage =
   | "not_started"
   | "outreach_started"

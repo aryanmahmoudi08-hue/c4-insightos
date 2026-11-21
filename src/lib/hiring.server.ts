@@ -22,12 +22,14 @@ export async function gradeApplicantFromTranscript(args: {
   loomUrl?: string | null;
   transcript?: string | null;
 }) {
-  const apiKey = process.env['LOVABLE_API_KEY'];
+  const apiKey = process.env["LOVABLE_API_KEY"];
   if (!apiKey) throw new Error("AI is not configured.");
 
   const { data: applicant, error: applicantError } = await supabaseAdmin
     .from("hiring_applicants")
-    .select("id, full_name, role_applied, years_experience, niche, notes, stage, loom_url, loom_transcript")
+    .select(
+      "id, full_name, role_applied, years_experience, niche, notes, stage, loom_url, loom_transcript",
+    )
     .eq("id", args.applicantId)
     .eq("org_id", args.orgId)
     .maybeSingle();
@@ -42,7 +44,8 @@ export async function gradeApplicantFromTranscript(args: {
   const loomUrl = args.loomUrl || applicant.loom_url;
   let transcript = (args.transcript || applicant.loom_transcript || "").trim();
   if (!transcript && loomUrl) transcript = (await fetchLoomTranscript(loomUrl)) ?? "";
-  if (!transcript) throw new Error("No transcript available — paste the Loom transcript to grade this applicant.");
+  if (!transcript)
+    throw new Error("No transcript available — paste the Loom transcript to grade this applicant.");
 
   const sys = `You grade sales-rep video applications for a high-ticket coaching company by reading the Loom transcript.
 
@@ -68,7 +71,10 @@ ${transcript.slice(0, 16000)}`;
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "google/gemini-2.5-flash",
-      messages: [{ role: "system", content: sys }, { role: "user", content: user }],
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: user },
+      ],
     }),
   });
   if (!res.ok) throw new Error(`AI error [${res.status}]: ${await res.text()}`);
@@ -77,8 +83,12 @@ ${transcript.slice(0, 16000)}`;
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("AI returned an unreadable grade.");
   const parsed = JSON.parse(match[0]) as {
-    score: number; summary: string; reasoning: string;
-    stated_role?: string | null; historical_cash_collected?: number | null; recent_monthly_cash_collected?: number | null;
+    score: number;
+    summary: string;
+    reasoning: string;
+    stated_role?: string | null;
+    historical_cash_collected?: number | null;
+    recent_monthly_cash_collected?: number | null;
   };
   const score = Math.max(0, Math.min(10, Number(parsed.score) || 0));
   // Computed in code, not trusted from the LLM's own prose — deterministic and
@@ -88,7 +98,9 @@ ${transcript.slice(0, 16000)}`;
   // only ever changes on an explicit human click (the "Apply" button on the
   // applicant card) — see src/routes/_authenticated.hiring.tsx.
   const recommendedStage = recommendStageFromScore(score);
-  const statedRole = ["closer", "setter", "dialer"].includes(parsed.stated_role ?? "") ? (parsed.stated_role ?? null) : null;
+  const statedRole = ["closer", "setter", "dialer"].includes(parsed.stated_role ?? "")
+    ? (parsed.stated_role ?? null)
+    : null;
 
   const { error } = await supabaseAdmin
     .from("hiring_applicants")
@@ -100,13 +112,25 @@ ${transcript.slice(0, 16000)}`;
       ai_recommended_stage: recommendedStage,
       ai_transcript_summary: parsed.summary ?? null,
       ai_stated_role: statedRole,
-      historical_cash_collected_cents: parsed.historical_cash_collected != null ? Math.round(Number(parsed.historical_cash_collected) * 100) : null,
-      recent_monthly_cash_collected_cents: parsed.recent_monthly_cash_collected != null ? Math.round(Number(parsed.recent_monthly_cash_collected) * 100) : null,
+      historical_cash_collected_cents:
+        parsed.historical_cash_collected != null
+          ? Math.round(Number(parsed.historical_cash_collected) * 100)
+          : null,
+      recent_monthly_cash_collected_cents:
+        parsed.recent_monthly_cash_collected != null
+          ? Math.round(Number(parsed.recent_monthly_cash_collected) * 100)
+          : null,
       last_shown_at: new Date().toISOString(),
     })
     .eq("id", args.applicantId)
     .eq("org_id", args.orgId);
   if (error) throw new Error(error.message);
 
-  return { score, recommendedStage, summary: parsed.summary, reasoning: parsed.reasoning, stated_role: statedRole };
+  return {
+    score,
+    recommendedStage,
+    summary: parsed.summary,
+    reasoning: parsed.reasoning,
+    stated_role: statedRole,
+  };
 }

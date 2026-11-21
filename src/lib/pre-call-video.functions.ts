@@ -4,7 +4,12 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 async function orgOf(context: unknown) {
   const { supabase, userId } = context as { supabase: any; userId: string };
-  const { data } = await supabase.from("memberships").select("org_id").eq("user_id", userId).limit(1).maybeSingle();
+  const { data } = await supabase
+    .from("memberships")
+    .select("org_id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
   if (!data?.org_id) throw new Error("No workspace");
   return { supabase, orgId: data.org_id as string };
 }

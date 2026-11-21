@@ -5,7 +5,9 @@ import { buildPreCloseSummary } from "./pre-close.server";
 
 export const generatePreCloseFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ client_id: z.string().uuid(), org_id: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z.object({ client_id: z.string().uuid(), org_id: z.string().uuid() }).parse(d),
+  )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { data: m } = await supabase
@@ -19,7 +21,10 @@ export const generatePreCloseFn = createServerFn({ method: "POST" })
     // gateway errors) — a `null` here means only one of its two legitimate
     // non-error states, so this message can be precise instead of guessing.
     const r = await buildPreCloseSummary(data.org_id, data.client_id);
-    if (!r) throw new Error("Could not build summary — AI isn't configured for this workspace, or this client record couldn't be found.");
+    if (!r)
+      throw new Error(
+        "Could not build summary — AI isn't configured for this workspace, or this client record couldn't be found.",
+      );
     const rawJson = JSON.parse(JSON.stringify(r.raw)) as never;
     const { error } = await context.supabase
       .from("clients")

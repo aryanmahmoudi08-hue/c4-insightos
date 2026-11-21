@@ -24,10 +24,7 @@ export type VslMetricSnapshot = {
 };
 
 export type VideoAction =
-  | "connect_provider"
-  | "review_retention"
-  | "review_cta"
-  | "review_conversion";
+  "connect_provider" | "review_retention" | "review_cta" | "review_conversion";
 
 export function deriveVideoActionQueue(
   snapshot: VslMetricSnapshot,

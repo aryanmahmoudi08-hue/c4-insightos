@@ -36,18 +36,28 @@ describe("computeDemand — a failed query throws, it never silently renders as 
   });
 
   it("throws when the setter call signals query fails", async () => {
-    const sb = mockSb({ setter_call_signals: { data: null, error: { message: "simulated failure" } } });
-    await expect(computeDemand(sb as never, "org-1")).rejects.toThrow(/Setter call signals query failed/);
+    const sb = mockSb({
+      setter_call_signals: { data: null, error: { message: "simulated failure" } },
+    });
+    await expect(computeDemand(sb as never, "org-1")).rejects.toThrow(
+      /Setter call signals query failed/,
+    );
   });
 
   it("throws when the onboarding responses query fails", async () => {
-    const sb = mockSb({ onboarding_responses: { data: null, error: { message: "simulated failure" } } });
-    await expect(computeDemand(sb as never, "org-1")).rejects.toThrow(/Onboarding responses query failed/);
+    const sb = mockSb({
+      onboarding_responses: { data: null, error: { message: "simulated failure" } },
+    });
+    await expect(computeDemand(sb as never, "org-1")).rejects.toThrow(
+      /Onboarding responses query failed/,
+    );
   });
 
   it("throws when the content pieces (reels) query fails", async () => {
     const sb = mockSb({ content_pieces: { data: null, error: { message: "simulated failure" } } });
-    await expect(computeDemand(sb as never, "org-1")).rejects.toThrow(/Content pieces query failed/);
+    await expect(computeDemand(sb as never, "org-1")).rejects.toThrow(
+      /Content pieces query failed/,
+    );
   });
 
   it("still succeeds with a real, correctly-flagged zero-signal result when every query genuinely returns empty (not an error)", async () => {
@@ -66,9 +76,23 @@ describe("computeWeeklyContentCheck — same requirement", () => {
 
   it("throws when the content metrics query fails", async () => {
     const sb = mockSb({
-      content_pieces: { data: [{ id: "p1", mechanism: "educational", variation: null, platform: "reel", posted_at: null, pipeline_status: null }], error: null },
+      content_pieces: {
+        data: [
+          {
+            id: "p1",
+            mechanism: "educational",
+            variation: null,
+            platform: "reel",
+            posted_at: null,
+            pipeline_status: null,
+          },
+        ],
+        error: null,
+      },
       content_metrics: { data: null, error: { message: "simulated failure" } },
     });
-    await expect(computeWeeklyContentCheck(sb as never, "org-1")).rejects.toThrow(/Content metrics query failed/);
+    await expect(computeWeeklyContentCheck(sb as never, "org-1")).rejects.toThrow(
+      /Content metrics query failed/,
+    );
   });
 });

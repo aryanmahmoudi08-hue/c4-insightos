@@ -14,7 +14,12 @@ interface IntakeInsightsResult {
 }
 
 const BOTTLENECK_KEYS = ["objections_before", "join_sooner", "fear"] as const;
-const DOUBLE_DOWN_KEYS = ["first_touchpoint", "pivotal_moment", "beliefs_shifted", "content_type_helped"] as const;
+const DOUBLE_DOWN_KEYS = [
+  "first_touchpoint",
+  "pivotal_moment",
+  "beliefs_shifted",
+  "content_type_helped",
+] as const;
 
 const QUESTION_TEXT: Record<string, string> = {
   objections_before: "What hesitations or doubts almost stopped you from joining?",
@@ -34,7 +39,10 @@ async function callGemini(sys: string, userMsg: string): Promise<IntakeInsightsR
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "google/gemini-2.5-flash",
-      messages: [{ role: "system", content: sys }, { role: "user", content: userMsg }],
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: userMsg },
+      ],
       response_format: { type: "json_object" },
     }),
   });
@@ -47,7 +55,11 @@ async function callGemini(sys: string, userMsg: string): Promise<IntakeInsightsR
   const json = await res.json();
   const content = json.choices?.[0]?.message?.content ?? "{}";
   let parsed: IntakeInsightsResult;
-  try { parsed = JSON.parse(content); } catch { throw new Error("AI returned invalid JSON"); }
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error("AI returned invalid JSON");
+  }
   return {
     bottlenecks: Array.isArray(parsed.bottlenecks) ? parsed.bottlenecks.slice(0, 8) : [],
     double_down: Array.isArray(parsed.double_down) ? parsed.double_down.slice(0, 8) : [],
@@ -67,7 +79,8 @@ export const analyzeIntake = createServerFn({ method: "POST" })
     if (error || !row) throw new Error("Intake not found");
     const answers = (row.responses ?? {}) as Record<string, string>;
 
-    const fmt = (keys: readonly string[]) => keys.map(k => `Q: ${QUESTION_TEXT[k]}\nA: ${answers[k] || "(no answer)"}`).join("\n\n");
+    const fmt = (keys: readonly string[]) =>
+      keys.map((k) => `Q: ${QUESTION_TEXT[k]}\nA: ${answers[k] || "(no answer)"}`).join("\n\n");
 
     const sys = `You analyze a single client onboarding intake for a high-ticket coaching business.
 Two question groups:
@@ -97,7 +110,12 @@ export const analyzeIntakesAggregate = createServerFn({ method: "POST" })
   .inputValidator((input: { days?: number; from?: string; to?: string }) => input ?? {})
   .handler(async ({ data, context }): Promise<IntakeInsightsResult> => {
     const { supabase, userId } = context;
-    const { data: m } = await supabase.from("memberships").select("org_id").eq("user_id", userId).limit(1).maybeSingle();
+    const { data: m } = await supabase
+      .from("memberships")
+      .select("org_id")
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle();
     if (!m) throw new Error("No workspace");
 
     let fromISO: string;
@@ -125,18 +143,18 @@ export const analyzeIntakesAggregate = createServerFn({ method: "POST" })
       return { bottlenecks: [], double_down: [], sampleSize: 0 };
     }
 
+    const collect = (key: string) =>
+      rows
+        .map((r) => ((r.responses ?? {}) as Record<string, string>)[key])
+        .filter(Boolean)
+        .map((s) => `- ${s}`)
+        .join("\n");
 
-    const collect = (key: string) => rows
-      .map(r => ((r.responses ?? {}) as Record<string, string>)[key])
-      .filter(Boolean)
-      .map(s => `- ${s}`)
-      .join("\n");
-
-    const bottleneckBlock = BOTTLENECK_KEYS.map(k =>
-      `--- ${QUESTION_TEXT[k]} ---\n${collect(k) || "(no answers)"}`
+    const bottleneckBlock = BOTTLENECK_KEYS.map(
+      (k) => `--- ${QUESTION_TEXT[k]} ---\n${collect(k) || "(no answers)"}`,
     ).join("\n\n");
-    const doubleDownBlock = DOUBLE_DOWN_KEYS.map(k =>
-      `--- ${QUESTION_TEXT[k]} ---\n${collect(k) || "(no answers)"}`
+    const doubleDownBlock = DOUBLE_DOWN_KEYS.map(
+      (k) => `--- ${QUESTION_TEXT[k]} ---\n${collect(k) || "(no answers)"}`,
     ).join("\n\n");
 
     const sys = `You analyze client onboarding intakes (${windowLabel}) for a high-ticket coaching business.

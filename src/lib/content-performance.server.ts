@@ -38,10 +38,17 @@ export function bucketKey(bucket: Bucket): string {
  * naturally includes the piece itself, same as a person eyeballing "is this
  * one of my best reels this month" would.
  */
-export async function fetchBaseline(sb: Sb, orgId: string, bucket: Bucket, windowSize: number): Promise<Baseline> {
+export async function fetchBaseline(
+  sb: Sb,
+  orgId: string,
+  bucket: Bucket,
+  windowSize: number,
+): Promise<Baseline> {
   const { data, error } = await sb
     .from("content_pieces")
-    .select("id, posted_at, created_at, content_metrics(views, leads_generated, cash_collected_cents, hook_retention_pct, engagement_rate_pct, drop_off_rate_pct)")
+    .select(
+      "id, posted_at, created_at, content_metrics(views, leads_generated, cash_collected_cents, hook_retention_pct, engagement_rate_pct, drop_off_rate_pct)",
+    )
     .eq("org_id", orgId)
     .eq("mechanism", bucket.mechanism)
     .eq("platform", bucket.platform)
@@ -52,7 +59,11 @@ export async function fetchBaseline(sb: Sb, orgId: string, bucket: Bucket, windo
   const rows = (data ?? []) as any[];
   const pieces: PieceMetrics[] = rows
     .map((r) => {
-      const metrics = Array.isArray(r.content_metrics) ? r.content_metrics : r.content_metrics ? [r.content_metrics] : [];
+      const metrics = Array.isArray(r.content_metrics)
+        ? r.content_metrics
+        : r.content_metrics
+          ? [r.content_metrics]
+          : [];
       return metrics[0] ? toPieceMetrics(metrics[0]) : null;
     })
     .filter((p): p is PieceMetrics => p !== null);
@@ -70,7 +81,12 @@ export async function fetchBaseline(sb: Sb, orgId: string, bucket: Bucket, windo
 /** Fetches baselines for every unique (mechanism, platform) pair across a
  * set of buckets in parallel — one query per unique bucket, not one per
  * piece. Callers with many reels in the same bucket share a single fetch. */
-export async function fetchBaselines(sb: Sb, orgId: string, buckets: Bucket[], windowSize: number): Promise<Map<string, Baseline>> {
+export async function fetchBaselines(
+  sb: Sb,
+  orgId: string,
+  buckets: Bucket[],
+  windowSize: number,
+): Promise<Map<string, Baseline>> {
   const unique = Array.from(new Map(buckets.map((b) => [bucketKey(b), b])).values());
   const results = await Promise.all(unique.map((b) => fetchBaseline(sb, orgId, b, windowSize)));
   const map = new Map<string, Baseline>();

@@ -27,13 +27,18 @@ const pipelineInput = z.object({
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(2000).optional().nullable(),
   is_default: z.boolean().optional(),
-  stages: z.array(z.object({
-    name: z.string().trim().min(1).max(120),
-    probability: z.number().min(0).max(100).optional(),
-    color: z.string().trim().max(32).optional().nullable(),
-    is_closed_won: z.boolean().optional(),
-    is_closed_lost: z.boolean().optional(),
-  })).min(1).max(30),
+  stages: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(120),
+        probability: z.number().min(0).max(100).optional(),
+        color: z.string().trim().max(32).optional().nullable(),
+        is_closed_won: z.boolean().optional(),
+        is_closed_lost: z.boolean().optional(),
+      }),
+    )
+    .min(1)
+    .max(30),
 });
 
 /** Read-only CRM landing data. Organization context is always resolved server-side. */
@@ -140,7 +145,10 @@ const savedViewInput = z.object({
   visibility: z.enum(["private", "shared"]).default("private"),
   filters: z.record(z.string(), z.unknown()).optional(),
   columns: z.array(z.string().max(80)).max(30).optional(),
-  sort: z.array(z.object({ field: z.string().max(80), direction: z.enum(["asc", "desc"]) })).max(5).optional(),
+  sort: z
+    .array(z.object({ field: z.string().max(80), direction: z.enum(["asc", "desc"]) }))
+    .max(5)
+    .optional(),
 });
 
 /** Applies one lifecycle state to a manager-selected set of native CRM contacts and records the action in the audit log. */
@@ -161,12 +169,18 @@ export const createCrmSavedView = createServerFn({ method: "POST" })
     return createCrmSavedViewForUser((context as { userId: string }).userId, data);
   });
 
-const contactUpdateInput = contactInput.omit({ legacy_lead_id: true }).extend({ id: z.string().uuid() });
-const crmNoteInput = z.object({
-  contact_id: z.string().uuid().optional().nullable(),
-  legacy_lead_id: z.string().uuid().optional().nullable(),
-  body: z.string().trim().min(1).max(10_000),
-}).refine((data) => Boolean(data.contact_id || data.legacy_lead_id), { message: "A CRM or preserved legacy record is required" });
+const contactUpdateInput = contactInput
+  .omit({ legacy_lead_id: true })
+  .extend({ id: z.string().uuid() });
+const crmNoteInput = z
+  .object({
+    contact_id: z.string().uuid().optional().nullable(),
+    legacy_lead_id: z.string().uuid().optional().nullable(),
+    body: z.string().trim().min(1).max(10_000),
+  })
+  .refine((data) => Boolean(data.contact_id || data.legacy_lead_id), {
+    message: "A CRM or preserved legacy record is required",
+  });
 const companyContactInput = z.object({
   contact_id: z.string().uuid(),
   company_id: z.string().uuid(),
@@ -201,8 +215,15 @@ export const linkCrmContactToCompany = createServerFn({ method: "POST" })
     return linkCrmContactToCompanyForUser((context as { userId: string }).userId, data);
   });
 
-const taskStatusInput = z.object({ id: z.string().uuid(), status: z.enum(["open", "in_progress", "completed", "cancelled"]) });
-const opportunityStageInput = z.object({ id: z.string().uuid(), pipeline_stage_id: z.string().uuid(), lost_reason: z.string().trim().max(500).optional().nullable() });
+const taskStatusInput = z.object({
+  id: z.string().uuid(),
+  status: z.enum(["open", "in_progress", "completed", "cancelled"]),
+});
+const opportunityStageInput = z.object({
+  id: z.string().uuid(),
+  pipeline_stage_id: z.string().uuid(),
+  lost_reason: z.string().trim().max(500).optional().nullable(),
+});
 
 /** Changes a CRM task state and records a task activity. */
 export const updateCrmTaskStatus = createServerFn({ method: "POST" })
@@ -227,7 +248,15 @@ const automationRuleInput = z.object({
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(2000).optional().nullable(),
   entity_type: z.enum(["contact", "company", "opportunity", "task", "thread", "call"]),
-  trigger_type: z.enum(["record_created", "record_updated", "stage_changed", "task_due", "message_received", "call_completed", "time_elapsed"]),
+  trigger_type: z.enum([
+    "record_created",
+    "record_updated",
+    "stage_changed",
+    "task_due",
+    "message_received",
+    "call_completed",
+    "time_elapsed",
+  ]),
   conditions: z.array(z.record(z.string(), z.unknown())).max(20).optional(),
   actions: z.array(z.record(z.string(), z.unknown())).max(20).optional(),
 });
@@ -243,7 +272,13 @@ export const getCrmReport = createServerFn({ method: "GET" })
 /** Returns private views owned by the user together with shared CRM views for the active organization. */
 export const getCrmSavedViews = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ entity_type: z.enum(["contact", "company", "opportunity", "task", "thread", "call"]) }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        entity_type: z.enum(["contact", "company", "opportunity", "task", "thread", "call"]),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     const { getCrmSavedViewsForUser } = await import("./crm-foundation.server");
     return getCrmSavedViewsForUser((context as { userId: string }).userId, data.entity_type);
@@ -275,16 +310,19 @@ export const getCrmAutomationRules = createServerFn({ method: "GET" })
     return getCrmAutomationRulesForUser((context as { userId: string }).userId);
   });
 
-
 const recordIdInput = z.object({ id: z.string().uuid() });
-const pipelineStageUpdateInput = z.object({
-  id: z.string().uuid(),
-  name: z.string().trim().min(1).max(120),
-  probability: z.number().min(0).max(100),
-  color: z.string().trim().max(32).optional().nullable(),
-  is_closed_won: z.boolean(),
-  is_closed_lost: z.boolean(),
-}).refine((data) => !(data.is_closed_won && data.is_closed_lost), { message: "A stage cannot be both won and lost" });
+const pipelineStageUpdateInput = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string().trim().min(1).max(120),
+    probability: z.number().min(0).max(100),
+    color: z.string().trim().max(32).optional().nullable(),
+    is_closed_won: z.boolean(),
+    is_closed_lost: z.boolean(),
+  })
+  .refine((data) => !(data.is_closed_won && data.is_closed_lost), {
+    message: "A stage cannot be both won and lost",
+  });
 
 /** Reads a native opportunity with its related contact, company, tasks, stage context, and normalized activity. */
 export const getCrmOpportunityRecord = createServerFn({ method: "GET" })

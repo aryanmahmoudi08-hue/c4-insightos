@@ -220,12 +220,7 @@ export function elapsedDays(window: PeriodWindow, anchorISODate: string): number
 }
 
 export type TargetStatus =
-  | "no_target"
-  | "insufficient_data"
-  | "ahead"
-  | "on_pace"
-  | "behind"
-  | "at_risk";
+  "no_target" | "insufficient_data" | "ahead" | "on_pace" | "behind" | "at_risk";
 
 export interface TargetProgress {
   status: TargetStatus;

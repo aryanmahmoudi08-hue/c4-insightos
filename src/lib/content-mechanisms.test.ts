@@ -5,7 +5,12 @@ describe("addWeights", () => {
   it("sums two full weight objects normally", () => {
     const a = { educational: 1, credibility: 2, authoritative: 3, relatability: 4 };
     const b = { educational: 10, credibility: 20, authoritative: 30, relatability: 40 };
-    expect(addWeights(a, b)).toEqual({ educational: 11, credibility: 22, authoritative: 33, relatability: 44 });
+    expect(addWeights(a, b)).toEqual({
+      educational: 11,
+      credibility: 22,
+      authoritative: 33,
+      relatability: 44,
+    });
   });
 
   it("never produces NaN when one side is missing keys (e.g. a partial DB value cast to the full type)", () => {
@@ -20,7 +25,10 @@ describe("addWeights", () => {
 
   it("does not let one NaN-prone key contaminate the others", () => {
     const partial = { educational: 3 } as unknown as ReturnType<typeof emptyWeights>;
-    const result = addWeights({ educational: 1, credibility: 1, authoritative: 1, relatability: 1 }, partial);
+    const result = addWeights(
+      { educational: 1, credibility: 1, authoritative: 1, relatability: 1 },
+      partial,
+    );
     expect(result.educational).toBe(4);
     expect(result.credibility).toBe(1);
     expect(result.authoritative).toBe(1);

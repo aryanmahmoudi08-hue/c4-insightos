@@ -57,23 +57,25 @@ ${input.transcript ?? "(no transcript provided)"}`;
           { role: "system", content: sys },
           { role: "user", content: user },
         ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "coach",
-            parameters: {
-              type: "object",
-              properties: {
-                summary: { type: "string" },
-                strengths: { type: "array", items: { type: "string" } },
-                improvements: { type: "array", items: { type: "string" } },
-                next_hook_ideas: { type: "array", items: { type: "string" } },
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "coach",
+              parameters: {
+                type: "object",
+                properties: {
+                  summary: { type: "string" },
+                  strengths: { type: "array", items: { type: "string" } },
+                  improvements: { type: "array", items: { type: "string" } },
+                  next_hook_ideas: { type: "array", items: { type: "string" } },
+                },
+                required: ["summary", "strengths", "improvements", "next_hook_ideas"],
+                additionalProperties: false,
               },
-              required: ["summary", "strengths", "improvements", "next_hook_ideas"],
-              additionalProperties: false,
             },
           },
-        }],
+        ],
         tool_choice: { type: "function", function: { name: "coach" } },
       }),
     });

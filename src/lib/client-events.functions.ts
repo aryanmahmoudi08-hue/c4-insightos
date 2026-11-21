@@ -35,7 +35,7 @@ export const notifyClientStageChangedFn = createServerFn({ method: "POST" })
       client_id: client.id,
       client_name: client.full_name,
       offer: client.offer_name,
-      contract_value: ((client.contract_value_cents ?? 0) / 100),
+      contract_value: (client.contract_value_cents ?? 0) / 100,
       renewal_date: client.renewal_date,
       health_score: client.health_score,
       from_stage: data.from_stage,

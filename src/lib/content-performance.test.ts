@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { aggregateMix, classifyPerformance, percentiles, type Baseline, type PieceMetrics } from "./content-performance";
+import {
+  aggregateMix,
+  classifyPerformance,
+  percentiles,
+  type Baseline,
+  type PieceMetrics,
+} from "./content-performance";
 import { emptyWeights, type MechanismWeights } from "./content-mechanisms";
 
 const BUCKET = { mechanism: "credibility" as const, platform: "reel" };
@@ -50,8 +56,17 @@ describe("classifyPerformance — sparse-data / cold-start", () => {
   });
 
   it("does not crash on a single-data-point baseline even when minSample allows it", () => {
-    const baseline = baselineFrom({ retention: [55], engagement: [4], views: [900], dropOff: [20] }, 1);
-    const piece: PieceMetrics = { converted: false, retentionPct: 55, engagementPct: 4, views: 900, dropOffPct: 20 };
+    const baseline = baselineFrom(
+      { retention: [55], engagement: [4], views: [900], dropOff: [20] },
+      1,
+    );
+    const piece: PieceMetrics = {
+      converted: false,
+      retentionPct: 55,
+      engagementPct: 4,
+      views: 900,
+      dropOffPct: 20,
+    };
     const result = classifyPerformance(piece, baseline, 1);
     // n=1 means zero variance on every metric — nothing to rank against, so it
     // must resolve to "typical", never a false strong/underperforming.
@@ -62,10 +77,21 @@ describe("classifyPerformance — sparse-data / cold-start", () => {
 describe("classifyPerformance — degenerate / zero-variance baseline", () => {
   it("resolves to typical when every piece in the bucket has the same value on every metric (no divide-by-zero, no false verdict)", () => {
     const baseline = baselineFrom(
-      { views: [500, 500, 500, 500, 500, 500], retention: [50, 50, 50, 50, 50, 50], engagement: [4, 4, 4, 4, 4, 4], dropOff: [25, 25, 25, 25, 25, 25] },
+      {
+        views: [500, 500, 500, 500, 500, 500],
+        retention: [50, 50, 50, 50, 50, 50],
+        engagement: [4, 4, 4, 4, 4, 4],
+        dropOff: [25, 25, 25, 25, 25, 25],
+      },
       6,
     );
-    const piece: PieceMetrics = { converted: false, views: 500, retentionPct: 50, engagementPct: 4, dropOffPct: 25 };
+    const piece: PieceMetrics = {
+      converted: false,
+      views: 500,
+      retentionPct: 50,
+      engagementPct: 4,
+      dropOffPct: 25,
+    };
     const result = classifyPerformance(piece, baseline, 6);
     expect(result.verdict).toBe("typical");
   });
@@ -74,10 +100,19 @@ describe("classifyPerformance — degenerate / zero-variance baseline", () => {
 describe("classifyPerformance — conversion always wins", () => {
   it("classifies a converted piece as strong even with terrible engagement metrics", () => {
     const baseline = baselineFrom(
-      { retention: [60, 65, 70, 75, 80, 85], engagement: [5, 6, 7, 8, 9, 10], dropOff: [10, 15, 20, 25, 30, 35] },
+      {
+        retention: [60, 65, 70, 75, 80, 85],
+        engagement: [5, 6, 7, 8, 9, 10],
+        dropOff: [10, 15, 20, 25, 30, 35],
+      },
       6,
     );
-    const piece: PieceMetrics = { converted: true, retentionPct: 5, engagementPct: 1, dropOffPct: 90 };
+    const piece: PieceMetrics = {
+      converted: true,
+      retentionPct: 5,
+      engagementPct: 1,
+      dropOffPct: 90,
+    };
     const result = classifyPerformance(piece, baseline, 6);
     expect(result.verdict).toBe("strong");
     expect(result.reasons[0].metric).toBe("conversion");
@@ -89,12 +124,26 @@ describe("classifyPerformance — exactly-at-threshold boundary", () => {
     // 8 evenly spaced values 10..80: p75 index = 0.75*7=5.25 -> interpolate
     // sorted[5]=60 and sorted[6]=70 at 0.25 -> 62.5
     const retentionPop = [10, 20, 30, 40, 50, 60, 70, 80];
-    const baseline = baselineFrom({ retention: retentionPop, engagement: [1, 1, 1, 1, 1, 1, 1, 1], dropOff: [10, 10, 10, 10, 10, 10, 10, 10] }, 8);
+    const baseline = baselineFrom(
+      {
+        retention: retentionPop,
+        engagement: [1, 1, 1, 1, 1, 1, 1, 1],
+        dropOff: [10, 10, 10, 10, 10, 10, 10, 10],
+      },
+      8,
+    );
     expect(baseline.retention.p75).toBe(62.5);
-    const piece: PieceMetrics = { converted: false, retentionPct: 62.5, engagementPct: 1, dropOffPct: 10 };
+    const piece: PieceMetrics = {
+      converted: false,
+      retentionPct: 62.5,
+      engagementPct: 1,
+      dropOffPct: 10,
+    };
     const result = classifyPerformance(piece, baseline, 6);
     expect(result.verdict).toBe("strong");
-    expect(result.reasons.some((r) => r.metric === "retention" && r.comparisonType === "p75")).toBe(true);
+    expect(result.reasons.some((r) => r.metric === "retention" && r.comparisonType === "p75")).toBe(
+      true,
+    );
   });
 });
 
@@ -103,11 +152,20 @@ describe("classifyPerformance — dropOff is a permissive floor, not a quality b
     // dropOff population 0..90 step 10 (10 values): p75 index=0.75*9=6.75 -> interpolated 67.5
     const dropOffPop = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
     const baseline = baselineFrom(
-      { retention: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100], engagement: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], dropOff: dropOffPop },
+      {
+        retention: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+        engagement: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        dropOff: dropOffPop,
+      },
       10,
     );
     // Best-decile retention (100, well above p75) but worst-decile drop-off (90, above p75=67.5)
-    const piece: PieceMetrics = { converted: false, retentionPct: 100, engagementPct: 1, dropOffPct: 90 };
+    const piece: PieceMetrics = {
+      converted: false,
+      retentionPct: 100,
+      engagementPct: 1,
+      dropOffPct: 90,
+    };
     const result = classifyPerformance(piece, baseline, 6);
     expect(result.verdict).not.toBe("strong");
   });
@@ -115,11 +173,20 @@ describe("classifyPerformance — dropOff is a permissive floor, not a quality b
   it("classifies as strong when retention is excellent and drop-off is merely 'not catastrophic' (at p75, not top-quartile)", () => {
     const dropOffPop = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
     const baseline = baselineFrom(
-      { retention: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100], engagement: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], dropOff: dropOffPop },
+      {
+        retention: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+        engagement: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        dropOff: dropOffPop,
+      },
       10,
     );
     // drop-off sits AT p75 (67.5) — the permissive floor — not top-quartile-best.
-    const piece: PieceMetrics = { converted: false, retentionPct: 100, engagementPct: 1, dropOffPct: 67.5 };
+    const piece: PieceMetrics = {
+      converted: false,
+      retentionPct: 100,
+      engagementPct: 1,
+      dropOffPct: 67.5,
+    };
     const result = classifyPerformance(piece, baseline, 6);
     expect(result.verdict).toBe("strong");
   });
@@ -140,13 +207,24 @@ describe("classifyPerformance — old-vs-new disagreement (the account's own bar
   }
 
   it("old absolute rule calls a 46% piece 'strong'; new bucket-relative rule calls the same piece 'underperforming'", () => {
-    const piece: PieceMetrics = { converted: false, retentionPct: 46, engagementPct: 2, dropOffPct: 20, views: 200 };
+    const piece: PieceMetrics = {
+      converted: false,
+      retentionPct: 46,
+      engagementPct: 2,
+      dropOffPct: 20,
+      views: 200,
+    };
     expect(oldAbsoluteRuleIsStrong(piece)).toBe(true);
 
     // This account's real Reels for this bucket run 70-95% retention — 46% is
     // this bucket's own bottom quartile, not a strong performer here.
     const baseline = baselineFrom(
-      { retention: [70, 75, 80, 85, 90, 95], engagement: [1, 2, 3, 4, 5, 6], views: [400, 500, 600, 700, 800, 900], dropOff: [10, 15, 20, 25, 30, 35] },
+      {
+        retention: [70, 75, 80, 85, 90, 95],
+        engagement: [1, 2, 3, 4, 5, 6],
+        views: [400, 500, 600, 700, 800, 900],
+        dropOff: [10, 15, 20, 25, 30, 35],
+      },
       6,
     );
     const result = classifyPerformance(piece, baseline, 6);
@@ -167,11 +245,18 @@ describe("classifyPerformance — 6.2: the two previously-divergent systems now 
   // the same inputs, standing in for computeDemand's and the weekly-check's
   // call sites both routing through the same function).
   it("gives one consistent verdict regardless of which caller invokes it", () => {
-    const piece: PieceMetrics = { converted: false, retentionPct: 46, engagementPct: 3, views: 150, dropOffPct: 15 };
+    const piece: PieceMetrics = {
+      converted: false,
+      retentionPct: 46,
+      engagementPct: 3,
+      views: 150,
+      dropOffPct: 15,
+    };
 
     // Old computeDemand's rule (isolated, reimplemented here as ground truth
     // for "what it used to do"):
-    const oldComputeDemandStrong = (piece.retentionPct ?? 0) >= 45 || (piece.engagementPct ?? 0) >= 6;
+    const oldComputeDemandStrong =
+      (piece.retentionPct ?? 0) >= 45 || (piece.engagementPct ?? 0) >= 6;
     expect(oldComputeDemandStrong).toBe(true); // old computeDemand: "strong" driver
 
     // Old weekly-check's rule, using an org-wide-average views figure that's
@@ -183,7 +268,12 @@ describe("classifyPerformance — 6.2: the two previously-divergent systems now 
     // -> the two old systems disagreed: "strong" vs. "underperforming (low reach)".
 
     const baseline = baselineFrom(
-      { retention: [70, 75, 80, 85, 90, 95], engagement: [1, 2, 3, 4, 5, 6], views: [400, 500, 600, 700, 800, 900], dropOff: [10, 15, 20, 25, 30, 35] },
+      {
+        retention: [70, 75, 80, 85, 90, 95],
+        engagement: [1, 2, 3, 4, 5, 6],
+        views: [400, 500, 600, 700, 800, 900],
+        dropOff: [10, 15, 20, 25, 30, 35],
+      },
       6,
     );
 
@@ -216,7 +306,12 @@ describe("aggregateMix", () => {
   });
 
   it("flags insufficientData when total weight is below the configured minimum, but still produces a real distribution", () => {
-    const weights: MechanismWeights = { educational: 2, credibility: 4, authoritative: 1, relatability: 1 };
+    const weights: MechanismWeights = {
+      educational: 2,
+      credibility: 4,
+      authoritative: 1,
+      relatability: 1,
+    };
     const result = aggregateMix(weights, 15);
     expect(result.totalWeight).toBe(8);
     expect(result.insufficientData).toBe(true);
@@ -224,7 +319,12 @@ describe("aggregateMix", () => {
   });
 
   it("does not flag insufficientData once total weight clears the minimum, and percentages sum to 100", () => {
-    const weights: MechanismWeights = { educational: 10, credibility: 30, authoritative: 5, relatability: 5 };
+    const weights: MechanismWeights = {
+      educational: 10,
+      credibility: 30,
+      authoritative: 5,
+      relatability: 5,
+    };
     const result = aggregateMix(weights, 15);
     expect(result.totalWeight).toBe(50);
     expect(result.insufficientData).toBe(false);
@@ -233,7 +333,12 @@ describe("aggregateMix", () => {
   });
 
   it("never lets a mechanism with real positive weight round down to 0%", () => {
-    const weights: MechanismWeights = { educational: 1, credibility: 97, authoritative: 1, relatability: 1 };
+    const weights: MechanismWeights = {
+      educational: 1,
+      credibility: 97,
+      authoritative: 1,
+      relatability: 1,
+    };
     const result = aggregateMix(weights, 15);
     expect(result.mix.educational).toBeGreaterThan(0);
     expect(result.mix.authoritative).toBeGreaterThan(0);

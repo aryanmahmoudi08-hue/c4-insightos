@@ -14,12 +14,7 @@
  */
 
 export type LeadQuality =
-  | "High Quality"
-  | "Qualified"
-  | "Standard"
-  | "Low Quality"
-  | "Unqualified"
-  | "Unknown";
+  "High Quality" | "Qualified" | "Standard" | "Low Quality" | "Unqualified" | "Unknown";
 
 export type LeadQualityInput = {
   status?: string | null;

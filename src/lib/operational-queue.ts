@@ -1,11 +1,5 @@
 export type QueueState =
-  | "queued"
-  | "due"
-  | "running"
-  | "retry"
-  | "completed"
-  | "failed"
-  | "unavailable";
+  "queued" | "due" | "running" | "retry" | "completed" | "failed" | "unavailable";
 
 export type QueueItem = {
   id: string;

@@ -24,12 +24,7 @@ export type SpeedToLeadResult = {
 export type SpeedToLeadSlaStatus = "met" | "breached" | "pending" | "ineligible" | "unavailable";
 
 export type SpeedToLeadDeliveryStatus =
-  | "ready"
-  | "owner-missing"
-  | "already-notified"
-  | "connector-unavailable"
-  | "sent"
-  | "failed";
+  "ready" | "owner-missing" | "already-notified" | "connector-unavailable" | "sent" | "failed";
 
 export type SpeedToLeadDeliveryAudit = {
   status: "sent" | "failed";

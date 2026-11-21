@@ -77,7 +77,11 @@ function bucketLabel(bucket: Bucket, n: number): string {
  * account's current volume, a documented limitation rather than a silent
  * one; revisit once converted volume is large enough to rank by size).
  */
-export function classifyPerformance(piece: PieceMetrics, baseline: Baseline, minSample: number): PerformanceVerdict {
+export function classifyPerformance(
+  piece: PieceMetrics,
+  baseline: Baseline,
+  minSample: number,
+): PerformanceVerdict {
   const { bucket, sampleSize } = baseline;
   const label = bucketLabel(bucket, sampleSize);
   const base = { bucket, sampleSize, minSample };
@@ -90,7 +94,15 @@ export function classifyPerformance(piece: PieceMetrics, baseline: Baseline, min
     return {
       ...base,
       verdict: "strong",
-      reasons: [{ metric: "conversion", value: 1, comparedTo: 0, comparisonType: "p75", bucketLabel: label }],
+      reasons: [
+        {
+          metric: "conversion",
+          value: 1,
+          comparedTo: 0,
+          comparisonType: "p75",
+          bucketLabel: label,
+        },
+      ],
     };
   }
 
@@ -100,7 +112,8 @@ export function classifyPerformance(piece: PieceMetrics, baseline: Baseline, min
   const views = piece.views ?? 0;
 
   const retentionStrong = hasVariance(baseline.retention) && retention >= baseline.retention.p75;
-  const engagementStrong = hasVariance(baseline.engagement) && engagement >= baseline.engagement.p75;
+  const engagementStrong =
+    hasVariance(baseline.engagement) && engagement >= baseline.engagement.p75;
 
   // dropOff <= p75 is a PERMISSIVE floor (excludes only the account's own
   // worst quartile), not a quality bar — "strong" doesn't require top-quartile
@@ -108,12 +121,27 @@ export function classifyPerformance(piece: PieceMetrics, baseline: Baseline, min
   // make "strong" nearly unreachable at low volume. A bucket with no drop-off
   // variance never blocks "strong" on this metric (nothing to distinguish
   // catastrophic from fine).
-  const dropOffOk = dropOff == null || !hasVariance(baseline.dropOff) || dropOff <= baseline.dropOff.p75;
+  const dropOffOk =
+    dropOff == null || !hasVariance(baseline.dropOff) || dropOff <= baseline.dropOff.p75;
 
   if ((retentionStrong || engagementStrong) && dropOffOk) {
     const reasons: DerivationReason[] = [];
-    if (retentionStrong) reasons.push({ metric: "retention", value: retention, comparedTo: baseline.retention.p75, comparisonType: "p75", bucketLabel: label });
-    if (engagementStrong) reasons.push({ metric: "engagement", value: engagement, comparedTo: baseline.engagement.p75, comparisonType: "p75", bucketLabel: label });
+    if (retentionStrong)
+      reasons.push({
+        metric: "retention",
+        value: retention,
+        comparedTo: baseline.retention.p75,
+        comparisonType: "p75",
+        bucketLabel: label,
+      });
+    if (engagementStrong)
+      reasons.push({
+        metric: "engagement",
+        value: engagement,
+        comparedTo: baseline.engagement.p75,
+        comparisonType: "p75",
+        bucketLabel: label,
+      });
     return { ...base, verdict: "strong", reasons };
   }
 
@@ -124,8 +152,20 @@ export function classifyPerformance(piece: PieceMetrics, baseline: Baseline, min
       ...base,
       verdict: "underperforming",
       reasons: [
-        { metric: "retention", value: retention, comparedTo: baseline.retention.p25, comparisonType: "p25", bucketLabel: label },
-        { metric: "engagement", value: engagement, comparedTo: baseline.engagement.p25, comparisonType: "p25", bucketLabel: label },
+        {
+          metric: "retention",
+          value: retention,
+          comparedTo: baseline.retention.p25,
+          comparisonType: "p25",
+          bucketLabel: label,
+        },
+        {
+          metric: "engagement",
+          value: engagement,
+          comparedTo: baseline.engagement.p25,
+          comparisonType: "p25",
+          bucketLabel: label,
+        },
       ],
     };
   }
@@ -135,14 +175,30 @@ export function classifyPerformance(piece: PieceMetrics, baseline: Baseline, min
     return {
       ...base,
       verdict: "underperforming",
-      reasons: [{ metric: "views", value: views, comparedTo: baseline.views.p25, comparisonType: "p25", bucketLabel: label }],
+      reasons: [
+        {
+          metric: "views",
+          value: views,
+          comparedTo: baseline.views.p25,
+          comparisonType: "p25",
+          bucketLabel: label,
+        },
+      ],
     };
   }
 
   return {
     ...base,
     verdict: "typical",
-    reasons: [{ metric: "retention", value: retention, comparedTo: baseline.retention.p50, comparisonType: "p50", bucketLabel: label }],
+    reasons: [
+      {
+        metric: "retention",
+        value: retention,
+        comparedTo: baseline.retention.p50,
+        comparisonType: "p50",
+        bucketLabel: label,
+      },
+    ],
   };
 }
 
@@ -160,7 +216,11 @@ export type MixResult = {
  * insufficientData so the caller can badge it — never a silent,
  * indistinguishable "confident" 25/25/25/25.
  */
-export function aggregateMix(weights: MechanismWeights, minTotalWeight: number, minPct = 10): MixResult {
+export function aggregateMix(
+  weights: MechanismWeights,
+  minTotalWeight: number,
+  minPct = 10,
+): MixResult {
   const totalWeight = MECHANISM_KEYS.reduce((s, k) => s + weights[k], 0);
   const insufficientData = totalWeight < minTotalWeight;
 
@@ -172,7 +232,10 @@ export function aggregateMix(weights: MechanismWeights, minTotalWeight: number, 
   }
 
   const floor = minPct * MECHANISM_KEYS.length;
-  const scaled = MECHANISM_KEYS.map((k) => ({ k, v: Math.round(((weights[k] / totalWeight) * (100 - floor)) + minPct) }));
+  const scaled = MECHANISM_KEYS.map((k) => ({
+    k,
+    v: Math.round((weights[k] / totalWeight) * (100 - floor) + minPct),
+  }));
   const diff = 100 - scaled.reduce((s, x) => s + x.v, 0);
   scaled.sort((a, b) => b.v - a.v);
   if (scaled[0]) scaled[0].v += diff;

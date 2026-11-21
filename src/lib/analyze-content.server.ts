@@ -8,9 +8,18 @@ export type ContentClassification = {
   rationale: string;
 };
 
-const ANGLES = ["authority","proof","educational","origin_story","identity","lifestyle","controversial","other"] as const;
-const STAGES = ["TOF","MOF","BOF"] as const;
-export type AngleEnum = typeof ANGLES[number];
+const ANGLES = [
+  "authority",
+  "proof",
+  "educational",
+  "origin_story",
+  "identity",
+  "lifestyle",
+  "controversial",
+  "other",
+] as const;
+const STAGES = ["TOF", "MOF", "BOF"] as const;
+export type AngleEnum = (typeof ANGLES)[number];
 
 export async function classifyTranscript(input: {
   transcript: string;
@@ -38,29 +47,35 @@ Return via the tool call.`;
           { role: "system", content: sys },
           { role: "user", content: userMsg },
         ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "classify",
-            description: "Return the classification of the video.",
-            parameters: {
-              type: "object",
-              properties: {
-                hook: { type: "string" },
-                angle: { type: "string", enum: [...ANGLES] },
-                funnel_stage: { type: "string", enum: [...STAGES] },
-                rationale: { type: "string" },
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "classify",
+              description: "Return the classification of the video.",
+              parameters: {
+                type: "object",
+                properties: {
+                  hook: { type: "string" },
+                  angle: { type: "string", enum: [...ANGLES] },
+                  funnel_stage: { type: "string", enum: [...STAGES] },
+                  rationale: { type: "string" },
+                },
+                required: ["hook", "angle", "funnel_stage", "rationale"],
+                additionalProperties: false,
               },
-              required: ["hook","angle","funnel_stage","rationale"],
-              additionalProperties: false,
             },
           },
-        }],
+        ],
         tool_choice: { type: "function", function: { name: "classify" } },
       }),
     });
     if (!res.ok) {
-      console.error("classifyTranscript: gateway error", res.status, await res.text().catch(() => ""));
+      console.error(
+        "classifyTranscript: gateway error",
+        res.status,
+        await res.text().catch(() => ""),
+      );
       return null;
     }
     const json = await res.json();

@@ -51,11 +51,7 @@ export type AcquisitionAttribution = {
 };
 
 export type AttributionModel =
-  | "first_touch"
-  | "lead_source"
-  | "booking_source"
-  | "last_touch"
-  | "assisted_touch";
+  "first_touch" | "lead_source" | "booking_source" | "last_touch" | "assisted_touch";
 export type AttributionCoverage = "direct" | "partial" | "inferred" | "unavailable";
 
 export type CanonicalLifecycleAttributionPath = {

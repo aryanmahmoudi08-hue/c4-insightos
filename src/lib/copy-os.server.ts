@@ -2,7 +2,11 @@
 // prompt grounded in the full distilled KJ Rainey "Copy Elite" + "Digital
 // Persuasion" mentorship (see copy-os-knowledge.server.ts).
 import { KJ_KNOWLEDGE } from "./copy-os-knowledge.server";
-import { CONTENT_SYSTEM_CORE, mechanismBlock, PRODUCTION_BREAKDOWN_SPEC } from "./content-system-knowledge.server";
+import {
+  CONTENT_SYSTEM_CORE,
+  mechanismBlock,
+  PRODUCTION_BREAKDOWN_SPEC,
+} from "./content-system-knowledge.server";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
@@ -62,12 +66,16 @@ function dnaBlock(c: ClientDNA | null | undefined): string {
   if (!c) return "(No client DNA provided — write in KJ's house voice.)";
   const parts: string[] = [];
   if (c.display_name) parts.push(`CLIENT: ${c.display_name}${c.niche ? ` — ${c.niche}` : ""}`);
-  if (c.offer_details && Object.keys(c.offer_details).length) parts.push(`OFFER: ${JSON.stringify(c.offer_details)}`);
-  if (c.avatar_research && Object.keys(c.avatar_research).length) parts.push(`AVATAR (customer bubble): ${JSON.stringify(c.avatar_research)}`);
+  if (c.offer_details && Object.keys(c.offer_details).length)
+    parts.push(`OFFER: ${JSON.stringify(c.offer_details)}`);
+  if (c.avatar_research && Object.keys(c.avatar_research).length)
+    parts.push(`AVATAR (customer bubble): ${JSON.stringify(c.avatar_research)}`);
   if (c.sacred_cows) parts.push(`SACRED COWS THEY KILL: ${c.sacred_cows}`);
   if (c.competitors) parts.push(`ENEMIES / COMPETITORS TO THROW ROCKS AT: ${c.competitors}`);
-  if (c.voice_fingerprint) parts.push(`VOICE FINGERPRINT (match exactly): ${JSON.stringify(c.voice_fingerprint)}`);
-  if (c.voice_transcripts) parts.push(`VOICE SAMPLES (mirror these patterns):\n${c.voice_transcripts.slice(0, 4000)}`);
+  if (c.voice_fingerprint)
+    parts.push(`VOICE FINGERPRINT (match exactly): ${JSON.stringify(c.voice_fingerprint)}`);
+  if (c.voice_transcripts)
+    parts.push(`VOICE SAMPLES (mirror these patterns):\n${c.voice_transcripts.slice(0, 4000)}`);
   if (c.notes) parts.push(`NOTES: ${c.notes}`);
   return parts.join("\n\n");
 }
@@ -103,7 +111,7 @@ export async function generateCopy(input: {
   objection?: string | null;
 }): Promise<string> {
   const swipeBlock = (input.swipes ?? []).length
-    ? `\n\nREFERENCE SWIPES (style only — do not copy verbatim):\n${input.swipes!.map(s => `--- ${s.title} ---\n${s.body}`).join("\n\n")}`
+    ? `\n\nREFERENCE SWIPES (style only — do not copy verbatim):\n${input.swipes!.map((s) => `--- ${s.title} ---\n${s.body}`).join("\n\n")}`
     : "";
 
   const mech = mechanismBlock(input.mechanism, input.variation);
@@ -143,8 +151,11 @@ Now write the copy.${mech ? " Follow the OUTPUT CONTRACT sections A-H exactly." 
   return out;
 }
 
-
-export async function reviewCopy(input: { copy: string; copy_type?: string | null; client?: ClientDNA | null }) {
+export async function reviewCopy(input: {
+  copy: string;
+  copy_type?: string | null;
+  client?: ClientDNA | null;
+}) {
   const user = `Grade this ${input.copy_type ?? "copy"} against KJ's frameworks. Give a 0-100 score, then specific line-by-line feedback. Be brutal.
 
 CLIENT DNA:
@@ -159,34 +170,56 @@ ${input.copy}`;
       { role: "system", content: KJ_SYSTEM },
       { role: "user", content: user },
     ],
-    tools: [{
-      type: "function",
-      function: {
-        name: "review",
-        parameters: {
-          type: "object",
-          properties: {
-            score: { type: "number" },
-            big_domino: { type: "string" },
-            strengths: { type: "array", items: { type: "string" } },
-            weaknesses: { type: "array", items: { type: "string" } },
-            line_edits: { type: "array", items: { type: "object", properties: {
-              line: { type: "string" }, fix: { type: "string" },
-            }, required: ["line", "fix"], additionalProperties: false } },
-            rewrite_suggestion: { type: "string" },
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "review",
+          parameters: {
+            type: "object",
+            properties: {
+              score: { type: "number" },
+              big_domino: { type: "string" },
+              strengths: { type: "array", items: { type: "string" } },
+              weaknesses: { type: "array", items: { type: "string" } },
+              line_edits: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    line: { type: "string" },
+                    fix: { type: "string" },
+                  },
+                  required: ["line", "fix"],
+                  additionalProperties: false,
+                },
+              },
+              rewrite_suggestion: { type: "string" },
+            },
+            required: [
+              "score",
+              "big_domino",
+              "strengths",
+              "weaknesses",
+              "line_edits",
+              "rewrite_suggestion",
+            ],
+            additionalProperties: false,
           },
-          required: ["score", "big_domino", "strengths", "weaknesses", "line_edits", "rewrite_suggestion"],
-          additionalProperties: false,
         },
       },
-    }],
+    ],
     tool_choice: { type: "function", function: { name: "review" } },
   })) as { choices?: { message?: { tool_calls?: { function?: { arguments?: string } }[] } }[] };
   const args = json.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
   if (!args) throw new Error("Empty AI response");
   return JSON.parse(args) as {
-    score: number; big_domino: string; strengths: string[]; weaknesses: string[];
-    line_edits: { line: string; fix: string }[]; rewrite_suggestion: string;
+    score: number;
+    big_domino: string;
+    strengths: string[];
+    weaknesses: string[];
+    line_edits: { line: string; fix: string }[];
+    rewrite_suggestion: string;
   };
 }
 
@@ -202,24 +235,34 @@ ${dnaBlock(input.client)}`;
       { role: "system", content: KJ_SYSTEM },
       { role: "user", content: user },
     ],
-    tools: [{
-      type: "function",
-      function: {
-        name: "angles",
-        parameters: {
-          type: "object",
-          properties: {
-            angles: { type: "array", items: { type: "object", properties: {
-              trigger: { type: "string" },
-              hook: { type: "string" },
-              big_domino: { type: "string" },
-            }, required: ["trigger", "hook", "big_domino"], additionalProperties: false } },
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "angles",
+          parameters: {
+            type: "object",
+            properties: {
+              angles: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    trigger: { type: "string" },
+                    hook: { type: "string" },
+                    big_domino: { type: "string" },
+                  },
+                  required: ["trigger", "hook", "big_domino"],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ["angles"],
+            additionalProperties: false,
           },
-          required: ["angles"],
-          additionalProperties: false,
         },
       },
-    }],
+    ],
     tool_choice: { type: "function", function: { name: "angles" } },
   })) as { choices?: { message?: { tool_calls?: { function?: { arguments?: string } }[] } }[] };
   const args = json.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
@@ -236,30 +279,44 @@ ${transcripts.slice(0, 12000)}`;
   const json = (await callGateway({
     model: "google/gemini-2.5-flash",
     messages: [
-      { role: "system", content: "You analyze speech patterns to extract a reusable voice fingerprint." },
+      {
+        role: "system",
+        content: "You analyze speech patterns to extract a reusable voice fingerprint.",
+      },
       { role: "user", content: user },
     ],
-    tools: [{
-      type: "function",
-      function: {
-        name: "fingerprint",
-        parameters: {
-          type: "object",
-          properties: {
-            avg_sentence_length: { type: "string" },
-            opening_patterns: { type: "array", items: { type: "string" } },
-            transition_phrases: { type: "array", items: { type: "string" } },
-            overused_words: { type: "array", items: { type: "string" } },
-            never_uses: { type: "array", items: { type: "string" } },
-            emotional_temperature: { type: "string" },
-            common_analogies: { type: "array", items: { type: "string" } },
-            closing_patterns: { type: "array", items: { type: "string" } },
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "fingerprint",
+          parameters: {
+            type: "object",
+            properties: {
+              avg_sentence_length: { type: "string" },
+              opening_patterns: { type: "array", items: { type: "string" } },
+              transition_phrases: { type: "array", items: { type: "string" } },
+              overused_words: { type: "array", items: { type: "string" } },
+              never_uses: { type: "array", items: { type: "string" } },
+              emotional_temperature: { type: "string" },
+              common_analogies: { type: "array", items: { type: "string" } },
+              closing_patterns: { type: "array", items: { type: "string" } },
+            },
+            required: [
+              "avg_sentence_length",
+              "opening_patterns",
+              "transition_phrases",
+              "overused_words",
+              "never_uses",
+              "emotional_temperature",
+              "common_analogies",
+              "closing_patterns",
+            ],
+            additionalProperties: false,
           },
-          required: ["avg_sentence_length", "opening_patterns", "transition_phrases", "overused_words", "never_uses", "emotional_temperature", "common_analogies", "closing_patterns"],
-          additionalProperties: false,
         },
       },
-    }],
+    ],
     tool_choice: { type: "function", function: { name: "fingerprint" } },
   })) as { choices?: { message?: { tool_calls?: { function?: { arguments?: string } }[] } }[] };
   const args = json.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
