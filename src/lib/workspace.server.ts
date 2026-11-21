@@ -3,6 +3,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 type WorkspaceMembership = {
   org_id: string;
   role: string;
+  /** Extra rep roles held on top of `role` (20261120090000_multi_role_members.sql). */
+  additional_roles: string[];
   organizations: { id: string; name: string; slug: string } | null;
 };
 
@@ -19,12 +21,16 @@ type WorkspaceMembership = {
  * approve_membership_request), which inserts the row explicitly.
  */
 export async function ensureWorkspaceForUser(userId: string): Promise<WorkspaceMembership | null> {
-  const { data: membership, error: membershipError } = await supabaseAdmin
+  // additional_roles is ahead of the generated types.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: membership, error: membershipError } = await (supabaseAdmin as any)
     .from("memberships")
-    .select("org_id, role, organizations(id, name, slug)")
+    .select("org_id, role, additional_roles, organizations(id, name, slug)")
     .eq("user_id", userId)
     .limit(1)
     .maybeSingle();
   if (membershipError) throw new Error(membershipError.message);
-  return (membership as WorkspaceMembership | null) ?? null;
+  if (!membership) return null;
+  const m = membership as WorkspaceMembership;
+  return { ...m, additional_roles: m.additional_roles ?? [] };
 }

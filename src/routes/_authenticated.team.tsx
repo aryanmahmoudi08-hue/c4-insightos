@@ -3,7 +3,15 @@ import { useCallVolume } from "@/hooks/use-call-volume";
 import { callsBookedTotal } from "@/lib/call-booking-metrics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ASSIGNABLE_ROLES, isAppRole, type AppRole } from "@/lib/permissions";
+import {
+  ASSIGNABLE_ROLES,
+  allRoles,
+  rolesLabel,
+  splitRoles,
+  type AppRole,
+} from "@/lib/permissions";
+import { RolePicker } from "@/components/role-picker";
+import { MemberRolesDialog } from "@/components/member-roles-dialog";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
 import { useRole } from "@/hooks/use-role";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
@@ -59,6 +67,8 @@ export const Route = createFileRoute("/_authenticated/team")({ component: Team }
 type Member = {
   user_id: string;
   role: string;
+  /** Extra sales roles on top of `role` (20261120090000_multi_role_members.sql). */
+  additional_roles?: string[] | null;
   profiles: { display_name: string | null; avatar_url: string | null } | null;
 };
 type TeamMemberRow = {
@@ -140,7 +150,13 @@ function Team() {
   // calls/setter_activity cash fields that carry a real original_currency
   // never converted before this fix.
   const fxFn = useServerFn(getHistoricalFxRatesFn);
-  const [pendingRoles, setPendingRoles] = useState<Record<string, AppRole>>({});
+  const [pendingRoles, setPendingRoles] = useState<Record<string, AppRole[]>>({});
+  const [rolesTarget, setRolesTarget] = useState<{
+    userId: string;
+    name: string;
+    role: string;
+    additionalRoles: string[];
+  } | null>(null);
   const [permTarget, setPermTarget] = useState<{
     userId: string;
     name: string;
@@ -157,14 +173,24 @@ function Team() {
     queryKey: ["membership-requests", orgId],
     enabled: !!orgId && isAdmin,
     queryFn: async () => {
-      const { data, error } = await supabase
+      // requested_roles is ahead of the generated types (20261120090000).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
         .from("membership_requests")
-        .select("id, full_name, email, requested_role, status, created_at")
+        .select("id, full_name, email, requested_role, requested_roles, status, created_at")
         .eq("org_id", orgId!)
         .eq("status", "pending")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as Array<{
+        id: string;
+        full_name: string;
+        email: string;
+        requested_role: AppRole;
+        requested_roles: AppRole[] | null;
+        status: string;
+        created_at: string;
+      }>;
     },
   });
 
@@ -172,18 +198,21 @@ function Team() {
     mutationFn: async ({
       id,
       approve,
-      role,
+      roles,
     }: {
       id: string;
       approve: boolean;
-      role: AppRole;
+      roles: AppRole[];
       email: string;
     }) => {
       if (approve) {
+        const split = splitRoles(roles);
+        if (!split.ok) throw new Error(split.error);
         const { error } = await supabase.rpc("approve_membership_request", {
           _request_id: id,
-          _role: role,
-        });
+          _role: split.primary,
+          _additional_roles: split.additional,
+        } as never);
         if (error) throw error;
       } else {
         const { error } = await supabase.rpc("reject_membership_request", { _request_id: id });
@@ -257,7 +286,9 @@ function Team() {
       }
       const { data, error } = await supabase
         .from("memberships")
-        .select("user_id, role, profiles:user_id(display_name, avatar_url)")
+        .select(
+          "user_id, role, additional_roles, profiles:user_id(display_name, avatar_url)" as never,
+        )
         .eq("org_id", orgId!);
       if (error) throw error;
       return data as unknown as Member[];
@@ -849,9 +880,16 @@ function Team() {
                         </span>
                       </td>
                       <td className="p-3">
-                        <span className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase">
-                          {m.role}
-                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {allRoles(m.role, m.additional_roles).map((r) => (
+                            <span
+                              key={r}
+                              className="rounded bg-muted px-1.5 py-0.5 text-3xs uppercase"
+                            >
+                              {rolesLabel([r])}
+                            </span>
+                          ))}
+                        </div>
                       </td>
                       <td className="p-3 text-right font-sans tabular-nums">{m.booked}</td>
                       <td className="p-3 text-right font-sans tabular-nums">{m.shown}</td>
@@ -960,30 +998,22 @@ function Team() {
                       </thead>
                       <tbody>
                         {requests.map((r) => {
-                          const role = pendingRoles[r.id] ?? r.requested_role;
+                          const roles =
+                            pendingRoles[r.id] ??
+                            allRoles(r.requested_role, r.requested_roles ?? []);
                           return (
                             <tr key={r.id} className="border-t border-border/70">
                               <td className="p-3 font-medium">{r.full_name}</td>
                               <td className="p-3 text-xs text-muted-foreground">{r.email}</td>
                               <td className="p-3">
-                                <Select
-                                  value={role}
-                                  onValueChange={(v) => {
-                                    if (isAppRole(v))
-                                      setPendingRoles((pr) => ({ ...pr, [r.id]: v }));
-                                  }}
-                                >
-                                  <SelectTrigger className="h-8 w-36">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {ASSIGNABLE_ROLES.map((x) => (
-                                      <SelectItem key={x} value={x}>
-                                        {x}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                <RolePicker
+                                  size="sm"
+                                  value={roles}
+                                  options={ASSIGNABLE_ROLES}
+                                  onChange={(next) =>
+                                    setPendingRoles((pr) => ({ ...pr, [r.id]: next }))
+                                  }
+                                />
                               </td>
                               <td className="p-3 text-right space-x-1">
                                 <Button
@@ -994,7 +1024,7 @@ function Team() {
                                     decide.mutate({
                                       id: r.id,
                                       approve: false,
-                                      role,
+                                      roles,
                                       email: r.email,
                                     })
                                   }
@@ -1003,9 +1033,14 @@ function Team() {
                                 </Button>
                                 <Button
                                   size="sm"
-                                  disabled={decide.isPending}
+                                  disabled={decide.isPending || !splitRoles(roles).ok}
                                   onClick={() =>
-                                    decide.mutate({ id: r.id, approve: true, role, email: r.email })
+                                    decide.mutate({
+                                      id: r.id,
+                                      approve: true,
+                                      roles,
+                                      email: r.email,
+                                    })
                                   }
                                 >
                                   <Check className="h-3.5 w-3.5" /> Approve
@@ -1066,6 +1101,22 @@ function Team() {
                         >
                           <Shield className="h-3.5 w-3.5 mr-1.5" /> Access
                         </Button>
+                        {isAdmin && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setRolesTarget({
+                                userId: m.user_id,
+                                name: m.profiles?.display_name ?? m.user_id.slice(0, 8),
+                                role: m.role,
+                                additionalRoles: m.additional_roles ?? [],
+                              })
+                            }
+                          >
+                            <Users className="h-3.5 w-3.5 mr-1.5" /> Roles
+                          </Button>
+                        )}
                         {isAdmin && m.role !== "owner" && m.user_id !== user?.id && (
                           <Button
                             size="sm"
@@ -1145,6 +1196,18 @@ function Team() {
         displayName={permTarget?.name ?? ""}
         role={permTarget?.role ?? "viewer"}
       />
+
+      {orgId && (
+        <MemberRolesDialog
+          open={!!rolesTarget}
+          onOpenChange={(o) => {
+            if (!o) setRolesTarget(null);
+          }}
+          orgId={orgId}
+          member={rolesTarget}
+          isSelf={rolesTarget?.userId === user?.id}
+        />
+      )}
 
       <RepProfileSheet
         member={profileMember}

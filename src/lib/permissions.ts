@@ -302,6 +302,104 @@ export const ASSIGNABLE_ROLES: readonly AppRole[] = ROLES;
 export const isAppRole = (v: string): v is AppRole =>
   (Constants.public.Enums.app_role as readonly string[]).includes(v);
 
+/* ------------------------------------------------------------------ */
+/* More than one role per person                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The rep roles a person can hold several of — a closer who also dials, a
+ * setter who also closes, or all three. Every other role is one-per-person:
+ * nobody is both a sales manager and a viewer. Mirrors the check on
+ * memberships.additional_roles (20261120090000_multi_role_members.sql).
+ */
+export const REP_ROLES = ["setter", "inbound_dialer", "closer"] as const;
+export type RepRole = (typeof REP_ROLES)[number];
+export const isRepRole = (r: string): r is RepRole => (REP_ROLES as readonly string[]).includes(r);
+
+/** Which rep role leads when someone holds several and has no other role —
+ *  it decides their Home dashboard. The later step in the funnel wins. */
+const REP_PRIMARY_ORDER: readonly RepRole[] = ["closer", "inbound_dialer", "setter"];
+
+export type SplitRoles =
+  { ok: true; primary: AppRole; additional: RepRole[] } | { ok: false; error: string };
+
+/**
+ * A set of picked roles as what the database stores: one primary role plus
+ * extra rep roles.
+ *
+ *   - At most one non-rep role (admin, sales manager, growth ops, viewer…);
+ *     when there is one it is the primary and any rep roles are extras.
+ *   - Viewer is read-only, so it cannot be combined with a rep role.
+ *   - Rep roles only: the primary is the furthest along the funnel
+ *     (closer, then dialer, then setter).
+ */
+export function splitRoles(roles: readonly string[]): SplitRoles {
+  const unique = [...new Set(roles.filter(isAppRole))];
+  if (!unique.length) return { ok: false, error: "Pick at least one role." };
+  const others = unique.filter((r) => !isRepRole(r));
+  const reps = REP_PRIMARY_ORDER.filter((r) => unique.includes(r));
+  if (others.length > 1) {
+    return {
+      ok: false,
+      error: `Pick only one of ${others.map((r) => roleLabel(r)).join(" / ")}. DM setter, dialer and closer can be combined.`,
+    };
+  }
+  if (others[0] === "viewer" && reps.length) {
+    return { ok: false, error: "Viewer is read-only, so it can't be combined with a rep role." };
+  }
+  if (others.length) return { ok: true, primary: others[0], additional: reps };
+  return { ok: true, primary: reps[0], additional: reps.slice(1) };
+}
+
+/**
+ * Clicking a role in a picker. Rep roles toggle freely; the other roles are
+ * one-at-a-time, so picking one replaces whichever other one was picked; and
+ * Viewer clears the rep roles (it is read-only). Keeps the picker's state
+ * something splitRoles accepts, so a picker can never build an invalid set.
+ */
+export function toggleRole(current: readonly AppRole[], role: AppRole): AppRole[] {
+  if (current.includes(role)) return current.filter((r) => r !== role);
+  if (isRepRole(role)) return [...current.filter((r) => r !== "viewer"), role];
+  const reps = current.filter(isRepRole);
+  return role === "viewer" ? ["viewer"] : [role, ...reps];
+}
+
+/** Every role someone holds: the primary first, then the extras. */
+export function allRoles(
+  role: string | null | undefined,
+  additional: readonly string[] | null | undefined,
+): AppRole[] {
+  const out: AppRole[] = [];
+  for (const r of [role, ...(additional ?? [])])
+    if (r && isAppRole(r) && !out.includes(r)) out.push(r);
+  return out;
+}
+
+/** A person with several roles may do anything any one of them may. */
+export function unionPerm(
+  roles: readonly string[],
+  permFor: (role: string) => { can_view: boolean; can_edit: boolean },
+): { can_view: boolean; can_edit: boolean } {
+  let can_view = false;
+  let can_edit = false;
+  for (const r of roles) {
+    const p = permFor(r);
+    can_view ||= p.can_view;
+    can_edit ||= p.can_edit;
+  }
+  return { can_view, can_edit };
+}
+
+/** "DM setter + Closer". */
+export function rolesLabel(roles: readonly string[]): string {
+  return roles.map(roleLabel).join(" + ");
+}
+
+function roleLabel(r: string): string {
+  if (r === "owner") return "Owner";
+  return (ROLE_LABELS as Record<string, string>)[r] ?? r;
+}
+
 export const ROLE_LABELS: Record<ManagedRole, string> = {
   admin: "Admin",
   sales_manager: "Sales manager",

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useCurrentOrg } from "@/hooks/use-auth";
-import { defaultPerm } from "@/lib/permissions";
+import { allRoles, defaultPerm, unionPerm } from "@/lib/permissions";
 
 type Perm = { can_view: boolean; can_edit: boolean };
 type PermRow = { resource: string; can_view: boolean; can_edit: boolean };
@@ -36,18 +36,25 @@ export function useResourcePermissions() {
   const { user, devBypass } = useAuth();
   const orgId = org?.org_id;
   const role = org?.role ?? null;
+  // Someone can hold several roles (a closer who also dials); each page is
+  // open to them when any of their roles opens it.
+  const roles = useMemo(
+    () =>
+      allRoles(role, (org as { additional_roles?: string[] } | null | undefined)?.additional_roles),
+    [role, org],
+  );
 
   const { data: rolePermsRaw } = useQuery({
-    queryKey: ["role-permissions-effective", orgId, role, devBypass],
-    enabled: !!orgId && !!role && !devBypass,
+    queryKey: ["role-permissions-effective", orgId, roles.join(","), devBypass],
+    enabled: !!orgId && roles.length > 0 && !devBypass,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("role_permissions")
-        .select("resource, can_view, can_edit")
+        .select("role, resource, can_view, can_edit")
         .eq("org_id", orgId!)
-        .eq("role", role!);
+        .in("role", roles);
       if (error) throw error;
-      return (data ?? []) as PermRow[];
+      return (data ?? []) as Array<PermRow & { role: string }>;
     },
   });
 
@@ -65,12 +72,23 @@ export function useResourcePermissions() {
     },
   });
 
+  /** role → resource → explicit row. */
   const roleMap = useMemo(() => {
-    const rows = devBypass
-      ? loadMockRows(ROLE_MOCK_KEY).filter((r: PermRow & { role?: string }) => r.role === role)
-      : (rolePermsRaw ?? []);
-    return new Map(rows.map((r) => [r.resource, { can_view: r.can_view, can_edit: r.can_edit }]));
-  }, [rolePermsRaw, devBypass, role]);
+    const rows = (
+      devBypass
+        ? loadMockRows(ROLE_MOCK_KEY).filter(
+            (r: PermRow & { role?: string }) => !!r.role && roles.includes(r.role as never),
+          )
+        : (rolePermsRaw ?? [])
+    ) as Array<PermRow & { role: string }>;
+    const byRole = new Map<string, Map<string, Perm>>();
+    for (const r of rows) {
+      const m = byRole.get(r.role) ?? new Map<string, Perm>();
+      m.set(r.resource, { can_view: r.can_view, can_edit: r.can_edit });
+      byRole.set(r.role, m);
+    }
+    return byRole;
+  }, [rolePermsRaw, devBypass, roles]);
 
   const memberMap = useMemo(() => {
     const rows =
@@ -84,10 +102,8 @@ export function useResourcePermissions() {
     if (!role) return { can_view: true, can_edit: true };
     const overridden = memberMap.get(resource);
     if (overridden) return overridden;
-    const roleRow = roleMap.get(resource);
-    if (roleRow) return roleRow;
-    return defaultPerm(role, resource);
+    return unionPerm(roles, (r) => roleMap.get(r)?.get(resource) ?? defaultPerm(r, resource));
   };
 
-  return { getPerm, role, ready: !!role };
+  return { getPerm, role, roles, ready: !!role };
 }

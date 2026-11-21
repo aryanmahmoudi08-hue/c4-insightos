@@ -35,16 +35,28 @@ export function allowedEodRolesForAppRole(role: string): readonly EodRole[] {
   }
 }
 
+/** Someone with several roles may fill in the EOD for any of them. */
+export function allowedEodRolesForAppRoles(roles: readonly string[]): readonly EodRole[] {
+  const allowed = new Set(roles.flatMap((r) => allowedEodRolesForAppRole(r)));
+  return EOD_ROLES.filter((r) => allowed.has(r));
+}
+
 export function canAccessEodRole({
   appRole,
+  additionalRoles = [],
   eodRole,
   canViewEodResource = true,
 }: {
   appRole: string;
+  /** Extra rep roles the member holds (memberships.additional_roles). */
+  additionalRoles?: readonly string[] | null;
   eodRole: EodRole;
   canViewEodResource?: boolean;
 }): boolean {
-  return canViewEodResource && allowedEodRolesForAppRole(appRole).includes(eodRole);
+  return (
+    canViewEodResource &&
+    allowedEodRolesForAppRoles([appRole, ...(additionalRoles ?? [])]).includes(eodRole)
+  );
 }
 
 type EodAuthorization = {
@@ -55,6 +67,10 @@ type EodAuthorization = {
 };
 
 type Sb = SupabaseClient<Database>;
+/** memberships.additional_roles is ahead of the generated types. */
+type MembershipRoles = { role: string; additional_roles: string[] | null };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const untyped = (c: Sb) => c as any;
 
 /** Resolve authorization from the authenticated database identity, never from client role input. */
 export async function resolveEodAuthorization(
@@ -63,12 +79,13 @@ export async function resolveEodAuthorization(
   userId: string,
   eodRole: EodRole,
 ): Promise<EodAuthorization> {
-  const { data: membership, error: membershipError } = await supabase
+  // additional_roles is ahead of the generated types (20261120090000).
+  const { data: membership, error: membershipError } = (await untyped(supabase)
     .from("memberships")
-    .select("role")
+    .select("role, additional_roles")
     .eq("org_id", orgId)
     .eq("user_id", userId)
-    .maybeSingle();
+    .maybeSingle()) as { data: MembershipRoles | null; error: { message: string } | null };
   if (membershipError) throw new Error(membershipError.message);
   if (!membership) return { allowed: false, appRole: null, eodRole, reason: "not_a_member" };
 
@@ -84,7 +101,14 @@ export async function resolveEodAuthorization(
   const canView = override?.can_view ?? true;
   if (!canView)
     return { allowed: false, appRole: membership.role, eodRole, reason: "eod_resource_denied" };
-  if (!canAccessEodRole({ appRole: membership.role, eodRole, canViewEodResource: canView })) {
+  if (
+    !canAccessEodRole({
+      appRole: membership.role,
+      additionalRoles: membership.additional_roles,
+      eodRole,
+      canViewEodResource: canView,
+    })
+  ) {
     return { allowed: false, appRole: membership.role, eodRole, reason: "role_not_allowed" };
   }
   return { allowed: true, appRole: membership.role, eodRole };
@@ -94,12 +118,13 @@ export const getEodAccessProfileFn = createServerFn({ method: "POST" })
   .inputValidator((input) => z.object({ orgId: z.string().uuid() }).parse(input))
   .middleware([requireSupabaseAuth])
   .handler(async ({ data, context }) => {
-    const { data: membership, error: membershipError } = await context.supabase
+    // additional_roles is ahead of the generated types (20261120090000).
+    const { data: membership, error: membershipError } = (await untyped(context.supabase)
       .from("memberships")
-      .select("role")
+      .select("role, additional_roles")
       .eq("org_id", data.orgId)
       .eq("user_id", context.userId)
-      .maybeSingle();
+      .maybeSingle()) as { data: MembershipRoles | null; error: { message: string } | null };
     if (membershipError) throw new Error(membershipError.message);
     if (!membership) return { appRole: null, allowedRoles: [] as EodRole[] };
     const { data: override, error: overrideError } = await context.supabase
@@ -113,7 +138,14 @@ export const getEodAccessProfileFn = createServerFn({ method: "POST" })
     return {
       appRole: membership.role,
       allowedRoles:
-        override?.can_view === false ? [] : [...allowedEodRolesForAppRole(membership.role)],
+        override?.can_view === false
+          ? []
+          : [
+              ...allowedEodRolesForAppRoles([
+                membership.role,
+                ...(membership.additional_roles ?? []),
+              ]),
+            ],
     };
   });
 

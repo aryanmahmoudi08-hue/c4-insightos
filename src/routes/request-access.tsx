@@ -2,17 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { Camera, Check, Loader2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { isAppRole, type AppRole } from "@/lib/permissions";
+import { rolesLabel, splitRoles, type AppRole } from "@/lib/permissions";
+import { RolePicker } from "@/components/role-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import ascendOsWhite from "@/assets/ascendos-stacked-white.png";
@@ -31,13 +25,14 @@ export const Route = createFileRoute("/request-access")({
   }),
 });
 
-const ROLES: { value: AppRole; label: string }[] = [
-  { value: "setter", label: "DM Setter" },
-  { value: "inbound_dialer", label: "Inbound Dialer" },
-  { value: "closer", label: "Closer" },
-  { value: "sales_manager", label: "Sales Manager" },
-  { value: "growth_ops", label: "Growth / Ops" },
-  { value: "viewer", label: "Viewer (read-only)" },
+/** What an applicant can ask for. Admin is granted, never requested. */
+const REQUESTABLE_ROLES: AppRole[] = [
+  "setter",
+  "inbound_dialer",
+  "closer",
+  "sales_manager",
+  "growth_ops",
+  "viewer",
 ];
 
 /** Mirrors the applicant-photos bucket's own limits. Checking here too is not
@@ -77,8 +72,10 @@ function RequestAccess() {
     email: "",
     phone: "",
     admin_email: "",
-    requested_role: "setter" as AppRole,
   });
+  // More than one is fine: someone can apply as a DM setter and a closer.
+  const [roles, setRoles] = useState<AppRole[]>(["setter"]);
+  const split = splitRoles(roles);
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -112,6 +109,10 @@ function RequestAccess() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!split.ok) {
+      toast.error(split.error);
+      return;
+    }
     setLoading(true);
     try {
       let photo_path: string | null = null;
@@ -140,7 +141,8 @@ function RequestAccess() {
         _admin_email: form.admin_email.trim(),
         _email: form.email.trim(),
         _full_name: `${form.first_name.trim()} ${form.last_name.trim()}`.trim(),
-        _requested_role: form.requested_role,
+        _requested_role: split.primary,
+        _requested_roles: [split.primary, ...split.additional],
         _phone: form.phone.trim() || null,
         _photo_path: photo_path,
       } as never);
@@ -163,7 +165,7 @@ function RequestAccess() {
     }
   };
 
-  const roleLabel = ROLES.find((r) => r.value === form.requested_role)?.label ?? "";
+  const roleLabel = split.ok ? rolesLabel([split.primary, ...split.additional]) : "";
 
   if (sent) {
     return (
@@ -189,34 +191,17 @@ function RequestAccess() {
         className="space-y-6 rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8"
       >
         {/* Role sits above the form as a settled decision rather than inside it
-            as one more question — it changes what the rest of the form is for. */}
-        <div className="flex items-center justify-between gap-3 rounded-full border border-border bg-muted/40 py-2 pl-4 pr-2">
-          <span className="truncate text-sm">
+            as one more question — it changes what the rest of the form is for.
+            Several sales roles can be picked at once. */}
+        <div className="space-y-2 rounded-2xl border border-border bg-muted/40 p-4">
+          <div className="text-sm">
             <span className="text-muted-foreground">Joining as: </span>
-            <span className="font-medium">{roleLabel}</span>
-          </span>
-          <Select
-            value={form.requested_role}
-            onValueChange={(v) => {
-              if (isAppRole(v)) set("requested_role", v);
-            }}
-          >
-            <SelectTrigger
-              aria-label="Role you're joining as"
-              className="h-8 w-auto gap-1 rounded-full border-0 bg-transparent px-3 text-xs font-medium text-foreground shadow-none hover:bg-muted focus:ring-0"
-            >
-              <SelectValue asChild>
-                <span>Change</span>
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent align="end">
-              {ROLES.map((r) => (
-                <SelectItem key={r.value} value={r.value}>
-                  {r.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <span className="font-medium">{roleLabel || "pick a role"}</span>
+          </div>
+          <RolePicker value={roles} onChange={setRoles} options={REQUESTABLE_ROLES} />
+          <p className="text-3xs text-muted-foreground">
+            Do more than one job? Pick each one — your admin can change this when they approve you.
+          </p>
         </div>
 
         <p className="text-sm text-muted-foreground">

@@ -79,14 +79,14 @@ function AuthedShell() {
   const { devBypass } = useAuth();
   const { data: org } = useCurrentOrg();
   const orgId = (org as { org_id?: string } | undefined)?.org_id;
-  const { role } = useRole();
+  const { hasRole } = useRole();
   // A callback gets booked the moment it's agreed, which is rarely while
   // the dialer happens to be standing on their own dashboard. Mounting it
   // in the shell means it is reachable from wherever they are — including
   // mid-call on a lead's record — instead of costing a navigation that
   // loses their place. Dialers only: it writes a dialer_callback work item,
   // so it would be a dead control for every other role.
-  const showCallbackFab = role === "inbound_dialer" && !!orgId;
+  const showCallbackFab = hasRole("inbound_dialer") && !!orgId;
   return (
     <div className="min-h-screen bg-background">
       <AppSidebar />

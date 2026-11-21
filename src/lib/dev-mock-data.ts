@@ -18,6 +18,7 @@ export const DEV_BYPASS_ORG_ID = "aaaaaaaa-0000-4000-8000-000000000001";
 export const DEV_BYPASS_ORG = {
   org_id: DEV_BYPASS_ORG_ID,
   role: "admin",
+  additional_roles: [] as string[],
   organizations: { id: DEV_BYPASS_ORG_ID, name: "Dev Workspace (Mock)", slug: "dev-bypass" },
 };
 
