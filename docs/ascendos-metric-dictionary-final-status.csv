@@ -430,6 +430,7 @@ SALE-0391,Sales Tracking → Reps → Closer,Payment quality,Deposit Amount,LIVE
 SALE-0392,Sales Tracking → Reps → Closer,Payment quality,Deposit → Close,LIVE,LIVE,unchanged,,
 SALE-0393,Sales Tracking → Reps → Closer,Payment quality,Avg Deposit %,LIVE,LIVE,unchanged,,
 SALE-0394,Sales Tracking → Reps → Closer,Payment quality,Payment Plan Uptake,NEEDS INTEGRATION,LIVE,status-changed,Phase 1/2/2b,New records only — historical calls before the fix can't be backfilled (never inferred).
+SALE-0394b,Sales Tracking → Reps → Closer,Payment quality,PIF Rate,NEW,LIVE,added,2026-11-21,"Closes paid in full ÷ closes. PIF = closed, payment plan not ticked, not a deposit (status or amount). Counts only closes logged since 2026-09-23, when the closer form began asking Payment Plan; older closes are shown as not counted, never assumed PIF. src/lib/pif-rate.ts."
 SALE-0395,Sales Tracking → Reps → Closer,Payment quality,Payment Success Rate,NOT AVAILABLE,NEEDS SCHEMA/JOIN FIX,status-changed,Phase 4 (payments.call_id gap),
 SALE-0396,Sales Tracking → Reps → Closer,Payment quality,Failed/Default Rate,NOT AVAILABLE,NEEDS SCHEMA/JOIN FIX,status-changed,Phase 4 (payments.call_id gap),
 SALE-0397,Sales Tracking → Reps → Closer,Payment quality,Failed Payments,NOT AVAILABLE,NEEDS SCHEMA/JOIN FIX,status-changed,Phase 4 (payments.call_id gap),

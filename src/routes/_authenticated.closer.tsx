@@ -1,4 +1,5 @@
 import { createFileRoute, useSearch, useNavigate, Link } from "@tanstack/react-router";
+import { hasPlanAnswer, isPifClose, pifRate } from "@/lib/pif-rate";
 import { useCallVolume } from "@/hooks/use-call-volume";
 import { callsBookedTotal } from "@/lib/call-booking-metrics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -410,6 +411,7 @@ function Closer() {
           | "depositConversion"
           | "averageDepositPct"
           | "paymentPlanUptake"
+          | "pifRate"
           | "onTimeRate"
           | "failedPaymentRate"
           | "failedPaymentCount"
@@ -492,6 +494,9 @@ function Closer() {
         // feature), so they render the same honest "—" empty state real
         // legacy follow-up records without these fields do.
         eod_lead_status?: string | null;
+        /** When the call was logged — PIF rate only counts closes logged
+         *  since the payment-plan question existed (pif-rate.ts). */
+        created_at?: string | null;
         requested_followup_at?: string | null;
         followup_amount_pitched_cents?: number | null;
         followup_reason?: string | null;
@@ -703,7 +708,7 @@ function Closer() {
       const { data, error } = await supabase
         .from("calls")
         .select(
-          "id, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, original_currency, payment_plan, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, disposition, duration_seconds, talk_seconds, recovered_from_call_id, setter_id, source_platform, source_format, source_content_id, source_campaign, eod_lead_status, requested_followup_at, followup_amount_pitched_cents, followup_reason, followup_reason_other, followup_notes, leads(id, full_name, handle, email)",
+          "id, created_at, scheduled_for, status, showed, offer_made, closed, contract_value_cents, cash_collected_cents, deposit_cents, original_currency, payment_plan, call_summary, recording_url, closer_name, lead_email, time_to_close_seconds, key_moment, disposition, duration_seconds, talk_seconds, recovered_from_call_id, setter_id, source_platform, source_format, source_content_id, source_campaign, eod_lead_status, requested_followup_at, followup_amount_pitched_cents, followup_reason, followup_reason_other, followup_notes, leads(id, full_name, handle, email)",
         )
         .eq("org_id", orgId!)
         .gte("scheduled_for", `${range.from}T00:00:00`)
@@ -1206,6 +1211,7 @@ function Closer() {
   const depositCount = list.filter((c) => (c.deposit_cents ?? 0) > 0).length;
   const depositAmountCents = list.reduce((sum, call) => sum + (call.deposit_cents ?? 0), 0);
   const paymentPlanCount = list.filter((call) => call.payment_plan === true).length;
+  const pif = pifRate(list);
   const depositConversionPct = closes > 0 ? (depositCount / closes) * 100 : null;
   const averageDepositPct =
     depositCount > 0 ? (depositAmountCents / Math.max(1, revCents)) * 100 : null;
@@ -3197,6 +3203,36 @@ function Closer() {
                 cap: noUpstream,
                 working: noPriorPeriod,
               };
+            } else if (selected.metric === "pifRate") {
+              panel = {
+                title: "PIF Rate — closes and how they paid",
+                columns: [
+                  { key: "lead", label: "Lead", render: leadOfPayment },
+                  { key: "closer", label: "Closer", render: (c) => c.closer_name ?? "—" },
+                  { key: "date", label: "Date", render: dateOfPayment },
+                  {
+                    key: "paid",
+                    label: "Paid",
+                    render: (c) =>
+                      !hasPlanAnswer(c)
+                        ? "Not recorded (before Sep 23)"
+                        : isPifClose(c)
+                          ? "Paid in full"
+                          : c.payment_plan
+                            ? "Payment plan"
+                            : "Deposit",
+                  },
+                  {
+                    key: "contract",
+                    label: "Contract Value",
+                    align: "right",
+                    render: (c) => fmtMoney(c.contract_value_cents ?? 0),
+                  },
+                ],
+                rows: list.filter((c) => c.closed === true),
+                cap: noUpstream,
+                working: noPriorPeriod,
+              };
             } else if (selected.metric === "paymentPlanUptake") {
               panel = {
                 title: "Payment Plan Uptake",
@@ -3729,6 +3765,21 @@ function Closer() {
                     empty: !list.length,
                     emptyHint: "No calls in this date range.",
                     onClick: () => setSelected({ kind: "payment", metric: "paymentPlanUptake" }),
+                  },
+                  {
+                    key: "pifRate",
+                    label: "PIF Rate",
+                    value: pif.pct == null ? "—" : `${pif.pct.toFixed(1)}%`,
+                    spectrum: "hot",
+                    empty: pif.pct == null,
+                    emptyHint: pif.unrecorded
+                      ? `No closes with a recorded payment plan answer in this range (${pif.unrecorded} older ${pif.unrecorded === 1 ? "close predates" : "closes predate"} the question).`
+                      : "No closes in this date range.",
+                    supportingOverride:
+                      pif.pct == null
+                        ? undefined
+                        : `${pif.pif} of ${pif.closes} closes paid in full${pif.unrecorded ? ` · ${pif.unrecorded} older not counted` : ""}`,
+                    onClick: () => setSelected({ kind: "payment", metric: "pifRate" }),
                   },
                   {
                     key: "onTimeRate",

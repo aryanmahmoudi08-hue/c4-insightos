@@ -142,6 +142,7 @@ const METRICS: { label: string; page: string; to: string; search?: Record<string
   { label: "Avg Cash-Call", page: "Closer", to: "/closer" },
   { label: "Avg Deposit %", page: "Closer", to: "/closer" },
   { label: "Payment Plan Uptake", page: "Closer", to: "/closer" },
+  { label: "PIF Rate (paid in full)", page: "Closer", to: "/closer" },
   { label: "Payment Success Rate", page: "Closer", to: "/closer" },
   { label: "Failed / Default Rate", page: "Closer", to: "/closer" },
   { label: "Calls Reviewed", page: "Closer", to: "/closer" },
