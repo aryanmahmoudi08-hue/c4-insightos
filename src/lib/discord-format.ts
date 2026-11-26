@@ -405,11 +405,7 @@ function callBooked(title: string, p: Record<string, unknown>, tz: string | null
   };
 }
 
-function callUnconfirmed(
-  p: Record<string, unknown>,
-  tz: string | null,
-  opts: FormatOptions,
-): Body {
+function callUnconfirmed(p: Record<string, unknown>, tz: string | null, opts: FormatOptions): Body {
   const lead = obj(p.lead);
   // Numbered per booking, from 1; every alert after the first links back to
   // it (webhooks cannot post a native reply). Each keeps the full contact
@@ -1569,6 +1565,120 @@ function payment(failed: boolean, p: Record<string, unknown>): Body {
   };
 }
 
+/** Human words for the processors' dispute/refund statuses. */
+const DISPUTE_STATUS_LABELS: Record<string, string> = {
+  needs_response: "Needs our response",
+  warning_needs_response: "Early warning, needs our response",
+  under_review: "Evidence submitted, under review",
+  warning_under_review: "Early warning, under review",
+  won: "WON",
+  lost: "LOST",
+  closed: "Closed",
+  warning_closed: "Early warning closed",
+  prevented: "Prevented",
+  alert: "Dispute alert (not a dispute yet)",
+  succeeded: "Refunded",
+  completed: "Refunded",
+};
+
+/** A refund, a dispute (chargeback) opened, or a dispute resolved — with the
+ *  evidence to fight it: the signed contract and the call recording. */
+function refundDispute(eventType: string, p: Record<string, unknown>, tz: string | null): Body {
+  const lead = obj(p.lead);
+  const amount = money(p.amount_cents, p.currency);
+  const usd =
+    amount && (text(p.currency).toUpperCase() || "USD") !== "USD" && Number(p.amount_usd_cents)
+      ? ` (${money(p.amount_usd_cents)})`
+      : "";
+  const kind = text(p.kind);
+  const status = text(p.status).toLowerCase();
+  const statusLabel = DISPUTE_STATUS_LABELS[status] ?? text(p.status);
+  const processor = PROCESSOR_LABELS[text(p.processor).toLowerCase()] ?? text(p.processor);
+  const resolved = eventType === "payment.dispute_resolved";
+  const title =
+    eventType === "payment.refunded"
+      ? `Refund — ${amount || "—"}`
+      : resolved
+        ? `Dispute ${status === "won" ? "WON" : status === "lost" ? "LOST" : "closed"} — ${amount || "—"}`
+        : kind === "dispute_alert"
+          ? `Dispute alert — ${amount || "—"}`
+          : `DISPUTE OPENED — ${amount || "—"}`;
+
+  // Days left to respond, so nobody has to do the maths under pressure.
+  const due = text(p.evidence_due_at);
+  let dueText = "";
+  if (due && eventType === "payment.disputed") {
+    const days = Math.ceil((new Date(due).getTime() - Date.now()) / 86_400_000);
+    dueText = `${when(due, tz)}${Number.isFinite(days) ? ` (${days <= 0 ? "today" : `${days} day${days === 1 ? "" : "s"} left`})` : ""}`;
+  }
+  const contract = text(p.contract_url);
+  const recording = text(p.recording_url);
+  const disputeOpen = eventType === "payment.disputed";
+
+  return {
+    title,
+    blocks: [
+      lines(
+        plain("Name", lead.full_name),
+        plain("Email", p.email ?? lead.email),
+        plain("Phone", lead.phone),
+      ),
+      gap,
+      lines(plain("Processor", processor), plain("Product", p.product), plain("Tier", p.tier)),
+      gap,
+      lines(
+        plain(
+          eventType === "payment.refunded" ? "Refunded" : "Disputed",
+          amount ? `${amount}${usd}` : "",
+        ),
+        plain("Deal value", money(p.revenue_cents)),
+        plain("Collected so far", money(p.collected_to_date_cents)),
+      ),
+      gap,
+      lines(
+        plain("Closer", p.closer_tag || p.closer_name),
+        plain("Setter", p.setter_tag || p.setter_name),
+        plain("Closed on", p.closed_at ? when(p.closed_at, tz) : ""),
+      ),
+      gap,
+      lines(
+        plain(
+          "Reason",
+          text(p.reason)
+            ? text(p.reason)
+                .replace(/[_-]+/g, " ")
+                .replace(/^./, (c) => c.toUpperCase())
+            : "",
+        ),
+        plain("Status", statusLabel),
+        plain("Respond by", dueText),
+      ),
+      gap,
+      lines(
+        plain(
+          "Signed contract",
+          contract
+            ? `[Open contract](<${contract}>)`
+            : "⚠️ Not on file. Add it to the closer's post-call report.",
+        ),
+        plain("Call recording", recording ? `[Open recording](<${recording}>)` : "⚠️ Not on file."),
+      ),
+      ...(disputeOpen
+        ? [
+            gap,
+            lines(
+              plain(
+                "Next step",
+                `Respond in ${processor || "the processor"} before the deadline with the signed contract, the call recording, and proof they accessed the program.`,
+              ),
+            ),
+          ]
+        : []),
+    ],
+    linkPath: leadLink(lead.id ?? p.lead_id),
+  };
+}
+
 /** Readable fallback for an event with no bespoke shape: top-level scalars. */
 function generic(eventType: string, p: Record<string, unknown>): Body {
   const SKIP = new Set(["answers", "raw_answers", "answers_by_title", "category", "org_id"]);
@@ -1698,6 +1808,11 @@ export function formatDiscordMessage(
       break;
     case "payment.failed":
       body = payment(true, p);
+      break;
+    case "payment.refunded":
+    case "payment.disputed":
+    case "payment.dispute_resolved":
+      body = refundDispute(eventType, p, tz);
       break;
     case "call.closed_won":
       body = {

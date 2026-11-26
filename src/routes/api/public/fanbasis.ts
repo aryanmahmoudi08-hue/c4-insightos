@@ -61,6 +61,37 @@ export const Route = createFileRoute("/api/public/fanbasis")({
           processed_at: new Date().toISOString(),
         });
 
+        // Refunds and chargebacks → #refunds-disputes. Commas' webhook docs
+        // aren't public, so this matches any event type that names a refund,
+        // dispute or chargeback and reads the same fields its payment events
+        // use (decimal amount, buyer.*). Check raw_payloads after the first
+        // real one and tighten if a field is named differently.
+        if (/refund|dispute|chargeback/i.test(String(event.type ?? ""))) {
+          const d = event.data ?? {};
+          const isRefund = /refund/i.test(String(event.type));
+          const id = d.refund_id ?? d.dispute_id ?? d.chargeback_id ?? d.id ?? d.payment_id;
+          if (!id) return Response.json({ error: "Missing id" }, { status: 400 });
+          const { recordRefundOrDispute } = await import("@/lib/refund-dispute-events.server");
+          const r = await recordRefundOrDispute(connection.org_id, {
+            kind: isRefund ? "refund" : "dispute",
+            processor: "fanbasis",
+            externalId: `${event.type}:${id}`,
+            paymentExternalId: d.payment_id ?? null,
+            status: d.status ?? null,
+            reason: d.reason ?? d.refund_reason ?? d.dispute_reason ?? null,
+            amount: d.amount != null ? Number(d.amount) : null,
+            currency: d.currency ?? null,
+            evidenceDueAt: d.evidence_due_at ?? d.due_by ?? null,
+            email: d.buyer?.email ?? d.email ?? null,
+            name: d.buyer?.name ?? null,
+            phone: d.buyer?.phone ?? null,
+            product: d.product?.name ?? d.product_name ?? null,
+            occurredAt: d.created_at ?? null,
+            raw: { event_type: event.type, data: d },
+          });
+          return Response.json({ ok: true, dispute_id: r.id, announced: r.announced });
+        }
+
         if (!HANDLED_TYPES.has(event.type)) {
           return Response.json({ ok: true, skipped: event.type });
         }

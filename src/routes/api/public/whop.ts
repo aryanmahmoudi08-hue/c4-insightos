@@ -38,6 +38,13 @@ function verifyWhopSignature(
 }
 
 const HANDLED_TYPES = new Set(["payment.succeeded", "payment.failed"]);
+const REFUND_DISPUTE_TYPES = new Set([
+  "refund.created",
+  "refund.updated",
+  "dispute.created",
+  "dispute.updated",
+  "dispute_alert.created",
+]);
 
 export const Route = createFileRoute("/api/public/whop")({
   server: {
@@ -85,6 +92,35 @@ export const Route = createFileRoute("/api/public/whop")({
           payload: event,
           processed_at: new Date().toISOString(),
         });
+
+        // Refunds and disputes go to #refunds-disputes. Field names are from
+        // Whop's OpenAPI spec (Refund / Dispute schemas): money is a decimal
+        // in whole units, not cents.
+        if (REFUND_DISPUTE_TYPES.has(event.type)) {
+          const d = event.data ?? {};
+          if (!d.id) return Response.json({ error: "Missing id" }, { status: 400 });
+          const isRefund = String(event.type).startsWith("refund.");
+          const isAlert = String(event.type).startsWith("dispute_alert.");
+          const user = isRefund ? (d.payment?.user ?? {}) : (d.buyer ?? d.payment?.user ?? {});
+          const { recordRefundOrDispute } = await import("@/lib/refund-dispute-events.server");
+          const r = await recordRefundOrDispute(connection.org_id, {
+            kind: isRefund ? "refund" : isAlert ? "dispute_alert" : "dispute",
+            processor: "whop",
+            externalId: String(d.id),
+            paymentExternalId: d.payment_id ?? d.payment?.id ?? null,
+            status: d.status ?? (isAlert ? "alert" : null),
+            reason: d.reason ?? d.alert_type ?? null,
+            amount: typeof d.amount === "number" ? d.amount : (d.amount?.amount ?? null),
+            currency: d.currency ?? d.amount?.currency ?? null,
+            evidenceDueAt: d.evidence_due_at ?? null,
+            email: user.email ?? null,
+            name: user.name ?? null,
+            product: d.line_items?.[0]?.product_title ?? null,
+            occurredAt: d.created_at ?? null,
+            raw: { event_type: event.type, data: d },
+          });
+          return Response.json({ ok: true, dispute_id: r.id, announced: r.announced });
+        }
 
         if (!HANDLED_TYPES.has(event.type)) {
           return Response.json({ ok: true, skipped: event.type });

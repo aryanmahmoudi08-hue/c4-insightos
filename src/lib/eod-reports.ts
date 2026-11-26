@@ -29,7 +29,10 @@ export type EodQuestionType =
   | "lead-picker"
   | "scale"
   | "objection-multiselect"
-  | "followup-details";
+  | "followup-details"
+  /** A link (Drive, DocuSign…) or an uploaded file, stored as
+   *  "storage:<path>" in the private call-contracts bucket. */
+  | "contract";
 
 export interface EodSelectOption {
   value: string;
@@ -483,6 +486,18 @@ export const CLOSER_EOD_SCHEMA: EodQuestion[] = [
     required: true,
     placeholder: "https://",
   },
+  // Refund/dispute evidence (Aryan, 2026-11-25): the signed client agreement
+  // on every closed deal, so #refunds-disputes can attach it to a chargeback
+  // alert. Shown once money changed hands (Closed or Deposit).
+  {
+    key: "contract",
+    label: "Signed Contract",
+    helper:
+      "Paste the link to their signed agreement, or upload the PDF. This is what wins a refund dispute.",
+    type: "contract",
+    required: true,
+    showIf: (values) => values.status === "Closed" || values.status === "Deposit",
+  },
 ];
 
 const NUM = (v: unknown) => Number(v ?? 0) || 0;
@@ -664,6 +679,11 @@ export function buildClosureCallPayload(
     original_currency: STR(values.original_currency) || "USD",
     call_summary: STR(values.summary) || null,
     recording_url: STR(values.recording_url) || null,
+    // "storage:<path>" for an upload, else the link the closer pasted.
+    contract_url: STR(values.contract).startsWith("storage:") ? null : STR(values.contract) || null,
+    contract_path: STR(values.contract).startsWith("storage:")
+      ? STR(values.contract).slice("storage:".length)
+      : null,
     // Follow-up detail columns — only ever populated for the two follow-up
     // Lead Status values. A normal call (Closed, Lost, etc.) always writes
     // these as null, same as before this feature existed. The requested

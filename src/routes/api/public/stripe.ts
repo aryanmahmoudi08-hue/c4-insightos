@@ -85,6 +85,33 @@ export const Route = createFileRoute("/api/public/stripe")({
           processed_at: new Date().toISOString(),
         });
 
+        // Refunds and chargebacks → #refunds-disputes. Stripe money is in
+        // cents; recordRefundOrDispute takes whole units.
+        if (event.type === "charge.refunded" || String(event.type).startsWith("charge.dispute.")) {
+          const o = event.data?.object ?? {};
+          const isRefund = event.type === "charge.refunded";
+          const { recordRefundOrDispute } = await import("@/lib/refund-dispute-events.server");
+          const due = o.evidence_details?.due_by;
+          const r = await recordRefundOrDispute(connection.org_id, {
+            kind: isRefund ? "refund" : "dispute",
+            processor: "stripe",
+            // A charge can be refunded in parts; key each refund state on the
+            // charge plus the running refunded total.
+            externalId: isRefund ? `${o.id}:${o.amount_refunded ?? 0}` : String(o.id),
+            paymentExternalId: isRefund ? o.id : (o.charge ?? null),
+            status: isRefund ? "succeeded" : (o.status ?? null),
+            reason: o.reason ?? null,
+            amount: Number(isRefund ? o.amount_refunded : o.amount) / 100 || null,
+            currency: o.currency ?? null,
+            evidenceDueAt: due ? new Date(Number(due) * 1000).toISOString() : null,
+            email: o.billing_details?.email ?? o.receipt_email ?? null,
+            name: o.billing_details?.name ?? null,
+            occurredAt: o.created ? new Date(Number(o.created) * 1000).toISOString() : null,
+            raw: { event_type: event.type, id: o.id },
+          });
+          return Response.json({ ok: true, dispute_id: r.id, announced: r.announced });
+        }
+
         if (!HANDLED_TYPES.has(event.type)) {
           return Response.json({ ok: true, skipped: event.type });
         }

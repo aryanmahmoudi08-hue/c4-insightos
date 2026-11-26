@@ -23,6 +23,7 @@ import {
 } from "@/lib/eod-reports";
 import { OBJECTION_CATEGORIES, OTHER_OBJECTION_VALUE } from "@/lib/objection-taxonomy";
 import { Label } from "@/components/ui/label";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface EodLeadOption {
   id: string;
@@ -39,6 +40,8 @@ interface Props {
   onExit: () => void;
   /** Business timezone (Settings → Notifications) for "today" defaults. */
   timeZone?: string | null;
+  /** Needed for file uploads (the storage path is scoped by org). */
+  orgId?: string | null;
 }
 
 const currencySymbolFor = (code: string): string => {
@@ -96,6 +99,8 @@ const fmtValue = (
     return parts.length > 0 ? parts.join(" · ") : "—";
   }
   if (v === undefined || v === "") return "—";
+  if (q.type === "contract" && String(v ?? "").startsWith("storage:"))
+    return `Uploaded file: ${String(v).split("/").pop()?.replace(/^\d+-/, "")}`;
   if (q.type === "checkbox") return v ? "Yes" : "No";
   if (q.type === "select" || q.type === "team-member") return String(v);
   if (q.type === "lead-picker") return leadOptions?.find((l) => l.id === v)?.label ?? "None picked";
@@ -143,6 +148,7 @@ export function EodStepFlow({
   onSubmit,
   onExit,
   timeZone,
+  orgId,
 }: Props) {
   const [step, setStep] = useState(0);
   const [values, setValues] = useState<EodValues>(() => initialValues(schema, timeZone));
@@ -264,6 +270,7 @@ export function EodStepFlow({
                 onObjectionsOtherChange={(v) => setVal("objections_other", v)}
                 values={values}
                 setVal={setVal}
+                orgId={orgId}
               />
             </div>
           </div>
@@ -340,7 +347,9 @@ function QuestionField({
   onObjectionsOtherChange,
   values,
   setVal,
+  orgId,
 }: {
+  orgId?: string | null;
   question: EodQuestion;
   value: string | number | boolean | undefined;
   onChange: (v: string | number | boolean | undefined) => void;
@@ -698,6 +707,8 @@ function QuestionField({
           className="h-14 text-lg"
         />
       );
+    case "contract":
+      return <ContractField value={value} onChange={onChange} orgId={orgId} />;
     case "url":
       return (
         <Input
@@ -723,4 +734,65 @@ function QuestionField({
         />
       );
   }
+}
+
+/** A signed contract: paste a link, or upload the PDF/photo to the private
+ *  call-contracts bucket (stored as "storage:<path>"). */
+function ContractField({
+  value,
+  onChange,
+  orgId,
+}: {
+  value: string | number | boolean | undefined;
+  onChange: (v: string | number | boolean | undefined) => void;
+  orgId?: string | null;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const current = String(value ?? "");
+  const uploaded = current.startsWith("storage:");
+  const upload = async (file: File) => {
+    if (!orgId) {
+      setError("Can't upload right now. Paste a link instead.");
+      return;
+    }
+    setUploading(true);
+    setError(null);
+    const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-80);
+    const path = `${orgId}/${Date.now()}-${safe}`;
+    const { error: err } = await supabase.storage.from("call-contracts").upload(path, file);
+    setUploading(false);
+    if (err) setError(err.message);
+    else onChange(`storage:${path}`);
+  };
+  return (
+    <div className="space-y-3">
+      <Input
+        autoFocus
+        type="url"
+        value={uploaded ? "" : current}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="https://drive.google.com/… or DocuSign link"
+        className="h-14 text-lg"
+        disabled={uploading}
+      />
+      <div className="text-sm text-muted-foreground">or upload the signed file (PDF or photo)</div>
+      <Input
+        type="file"
+        accept="application/pdf,image/jpeg,image/png,image/webp"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void upload(f);
+        }}
+        disabled={uploading}
+      />
+      {uploading && <div className="text-sm">Uploading…</div>}
+      {uploaded && !uploading && (
+        <div className="text-sm text-emerald-600">
+          Uploaded: {current.split("/").pop()?.replace(/^\d+-/, "")}
+        </div>
+      )}
+      {error && <div className="text-sm text-destructive">{error}</div>}
+    </div>
+  );
 }

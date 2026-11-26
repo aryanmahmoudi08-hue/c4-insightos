@@ -25,6 +25,8 @@ const eventSchema = z.object({
     "hiring_application",
     "daily_win",
     "payment",
+    "refund",
+    "dispute",
   ]),
   data: z.record(z.string(), z.unknown()).default({}),
 });
@@ -238,6 +240,31 @@ const paymentSchema = z.object({
   collected_at: z.string().max(60).optional(),
 });
 
+/**
+ * A refund or dispute from a processor AscendOS has no webhook for (Stan,
+ * or anything sent by Zapier). Goes to #refunds-disputes like a Whop or
+ * Stripe one. `external_id` is the processor's refund/dispute id; without
+ * one, buyer + amount + date stands in, so a re-run Zap doesn't post twice.
+ */
+const refundDisputeSchema = z.object({
+  processor: z.string().min(1).max(40).default("stan"),
+  external_id: z.string().max(255).optional(),
+  payment_external_id: z.string().max(255).optional(),
+  email: z.string().email().max(255).optional(),
+  name: z.string().max(255).optional(),
+  phone: z.string().max(60).optional(),
+  amount: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() ? Number(v.replace(/[$,\s]/g, "")) : v),
+    z.number().nonnegative().optional(),
+  ),
+  currency: z.string().length(3).default("USD"),
+  product: z.string().max(255).optional(),
+  status: z.string().max(60).optional(),
+  reason: z.string().max(500).optional(),
+  evidence_due_at: z.string().max(60).optional(),
+  occurred_at: z.string().max(60).optional(),
+});
+
 export const Route = createFileRoute("/api/public/ingest/$token")({
   server: {
     handlers: {
@@ -408,6 +435,32 @@ export const Route = createFileRoute("/api/public/ingest/$token")({
             if (error) throw error;
             const { announcePayment } = await import("@/lib/payment-events.server");
             await announcePayment(orgId, (saved as { id: string } | null)?.id);
+          } else if (event_type === "refund" || event_type === "dispute") {
+            const v = refundDisputeSchema.parse(data);
+            const email = v.email?.trim().toLowerCase() || null;
+            const day = (v.occurred_at ? new Date(v.occurred_at) : new Date())
+              .toISOString()
+              .slice(0, 10);
+            const { recordRefundOrDispute } = await import("@/lib/refund-dispute-events.server");
+            const r = await recordRefundOrDispute(orgId, {
+              kind: event_type,
+              processor: v.processor,
+              externalId:
+                v.external_id || `${email ?? v.name ?? "unknown"}:${v.amount ?? 0}:${day}`,
+              paymentExternalId: v.payment_external_id ?? null,
+              status: v.status ?? (event_type === "refund" ? "succeeded" : "needs_response"),
+              reason: v.reason ?? null,
+              amount: v.amount ?? null,
+              currency: v.currency,
+              evidenceDueAt: v.evidence_due_at ?? null,
+              email,
+              name: v.name ?? null,
+              phone: v.phone ?? null,
+              product: v.product ?? null,
+              occurredAt: v.occurred_at ?? null,
+              raw: { via: "ingest", ...v },
+            });
+            if (!r.announced) return jsonRes({ ok: true, event_type, duplicate: true });
           } else if (event_type === "onboarding_response") {
             const v = onboardingSchema.parse(data);
             const { error } = await supabaseAdmin.from("onboarding_responses").insert({

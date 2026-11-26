@@ -470,3 +470,62 @@ describe("ordinal", () => {
     ]);
   });
 });
+
+describe("refunds and disputes", () => {
+  const base = {
+    kind: "dispute",
+    processor: "whop",
+    status: "needs_response",
+    reason: "product_not_received",
+    amount_cents: 500000,
+    currency: "USD",
+    amount_usd_cents: 500000,
+    email: "buyer@example.com",
+    lead_id: "lead-9",
+    lead: {
+      id: "lead-9",
+      full_name: "Dana Buyer",
+      email: "buyer@example.com",
+      phone: "+15550002222",
+    },
+    product: "VIP Career Mentorship",
+    tier: "High Ticket",
+    closer_tag: "<@111>",
+    setter_name: "Sam Setter",
+    revenue_cents: 500000,
+    evidence_due_at: new Date(Date.now() + 5 * 86_400_000).toISOString(),
+    contract_url: "https://drive.example/contract.pdf",
+    recording_url: "https://zoom.example/rec",
+  };
+
+  it("a new dispute carries the evidence, the deadline and the next step", () => {
+    const msg = fmtBody("payment.disputed", base, { appUrl: "https://app" });
+    expect(msg.content).toContain("DISPUTE OPENED");
+    expect(msg.content).toContain("Dana Buyer");
+    expect(msg.content).toContain("High Ticket");
+    expect(msg.content).toContain("[Open contract](<https://drive.example/contract.pdf>)");
+    expect(msg.content).toContain("[Open recording](<https://zoom.example/rec>)");
+    expect(msg.content).toMatch(/days? left/);
+    expect(msg.content).toContain("Next step");
+    expect(msg.content).toContain("<@111>");
+  });
+
+  it("flags a missing contract instead of leaving it blank", () => {
+    const msg = fmtBody("payment.refunded", {
+      ...base,
+      kind: "refund",
+      status: "succeeded",
+      contract_url: null,
+      recording_url: null,
+    });
+    expect(msg.content).toContain("Refund");
+    expect(msg.content).toContain("Not on file");
+    expect(msg.content).not.toContain("Next step");
+  });
+
+  it("a resolved dispute says won or lost", () => {
+    const msg = fmtBody("payment.dispute_resolved", { ...base, status: "won" });
+    expect(msg.content).toContain("Dispute WON");
+    expect(msg.content).not.toContain("days left");
+  });
+});

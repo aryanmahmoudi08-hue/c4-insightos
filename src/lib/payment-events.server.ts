@@ -175,7 +175,7 @@ export async function announcePayment(orgId: string, paymentId: string | null | 
 }
 
 /** The buyer's latest call with a closer on it: closer, setter, deal value. */
-async function saleFor(orgId: string, email: string | null) {
+export async function saleFor(orgId: string, email: string | null) {
   if (!email) return null;
   const { data: call } = await db
     .from("calls")
@@ -235,7 +235,7 @@ async function saleFor(orgId: string, email: string | null) {
 
 /** "<@123>" for a rep whose roster entry has a Discord user (added to
  *  `mentions` so the message is allowed to ping them), else their name. */
-async function repTag(
+export async function repTag(
   orgId: string,
   ref: { userId?: string | null; name?: string | null },
   mentions: Set<string>,
@@ -303,7 +303,7 @@ async function collectedToDate(
 /** The active offer whose price, or one of whose plans' total, deposit or
  *  installment, equals this amount (USD cents). Null when none or several
  *  different offers match. */
-async function offerByAmount(orgId: string, cents: number): Promise<string | null> {
+export async function offerByAmount(orgId: string, cents: number): Promise<string | null> {
   if (!cents) return null;
   const { data } = await db
     .from("offers")

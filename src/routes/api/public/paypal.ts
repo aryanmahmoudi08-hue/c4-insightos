@@ -113,6 +113,45 @@ export const Route = createFileRoute("/api/public/paypal")({
           processed_at: new Date().toISOString(),
         });
 
+        // Refunds and disputes → #refunds-disputes. PayPal money is
+        // { value: "12.34", currency_code } in whole units.
+        const et = String(event.event_type ?? "");
+        if (
+          et === "PAYMENT.CAPTURE.REFUNDED" ||
+          et === "PAYMENT.CAPTURE.REVERSED" ||
+          et.startsWith("CUSTOMER.DISPUTE.")
+        ) {
+          const res = event.resource ?? {};
+          const isDispute = et.startsWith("CUSTOMER.DISPUTE.");
+          // A refund links back to its capture with rel "up".
+          const upHref: string | undefined = (res.links ?? []).find(
+            (l: { rel?: string }) => l.rel === "up",
+          )?.href;
+          const money = isDispute ? res.dispute_amount : res.amount;
+          const txn = res.disputed_transactions?.[0] ?? {};
+          const { recordRefundOrDispute } = await import("@/lib/refund-dispute-events.server");
+          const r = await recordRefundOrDispute(connection.org_id, {
+            kind: isDispute ? "dispute" : "refund",
+            processor: "paypal",
+            externalId: String(res.dispute_id ?? res.id ?? event.id),
+            paymentExternalId: isDispute
+              ? (txn.seller_transaction_id ?? null)
+              : (upHref?.split("/").pop() ?? null),
+            status: isDispute
+              ? (res.dispute_outcome?.outcome_code ?? res.status ?? null)
+              : (res.status ?? "COMPLETED"),
+            reason: res.reason ?? (et === "PAYMENT.CAPTURE.REVERSED" ? "reversed by PayPal" : null),
+            amount: money?.value != null ? Number(money.value) : null,
+            currency: money?.currency_code ?? null,
+            evidenceDueAt: res.seller_response_due_date ?? null,
+            email: txn.buyer?.email ?? res.payer?.email_address ?? null,
+            name: txn.buyer?.name ?? null,
+            occurredAt: res.create_time ?? event.create_time ?? null,
+            raw: { event_type: et, resource: res },
+          });
+          return Response.json({ ok: true, dispute_id: r.id, announced: r.announced });
+        }
+
         if (!HANDLED_TYPES.has(event.event_type)) {
           return Response.json({ ok: true, skipped: event.event_type });
         }
