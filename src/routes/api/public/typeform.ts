@@ -150,6 +150,7 @@ export const Route = createFileRoute("/api/public/typeform")({
         let leadId: string | null = null;
         let intakeId: string | null = null;
         let tierKey: string | null = null;
+        let dmOwner: { via: "link" | "claim"; setterName: string | null } | null = null;
         if (isApplication) {
           // One lead per response across its partial and completed
           // deliveries — see typeform-ingest.server.ts.
@@ -195,6 +196,18 @@ export const Route = createFileRoute("/api/public/typeform")({
           }
           leadId = outcome.leadId;
           await syncPartialStage(supabaseAdmin, connection.org_id, leadId, isPartial);
+
+          // A DM setter's lead (their tracked link, or a claim they logged)
+          // is theirs: stamped here, on partials too, so dialers skip it.
+          const { applyDmOwnership } = await import("@/lib/dm-ownership.server");
+          dmOwner = await applyDmOwnership(connection.org_id, leadId, {
+            full_name,
+            email,
+            phone,
+            handle,
+            sourceMedium: attribution.sourceMedium,
+            contentTag: attribution.contentTag,
+          });
 
           // A partial is stored and filterable, and that is all: no
           // application_submitted event, no tier, no applicant post.
@@ -307,6 +320,8 @@ export const Route = createFileRoute("/api/public/typeform")({
             source_campaign: attribution.sourceCampaign,
             source_medium: attribution.sourceMedium,
             source_content_tag: attribution.contentTag,
+            dm_owned_via: dmOwner?.via ?? null,
+            dm_setter_name: dmOwner?.setterName ?? null,
           },
           form_title:
             typeof formResponse.definition?.title === "string"

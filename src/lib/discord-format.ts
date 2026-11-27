@@ -349,12 +349,21 @@ const sourceOf = (lead: Record<string, unknown>) =>
     .filter(Boolean)
     .join(" · ");
 
+/** The line that tells dialers a DM setter owns this lead. */
+function dmOwnerLine(lead: Record<string, unknown>): string {
+  if (!text(lead.dm_owned_via)) return "";
+  const who = text(lead.dm_setter_name);
+  return `📩 **DM LEAD${who ? ` (${who}'s)` : ""}. Dialers: don't call.**`;
+}
+
 function application(p: Record<string, unknown>): Body {
   const lead = obj(p.lead);
   const app = obj(p.application_data);
+  const dmLine = dmOwnerLine(lead);
   return {
     title: `New application${text(p.form_title) ? ` — ${text(p.form_title)}` : ""}`,
     blocks: [
+      ...(dmLine ? [{ kind: "raw" as const, text: dmLine }, gap] : []),
       lines(
         ["Name", lead.full_name],
         ["Email", lead.email],
@@ -379,6 +388,8 @@ function application(p: Record<string, unknown>): Body {
         ["Situation", app.candidate_fit],
       ),
       long("Why you, why now", app.serious_status),
+      gap,
+      lines(["Source", sourceOf(lead)]),
     ],
     linkPath: leadLink(lead.id ?? p.lead_id),
   };
@@ -387,9 +398,11 @@ function application(p: Record<string, unknown>): Body {
 /** #calls-booked and #calls-confirmed share a body. */
 function callBooked(title: string, p: Record<string, unknown>, tz: string | null): Body {
   const lead = obj(p.lead);
+  const dmLine = dmOwnerLine(lead);
   return {
     title,
     blocks: [
+      ...(dmLine ? [{ kind: "raw" as const, text: dmLine }, gap] : []),
       lines(...leadLines(lead, p)),
       gap,
       lines(["Source", sourceOf(lead)]),

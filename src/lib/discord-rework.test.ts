@@ -164,6 +164,8 @@ describe("channel formats, in the spec's order", () => {
       "Focus",
       "Situation",
       "Why you, why now",
+      // Where they came from: "dm" tells dialers it's a setter's lead.
+      "Source",
     ]);
     // A blank line, not a divider, between the lead block and the application.
     expect(msg.content.includes(DIVIDER)).toBe(false);

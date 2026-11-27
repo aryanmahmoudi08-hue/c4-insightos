@@ -690,6 +690,8 @@ export function ActivityModule({ role, title, subtitle }: Props) {
         )
         .eq("org_id", orgId!)
         .in("status", OPEN_LEAD_STATUSES)
+        // A DM setter's lead (their link or claim) is theirs, not a dialer's.
+        .is("dm_owned_via" as never, null)
         .gte("created_at", `${range.from}T00:00:00`)
         .lte("created_at", `${range.to}T23:59:59`);
       if (error) throw error;
